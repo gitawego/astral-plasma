@@ -4,7 +4,7 @@ import "../theme"
 Item {
     id: root
 
-    property string attachEdge: "top" // "top", "topRight", "bottomLeft"
+    property string attachEdge: "top" // "top", "topRight", "bottomLeft", "left"
     property real panelWidth: 400
     property real panelHeight: 300
     property real borderThickness: (typeof Config !== "undefined" && Config.borderThickness) ? Config.borderThickness : 14
@@ -14,6 +14,28 @@ Item {
 
     property real offsetProgress: isOpen ? 1.0 : 0.0
 
+    // Dynamic morphing envelope dimensions
+    readonly property real currentEnvelopeHeight: {
+        if (root.attachEdge === "top" || root.attachEdge === "topRight") {
+            return root.borderThickness + (root.panelHeight - root.borderThickness) * root.offsetProgress;
+        }
+        return root.panelHeight;
+    }
+
+    readonly property real currentEnvelopeWidth: {
+        if (root.attachEdge === "left" || root.attachEdge === "bottomLeft") {
+            return root.panelWidth * root.offsetProgress;
+        }
+        return root.panelWidth;
+    }
+
+    readonly property real filletFactor: {
+        if (root.attachEdge === "top" || root.attachEdge === "topRight") {
+            return Math.max(0.0, Math.min(1.0, (root.currentEnvelopeHeight - root.borderThickness) / Math.max(1, root.borderRounding)));
+        }
+        return Math.max(0.0, Math.min(1.0, root.offsetProgress));
+    }
+
     readonly property alias card: cardRectangle
     readonly property alias fillet1: filletItem1
     readonly property alias fillet2: filletItem2
@@ -21,7 +43,7 @@ Item {
 
     width: panelWidth
     height: panelHeight
-    visible: offsetProgress > 0.01
+    visible: offsetProgress > 0.001
 
     Behavior on offsetProgress {
         NumberAnimation {
@@ -31,21 +53,11 @@ Item {
         }
     }
 
-    transform: Translate {
-        y: {
-            if (root.attachEdge === "top" || root.attachEdge === "topRight") {
-                return -root.panelHeight * (1.0 - root.offsetProgress);
-            } else if (root.attachEdge === "bottomLeft") {
-                return root.panelHeight * (1.0 - root.offsetProgress);
-            }
-            return 0;
-        }
-    }
-
-    // Inverted Fillet 1 (Top-Left junction with Top Border)
+    // Inverted Fillet 1 (Top-Left junction with Top Border or Left Dock)
     CornerFillet {
         id: filletItem1
-        visible: root.offsetProgress > 0.05
+        visible: root.filletFactor > 0.01
+        opacity: root.filletFactor
         cornerRadius: root.borderRounding
         fillColor: root.fillColor
         strokeColor: "transparent"
@@ -56,10 +68,11 @@ Item {
         orientation: "dropdownLeft"
     }
 
-    // Inverted Fillet 2 (Right junction)
+    // Inverted Fillet 2 (Right junction or bottom junction)
     CornerFillet {
         id: filletItem2
-        visible: root.offsetProgress > 0.05
+        visible: root.filletFactor > 0.01
+        opacity: root.filletFactor
         cornerRadius: root.borderRounding
         fillColor: root.fillColor
         strokeColor: "transparent"
@@ -84,13 +97,13 @@ Item {
         orientation: root.attachEdge === "topRight" ? "topRight" : "dropdownRight"
     }
 
-    // Main Fused Card Surface
+    // Main Fused Card Surface - Permanently anchored to the border, height morphs organically
     Rectangle {
         id: cardRectangle
         x: 0
         y: 0
         width: root.panelWidth
-        height: root.panelHeight
+        height: root.currentEnvelopeHeight
         color: root.fillColor
 
         // Flush at fused screen boundaries, rounded on free interior sides
@@ -100,10 +113,15 @@ Item {
         bottomRightRadius: (root.attachEdge === "topRight") ? 0 : root.borderRounding
 
         border.width: 0
+        clip: true
 
+        // Content envelope synchronized with the descending/morphing bottom edge
         Item {
             id: cardContent
-            anchors.fill: parent
+            x: 0
+            y: Math.min(0, root.currentEnvelopeHeight - root.panelHeight)
+            width: root.panelWidth
+            height: root.panelHeight
         }
     }
 }

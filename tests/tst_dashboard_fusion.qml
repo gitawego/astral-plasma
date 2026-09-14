@@ -79,6 +79,20 @@ Item {
         assert(absFillet2X === (testRoot.dropX + 980), "Absolute screen X of right fillet");
         assert(absFillet2Y === 14, "Absolute screen Y of right fillet");
 
+        // Verify overshoot behavior (progress = 1.21 during spring bounce)
+        dashboardPanel.offsetProgress = 1.21;
+        assert(dashboardPanel.card.y === 0, "Card y must REMAIN at 0 during spring overshoot - zero disconnection!");
+        assert(dashboardPanel.card.height > 560, "Card height expands elastically during spring bounce");
+        assert(dashboardPanel.fillet1.y === 14, "Left fillet remains welded to top border during overshoot");
+        assert(dashboardPanel.fillet2.y === 14, "Right fillet remains welded to top border during overshoot");
+
+        // Verify partial morphing behavior (progress = 0.5)
+        dashboardPanel.offsetProgress = 0.5;
+        assert(dashboardPanel.card.y === 0, "Card y must be 0 at midway morphing");
+        const expectedMidHeight = 14 + (560 - 14) * 0.5;
+        assert(Math.abs(dashboardPanel.card.height - expectedMidHeight) < 0.01, "Card height matches morphing formula at progress 0.5");
+        assert(dashboardPanel.filletFactor === 1.0, "Fillet is at full strength once height exceeds borderT + filletR");
+
         console.log("PASS: Dashboard Fusion Tests");
         Qt.exit(0);
     }

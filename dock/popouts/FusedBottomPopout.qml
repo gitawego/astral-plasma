@@ -18,61 +18,11 @@ Item {
     implicitWidth: popWidth
     implicitHeight: popCard.implicitHeight
 
-    Rectangle {
+    Item {
         id: popCard
         width: root.popWidth
         implicitHeight: contentLoader.implicitHeight + Theme.padLarge * 2
         height: implicitHeight + Config.borderThickness
-
-        // Flush on left and bottom, rounded at top-right
-        topLeftRadius: 0
-        topRightRadius: Config.borderRounding
-        bottomLeftRadius: 0
-        bottomRightRadius: 0
-
-        color: Colors.surface
-        border.color: Theme.borderSubtle
-        border.width: 1
-
-        // Left border mask (seamless fusion with left dock)
-        Rectangle {
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: 2
-            color: Colors.surface
-            z: 2
-        }
-
-        // Bottom border mask (seamless fusion with bottom border)
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: 2
-            color: Colors.surface
-            z: 2
-        }
-
-        // Top-left corner mask under concave fillet
-        Rectangle {
-            anchors.left: parent.left
-            anchors.top: parent.top
-            width: Config.borderRounding
-            height: 2
-            color: Colors.surface
-            z: 2
-        }
-
-        // Bottom-right corner mask under concave fillet
-        Rectangle {
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            width: 2
-            height: Config.borderThickness + Config.borderRounding
-            color: Colors.surface
-            z: 2
-        }
 
         ColumnLayout {
             id: contentLoader

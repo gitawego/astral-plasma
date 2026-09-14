@@ -43,6 +43,8 @@ PanelWindow {
     readonly property int dropW: Config.dashboardWidth
     readonly property int dropX: Math.round((root.width - dropW) / 2)
     readonly property int dropH: Math.round(cardLayout.implicitHeight + Theme.padLarge * 2)
+    readonly property real currentDropH: borderT + (dropH - borderT) * dropdownContainer.offsetProgress
+    readonly property real currentPopW: (typeof fusedPopout !== "undefined" ? fusedPopout.popWidth : 280) * fusedBottomPopoutWrapper.offsetProgress
 
     Component.onCompleted: {
         console.log("DEBUG_BORDER_SUBTLE:", Theme.borderSubtle, "DEBUG_OUTLINE:", Colors.outline);
@@ -123,16 +125,16 @@ PanelWindow {
         Region {
             x: root.dropX - root.filletR
             y: 0
-            width: Config.dashboardVisible ? (root.dropW + root.filletR * 2) : 0
-            height: Config.dashboardVisible ? (root.dropH + 20) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? (root.dropW + root.filletR * 2) : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? (root.currentDropH + 20) : 0
         }
 
         // Fused Bottom Popout (when open)
         Region {
             x: root.dockW
-            y: Config.bottomPopoutVisible ? Math.max(0, root.height - root.borderT - fusedPopout.implicitHeight - root.filletR) : 0
-            width: Config.bottomPopoutVisible ? (fusedPopout.popWidth + root.filletR) : 0
-            height: Config.bottomPopoutVisible ? (fusedPopout.implicitHeight + root.filletR + root.borderT) : 0
+            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.max(0, root.height - root.borderT - fusedPopout.implicitHeight - root.filletR) : 0
+            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (root.currentPopW + root.filletR) : 0
+            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedPopout.implicitHeight + root.filletR + root.borderT) : 0
         }
 
         // Taskbar App Context Menu & Dismiss Area (when open)
@@ -231,7 +233,8 @@ PanelWindow {
 
         // Inner Fillet: Bottom-Left
         CornerFillet {
-            visible: !Config.bottomPopoutVisible
+            visible: fusedBottomPopoutWrapper.offsetProgress < 0.99
+            opacity: 1.0 - fusedBottomPopoutWrapper.offsetProgress
             x: root.dockW
             y: root.height - root.borderT - root.filletR
             orientation: "bottomLeft"
@@ -258,44 +261,97 @@ PanelWindow {
             x: root.dropX
             y: 0
             width: root.dropW
-            height: root.dropH
+            height: root.currentDropH
             visible: dropdownContainer.offsetProgress > 0.001
 
-            transform: Translate {
-                y: -root.dropH * (1.0 - dropdownContainer.offsetProgress)
-            }
+            readonly property real filletFactor: Math.max(0.0, Math.min(1.0, (root.currentDropH - root.borderT) / Math.max(1, root.filletR)))
 
-            // Left Inverted Fillet (seamlessly connecting topBorder to dropdown)
+            // Left Inverted Fillet (permanently anchored to topBorder)
             CornerFillet {
                 x: -root.filletR
                 y: root.borderT
                 orientation: "dropdownLeft"
                 cornerRadius: root.filletR
                 fillColor: Colors.surface
-                visible: dropdownContainer.offsetProgress > 0.05
+                strokeColor: "transparent"
+                visible: dashSurfaceWrapper.filletFactor > 0.01
+                opacity: dashSurfaceWrapper.filletFactor
             }
 
-            // Right Inverted Fillet (seamlessly connecting topBorder to dropdown)
+            // Right Inverted Fillet (permanently anchored to topBorder)
             CornerFillet {
                 x: root.dropW
                 y: root.borderT
                 orientation: "dropdownRight"
                 cornerRadius: root.filletR
                 fillColor: Colors.surface
-                visible: dropdownContainer.offsetProgress > 0.05
+                strokeColor: "transparent"
+                visible: dashSurfaceWrapper.filletFactor > 0.01
+                opacity: dashSurfaceWrapper.filletFactor
             }
 
-            // Fused Dashboard Solid Body (from y=0 down to dropH)
+            // Expanding Dashboard Body anchored permanently at y = 0
             Rectangle {
                 x: 0
                 y: 0
                 width: root.dropW
-                height: root.dropH
+                height: root.currentDropH
                 color: Colors.surface
                 topLeftRadius: 0
                 topRightRadius: 0
                 bottomLeftRadius: root.filletR
                 bottomRightRadius: root.filletR
+            }
+        }
+
+        // ======================================
+        // Bottom Popout Fused Solid Surface & Fillets
+        // ======================================
+        Item {
+            id: bottomPopoutSurface
+            x: root.dockW
+            y: fusedBottomPopoutWrapper.y
+            width: root.currentPopW
+            height: fusedPopout.implicitHeight + root.borderT
+            visible: fusedBottomPopoutWrapper.offsetProgress > 0.001
+
+            readonly property real filletFactor: Math.max(0.0, Math.min(1.0, root.currentPopW / Math.max(1, root.filletR)))
+
+            // Top-Left Inverted Fillet (Dock to Popout)
+            CornerFillet {
+                x: 0
+                y: -root.filletR
+                orientation: "bottomLeft"
+                cornerRadius: root.filletR
+                fillColor: Colors.surface
+                strokeColor: "transparent"
+                visible: bottomPopoutSurface.filletFactor > 0.01
+                opacity: bottomPopoutSurface.filletFactor
+            }
+
+            // Expanding Popout Body anchored permanently to dock right edge
+            Rectangle {
+                x: 0
+                y: 0
+                width: root.currentPopW
+                height: fusedPopout.implicitHeight + root.borderT
+                color: Colors.surface
+                topLeftRadius: 0
+                bottomLeftRadius: 0
+                topRightRadius: Config.borderRounding
+                bottomRightRadius: 0
+            }
+
+            // Bottom-Right Inverted Fillet (Glides along bottom border as width expands)
+            CornerFillet {
+                x: root.currentPopW
+                y: fusedPopout.implicitHeight - root.filletR
+                orientation: "bottomLeft"
+                cornerRadius: root.filletR
+                fillColor: Colors.surface
+                strokeColor: "transparent"
+                visible: bottomPopoutSurface.filletFactor > 0.01
+                opacity: bottomPopoutSurface.filletFactor
             }
         }
     }
@@ -329,8 +385,9 @@ PanelWindow {
         x: root.dropX
         y: 0
         width: root.dropW
-        height: root.dropH
-        visible: offsetProgress > 0
+        height: root.currentDropH
+        visible: offsetProgress > 0.001
+        clip: true
 
         property real offsetProgress: Config.dashboardVisible ? 1.0 : 0.0
 
@@ -340,10 +397,6 @@ PanelWindow {
                 easing.type: Easing.BezierSpline
                 easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
             }
-        }
-
-        transform: Translate {
-            y: -root.dropH * (1.0 - dropdownContainer.offsetProgress)
         }
 
         focus: true
@@ -367,6 +420,7 @@ PanelWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.margins: Theme.padLarge
+            anchors.topMargin: Theme.padLarge + Math.min(0, root.currentDropH - root.dropH)
             spacing: Theme.spaceMedium
 
                 // ======================================
@@ -1580,9 +1634,10 @@ PanelWindow {
         id: fusedBottomPopoutWrapper
         x: root.dockW
         y: Math.max(root.borderT + 10, root.height - root.borderT - fusedPopout.implicitHeight)
-        width: fusedPopout.popWidth
+        width: root.currentPopW
         height: fusedPopout.implicitHeight
-        visible: offsetProgress > 0
+        visible: offsetProgress > 0.001
+        clip: true
 
         property real offsetProgress: Config.bottomPopoutVisible ? 1.0 : 0.0
 
@@ -1592,11 +1647,6 @@ PanelWindow {
                 easing.type: Easing.BezierSpline
                 easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
             }
-        }
-
-        opacity: offsetProgress
-        transform: Translate {
-            y: 16 * (1.0 - fusedBottomPopoutWrapper.offsetProgress)
         }
 
         HoverHandler {
@@ -1610,42 +1660,18 @@ PanelWindow {
             }
         }
 
-        // Top-Left Inverted Fillet (Dock to Popout)
-        CornerFillet {
-            visible: fusedBottomPopoutWrapper.offsetProgress > 0.8
-            x: 0
-            y: -root.filletR
-            orientation: "bottomLeft"
-            cornerRadius: root.filletR
-            fillColor: Colors.surface
-            strokeColor: "transparent"
-        }
+        Item {
+            id: popoutContentContainer
+            anchors.left: parent.left
+            anchors.leftMargin: (-fusedPopout.popWidth - 5) * (1.0 - fusedBottomPopoutWrapper.offsetProgress)
+            anchors.top: parent.top
+            width: fusedPopout.popWidth
+            height: fusedPopout.implicitHeight
 
-        // Bottom-Right Inverted Fillet (Popout to Bottom Border)
-        CornerFillet {
-            visible: fusedBottomPopoutWrapper.offsetProgress > 0.8
-            x: fusedPopout.popWidth
-            y: fusedPopout.implicitHeight - root.filletR
-            orientation: "bottomLeft"
-            cornerRadius: root.filletR
-            fillColor: Colors.surface
-            strokeColor: "transparent"
-        }
-
-        RectangularShadow {
-            anchors.fill: fusedPopout
-            topRightRadius: Config.borderRounding
-            blur: 28
-            spread: 0
-            offset.x: 6
-            offset.y: -4
-            color: Qt.rgba(0, 0, 0, 0.4)
-            z: -1
-        }
-
-        FusedBottomPopout {
-            id: fusedPopout
-            mode: Config.bottomPopoutMode
+            FusedBottomPopout {
+                id: fusedPopout
+                mode: Config.bottomPopoutMode
+            }
         }
     }
 }
