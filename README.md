@@ -1,18 +1,18 @@
-# Caelestia Plasma
+# Astral Plasma
 
-> A sleek, fluid, and modern desktop shell for **KDE Plasma 6 & KWin**, built with [Quickshell](https://quickshell.outfoxxed.me/) and Material 3 Design.
+> A sleek, fluid, and multi-theme modern desktop shell for **KDE Plasma 6 & KWin**, built with [Quickshell](https://quickshell.outfoxxed.me/) and QtQuick.
 
 [![KDE Plasma 6](https://img.shields.io/badge/KDE_Plasma-6.x-blue.svg?logo=kde)](https://kde.org/plasma-desktop/)
-[![Quickshell](https://img.shields.io/badge/Powered_by-Quickshell-ff79c6.svg)](https://quickshell.outfoxxed.me/)
+[![Powered by Quickshell](https://img.shields.io/badge/Powered_by-Quickshell-ff79c6.svg)](https://quickshell.outfoxxed.me/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-## 🌟 Inspiration
+## 🌟 Overview & Inspiration
 
-This project is **highly inspired by [caelestia-dots/shell](https://github.com/caelestia-dots/shell)**, re-engineered and natively adapted from the ground up for **KDE Plasma 6** and **KWin** environments.
+**Astral Plasma** is an extensible desktop shell engineered specifically for **KDE Plasma 6** and **KWin**. 
 
-It brings Caelestia's distinctive aesthetic, fluid animations, and unified desktop border architecture to the KDE ecosystem with native DBus integrations.
+While the default visual language is **highly inspired by [caelestia-dots/shell](https://github.com/caelestia-dots/shell)** (bringing its elegant seamless desktop frame, soft shadows, and fluid morphing popouts to KDE), Astral Plasma is designed as a **general-purpose, multi-theme shell framework**. It is not restricted to any single theme and can easily be styled and themed to fit any desktop aesthetic.
 
 ---
 
@@ -20,7 +20,7 @@ It brings Caelestia's distinctive aesthetic, fluid animations, and unified deskt
 
 - **Seamless Desktop Border & Frame**:
   - Full-screen outer boundary with smooth rounded corners and elegant, soft shadows.
-  - No awkward gaps or misplaced drop shadows—completely integrated with the desktop.
+  - Seamless window integration with zero gaps or misplaced drop shadows.
 - **Adaptive Left Dock**:
   - **Launcher & Workspaces**: Quick application launcher and KWin virtual desktop indicator with animated glyphs (crescent moon, square, circle, dot).
   - **Active Window Tracker**: Centered current application name and icon with seamless 90° typography.
@@ -34,8 +34,8 @@ It brings Caelestia's distinctive aesthetic, fluid animations, and unified deskt
   - Fullscreen / overlay dashboard with music controls, media progress, quick toggles, notifications, and weather info.
 - **Retina & HiDPI Optimized**:
   - Proportional typography and pixel-perfect icon scaling designed for modern high-DPI (180–220+ DPI) screens.
-- **Dynamic Theming (Material You)**:
-  - Generates color palettes extracted from your active KDE desktop wallpaper using [matugen](https://github.com/InioX/matugen), falling back to Caelestia pastel defaults.
+- **Dynamic Multi-Theming & Material You**:
+  - Extensible theming engine supporting Material You / [matugen](https://github.com/InioX/matugen) dynamic color extraction from your active KDE wallpaper, with built-in pastel and custom palettes.
 
 ---
 
@@ -64,11 +64,11 @@ It brings Caelestia's distinctive aesthetic, fluid animations, and unified deskt
 ## 🚀 Getting Started
 
 ### 1. Safe Dev Mode (Recommended to test first)
-Run the shell in isolation without touching your system's quickshell configuration:
+Run the shell in isolation without modifying your system's quickshell configuration:
 
 ```bash
-git clone https://github.com/gitawego/caelestia-plasma.git
-cd caelestia-plasma
+git clone https://github.com/gitawego/astral-plasma.git
+cd astral-plasma
 ./run.sh
 ```
 
@@ -104,7 +104,7 @@ To remove the symlink and restore your previous configuration:
 
 You can trigger UI popouts and panels via Quickshell IPC commands or bind them to custom global keyboard shortcuts in KDE:
 
-| Action | IPC Command |
+| Action | IPC Command / Script |
 | :--- | :--- |
 | **Open Power Popout** | `quickshell -p ~/.config/quickshell ipc call popout open power` |
 | **Open Network Popout** | `quickshell -p ~/.config/quickshell ipc call popout open network` |
@@ -115,16 +115,16 @@ You can trigger UI popouts and panels via Quickshell IPC commands or bind them t
 
 ---
 
-## 🎨 Customization
+## 🎨 Customization & Multi-Theming
 
-Configuration files are located in `config/`:
+Configuration files are located in `config/` and `theme/`:
 - `config/settings.json`: Dock width, margin, top bar settings, enabled status icons, and dashboard tabs.
 - `theme/Theme.qml`: Typography scale, corner radius, borders, and shadows.
-- `theme/Colors.qml`: Material 3 color tokens.
+- `theme/Colors.qml`: Active color tokens. Easily plug in new color schemes or theme profiles.
 
 ---
 
 ## 📄 License & Credits
 
-- Highly inspired by the magnificent design and architecture of [caelestia-dots/shell](https://github.com/caelestia-dots/shell).
+- The initial design language is highly inspired by the work of [caelestia-dots/shell](https://github.com/caelestia-dots/shell).
 - Licensed under the [MIT License](LICENSE).

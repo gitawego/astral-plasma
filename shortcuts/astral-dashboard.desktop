@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=Caelestia Dashboard
-Comment=Toggle Caelestia Central Dashboard
+Name=Astral Dashboard
+Comment=Toggle Astral Central Dashboard
 Exec=sh -c "$HOME/.config/quickshell/scripts/toggle_dashboard.sh"
 Icon=preferences-system-windows
 Terminal=false

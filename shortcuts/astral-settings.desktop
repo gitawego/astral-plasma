@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=Caelestia Settings
-Comment=Configure Caelestia Shell
+Name=Astral Settings
+Comment=Configure Astral Shell
 Exec=sh -c "$HOME/.config/quickshell/scripts/toggle_settings.sh"
 Icon=preferences-system
 Terminal=false

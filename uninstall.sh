@@ -3,9 +3,9 @@
 set -euo pipefail
 
 TARGET="$HOME/.config/quickshell"
-CACHE_DIR="$HOME/.cache/caelestia"
+CACHE_DIR="$HOME/.cache/astral"
 
-echo "=== Uninstalling Caelestia Shell ==="
+echo "=== Uninstalling Astral Plasma Shell ==="
 
 # Stop any running quickshell instance
 pkill -f "quickshell" 2>/dev/null || true
@@ -22,7 +22,7 @@ if [ -d "${TARGET}.backup" ]; then
 fi
 
 # Remove desktop entries
-rm -f "$HOME/.local/share/applications/caelestia-dashboard.desktop" "$HOME/.local/share/applications/caelestia-settings.desktop"
+rm -f "$HOME/.local/share/applications/astral-dashboard.desktop" "$HOME/.local/share/applications/astral-settings.desktop"
 echo "[✓] Removed desktop shortcuts"
 
 # Clean cache

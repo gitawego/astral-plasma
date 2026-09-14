@@ -5,7 +5,7 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "=========================================================="
-echo " Starting Caelestia Shell for KDE (Dev Preview)"
+echo " Starting Astral Plasma Shell (Dev Preview)"
 echo " Safe mode: does NOT modify your existing desktop settings."
 echo " Press Ctrl+C at any time to exit safely."
 echo "=========================================================="

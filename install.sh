@@ -1,11 +1,11 @@
 #!/bin/bash
-# Plug-and-play installer for Caelestia Shell
+# Plug-and-play installer for Astral Plasma Shell
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="$HOME/.config/quickshell"
 
-echo "=== Installing Caelestia KDE Shell ==="
+echo "=== Installing Astral Plasma Shell ==="
 
 # Check dependencies
 if ! command -v quickshell >/dev/null 2>&1; then
