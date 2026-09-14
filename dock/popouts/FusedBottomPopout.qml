@@ -14,31 +14,71 @@ Item {
     id: root
 
     property string mode: "default" // "default", "bluetooth", "network", "audio", "power"
-    readonly property int popWidth: 280
+
+    readonly property real targetPopWidth: {
+        switch (root.mode) {
+            case "bluetooth": return 300;
+            case "network": return 300;
+            case "audio": return 280;
+            case "power": return 260;
+            default: return 280;
+        }
+    }
+    property real popWidth: targetPopWidth
+    Behavior on popWidth {
+        NumberAnimation {
+            duration: Theme.animExpressiveDefaultSpatial
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+        }
+    }
+
+    readonly property real targetContentHeight: {
+        switch (root.mode) {
+            case "bluetooth": return bluetoothSection.implicitHeight;
+            case "network": return networkSection.implicitHeight;
+            case "audio": return audioSection.implicitHeight;
+            case "power": return powerSection.implicitHeight;
+            default: return defaultSection.implicitHeight;
+        }
+    }
+
     implicitWidth: popWidth
     implicitHeight: popCard.implicitHeight
 
     Item {
         id: popCard
         width: root.popWidth
-        implicitHeight: contentLoader.implicitHeight + Theme.padLarge * 2
+        implicitHeight: root.targetContentHeight + Theme.padLarge * 2
         height: implicitHeight + Config.borderThickness
 
-        ColumnLayout {
+        Item {
             id: contentLoader
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: Theme.padLarge
-            spacing: Theme.spaceMedium
+            height: root.targetContentHeight
 
             // ==========================================
             // 1. DEFAULT STATUS / BATTERY & POWER PROFILES (Screenshot 1)
             // ==========================================
             ColumnLayout {
-                visible: root.mode === "default" || root.mode === "battery"
-                Layout.fillWidth: true
+                id: defaultSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 spacing: Theme.spaceMedium
+                readonly property bool isCurrent: root.mode === "default" || root.mode === "battery"
+                opacity: isCurrent ? 1.0 : 0.0
+                visible: opacity > 0.001
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -115,9 +155,21 @@ Item {
             // 2. BLUETOOTH ACTIONS LIST (Screenshot 2)
             // ==========================================
             ColumnLayout {
-                visible: root.mode === "bluetooth"
-                Layout.fillWidth: true
+                id: bluetoothSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 spacing: 2
+                readonly property bool isCurrent: root.mode === "bluetooth"
+                opacity: isCurrent ? 1.0 : 0.0
+                visible: opacity > 0.001
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
 
                 ActionItem {
                     icon: "bluetooth"
@@ -208,9 +260,21 @@ Item {
             // 3. NETWORK / WIFI ACTIONS LIST
             // ==========================================
             ColumnLayout {
-                visible: root.mode === "network"
-                Layout.fillWidth: true
+                id: networkSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 spacing: 2
+                readonly property bool isCurrent: root.mode === "network"
+                opacity: isCurrent ? 1.0 : 0.0
+                visible: opacity > 0.001
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
 
                 ActionItem {
                     icon: "wifi"
@@ -245,9 +309,21 @@ Item {
             // 4. AUDIO / VOLUME ACTIONS LIST
             // ==========================================
             ColumnLayout {
-                visible: root.mode === "audio"
-                Layout.fillWidth: true
+                id: audioSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 spacing: Theme.spaceMedium
+                readonly property bool isCurrent: root.mode === "audio"
+                opacity: isCurrent ? 1.0 : 0.0
+                visible: opacity > 0.001
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -333,9 +409,21 @@ Item {
             // 5. POWER ACTIONS LIST
             // ==========================================
             ColumnLayout {
-                visible: root.mode === "power"
-                Layout.fillWidth: true
+                id: powerSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 spacing: 2
+                readonly property bool isCurrent: root.mode === "power"
+                opacity: isCurrent ? 1.0 : 0.0
+                visible: opacity > 0.001
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
 
                 ActionItem {
                     icon: "lock"

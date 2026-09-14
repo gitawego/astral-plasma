@@ -312,7 +312,7 @@ PanelWindow {
             x: root.dockW
             y: fusedBottomPopoutWrapper.y
             width: root.currentPopW
-            height: fusedPopout.implicitHeight + root.borderT
+            height: fusedBottomPopoutWrapper.height + root.borderT
             visible: fusedBottomPopoutWrapper.offsetProgress > 0.001
 
             readonly property real filletFactor: Math.max(0.0, Math.min(1.0, root.currentPopW / Math.max(1, root.filletR)))
@@ -334,7 +334,7 @@ PanelWindow {
                 x: 0
                 y: 0
                 width: root.currentPopW
-                height: fusedPopout.implicitHeight + root.borderT
+                height: fusedBottomPopoutWrapper.height + root.borderT
                 color: Colors.surface
                 topLeftRadius: 0
                 bottomLeftRadius: 0
@@ -345,7 +345,7 @@ PanelWindow {
             // Bottom-Right Inverted Fillet (Glides along bottom border as width expands)
             CornerFillet {
                 x: root.currentPopW
-                y: fusedPopout.implicitHeight - root.filletR
+                y: fusedBottomPopoutWrapper.height - root.filletR
                 orientation: "bottomLeft"
                 cornerRadius: root.filletR
                 fillColor: Colors.surface
@@ -689,6 +689,14 @@ PanelWindow {
         x: root.dockW + 10
         y: Math.max(12, Math.min(root.height - height - 12, targetGlobalY - 10))
         width: 220
+
+        Behavior on y {
+            NumberAnimation {
+                duration: Theme.animExpressiveDefaultSpatial
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+            }
+        }
 
         MenuHeader {
             title: appContextMenu.targetApp ? appContextMenu.targetApp.appName : ""
@@ -1642,6 +1650,24 @@ PanelWindow {
         property real offsetProgress: Config.bottomPopoutVisible ? 1.0 : 0.0
 
         Behavior on offsetProgress {
+            NumberAnimation {
+                duration: Theme.animExpressiveDefaultSpatial
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+            }
+        }
+
+        Behavior on y {
+            enabled: fusedBottomPopoutWrapper.offsetProgress > 0.01
+            NumberAnimation {
+                duration: Theme.animExpressiveDefaultSpatial
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+            }
+        }
+
+        Behavior on height {
+            enabled: fusedBottomPopoutWrapper.offsetProgress > 0.01
             NumberAnimation {
                 duration: Theme.animExpressiveDefaultSpatial
                 easing.type: Easing.BezierSpline
