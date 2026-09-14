@@ -301,9 +301,9 @@ PanelWindow {
         // Inverted Fillet on the Left of the Dropdown
         CornerFillet {
             id: dropFilletL
-            visible: dropdownContainer.offsetProgress > 0.8
+            visible: dropdownContainer.offsetProgress > 0.05
             x: -root.filletR
-            y: root.borderT
+            y: 0
             orientation: "dropdownLeft"
             cornerRadius: root.filletR
             fillColor: Colors.surface
@@ -314,9 +314,9 @@ PanelWindow {
         // Inverted Fillet on the Right of the Dropdown
         CornerFillet {
             id: dropFilletR
-            visible: dropdownContainer.offsetProgress > 0.8
+            visible: dropdownContainer.offsetProgress > 0.05
             x: root.dropW
-            y: root.borderT
+            y: 0
             orientation: "dropdownRight"
             cornerRadius: root.filletR
             fillColor: Colors.surface
@@ -330,19 +330,21 @@ PanelWindow {
             x: 0
             y: 0
             width: root.dropW
-            implicitHeight: cardLayout.implicitHeight + Theme.padLarge * 2
+            height: cardLayout.implicitHeight + Theme.padLarge * 2
+            implicitHeight: height
 
             focus: true
             Keys.onEscapePressed: Config.dashboardVisible = false
 
-            // Flush at top, rounded corners at bottom
+            // Flush at top, large rounded corners at bottom
             topLeftRadius: 0
             topRightRadius: 0
-            bottomLeftRadius: Theme.radiusLarge
-            bottomRightRadius: Theme.radiusLarge
+            bottomLeftRadius: 28
+            bottomRightRadius: 28
 
             color: Colors.surface
-            border.width: 0
+            border.width: 1
+            border.color: Theme.borderSubtle
 
             // Soft drop shadow confined strictly below the top border and fillets
             RectangularShadow {
@@ -353,16 +355,18 @@ PanelWindow {
                 anchors.topMargin: root.borderT + root.filletR
                 bottomLeftRadius: parent.bottomLeftRadius
                 bottomRightRadius: parent.bottomRightRadius
-                blur: 24
+                blur: 28
                 spread: 0
-                offset.y: 6
+                offset.y: 8
                 color: Qt.rgba(0, 0, 0, 0.35)
                 z: -1
             }
 
             ColumnLayout {
                 id: cardLayout
-                anchors.fill: parent
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
                 anchors.margins: Theme.padLarge
                 spacing: Theme.spaceMedium
 
@@ -373,13 +377,13 @@ PanelWindow {
                     id: tabsHeader
                     Layout.alignment: Qt.AlignHCenter
                     implicitWidth: tabsRow.implicitWidth
-                    implicitHeight: 46
+                    implicitHeight: 60
 
                     Row {
                         id: tabsRow
                         anchors.top: parent.top
                         anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: Theme.spaceExtraLarge
+                        spacing: 16
 
                         Repeater {
                             id: tabRepeater
@@ -396,12 +400,10 @@ PanelWindow {
                                 required property int index
                                 readonly property bool isSelected: Config.activeDashboardTab === modelData.id
 
-                                implicitWidth: tabContentRow.implicitWidth + Theme.padLarge * 2
-                                width: implicitWidth
-                                implicitHeight: 36
-                                height: implicitHeight
-                                radius: Theme.radiusFull
-                                color: tabHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
+                                width: 175
+                                height: 50
+                                radius: 14
+                                color: tabHover.containsMouse ? Colors.surfaceContainerHigh : (isSelected ? Qt.alpha(Colors.surfaceContainerHigh, 0.6) : "transparent")
 
                                 Behavior on color {
                                     ColorAnimation {
@@ -411,15 +413,14 @@ PanelWindow {
                                     }
                                 }
 
-                                Row {
-                                    id: tabContentRow
+                                Column {
                                     anchors.centerIn: parent
-                                    spacing: Theme.spaceSmall
+                                    spacing: 3
 
                                     MaterialIcon {
-                                        anchors.verticalCenter: parent.verticalCenter
+                                        anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.icon
-                                        size: 16
+                                        size: 20
                                         color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
                                         Behavior on color {
                                             ColorAnimation { duration: Theme.animExpressiveFastEffects }
@@ -427,9 +428,9 @@ PanelWindow {
                                     }
 
                                     Text {
-                                        anchors.verticalCenter: parent.verticalCenter
+                                        anchors.horizontalCenter: parent.horizontalCenter
                                         text: modelData.label
-                                        font.pixelSize: Theme.fontMedium
+                                        font.pixelSize: 12
                                         font.weight: Font.DemiBold
                                         font.family: Theme.fontFamily
                                         color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
@@ -472,7 +473,7 @@ PanelWindow {
                         }
 
                         readonly property Item activeTabItem: (tabRepeater.count > activeIdx) ? tabRepeater.itemAt(activeIdx) : null
-                        readonly property real targetWidth: activeTabItem ? activeTabItem.width : 48
+                        readonly property real targetWidth: activeTabItem ? activeTabItem.width : 175
                         readonly property real targetX: activeTabItem ? (tabsRow.x + activeTabItem.x) : 0
 
                         x: targetX
@@ -507,6 +508,7 @@ PanelWindow {
                 Item {
                     id: tabContentContainer
                     Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
                     clip: true
                     implicitHeight: {
                         switch (Config.activeDashboardTab) {
@@ -555,11 +557,13 @@ PanelWindow {
                             id: tabPane0
                             x: 0
                             width: tabContentContainer.width
+                            height: implicitHeight
                             implicitHeight: dashTab.implicitHeight
 
                             DashboardTab {
                                 id: dashTab
                                 width: parent.width
+                                height: parent.height
                             }
                         }
 
@@ -567,11 +571,13 @@ PanelWindow {
                             id: tabPane1
                             x: tabContentContainer.width
                             width: tabContentContainer.width
+                            height: implicitHeight
                             implicitHeight: mediaTab.implicitHeight
 
                             MediaTab {
                                 id: mediaTab
                                 width: parent.width
+                                height: parent.height
                             }
                         }
 
@@ -579,11 +585,13 @@ PanelWindow {
                             id: tabPane2
                             x: tabContentContainer.width * 2
                             width: tabContentContainer.width
+                            height: implicitHeight
                             implicitHeight: perfTab.implicitHeight
 
                             PerformanceTab {
                                 id: perfTab
                                 width: parent.width
+                                height: parent.height
                             }
                         }
 
@@ -591,11 +599,13 @@ PanelWindow {
                             id: tabPane3
                             x: tabContentContainer.width * 3
                             width: tabContentContainer.width
+                            height: implicitHeight
                             implicitHeight: wsTab.implicitHeight
 
                             WorkspacesTab {
                                 id: wsTab
                                 width: parent.width
+                                height: parent.height
                             }
                         }
                     }

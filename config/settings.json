@@ -81,7 +81,7 @@
   "dashboard": {
     "enabled": true,
     "showOnHover": true,
-    "width": 780,
+    "width": 980,
     "defaultTab": "dashboard",
     "tabs": [
       {

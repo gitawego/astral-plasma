@@ -91,7 +91,7 @@ Singleton {
     readonly property bool topBarShowTabs: root.settings.topBar ? (root.settings.topBar.showTabs ?? true) : true
     readonly property bool topBarShowWeather: true
     readonly property bool dashboardShowOnHover: root.settings.dashboard ? (root.settings.dashboard.showOnHover ?? true) : true
-    readonly property int dashboardWidth: root.settings.dashboard ? (root.settings.dashboard.width ?? 780) : 780
+    readonly property int dashboardWidth: root.settings.dashboard ? (root.settings.dashboard.width ?? 980) : 980
 
     // Pinned apps management
     readonly property var pinnedApps: (root.settings.dock && root.settings.dock.pinnedApps) ? root.settings.dock.pinnedApps : []
