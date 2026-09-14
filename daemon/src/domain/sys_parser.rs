@@ -48,7 +48,7 @@ pub fn parse_meminfo_content(content: &str) -> f64 {
 }
 
 pub fn parse_kwin_desktops(output: &str, current_id: &str) -> Vec<Desktop> {
-    let re = Regex::new(r#"\(([0-9]+),\s*"([^"]+)",\s*"([^"]+)"\)"#).unwrap();
+    let re = Regex::new(r#"([0-9]+),\s*"([^"]+)",\s*"([^"]+)""#).unwrap();
     let mut desktops = Vec::new();
 
     for cap in re.captures_iter(output) {
@@ -64,6 +64,8 @@ pub fn parse_kwin_desktops(output: &str, current_id: &str) -> Vec<Desktop> {
             active,
         });
     }
+
+    desktops.sort_by_key(|d| d.index);
 
     if desktops.is_empty() {
         desktops.push(Desktop {

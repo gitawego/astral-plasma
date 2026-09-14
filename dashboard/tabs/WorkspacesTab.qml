@@ -10,7 +10,7 @@ Item {
     implicitWidth: 680
     implicitHeight: 320
 
-    Card {
+    Item {
         anchors.fill: parent
 
         ColumnLayout {
@@ -33,7 +33,7 @@ Item {
                 cellHeight: 100
                 clip: true
 
-                model: KWinWorkspaces.desktops
+                model: (typeof KWinWorkspaces !== "undefined" && KWinWorkspaces.desktops) ? KWinWorkspaces.desktops : []
 
                 delegate: Rectangle {
                     width: 140
@@ -69,10 +69,20 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: KWinWorkspaces.switchTo(modelData.id)
+                        onClicked: {
+                            if (typeof KWinWorkspaces !== "undefined") {
+                                KWinWorkspaces.switchTo(modelData.id);
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    Component.onCompleted: {
+        if (typeof KWinWorkspaces !== "undefined") {
+            KWinWorkspaces.refresh();
         }
     }
 }

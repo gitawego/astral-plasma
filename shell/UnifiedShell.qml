@@ -62,6 +62,17 @@ PanelWindow {
         const testTab = Quickshell.env("TEST_DASHBOARD_TAB");
         if (testTab) {
             Config.activeDashboardTab = testTab;
+            testTabTimer.start();
+        }
+    }
+
+    Timer {
+        id: testTabTimer
+        interval: 200
+        repeat: false
+        onTriggered: {
+            const testTab = Quickshell.env("TEST_DASHBOARD_TAB");
+            if (testTab) Config.activeDashboardTab = testTab;
         }
     }
 
@@ -71,6 +82,7 @@ PanelWindow {
         interval: 350
         repeat: false
         onTriggered: {
+            if (Quickshell.env("TEST_DASHBOARD") === "1") return;
             if (!dropdownHover.hovered && !topEdgeHover.hovered) {
                 Config.dashboardVisible = false;
             }

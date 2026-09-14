@@ -81,14 +81,36 @@ Cached:          7000000 kB
 
 #[test]
 fn test_workspace_regex_parser() {
-    let kwin_output = r#"[Argument: a(uss) {(0, "uuid-one", "Desktop 1"), (1, "uuid-two", "Desktop 2")}]"#;
-    let desktops = parse_kwin_desktops(kwin_output, "uuid-one");
+    let kwin_legacy = r#"[Argument: a(uss) {(0, "uuid-one", "Desktop 1"), (1, "uuid-two", "Desktop 2")}]"#;
+    let desktops = parse_kwin_desktops(kwin_legacy, "uuid-one");
     assert_eq!(desktops.len(), 2);
     assert_eq!(desktops[0].index, 0);
     assert_eq!(desktops[0].id, "uuid-one");
     assert_eq!(desktops[0].name, "Desktop 1");
     assert!(desktops[0].active);
     assert!(!desktops[1].active);
+
+    // KDE Plasma 6 qdbus6 --literal format with [Argument: (uss) ...]
+    let kwin_plasma6 = r#"[Variant: [Argument: a(uss) {[Argument: (uss) 0, "aa1e4fae-42a5-461e-89bf-dd373921543d", "Desktop 1"], [Argument: (uss) 1, "1e3d2f1f-854c-4595-9932-be41778c318c", "Desktop 2"], [Argument: (uss) 2, "06acc857-1a7d-4c98-9558-aef15e21d7a3", "Desktop 3"], [Argument: (uss) 3, "a1417742-e493-4a6c-b824-c14f97c91b67", "Desktop 4"]}]]"#;
+    let p6_desktops = parse_kwin_desktops(kwin_plasma6, "1e3d2f1f-854c-4595-9932-be41778c318c");
+    assert_eq!(p6_desktops.len(), 4);
+    assert_eq!(p6_desktops[0].index, 0);
+    assert_eq!(p6_desktops[0].id, "aa1e4fae-42a5-461e-89bf-dd373921543d");
+    assert_eq!(p6_desktops[0].name, "Desktop 1");
+    assert!(!p6_desktops[0].active);
+
+    assert_eq!(p6_desktops[1].index, 1);
+    assert_eq!(p6_desktops[1].id, "1e3d2f1f-854c-4595-9932-be41778c318c");
+    assert_eq!(p6_desktops[1].name, "Desktop 2");
+    assert!(p6_desktops[1].active);
+
+    assert_eq!(p6_desktops[2].index, 2);
+    assert_eq!(p6_desktops[2].id, "06acc857-1a7d-4c98-9558-aef15e21d7a3");
+    assert_eq!(p6_desktops[2].name, "Desktop 3");
+
+    assert_eq!(p6_desktops[3].index, 3);
+    assert_eq!(p6_desktops[3].id, "a1417742-e493-4a6c-b824-c14f97c91b67");
+    assert_eq!(p6_desktops[3].name, "Desktop 4");
 }
 
 #[test]

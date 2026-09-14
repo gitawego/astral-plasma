@@ -31,6 +31,9 @@ Singleton {
 
     Process {
         id: switchProc
+        onRunningChanged: {
+            if (!running) root.refresh();
+        }
     }
 
     Process {
@@ -48,10 +51,13 @@ Singleton {
         switchProc.command = [root.daemonBin, "workspaces", "switch", id];
         switchProc.running = true;
         root.currentId = id;
+        let updated = [];
         for (let i = 0; i < root.desktops.length; i++) {
-            root.desktops[i].active = (root.desktops[i].id === id);
+            let item = Object.assign({}, root.desktops[i]);
+            item.active = (item.id === id);
+            updated.push(item);
         }
-        root.desktopsChanged();
+        root.desktops = updated;
     }
 
     function switchToWorkspace(index) {
