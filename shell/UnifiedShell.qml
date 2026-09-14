@@ -373,9 +373,9 @@ PanelWindow {
                     id: tabsHeader
                     Layout.alignment: Qt.AlignHCenter
                     implicitWidth: tabsRow.implicitWidth
-                    implicitHeight: 44
+                    implicitHeight: 46
 
-                    RowLayout {
+                    Row {
                         id: tabsRow
                         anchors.top: parent.top
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -397,7 +397,9 @@ PanelWindow {
                                 readonly property bool isSelected: Config.activeDashboardTab === modelData.id
 
                                 implicitWidth: tabContentRow.implicitWidth + Theme.padLarge * 2
+                                width: implicitWidth
                                 implicitHeight: 36
+                                height: implicitHeight
                                 radius: Theme.radiusFull
                                 color: tabHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
 
@@ -409,12 +411,13 @@ PanelWindow {
                                     }
                                 }
 
-                                RowLayout {
+                                Row {
                                     id: tabContentRow
                                     anchors.centerIn: parent
                                     spacing: Theme.spaceSmall
 
                                     MaterialIcon {
+                                        anchors.verticalCenter: parent.verticalCenter
                                         text: modelData.icon
                                         size: 16
                                         color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
@@ -424,9 +427,10 @@ PanelWindow {
                                     }
 
                                     Text {
+                                        anchors.verticalCenter: parent.verticalCenter
                                         text: modelData.label
                                         font.pixelSize: Theme.fontMedium
-                                        font.weight: isSelected ? Font.Bold : Font.Normal
+                                        font.weight: Font.DemiBold
                                         font.family: Theme.fontFamily
                                         color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
                                         Behavior on color {
@@ -449,7 +453,7 @@ PanelWindow {
                         }
                     }
 
-                    // Fluid Sliding Underline Indicator
+                    // Fluid Sliding Underline Indicator (Exact width of active tab item)
                     Rectangle {
                         id: tabSlidingIndicator
                         anchors.bottom: parent.bottom
@@ -467,10 +471,12 @@ PanelWindow {
                             }
                         }
 
-                        readonly property Item activeTabItem: tabRepeater.itemAt(activeIdx)
+                        readonly property Item activeTabItem: (tabRepeater.count > activeIdx) ? tabRepeater.itemAt(activeIdx) : null
+                        readonly property real targetWidth: activeTabItem ? activeTabItem.width : 48
+                        readonly property real targetX: activeTabItem ? (tabsRow.x + activeTabItem.x) : 0
 
-                        x: activeTabItem ? (activeTabItem.x + (activeTabItem.width - width) / 2) : 0
-                        width: activeTabItem ? Math.round(activeTabItem.width * 0.65) : 48
+                        x: targetX
+                        width: targetWidth
 
                         Behavior on x {
                             NumberAnimation {
@@ -550,10 +556,7 @@ PanelWindow {
                             x: 0
                             width: tabContentContainer.width
                             implicitHeight: dashTab.implicitHeight
-                            opacity: tabContentContainer.activeTabIndex === 0 ? 1.0 : 0.0
-                            Behavior on opacity {
-                                NumberAnimation { duration: Theme.animExpressiveDefaultEffects }
-                            }
+
                             DashboardTab {
                                 id: dashTab
                                 width: parent.width
@@ -565,10 +568,7 @@ PanelWindow {
                             x: tabContentContainer.width
                             width: tabContentContainer.width
                             implicitHeight: mediaTab.implicitHeight
-                            opacity: tabContentContainer.activeTabIndex === 1 ? 1.0 : 0.0
-                            Behavior on opacity {
-                                NumberAnimation { duration: Theme.animExpressiveDefaultEffects }
-                            }
+
                             MediaTab {
                                 id: mediaTab
                                 width: parent.width
@@ -580,10 +580,7 @@ PanelWindow {
                             x: tabContentContainer.width * 2
                             width: tabContentContainer.width
                             implicitHeight: perfTab.implicitHeight
-                            opacity: tabContentContainer.activeTabIndex === 2 ? 1.0 : 0.0
-                            Behavior on opacity {
-                                NumberAnimation { duration: Theme.animExpressiveDefaultEffects }
-                            }
+
                             PerformanceTab {
                                 id: perfTab
                                 width: parent.width
@@ -595,10 +592,7 @@ PanelWindow {
                             x: tabContentContainer.width * 3
                             width: tabContentContainer.width
                             implicitHeight: wsTab.implicitHeight
-                            opacity: tabContentContainer.activeTabIndex === 3 ? 1.0 : 0.0
-                            Behavior on opacity {
-                                NumberAnimation { duration: Theme.animExpressiveDefaultEffects }
-                            }
+
                             WorkspacesTab {
                                 id: wsTab
                                 width: parent.width
