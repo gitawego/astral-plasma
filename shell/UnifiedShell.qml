@@ -276,8 +276,9 @@ PanelWindow {
 
         Behavior on offsetProgress {
             NumberAnimation {
-                duration: Theme.animDurationNormal
-                easing.type: Easing.OutCubic
+                duration: Theme.animExpressiveDefaultSpatial
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
             }
         }
 
@@ -366,69 +367,124 @@ PanelWindow {
                 spacing: Theme.spaceMedium
 
                 // ======================================
-                // Tabs Header (Dashboard, Media, Performance, Workspaces)
+                // Tabs Header with Fluid Sliding Indicator
                 // ======================================
-                RowLayout {
+                Item {
+                    id: tabsHeader
                     Layout.alignment: Qt.AlignHCenter
-                    spacing: Theme.spaceExtraLarge
+                    implicitWidth: tabsRow.implicitWidth
+                    implicitHeight: 44
 
-                    Repeater {
-                        model: [
-                            { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-                            { id: "media", label: "Media", icon: "queue_music" },
-                            { id: "performance", label: "Performance", icon: "speed" },
-                            { id: "workspaces", label: "Workspaces", icon: "grid_view" }
-                        ]
+                    RowLayout {
+                        id: tabsRow
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: Theme.spaceExtraLarge
 
-                        delegate: Rectangle {
-                            required property var modelData
-                            readonly property bool isSelected: Config.activeDashboardTab === modelData.id
+                        Repeater {
+                            id: tabRepeater
+                            model: [
+                                { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+                                { id: "media", label: "Media", icon: "queue_music" },
+                                { id: "performance", label: "Performance", icon: "speed" },
+                                { id: "workspaces", label: "Workspaces", icon: "grid_view" }
+                            ]
 
-                            implicitWidth: tabContentRow.implicitWidth + Theme.padLarge * 2
-                            implicitHeight: 36
-                            radius: Theme.radiusFull
-                            color: isSelected ? Colors.primaryContainer : (tabHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
+                            delegate: Rectangle {
+                                id: tabItem
+                                required property var modelData
+                                required property int index
+                                readonly property bool isSelected: Config.activeDashboardTab === modelData.id
 
-                            RowLayout {
-                                id: tabContentRow
-                                anchors.centerIn: parent
-                                spacing: Theme.spaceSmall
+                                implicitWidth: tabContentRow.implicitWidth + Theme.padLarge * 2
+                                implicitHeight: 36
+                                radius: Theme.radiusFull
+                                color: tabHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
 
-                                MaterialIcon {
-                                    text: modelData.icon
-                                    size: 16
-                                    color: isSelected ? Colors.primary : Colors.onSurfaceVariant
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: Theme.animExpressiveFastEffects
+                                        easing.type: Easing.BezierSpline
+                                        easing.bezierCurve: Theme.curveExpressiveFastEffects
+                                    }
                                 }
 
-                                Text {
-                                    text: modelData.label
-                                    font.pixelSize: Theme.fontMedium
-                                    font.weight: isSelected ? Font.Bold : Font.Normal
-                                    font.family: Theme.fontFamily
-                                    color: isSelected ? Colors.primary : Colors.onSurfaceVariant
+                                RowLayout {
+                                    id: tabContentRow
+                                    anchors.centerIn: parent
+                                    spacing: Theme.spaceSmall
+
+                                    MaterialIcon {
+                                        text: modelData.icon
+                                        size: 16
+                                        color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                                        Behavior on color {
+                                            ColorAnimation { duration: Theme.animExpressiveFastEffects }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: modelData.label
+                                        font.pixelSize: Theme.fontMedium
+                                        font.weight: isSelected ? Font.Bold : Font.Normal
+                                        font.family: Theme.fontFamily
+                                        color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                                        Behavior on color {
+                                            ColorAnimation { duration: Theme.animExpressiveFastEffects }
+                                        }
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: tabHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        Config.activeDashboardTab = modelData.id;
+                                        closeTimer.stop();
+                                    }
                                 }
                             }
+                        }
+                    }
 
-                            // Active tab indicator underline
-                            Rectangle {
-                                anchors.bottom: parent.bottom
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: parent.width * 0.55
-                                height: 2
-                                radius: 1
-                                color: Colors.primary
-                                visible: isSelected
+                    // Fluid Sliding Underline Indicator
+                    Rectangle {
+                        id: tabSlidingIndicator
+                        anchors.bottom: parent.bottom
+                        height: 3
+                        radius: 1.5
+                        color: Colors.primary
+
+                        readonly property int activeIdx: {
+                            switch (Config.activeDashboardTab) {
+                                case "dashboard": return 0;
+                                case "media": return 1;
+                                case "performance": return 2;
+                                case "workspaces": return 3;
+                                default: return 0;
                             }
+                        }
 
-                            MouseArea {
-                                id: tabHover
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    Config.activeDashboardTab = modelData.id;
-                                    closeTimer.stop();
-                                }
+                        readonly property Item activeTabItem: tabRepeater.itemAt(activeIdx)
+
+                        x: activeTabItem ? (activeTabItem.x + (activeTabItem.width - width) / 2) : 0
+                        width: activeTabItem ? Math.round(activeTabItem.width * 0.65) : 48
+
+                        Behavior on x {
+                            NumberAnimation {
+                                duration: Theme.animExpressiveDefaultSpatial
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                            }
+                        }
+
+                        Behavior on width {
+                            NumberAnimation {
+                                duration: Theme.animExpressiveDefaultSpatial
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
                             }
                         }
                     }
@@ -441,10 +497,30 @@ PanelWindow {
                     color: Theme.borderSubtle
                 }
 
-                // Tab Content Stack
-                StackLayout {
+                // Tab Content Sliding View
+                Item {
+                    id: tabContentContainer
                     Layout.fillWidth: true
-                    currentIndex: {
+                    clip: true
+                    implicitHeight: {
+                        switch (Config.activeDashboardTab) {
+                            case "dashboard": return tabPane0.implicitHeight;
+                            case "media": return tabPane1.implicitHeight;
+                            case "performance": return tabPane2.implicitHeight;
+                            case "workspaces": return tabPane3.implicitHeight;
+                            default: return tabPane0.implicitHeight;
+                        }
+                    }
+
+                    Behavior on implicitHeight {
+                        NumberAnimation {
+                            duration: Theme.animExpressiveDefaultSpatial
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                        }
+                    }
+
+                    readonly property int activeTabIndex: {
                         switch (Config.activeDashboardTab) {
                             case "dashboard": return 0;
                             case "media": return 1;
@@ -454,10 +530,81 @@ PanelWindow {
                         }
                     }
 
-                    DashboardTab {}
-                    MediaTab {}
-                    PerformanceTab {}
-                    WorkspacesTab {}
+                    Item {
+                        id: tabSlider
+                        width: tabContentContainer.width * 4
+                        height: parent.height
+
+                        x: -tabContentContainer.activeTabIndex * tabContentContainer.width
+
+                        Behavior on x {
+                            NumberAnimation {
+                                duration: Theme.animExpressiveDefaultSpatial
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                            }
+                        }
+
+                        Item {
+                            id: tabPane0
+                            x: 0
+                            width: tabContentContainer.width
+                            implicitHeight: dashTab.implicitHeight
+                            opacity: tabContentContainer.activeTabIndex === 0 ? 1.0 : 0.0
+                            Behavior on opacity {
+                                NumberAnimation { duration: Theme.animExpressiveDefaultEffects }
+                            }
+                            DashboardTab {
+                                id: dashTab
+                                width: parent.width
+                            }
+                        }
+
+                        Item {
+                            id: tabPane1
+                            x: tabContentContainer.width
+                            width: tabContentContainer.width
+                            implicitHeight: mediaTab.implicitHeight
+                            opacity: tabContentContainer.activeTabIndex === 1 ? 1.0 : 0.0
+                            Behavior on opacity {
+                                NumberAnimation { duration: Theme.animExpressiveDefaultEffects }
+                            }
+                            MediaTab {
+                                id: mediaTab
+                                width: parent.width
+                            }
+                        }
+
+                        Item {
+                            id: tabPane2
+                            x: tabContentContainer.width * 2
+                            width: tabContentContainer.width
+                            implicitHeight: perfTab.implicitHeight
+                            opacity: tabContentContainer.activeTabIndex === 2 ? 1.0 : 0.0
+                            Behavior on opacity {
+                                NumberAnimation { duration: Theme.animExpressiveDefaultEffects }
+                            }
+                            PerformanceTab {
+                                id: perfTab
+                                width: parent.width
+                            }
+                        }
+
+                        Item {
+                            id: tabPane3
+                            x: tabContentContainer.width * 3
+                            width: tabContentContainer.width
+                            implicitHeight: wsTab.implicitHeight
+                            opacity: tabContentContainer.activeTabIndex === 3 ? 1.0 : 0.0
+                            Behavior on opacity {
+                                NumberAnimation { duration: Theme.animExpressiveDefaultEffects }
+                            }
+                            WorkspacesTab {
+                                id: wsTab
+                                width: parent.width
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -909,19 +1056,84 @@ PanelWindow {
                 }
             }
 
-            // 2. Workspaces Vertical Pill (KDE Plasma Virtual Desktops)
+            // 2. Workspaces Vertical Pill (KDE Plasma Virtual Desktops) with Liquid Active Trail
             Rectangle {
+                id: wsContainer
                 anchors.horizontalCenter: parent.horizontalCenter
+                readonly property int wsBtnSize: root.iconS + 10
+                readonly property int wsSpacing: 4
+                readonly property int wsPad: 4
                 implicitWidth: root.iconS + 16
-                implicitHeight: (root.iconS + 10 + 4) * 4 + 8
+                implicitHeight: (wsBtnSize + wsSpacing) * 4 - wsSpacing + wsPad * 2
                 radius: Theme.radiusFull
                 color: Colors.surfaceContainer
                 border.color: Theme.borderSubtle
                 border.width: 1
 
+                readonly property int activeWsIndex: {
+                    for (let i = 0; i < Math.min(4, KWinWorkspaces.desktops.length); i++) {
+                        if (KWinWorkspaces.desktops[i].active) return i;
+                    }
+                    return 0;
+                }
+
+                // Asymmetric Stretch Liquid Indicator
+                property real startY: 0
+                property real endY: wsBtnSize
+
+                function updateLiquidTrail() {
+                    const newStart = activeWsIndex * (wsBtnSize + wsSpacing);
+                    const goingUp = newStart < startY;
+                    const lead = Theme.animExpressiveDefaultSpatial;
+                    const trail = Math.round(lead * 1.5);
+
+                    startAnim.stop();
+                    endAnim.stop();
+                    startAnim.to = newStart;
+                    endAnim.to = newStart + wsBtnSize;
+                    startAnim.duration = goingUp ? lead : trail;
+                    endAnim.duration = goingUp ? trail : lead;
+                    startAnim.start();
+                    endAnim.start();
+                }
+
+                onActiveWsIndexChanged: updateLiquidTrail()
+                Component.onCompleted: updateLiquidTrail()
+
+                // Liquid Pill Graphic
+                Rectangle {
+                    id: wsLiquidIndicator
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: wsContainer.startY + wsContainer.wsPad
+                    width: wsContainer.wsBtnSize
+                    height: Math.max(wsContainer.wsBtnSize, wsContainer.endY - wsContainer.startY)
+                    radius: Theme.radiusFull
+                    color: Colors.primaryContainer
+                    border.color: Qt.alpha(Colors.primary, 0.4)
+                    border.width: 1
+                    z: 0
+
+                    NumberAnimation {
+                        id: startAnim
+                        target: wsContainer
+                        property: "startY"
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                    }
+
+                    NumberAnimation {
+                        id: endAnim
+                        target: wsContainer
+                        property: "endY"
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                    }
+                }
+
                 Column {
                     anchors.centerIn: parent
-                    spacing: 4
+                    spacing: wsContainer.wsSpacing
+                    z: 1
 
                     Repeater {
                         model: [
@@ -934,24 +1146,24 @@ PanelWindow {
                         delegate: Rectangle {
                             id: wsDelegate
                             required property var modelData
-                            readonly property bool isActive: (KWinWorkspaces.desktops.length > modelData.index)
-                                ? KWinWorkspaces.desktops[modelData.index].active
-                                : (modelData.index === 0)
+                            readonly property bool isActive: wsContainer.activeWsIndex === modelData.index
+                            readonly property int itemSize: wsContainer.wsBtnSize
 
-                            readonly property int wsBtnSize: root.iconS + 10
-
-                            width: wsBtnSize
-                            height: wsBtnSize
-                            implicitWidth: wsBtnSize
-                            implicitHeight: wsBtnSize
+                            width: itemSize
+                            height: itemSize
+                            implicitWidth: itemSize
+                            implicitHeight: itemSize
                             radius: Theme.radiusFull
-                            color: isActive ? Colors.primaryContainer : (wsHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
+                            color: wsHover.containsMouse ? (isActive ? "transparent" : Colors.surfaceContainerHigh) : "transparent"
 
                             MaterialIcon {
                                 anchors.centerIn: parent
                                 text: modelData.icon
                                 size: (modelData.icon === "circle") ? Math.round(root.iconS * 0.45) : Math.round(root.iconS * 0.72)
-                                color: isActive ? Colors.primary : Colors.onSurfaceVariant
+                                color: isActive ? Colors.primary : (wsHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                                Behavior on color {
+                                    ColorAnimation { duration: Theme.animExpressiveFastEffects }
+                                }
                             }
 
                             MouseArea {
@@ -964,7 +1176,7 @@ PanelWindow {
                                 }
                             }
 
-                            // Workspace Tooltip
+                            // Tooltip
                             Rectangle {
                                 z: 100
                                 visible: wsHover.containsMouse
@@ -995,23 +1207,27 @@ PanelWindow {
             }
         }
 
-        // MIDDLE SECTION: Vertical Rotated Active Window / Desktop
+        // MIDDLE SECTION: Vertical Rotated Active Window / Desktop (Matching upstream Caelestia)
         Item {
             id: activeWindowPill
             anchors.top: topSection.bottom
-            anchors.topMargin: 20
+            anchors.topMargin: 8
             anchors.horizontalCenter: parent.horizontalCenter
             implicitWidth: root.iconS + 16
-            implicitHeight: 140
-            visible: (dockContent.height - bottomCol.implicitHeight) > 300
+            implicitHeight: Math.max(0, dockContent.height - topSection.implicitHeight - bottomCol.implicitHeight - 20)
+            visible: implicitHeight >= (root.iconS + 10)
 
-            Row {
-                anchors.centerIn: parent
-                rotation: 90
-                spacing: 8
+            // 1. App / Category Icon (Upright at top)
+            Item {
+                id: activeIconContainer
+                anchors.top: parent.top
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: root.iconS + 4
+                height: root.iconS + 4
 
                 Image {
                     id: activeIconImg
+                    anchors.centerIn: parent
                     width: root.iconS
                     height: root.iconS
                     source: {
@@ -1023,24 +1239,115 @@ PanelWindow {
                     }
                     fillMode: Image.PreserveAspectFit
                     visible: status === Image.Ready
-                    anchors.verticalCenter: parent.verticalCenter
                 }
 
                 MaterialIcon {
+                    anchors.centerIn: parent
                     text: WindowService.activeMaterialIcon || "desktop_windows"
                     size: Math.round(root.iconS * 0.82)
-                    color: Colors.textOnSurfaceVariant
-                    anchors.verticalCenter: parent.verticalCenter
+                    color: Colors.primary
                     visible: !activeIconImg.visible || activeIconImg.status !== Image.Ready
+                }
+            }
+
+            // 2. Vertical Rotated Title with Cross-fade (Matching upstream Caelestia)
+            Item {
+                id: activeTitleRotated
+                anchors.top: activeIconContainer.bottom
+                anchors.topMargin: 6
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 24
+                height: Math.max(0, parent.height - activeIconContainer.height - 8)
+                clip: true
+                visible: height >= 36
+
+                readonly property string windowTitle: WindowService.activeTitle || "Desktop"
+                property bool showingFirst: true
+
+                TextMetrics {
+                    id: titleMetrics
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.Medium
+                    text: activeTitleRotated.windowTitle
+                    elide: Text.ElideRight
+                    elideWidth: Math.max(20, activeTitleRotated.height)
+
+                    onTextChanged: {
+                        activeTitleRotated.showingFirst = !activeTitleRotated.showingFirst;
+                        if (activeTitleRotated.showingFirst) {
+                            titleText1.text = elidedText;
+                        } else {
+                            titleText2.text = elidedText;
+                        }
+                    }
+                    onElideWidthChanged: {
+                        if (activeTitleRotated.showingFirst) {
+                            titleText1.text = elidedText;
+                        } else {
+                            titleText2.text = elidedText;
+                        }
+                    }
+                }
+
+                Component.onCompleted: {
+                    titleText1.text = titleMetrics.elidedText;
                 }
 
                 Text {
-                    text: WindowService.activeTitle || "Desktop"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(13, Math.round(root.iconS * 0.45))
-                    font.weight: Font.Medium
+                    id: titleText1
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    font: titleMetrics.font
                     color: Colors.textOnSurfaceVariant
-                    anchors.verticalCenter: parent.verticalCenter
+                    opacity: activeTitleRotated.showingFirst ? 1.0 : 0.0
+                    width: implicitHeight
+                    height: implicitWidth
+                    horizontalAlignment: Text.AlignLeft
+
+                    transform: [
+                        Rotation {
+                            angle: 90
+                            origin.x: titleText1.implicitHeight / 2
+                            origin.y: titleText1.implicitHeight / 2
+                        }
+                    ]
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Theme.animExpressiveDefaultEffects
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                        }
+                    }
+                }
+
+                Text {
+                    id: titleText2
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    font: titleMetrics.font
+                    color: Colors.textOnSurfaceVariant
+                    opacity: activeTitleRotated.showingFirst ? 0.0 : 1.0
+                    width: implicitHeight
+                    height: implicitWidth
+                    horizontalAlignment: Text.AlignLeft
+
+                    transform: [
+                        Rotation {
+                            angle: 90
+                            origin.x: titleText2.implicitHeight / 2
+                            origin.y: titleText2.implicitHeight / 2
+                        }
+                    ]
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Theme.animExpressiveDefaultEffects
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                        }
+                    }
                 }
             }
         }
@@ -1058,17 +1365,31 @@ PanelWindow {
                 id: appsContainer
                 anchors.horizontalCenter: parent.horizontalCenter
                 implicitWidth: root.iconS + 16
-                implicitHeight: appsCol.implicitHeight + 8
+                readonly property int maxAppsHeight: Math.max(120, dockContent.height - topSection.implicitHeight - 360)
+                implicitHeight: Math.min(appsCol.implicitHeight + 8, maxAppsHeight)
                 radius: Math.round((root.iconS + 16) * 0.25)
                 color: Colors.surfaceContainer
                 border.color: Theme.borderSubtle
                 border.width: 1
                 visible: dockContent.taskbarList.length > 0
+                clip: true
 
-                Column {
-                    id: appsCol
-                    anchors.centerIn: parent
-                    spacing: 4
+                Flickable {
+                    id: appsFlickable
+                    anchors.fill: parent
+                    anchors.topMargin: 4
+                    anchors.bottomMargin: 4
+                    contentWidth: width
+                    contentHeight: appsCol.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
+                    clip: true
+                    interactive: contentHeight > height
+
+                    Column {
+                        id: appsCol
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: Math.max(0, (parent.height - implicitHeight) / 2)
+                        spacing: 4
 
                     Component {
                         id: appDelegateComponent
@@ -1227,6 +1548,7 @@ PanelWindow {
                     }
                 }
             }
+        }
 
             // 2. CLEAR VISUAL DIVIDER BETWEEN APPS & STATUS
             Item {
@@ -1276,7 +1598,7 @@ PanelWindow {
                                 return raw.includes("keyboard") || raw.includes("fcitx") || id.includes("fcitx") || id.includes("input") || title.includes("input");
                             }
 
-                            readonly property int itemSize: root.iconS + 10
+                            readonly property int itemSize: root.iconS + 4
 
                             width: itemSize
                             height: itemSize
@@ -1412,7 +1734,7 @@ PanelWindow {
     Item {
         id: fusedBottomPopoutWrapper
         x: root.dockW
-        y: root.height - root.borderT - fusedPopout.implicitHeight
+        y: Math.max(root.borderT + 10, root.height - root.borderT - fusedPopout.implicitHeight)
         width: fusedPopout.popWidth
         height: fusedPopout.implicitHeight
         visible: offsetProgress > 0
@@ -1421,8 +1743,9 @@ PanelWindow {
 
         Behavior on offsetProgress {
             NumberAnimation {
-                duration: Theme.animDurationNormal
-                easing.type: Easing.OutCubic
+                duration: Theme.animExpressiveDefaultSpatial
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
             }
         }
 

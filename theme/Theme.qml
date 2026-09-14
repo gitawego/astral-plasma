@@ -43,11 +43,30 @@ Singleton {
     readonly property int fontMedium: root.fontBodyMedium
     readonly property int fontLarge: root.fontTitleMedium
 
-    // Animation presets
+    // Animation presets & Material 3 Expressive Motion Tokens
     readonly property int animDurationFast: 150
     readonly property int animDurationNormal: 250
     readonly property int animDurationSlow: 400
     readonly property var animEasing: Easing.OutCubic
+
+    // Expressive Motion Durations (ms) matching upstream Caelestia
+    readonly property int animExpressiveFastSpatial: 350
+    readonly property int animExpressiveDefaultSpatial: 500
+    readonly property int animExpressiveSlowSpatial: 650
+    readonly property int animExpressiveFastEffects: 150
+    readonly property int animExpressiveDefaultEffects: 200
+    readonly property int animExpressiveSlowEffects: 300
+    readonly property int animEmphasized: 400
+
+    // Expressive Cubic Bezier Spline Control Points: [c1x, c1y, c2x, c2y, endX, endY]
+    readonly property var curveExpressiveDefaultSpatial: [0.38, 1.21, 0.22, 1.0, 1.0, 1.0]
+    readonly property var curveExpressiveFastSpatial: [0.42, 1.67, 0.21, 0.9, 1.0, 1.0]
+    readonly property var curveExpressiveSlowSpatial: [0.39, 1.29, 0.35, 0.98, 1.0, 1.0]
+    readonly property var curveExpressiveFastEffects: [0.31, 0.94, 0.34, 1.0, 1.0, 1.0]
+    readonly property var curveExpressiveDefaultEffects: [0.34, 0.80, 0.34, 1.0, 1.0, 1.0]
+    readonly property var curveExpressiveSlowEffects: [0.34, 0.88, 0.34, 1.0, 1.0, 1.0]
+    readonly property var curveEmphasizedDecel: [0.05, 0.70, 0.10, 1.0, 1.0, 1.0]
+    readonly property var curveStandard: [0.20, 0.0, 0.0, 1.0, 1.0, 1.0]
 
     // Soft drop shadow
     readonly property color shadowColor: Qt.rgba(0, 0, 0, 0.08)

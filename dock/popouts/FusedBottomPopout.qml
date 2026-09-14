@@ -76,7 +76,9 @@ Item {
 
         ColumnLayout {
             id: contentLoader
-            anchors.fill: parent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
             anchors.margins: Theme.padLarge
             spacing: Theme.spaceMedium
 

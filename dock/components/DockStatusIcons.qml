@@ -7,8 +7,8 @@ import "../../config"
 Rectangle {
     id: root
 
-    readonly property int btnSize: Config.dockIconSize + 10
-    readonly property int iconSize: Math.round(Config.dockIconSize * 0.82)
+    readonly property int btnSize: Config.dockIconSize + 2
+    readonly property int iconSize: Math.round(Config.dockIconSize * 0.62)
 
     implicitWidth: Config.dockIconSize + 16
     implicitHeight: layout.implicitHeight + Theme.padSmall * 2
