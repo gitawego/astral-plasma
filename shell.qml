@@ -8,6 +8,7 @@ import "config"
 import "theme"
 import "shell"
 import "settings_gui"
+import "services"
 
 ShellRoot {
     id: root
@@ -42,6 +43,16 @@ ShellRoot {
         }
         function open(mode: string): void { Config.openBottomPopout(mode || "default"); }
         function close(): void { Config.closeBottomPopout(); }
+    }
+
+    IpcHandler {
+        target: "notification"
+        function show(summary: string, body: string, icon: string, appName: string): void {
+            NotificationService.show(summary, body, icon, appName);
+        }
+        function dismiss(): void {
+            NotificationService.dismiss();
+        }
     }
 
     // Unified Desktop Shell (Flush Fused Left Dock + Top Bar with Corner Fillet)

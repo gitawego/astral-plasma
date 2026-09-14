@@ -1,0 +1,64 @@
+import QtQuick
+import "../notifications"
+import "../theme"
+
+Item {
+    id: testRoot
+    width: 1920
+    height: 1080
+
+    NotificationPopup {
+        id: notifPopup
+        borderThickness: 14
+        borderRounding: 24
+
+        summary: "Test notification"
+        timeStr: "now"
+        body: "Here's a really long message to test truncation in the notification popup..."
+        appName: "TestApp"
+        materialIcon: "info"
+        visible: true
+    }
+
+    Timer {
+        interval: 50
+        running: true
+        repeat: false
+        onTriggered: runTests()
+    }
+
+    function assert(condition, message) {
+        if (!condition) {
+            console.error("FAIL: " + message);
+            Qt.exit(1);
+        }
+    }
+
+    function runTests() {
+        console.log("RUNNING: NotificationPopup Tests");
+
+        // Test 1: Geometry and placement
+        assert(notifPopup.width === 380, "notifPopup width should be 380");
+        assert(notifPopup.fusedPanel.attachEdge === "topRight", "notifPopup attachEdge must be topRight");
+
+        // Test 2: Inverted fillets
+        assert(notifPopup.fusedPanel.fillet1.orientation === "dropdownLeft", "Left fillet must be dropdownLeft");
+        assert(notifPopup.fusedPanel.fillet1.x === -24, "Left fillet x must be -24");
+        assert(notifPopup.fusedPanel.fillet1.y === 14, "Left fillet y must be 14 (borderThickness)");
+        assert(notifPopup.fusedPanel.fillet2.orientation === "topRight", "Bottom fillet must be topRight");
+
+        // Test 3: Header and content
+        assert(notifPopup.summary === "Test notification", "Summary title preserved");
+        assert(notifPopup.timeStr === "now", "Timestamp string preserved");
+        assert(notifPopup.expanded === false, "Default expanded state should be false");
+
+        // Test 4: Expand toggle
+        notifPopup.toggleExpanded();
+        assert(notifPopup.expanded === true, "toggleExpanded should switch expanded to true");
+        notifPopup.toggleExpanded();
+        assert(notifPopup.expanded === false, "toggleExpanded should switch expanded back to false");
+
+        console.log("PASS: NotificationPopup Tests");
+        Qt.exit(0);
+    }
+}

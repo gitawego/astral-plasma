@@ -14,6 +14,8 @@ import qs.dock
 import qs.dock.components
 import qs.dock.popouts
 import qs.dashboard.tabs
+import "../menus"
+import "../notifications"
 
 PanelWindow {
     id: root
@@ -40,7 +42,7 @@ PanelWindow {
     readonly property int filletR: Config.borderRounding
     readonly property int dropW: Config.dashboardWidth
     readonly property int dropX: Math.round((root.width - dropW) / 2)
-    readonly property int dropH: Math.round(dashCard.implicitHeight)
+    readonly property int dropH: Math.round(cardLayout.implicitHeight + Theme.padLarge * 2)
 
     Component.onCompleted: {
         console.log("DEBUG_BORDER_SUBTLE:", Theme.borderSubtle, "DEBUG_OUTLINE:", Colors.outline);
@@ -140,6 +142,14 @@ PanelWindow {
             width: appContextMenu.visible ? root.width : 0
             height: appContextMenu.visible ? root.height : 0
         }
+
+        // Top-Right Fused Notification Popup (when visible)
+        Region {
+            x: sysNotifPopup.visible ? (root.width - sysNotifPopup.width - root.filletR) : 0
+            y: 0
+            width: sysNotifPopup.visible ? (sysNotifPopup.width + root.filletR) : 0
+            height: sysNotifPopup.visible ? (sysNotifPopup.height + root.filletR) : 0
+        }
     }
 
     // ==========================================
@@ -149,12 +159,12 @@ PanelWindow {
         id: desktopFrame
         anchors.fill: parent
 
-        layer.enabled: false
+        layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
             blurMax: 16
             shadowBlur: 1.0
-            shadowColor: Qt.rgba(0, 0, 0, 0.25)
+            shadowColor: Qt.rgba(0, 0, 0, 0.35)
         }
 
         // Left Dock Surface
@@ -210,6 +220,7 @@ PanelWindow {
 
         // Inner Fillet: Top-Right
         CornerFillet {
+            visible: !NotificationService.hasNotification
             x: root.width - root.borderT - root.filletR
             y: root.borderT
             orientation: "topRight"
@@ -237,6 +248,55 @@ PanelWindow {
             cornerRadius: root.filletR
             fillColor: Colors.surface
             strokeColor: "transparent"
+        }
+
+        // ======================================
+        // Central Dashboard Fused Solid Surface
+        // ======================================
+        Item {
+            id: dashSurfaceWrapper
+            x: root.dropX
+            y: 0
+            width: root.dropW
+            height: root.dropH
+            visible: dropdownContainer.offsetProgress > 0.001
+
+            transform: Translate {
+                y: -root.dropH * (1.0 - dropdownContainer.offsetProgress)
+            }
+
+            // Left Inverted Fillet (seamlessly connecting topBorder to dropdown)
+            CornerFillet {
+                x: -root.filletR
+                y: root.borderT
+                orientation: "dropdownLeft"
+                cornerRadius: root.filletR
+                fillColor: Colors.surface
+                visible: dropdownContainer.offsetProgress > 0.05
+            }
+
+            // Right Inverted Fillet (seamlessly connecting topBorder to dropdown)
+            CornerFillet {
+                x: root.dropW
+                y: root.borderT
+                orientation: "dropdownRight"
+                cornerRadius: root.filletR
+                fillColor: Colors.surface
+                visible: dropdownContainer.offsetProgress > 0.05
+            }
+
+            // Fused Dashboard Solid Body (from y=0 down to dropH)
+            Rectangle {
+                x: 0
+                y: 0
+                width: root.dropW
+                height: root.dropH
+                color: Colors.surface
+                topLeftRadius: 0
+                topRightRadius: 0
+                bottomLeftRadius: root.filletR
+                bottomRightRadius: root.filletR
+            }
         }
     }
 
@@ -286,7 +346,10 @@ PanelWindow {
             y: -root.dropH * (1.0 - dropdownContainer.offsetProgress)
         }
 
-        // Robust hover tracker covering the entire dropdown from y=0 to y=dropH
+        focus: true
+        Keys.onEscapePressed: Config.dashboardVisible = false
+
+        // Robust hover tracker covering the entire dropdown
         HoverHandler {
             id: dropdownHover
             onHoveredChanged: {
@@ -298,77 +361,13 @@ PanelWindow {
             }
         }
 
-        // Inverted Fillet on the Left of the Dropdown
-        CornerFillet {
-            id: dropFilletL
-            visible: dropdownContainer.offsetProgress > 0.05
-            x: -root.filletR
-            y: 0
-            orientation: "dropdownLeft"
-            cornerRadius: root.filletR
-            fillColor: Colors.surface
-            strokeColor: "transparent"
-            z: 1
-        }
-
-        // Inverted Fillet on the Right of the Dropdown
-        CornerFillet {
-            id: dropFilletR
-            visible: dropdownContainer.offsetProgress > 0.05
-            x: root.dropW
-            y: 0
-            orientation: "dropdownRight"
-            cornerRadius: root.filletR
-            fillColor: Colors.surface
-            strokeColor: "transparent"
-            z: 1
-        }
-
-        // Main Fused Dropdown Card
-        Rectangle {
-            id: dashCard
-            x: 0
-            y: 0
-            width: root.dropW
-            height: cardLayout.implicitHeight + Theme.padLarge * 2
-            implicitHeight: height
-
-            focus: true
-            Keys.onEscapePressed: Config.dashboardVisible = false
-
-            // Flush at top, large rounded corners at bottom
-            topLeftRadius: 0
-            topRightRadius: 0
-            bottomLeftRadius: 28
-            bottomRightRadius: 28
-
-            color: Colors.surface
-            border.width: 1
-            border.color: Theme.borderSubtle
-
-            // Soft drop shadow confined strictly below the top border and fillets
-            RectangularShadow {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.top: parent.top
-                anchors.topMargin: root.borderT + root.filletR
-                bottomLeftRadius: parent.bottomLeftRadius
-                bottomRightRadius: parent.bottomRightRadius
-                blur: 28
-                spread: 0
-                offset.y: 8
-                color: Qt.rgba(0, 0, 0, 0.35)
-                z: -1
-            }
-
-            ColumnLayout {
-                id: cardLayout
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.margins: Theme.padLarge
-                spacing: Theme.spaceMedium
+        ColumnLayout {
+            id: cardLayout
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: Theme.padLarge
+            spacing: Theme.spaceMedium
 
                 // ======================================
                 // Tabs Header with Fluid Sliding Indicator
@@ -612,7 +611,6 @@ PanelWindow {
                 }
             }
         }
-    }
 
     // ==========================================
     // 4. TASKBAR APP CONTEXT MENU
@@ -626,7 +624,7 @@ PanelWindow {
         onClicked: appContextMenu.visible = false
     }
 
-    Rectangle {
+    MenuCard {
         id: appContextMenu
         visible: false
         z: 9999
@@ -636,243 +634,86 @@ PanelWindow {
 
         x: root.dockW + 10
         y: Math.max(12, Math.min(root.height - height - 12, targetGlobalY - 10))
-        width: 175
-        height: menuCol.implicitHeight + 16
-        radius: 12
-        color: Colors.surfaceContainerLowest
-        border.color: Colors.outlineVariant
-        border.width: 1
+        width: 220
 
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: -1
-            radius: 13
-            color: "transparent"
-            border.color: Qt.alpha(Colors.primary, 0.15)
-            border.width: 1
-            z: -1
+        MenuHeader {
+            title: appContextMenu.targetApp ? appContextMenu.targetApp.appName : ""
+            subtitle: {
+                if (!appContextMenu.targetApp) return "";
+                if (appContextMenu.targetApp.isPinned && appContextMenu.targetApp.isRunning) return "Pinned • Running";
+                if (appContextMenu.targetApp.isPinned) return "Pinned";
+                return "Running (Unpinned)";
+            }
+            iconSource: {
+                if (!appContextMenu.targetApp || !appContextMenu.targetApp.iconName) return "";
+                if (appContextMenu.targetApp.iconName.indexOf("/") !== -1) {
+                    return appContextMenu.targetApp.iconName.startsWith("file://") ? appContextMenu.targetApp.iconName : ("file://" + appContextMenu.targetApp.iconName);
+                }
+                return Quickshell.iconPath(appContextMenu.targetApp.iconName);
+            }
+            materialIcon: appContextMenu.targetApp ? (appContextMenu.targetApp.materialIcon || "apps") : "apps"
         }
 
-        Column {
-            id: menuCol
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 8
-            spacing: 4
+        MenuDivider {}
 
-            // Header: App icon + App Name
-            Row {
-                spacing: 8
-                width: parent.width
-                leftPadding: 4
-                rightPadding: 4
-                bottomPadding: 4
-
-                Image {
-                    width: 18
-                    height: 18
-                    anchors.verticalCenter: parent.verticalCenter
-                    source: {
-                        if (!appContextMenu.targetApp || !appContextMenu.targetApp.iconName) return "";
-                        if (appContextMenu.targetApp.iconName.indexOf("/") !== -1) {
-                            return appContextMenu.targetApp.iconName.startsWith("file://") ? appContextMenu.targetApp.iconName : ("file://" + appContextMenu.targetApp.iconName);
-                        }
-                        return Quickshell.iconPath(appContextMenu.targetApp.iconName);
-                    }
-                    fillMode: Image.PreserveAspectFit
-                    visible: status === Image.Ready
+        MenuItem {
+            text: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? "Unpin from dock" : "Pin to dock"
+            materialIcon: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? "keep_off" : "push_pin"
+            checked: appContextMenu.targetApp && appContextMenu.targetApp.isPinned
+            onClicked: {
+                if (!appContextMenu.targetApp) return;
+                if (appContextMenu.targetApp.isPinned) {
+                    Config.unpinApp(appContextMenu.targetApp.appId, appContextMenu.targetApp.desktopFile, appContextMenu.targetApp.appName);
+                } else {
+                    Config.pinApp(appContextMenu.targetApp);
                 }
-
-                MaterialIcon {
-                    width: 18
-                    height: 18
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: appContextMenu.targetApp ? (appContextMenu.targetApp.materialIcon || "apps") : "apps"
-                    size: 16
-                    color: Colors.primary
-                    visible: !parent.children[0].visible
-                }
-
-                Column {
-                    width: parent.width - 32
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 1
-
-                    Text {
-                        text: appContextMenu.targetApp ? appContextMenu.targetApp.appName : ""
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        font.weight: Font.DemiBold
-                        color: Colors.textOnSurface
-                        elide: Text.ElideRight
-                        width: parent.width
-                    }
-
-                    Text {
-                        text: {
-                            if (!appContextMenu.targetApp) return "";
-                            if (appContextMenu.targetApp.isPinned && appContextMenu.targetApp.isRunning) {
-                                return "Pinned • Running";
-                            } else if (appContextMenu.targetApp.isPinned) {
-                                return "Pinned";
-                            } else {
-                                return "Running (Unpinned)";
-                            }
-                        }
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        color: Colors.textMuted
-                        elide: Text.ElideRight
-                        width: parent.width
-                    }
-                }
-            }
-
-            // Divider
-            Rectangle {
-                width: parent.width
-                height: 1
-                color: Colors.outlineVariant
-                opacity: 0.6
-            }
-
-            // Pin / Unpin Action
-            Rectangle {
-                width: parent.width
-                height: 32
-                radius: 6
-                color: pinHover.containsMouse ? Colors.surfaceContainerHighest : "transparent"
-
-                Row {
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    spacing: 10
-
-                    MaterialIcon {
-                        text: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? "keep_off" : "push_pin"
-                        size: 16
-                        color: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) 
-                            ? Colors.primary 
-                            : (pinHover.containsMouse ? Colors.primary : Colors.textOnSurfaceVariant)
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                        text: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? "Unpin from dock" : "Pin to dock"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        font.weight: pinHover.containsMouse ? Font.Medium : Font.Normal
-                        color: pinHover.containsMouse ? Colors.primary : Colors.textOnSurface
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                MouseArea {
-                    id: pinHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (!appContextMenu.targetApp) return;
-                        if (appContextMenu.targetApp.isPinned) {
-                            Config.unpinApp(appContextMenu.targetApp.appId, appContextMenu.targetApp.desktopFile, appContextMenu.targetApp.appName);
-                        } else {
-                            Config.pinApp(appContextMenu.targetApp);
-                        }
-                        appContextMenu.visible = false;
-                    }
-                }
-            }
-
-            // Close Window Action (if running)
-            Rectangle {
-                width: parent.width
-                height: 32
-                radius: 6
-                visible: appContextMenu.targetApp && appContextMenu.targetApp.isRunning
-                color: closeHover.containsMouse ? Qt.rgba(0.85, 0.2, 0.15, 0.12) : "transparent"
-
-                Row {
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    spacing: 10
-
-                    MaterialIcon {
-                        text: "close"
-                        size: 16
-                        color: closeHover.containsMouse ? "#D93025" : Colors.textOnSurfaceVariant
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                        text: "Close window"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        font.weight: closeHover.containsMouse ? Font.Medium : Font.Normal
-                        color: closeHover.containsMouse ? "#D93025" : Colors.textOnSurface
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                MouseArea {
-                    id: closeHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (appContextMenu.targetApp && appContextMenu.targetApp.id) {
-                            WindowService.closeWindow(appContextMenu.targetApp.id);
-                        }
-                        appContextMenu.visible = false;
-                    }
-                }
-            }
-
-            // Launch Action (if pinned and not running)
-            Rectangle {
-                width: parent.width
-                height: 32
-                radius: 6
-                visible: appContextMenu.targetApp && !appContextMenu.targetApp.isRunning
-                color: launchHover.containsMouse ? Colors.surfaceContainerHighest : "transparent"
-
-                Row {
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    spacing: 10
-
-                    MaterialIcon {
-                        text: "play_arrow"
-                        size: 16
-                        color: launchHover.containsMouse ? Colors.primary : Colors.textOnSurfaceVariant
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                        text: "Launch application"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        font.weight: launchHover.containsMouse ? Font.Medium : Font.Normal
-                        color: launchHover.containsMouse ? Colors.primary : Colors.textOnSurface
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                MouseArea {
-                    id: launchHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (appContextMenu.targetApp) {
-                            WindowService.launchApp(appContextMenu.targetApp.desktopFile || appContextMenu.targetApp.appId);
-                        }
-                        appContextMenu.visible = false;
-                    }
-                }
+                appContextMenu.visible = false;
             }
         }
+
+        MenuItem {
+            visible: appContextMenu.targetApp && appContextMenu.targetApp.isRunning
+            text: "Close window"
+            materialIcon: "close"
+            isDangerous: true
+            onClicked: {
+                if (appContextMenu.targetApp && appContextMenu.targetApp.id) {
+                    WindowService.closeWindow(appContextMenu.targetApp.id);
+                }
+                appContextMenu.visible = false;
+            }
+        }
+
+        MenuItem {
+            visible: appContextMenu.targetApp && !appContextMenu.targetApp.isRunning
+            text: "Launch application"
+            materialIcon: "play_arrow"
+            onClicked: {
+                if (appContextMenu.targetApp) {
+                    WindowService.launchApp(appContextMenu.targetApp.desktopFile || appContextMenu.targetApp.appId);
+                }
+                appContextMenu.visible = false;
+            }
+        }
+    }
+
+    // ==========================================
+    // 5. SYSTEM NOTIFICATIONS POPUP (TOP-RIGHT FUSED)
+    // ==========================================
+    NotificationPopup {
+        id: sysNotifPopup
+        x: root.width - width
+        y: 0
+        z: 9990
+        borderThickness: root.borderT
+        borderRounding: root.filletR
+        visible: NotificationService.hasNotification
+        summary: NotificationService.currentSummary
+        body: NotificationService.currentBody
+        appName: NotificationService.currentAppName
+        materialIcon: NotificationService.currentIcon
+        timeStr: NotificationService.currentTime
+        onClosed: NotificationService.dismiss()
     }
 
     // ==========================================

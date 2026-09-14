@@ -1,116 +1,112 @@
 import QtQuick
+import QtQuick.Shapes
 import "../theme"
 
-Canvas {
+Item {
     id: root
 
     property real cornerRadius: 20
     property string orientation: "topLeft" // "topLeft", "topRight", "bottomLeft", "bottomRight", "dropdownLeft", "dropdownRight"
-    property color fillColor: Colors.surface
+    property color fillColor: (typeof Colors !== "undefined" && Colors.surface) ? Colors.surface : "#141318"
     property color strokeColor: "transparent"
     property real strokeWidth: 0
 
     width: cornerRadius
     height: cornerRadius
 
-    onFillColorChanged: requestPaint()
-    onStrokeColorChanged: requestPaint()
-    onCornerRadiusChanged: requestPaint()
-    onOrientationChanged: requestPaint()
+    // topLeft (inner screen corner: dock on left, top border on top)
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.orientation === "topLeft"
+        ShapePath {
+            fillColor: root.fillColor
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            startX: 0; startY: 0
+            PathLine { x: root.width; y: 0 }
+            PathArc { x: 0; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Counterclockwise }
+            PathLine { x: 0; y: 0 }
+        }
+    }
 
-    onPaint: {
-        var ctx = getContext("2d");
-        ctx.reset();
+    // topRight (inner screen corner: top border on top, right border on right)
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.orientation === "topRight"
+        ShapePath {
+            fillColor: root.fillColor
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            startX: root.width; startY: 0
+            PathLine { x: 0; y: 0 }
+            PathArc { x: root.width; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
+            PathLine { x: root.width; y: 0 }
+        }
+    }
 
-        ctx.fillStyle = fillColor;
-        ctx.beginPath();
+    // bottomLeft (inner screen corner: dock on left, bottom border on bottom)
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.orientation === "bottomLeft"
+        ShapePath {
+            fillColor: root.fillColor
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            startX: 0; startY: root.height
+            PathLine { x: 0; y: 0 }
+            PathArc { x: root.width; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Counterclockwise }
+            PathLine { x: 0; y: root.height }
+        }
+    }
 
-        if (orientation === "dropdownLeft") {
-            // Fused left fillet of dropdown:
-            // Point (width, 0) is top-right corner against dropdown wall.
-            // Arc from (0, 0) curving down to (width, height).
-            ctx.moveTo(width, 0);
-            ctx.lineTo(0, 0);
-            ctx.arc(0, height, width, 1.5 * Math.PI, 0, false);
-            ctx.lineTo(width, 0);
-            ctx.closePath();
-            ctx.fill();
+    // bottomRight (inner screen corner: bottom border on bottom, right border on right)
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.orientation === "bottomRight"
+        ShapePath {
+            fillColor: root.fillColor
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            startX: root.width; startY: root.height
+            PathLine { x: root.width; y: 0 }
+            PathArc { x: 0; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
+            PathLine { x: root.width; y: root.height }
+        }
+    }
 
-            if (strokeWidth > 0 && strokeColor.a > 0) {
-                ctx.strokeStyle = strokeColor;
-                ctx.lineWidth = strokeWidth;
-                ctx.beginPath();
-                ctx.arc(0, height, width, 1.5 * Math.PI, 0, false);
-                ctx.stroke();
-            }
-        } else if (orientation === "dropdownRight" || orientation === "topLeft") {
-            // Concave fillet at top-left:
-            // Point (0, 0) is corner. Arc connects (width, 0) to (0, height).
-            ctx.moveTo(0, 0);
-            ctx.lineTo(width, 0);
-            ctx.arc(width, height, width, 1.5 * Math.PI, Math.PI, true);
-            ctx.lineTo(0, 0);
-            ctx.closePath();
-            ctx.fill();
+    // dropdownLeft (inverted fillet: top border on top, dropdown on right)
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.orientation === "dropdownLeft"
+        ShapePath {
+            fillColor: root.fillColor
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            startX: 0; startY: 0
+            PathLine { x: root.width; y: 0 }
+            PathLine { x: root.width; y: root.height }
+            PathArc { x: 0; y: 0; radiusX: root.width; radiusY: root.height; direction: PathArc.Counterclockwise }
+        }
+    }
 
-            if (strokeWidth > 0 && strokeColor.a > 0) {
-                ctx.strokeStyle = strokeColor;
-                ctx.lineWidth = strokeWidth;
-                ctx.beginPath();
-                ctx.arc(width, height, width, 1.5 * Math.PI, Math.PI, true);
-                ctx.stroke();
-            }
-        } else if (orientation === "topRight") {
-            // Concave fillet at top-right:
-            // Point (width, 0) is corner. Arc connects (0, 0) to (width, height).
-            ctx.moveTo(width, 0);
-            ctx.lineTo(0, 0);
-            ctx.arc(0, height, width, 1.5 * Math.PI, 2.0 * Math.PI, false);
-            ctx.lineTo(width, 0);
-            ctx.closePath();
-            ctx.fill();
-
-            if (strokeWidth > 0 && strokeColor.a > 0) {
-                ctx.strokeStyle = strokeColor;
-                ctx.lineWidth = strokeWidth;
-                ctx.beginPath();
-                ctx.arc(0, height, width, 1.5 * Math.PI, 2.0 * Math.PI, false);
-                ctx.stroke();
-            }
-        } else if (orientation === "bottomLeft") {
-            // Concave fillet at bottom-left:
-            // Point (0, height) is corner. Arc connects (0, 0) to (width, height).
-            ctx.moveTo(0, height);
-            ctx.lineTo(0, 0);
-            ctx.arc(width, 0, width, Math.PI, 0.5 * Math.PI, true);
-            ctx.lineTo(0, height);
-            ctx.closePath();
-            ctx.fill();
-
-            if (strokeWidth > 0 && strokeColor.a > 0) {
-                ctx.strokeStyle = strokeColor;
-                ctx.lineWidth = strokeWidth;
-                ctx.beginPath();
-                ctx.arc(width, 0, width, Math.PI, 0.5 * Math.PI, true);
-                ctx.stroke();
-            }
-        } else if (orientation === "bottomRight") {
-            // Concave fillet at bottom-right:
-            // Point (width, height) is corner. Arc connects (width, 0) to (0, height).
-            ctx.moveTo(width, height);
-            ctx.lineTo(width, 0);
-            ctx.arc(0, 0, width, 0, 0.5 * Math.PI, false);
-            ctx.lineTo(width, height);
-            ctx.closePath();
-            ctx.fill();
-
-            if (strokeWidth > 0 && strokeColor.a > 0) {
-                ctx.strokeStyle = strokeColor;
-                ctx.lineWidth = strokeWidth;
-                ctx.beginPath();
-                ctx.arc(0, 0, width, 0, 0.5 * Math.PI, false);
-                ctx.stroke();
-            }
+    // dropdownRight (inverted fillet: top border on top, dropdown on left)
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.orientation === "dropdownRight"
+        ShapePath {
+            fillColor: root.fillColor
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            startX: 0; startY: root.height
+            PathLine { x: 0; y: 0 }
+            PathLine { x: root.width; y: 0 }
+            PathArc { x: 0; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Counterclockwise }
         }
     }
 }
