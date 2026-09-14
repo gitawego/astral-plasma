@@ -292,9 +292,9 @@ PanelWindow {
 
             // Expanding Dashboard Body anchored permanently at y = 0
             Rectangle {
-                x: 0
+                x: -2
                 y: 0
-                width: root.dropW
+                width: root.dropW + 4
                 height: root.currentDropH
                 color: Colors.surface
                 topLeftRadius: 0
@@ -331,10 +331,10 @@ PanelWindow {
 
             // Expanding Popout Body anchored permanently to dock right edge
             Rectangle {
-                x: 0
+                x: -2
                 y: 0
-                width: root.currentPopW
-                height: fusedBottomPopoutWrapper.height + root.borderT
+                width: root.currentPopW + 2
+                height: fusedBottomPopoutWrapper.height + root.borderT + 2
                 color: Colors.surface
                 topLeftRadius: 0
                 bottomLeftRadius: 0
@@ -344,7 +344,7 @@ PanelWindow {
 
             // Bottom-Right Inverted Fillet (Glides along bottom border as width expands)
             CornerFillet {
-                x: root.currentPopW
+                x: root.currentPopW - 1
                 y: fusedBottomPopoutWrapper.height - root.filletR
                 orientation: "bottomLeft"
                 cornerRadius: root.filletR
