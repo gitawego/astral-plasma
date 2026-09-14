@@ -1,5 +1,5 @@
 import QtQuick
-import "../config"
+import "../components"
 import "../theme"
 
 Item {
@@ -7,46 +7,42 @@ Item {
     width: 800
     height: 600
 
-    property bool hoveredDropdown: false
-    property bool hoveredTopEdge: false
-    property bool hoveredClock: false
+    property bool bottomPopoutVisible: false
+    property string bottomPopoutMode: "default"
+    property bool dashboardVisible: false
 
-    // Simulated closeTimer matching UnifiedShell.qml implementation
+    // Simulated popoutCloseTimer matching Config.qml
     Timer {
-        id: closeTimer
-        interval: 350
+        id: popoutCloseTimer
+        interval: 450
         repeat: false
-        onTriggered: {
-            if (!testRoot.hoveredDropdown && !testRoot.hoveredTopEdge && !testRoot.hoveredClock) {
-                Config.dashboardVisible = false;
-            }
-        }
+        onTriggered: testRoot.bottomPopoutVisible = false
+    }
+
+    function openBottomPopout(mode) {
+        popoutCloseTimer.stop();
+        if (mode) testRoot.bottomPopoutMode = mode;
+        testRoot.bottomPopoutVisible = true;
+    }
+
+    function keepBottomPopout() {
+        popoutCloseTimer.stop();
+    }
+
+    function scheduleCloseBottomPopout() {
+        popoutCloseTimer.restart();
     }
 
     function simulateClockEnter() {
-        testRoot.hoveredClock = true;
-        closeTimer.stop();
-        Config.activeDashboardTab = "dashboard";
-        Config.dashboardVisible = true;
+        openBottomPopout("clock");
     }
 
     function simulateClockLeave() {
-        testRoot.hoveredClock = false;
-        if (Config.dashboardVisible && !testRoot.hoveredDropdown && !testRoot.hoveredTopEdge) {
-            closeTimer.restart();
-        }
+        scheduleCloseBottomPopout();
     }
 
-    function simulateDropdownEnter() {
-        testRoot.hoveredDropdown = true;
-        closeTimer.stop();
-    }
-
-    function simulateDropdownLeave() {
-        testRoot.hoveredDropdown = false;
-        if (Config.dashboardVisible && !testRoot.hoveredTopEdge && !testRoot.hoveredClock) {
-            closeTimer.restart();
-        }
+    function simulatePopoutEnter() {
+        keepBottomPopout();
     }
 
     Timer {
@@ -64,33 +60,31 @@ Item {
     }
 
     function runTests() {
-        console.log("RUNNING: Clock Hover Drawer Unit Tests");
+        console.log("RUNNING: Clock Hover Fused Popout Unit Tests");
 
-        // Test 1: Initially drawer is closed
-        Config.dashboardVisible = false;
-        assert(Config.dashboardVisible === false, "Dashboard should be initially closed");
+        // Test 1: Initially popout is closed and top drawer is closed
+        assert(testRoot.bottomPopoutVisible === false, "Popout drawer should be initially closed");
+        assert(testRoot.dashboardVisible === false, "Top dashboard drawer should be initially closed");
 
-        // Test 2: Hovering clock opens drawer with "dashboard" tab
+        // Test 2: Hovering clock opens bottom popout drawer with mode "clock"
         simulateClockEnter();
-        assert(Config.dashboardVisible === true, "Dashboard should open when clock is hovered");
-        assert(Config.activeDashboardTab === "dashboard", "Active tab should be 'dashboard' when clock is hovered");
-        assert(closeTimer.running === false, "closeTimer should be stopped while clock is hovered");
+        assert(testRoot.bottomPopoutVisible === true, "Bottom popout drawer should open on clock hover");
+        assert(testRoot.bottomPopoutMode === "clock", "Popout mode should be 'clock'");
 
-        // Test 3: Moving mouse from clock towards drawer starts grace timer
+        // CRITICAL REGRESSION TEST: Top menu drawer must NEVER open when hovering time!
+        assert(testRoot.dashboardVisible === false, "Top menu drawer must NOT open when mouse hovers over the time");
+
+        // Test 3: Leaving clock schedules close
         simulateClockLeave();
-        assert(closeTimer.running === true, "closeTimer should run grace period when mouse leaves clock");
-        assert(Config.dashboardVisible === true, "Drawer remains open during grace period");
+        assert(popoutCloseTimer.running === true, "Close timer should run after leaving clock");
+        assert(testRoot.bottomPopoutVisible === true, "Drawer remains open during grace period");
 
-        // Test 4: Entering dropdown cancels grace timer
-        simulateDropdownEnter();
-        assert(closeTimer.running === false, "closeTimer should stop once mouse enters dropdown");
-        assert(Config.dashboardVisible === true, "Drawer remains open while inside dropdown");
+        // Test 4: Entering popout keeps it open
+        simulatePopoutEnter();
+        assert(popoutCloseTimer.running === false, "Close timer should stop when cursor enters popout");
+        assert(testRoot.bottomPopoutVisible === true, "Popout drawer stays open when mouse enters it");
 
-        // Test 5: Leaving dropdown restarts grace timer
-        simulateDropdownLeave();
-        assert(closeTimer.running === true, "closeTimer should run when mouse leaves dropdown");
-
-        console.log("PASS: All Clock Hover Drawer unit tests passed!");
+        console.log("PASS: All Clock Hover Fused Popout unit tests passed!");
         Qt.exit(0);
     }
 }

@@ -13,7 +13,16 @@ import qs.services
 Item {
     id: root
 
-    property string mode: "default" // "default", "bluetooth", "network", "audio", "power"
+    property string mode: "default" // "default", "bluetooth", "network", "audio", "power", "clock"
+
+    property var currentDate: new Date()
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.currentDate = new Date()
+    }
 
     readonly property real targetPopWidth: {
         switch (root.mode) {
@@ -21,6 +30,8 @@ Item {
             case "network": return 300;
             case "audio": return 280;
             case "power": return 260;
+            case "clock":
+            case "time": return 300;
             default: return 280;
         }
     }
@@ -39,6 +50,8 @@ Item {
             case "network": return networkSection.implicitHeight;
             case "audio": return audioSection.implicitHeight;
             case "power": return powerSection.implicitHeight;
+            case "clock":
+            case "time": return clockSection.implicitHeight;
             default: return defaultSection.implicitHeight;
         }
     }
@@ -450,6 +463,87 @@ Item {
                     iconColor: "#D32F2F"
                     label: "Shut Down..."
                     onClicked: PowerService.poweroff()
+                }
+            }
+
+            // ==========================================
+            // 6. CLOCK / FULL TIME & DATE SECTION
+            // ==========================================
+            ColumnLayout {
+                id: clockSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                spacing: Theme.spaceMedium
+                readonly property bool isCurrent: root.mode === "clock" || root.mode === "time"
+                opacity: isCurrent ? 1.0 : 0.0
+                visible: opacity > 0.001
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
+
+                // Top: Large Digital Time with Live Seconds
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    RowLayout {
+                        spacing: 6
+                        Layout.alignment: Qt.AlignLeft
+
+                        Text {
+                            text: Qt.formatDateTime(root.currentDate, "HH:mm")
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 32
+                            font.weight: Font.Bold
+                            color: Colors.textOnSurface
+                        }
+
+                        Text {
+                            text: ":" + Qt.formatDateTime(root.currentDate, "ss")
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 20
+                            font.weight: Font.DemiBold
+                            color: Colors.primary
+                            Layout.alignment: Qt.AlignBaseline
+                        }
+                    }
+
+                    Text {
+                        text: Qt.formatDateTime(root.currentDate, "dddd, MMMM d, yyyy")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        font.weight: Font.Medium
+                        color: Colors.textOnSurfaceVariant
+                    }
+                }
+
+                ActionDivider {}
+
+                // Details: Timezone & System Uptime
+                ActionItem {
+                    icon: "clock"
+                    label: "Timezone"
+                    detail: Qt.formatDateTime(root.currentDate, "t")
+                }
+
+                ActionItem {
+                    icon: "history"
+                    label: "System Uptime"
+                    detail: SystemService.uptime || "up"
+                }
+
+                ActionDivider {}
+
+                // Settings link matching Wi-Fi
+                ActionItem {
+                    icon: "settings"
+                    label: "Date & Time Settings..."
+                    onClicked: Quickshell.execDetached(["kcmshell6", "kcm_clock"])
                 }
             }
         }

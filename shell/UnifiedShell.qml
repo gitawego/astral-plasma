@@ -52,7 +52,7 @@ PanelWindow {
     Component.onCompleted: {
         console.log("DEBUG_BORDER_SUBTLE:", Theme.borderSubtle, "DEBUG_OUTLINE:", Colors.outline);
         const testMode = Quickshell.env("TEST_POPOUT");
-        if (testMode === "default" || testMode === "bluetooth" || testMode === "network" || testMode === "power") {
+        if (testMode === "default" || testMode === "bluetooth" || testMode === "network" || testMode === "power" || testMode === "clock") {
             Config.bottomPopoutMode = testMode;
             Config.bottomPopoutVisible = true;
         }
@@ -83,7 +83,7 @@ PanelWindow {
         repeat: false
         onTriggered: {
             if (Quickshell.env("TEST_DASHBOARD") === "1") return;
-            if (!dropdownHover.hovered && !topEdgeHover.hovered && !clockHover.hovered) {
+            if (!dropdownHover.hovered && !topEdgeHover.hovered) {
                 Config.dashboardVisible = false;
             }
         }
@@ -555,7 +555,7 @@ PanelWindow {
                     if (Config.dashboardShowOnHover) {
                         Config.dashboardVisible = true;
                     }
-                } else if (Config.dashboardVisible && !dropdownHover.hovered && !clockHover.hovered) {
+                } else if (Config.dashboardVisible && !dropdownHover.hovered) {
                     closeTimer.restart();
                 }
             }
@@ -593,7 +593,7 @@ PanelWindow {
             onHoveredChanged: {
                 if (hovered) {
                     closeTimer.stop();
-                } else if (Config.dashboardVisible && !topEdgeHover.hovered && !clockHover.hovered) {
+                } else if (Config.dashboardVisible && !topEdgeHover.hovered) {
                     closeTimer.restart();
                 }
             }
@@ -1809,100 +1809,89 @@ PanelWindow {
                 }
             }
 
-            // Stacked Clock (Hours over Minutes) with hover drawer opening & full time tooltip
+            // Stacked Clock (Hours over Minutes) with side popout drawer (just like Wi-Fi)
             Item {
                 id: dockClockArea
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: root.iconS
-                height: clockCol.implicitHeight
+                height: clockPill.implicitHeight
 
-                Column {
-                    id: clockCol
-                    anchors.centerIn: parent
-                    spacing: 1
-
-                    Timer {
-                        id: clockTimer
-                        interval: 1000
-                        running: true
-                        repeat: true
-                        triggeredOnStart: true
-                        onTriggered: {
-                            const now = new Date();
-                            hourText.text = Qt.formatDateTime(now, "HH");
-                            minuteText.text = Qt.formatDateTime(now, "mm");
-                        }
-                    }
-
-                    Text {
-                        id: hourText
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "12"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
-                        font.weight: Font.DemiBold
-                        color: clockHover.hovered ? Colors.primary : Colors.textOnSurface
-                        Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
-                    }
-
-                    Text {
-                        id: minuteText
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "00"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
-                        font.weight: Font.DemiBold
-                        color: clockHover.hovered ? Colors.primary : Colors.textOnSurface
-                        Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
-                    }
-                }
-
-                HoverHandler {
-                    id: clockHover
-                    cursorShape: Qt.PointingHandCursor
-                    onHoveredChanged: {
-                        if (hovered) {
-                            closeTimer.stop();
-                            Config.activeDashboardTab = "dashboard";
-                            Config.dashboardVisible = true;
-                        } else if (Config.dashboardVisible && !dropdownHover.hovered && !topEdgeHover.hovered) {
-                            closeTimer.restart();
-                        }
-                    }
-                }
-
-                TapHandler {
-                    onTapped: {
-                        if (Config.dashboardVisible && Config.activeDashboardTab === "dashboard") {
-                            Config.dashboardVisible = false;
-                        } else {
-                            Config.activeDashboardTab = "dashboard";
-                            Config.dashboardVisible = true;
-                        }
-                    }
-                }
-
-                // Tooltip showing full date and time
                 Rectangle {
-                    z: 100
-                    visible: clockHover.hovered
-                    anchors.left: parent.right
-                    anchors.leftMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    implicitWidth: clockTipText.implicitWidth + 16
-                    implicitHeight: clockTipText.implicitHeight + 10
-                    radius: 8
-                    color: Colors.surfaceContainerHighest
-                    border.color: Theme.borderSubtle
-                    border.width: 1
+                    id: clockPill
+                    anchors.centerIn: parent
+                    width: root.iconS
+                    implicitHeight: clockCol.implicitHeight + 8
+                    radius: Theme.radiusMedium
+                    color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock")
+                        ? Colors.primary
+                        : (clockHover.hovered ? Colors.surfaceContainerHigh : "transparent")
+                    Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
 
-                    Text {
-                        id: clockTipText
+                    Column {
+                        id: clockCol
                         anchors.centerIn: parent
-                        text: Qt.formatDateTime(new Date(), "dddd, MMMM d, yyyy")
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        color: Colors.textOnSurface
+                        spacing: 1
+
+                        Timer {
+                            id: clockTimer
+                            interval: 1000
+                            running: true
+                            repeat: true
+                            triggeredOnStart: true
+                            onTriggered: {
+                                const now = new Date();
+                                hourText.text = Qt.formatDateTime(now, "HH");
+                                minuteText.text = Qt.formatDateTime(now, "mm");
+                            }
+                        }
+
+                        Text {
+                            id: hourText
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "12"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
+                            font.weight: Font.DemiBold
+                            color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock")
+                                ? Colors.textOnPrimary
+                                : Colors.textOnSurface
+                        }
+
+                        Text {
+                            id: minuteText
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "00"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
+                            font.weight: Font.DemiBold
+                            color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock")
+                                ? Colors.textOnPrimary
+                                : Colors.textOnSurface
+                        }
+                    }
+
+                    HoverHandler {
+                        id: clockHover
+                        cursorShape: Qt.PointingHandCursor
+                        onHoveredChanged: {
+                            if (hovered) {
+                                Config.openBottomPopout("clock");
+                            } else {
+                                Config.scheduleCloseBottomPopout();
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock") {
+                                Config.closeBottomPopout();
+                            } else {
+                                Config.openBottomPopout("clock");
+                            }
+                        }
                     }
                 }
             }
