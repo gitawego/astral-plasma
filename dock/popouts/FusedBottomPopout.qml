@@ -291,14 +291,14 @@ Item {
 
                 ActionItem {
                     icon: "wifi"
-                    label: "Wi-Fi: " + (NetworkService.connected ? NetworkService.ssid : "Disconnected")
+                    label: "Wi-Fi: " + (NetworkService.connected ? (NetworkService.activeSsid || NetworkService.ssid || "Connected") : "Disconnected")
                     onClicked: NetworkService.toggleWifi()
                 }
 
                 ActionDivider {}
 
                 Repeater {
-                    model: NetworkService.wifiNetworks ? NetworkService.wifiNetworks.slice(0, 5) : []
+                    model: (NetworkService.wifiNetworks || NetworkService.scannedNetworks) ? (NetworkService.wifiNetworks || NetworkService.scannedNetworks).slice(0, 5) : []
 
                     delegate: ActionItem {
                         required property var modelData

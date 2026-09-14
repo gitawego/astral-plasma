@@ -21,7 +21,7 @@ Rectangle {
         id: groupHover
         onHoveredChanged: {
             if (hovered) {
-                Config.openBottomPopout("default");
+                Config.openBottomPopout("default", root.mapToItem(null, 0, root.height / 2).y);
             } else {
                 Config.scheduleCloseBottomPopout();
             }
@@ -35,6 +35,7 @@ Rectangle {
 
         // 1. Network / Wi-Fi
         Item {
+            id: netItem
             implicitWidth: root.btnSize
             implicitHeight: root.btnSize
             width: root.btnSize
@@ -59,20 +60,27 @@ Rectangle {
                 HoverHandler {
                     id: netHover
                     onHoveredChanged: {
-                        if (hovered) Config.openBottomPopout("network");
+                        if (hovered) {
+                            NetworkService.rescan();
+                            Config.openBottomPopout("network", netItem.mapToItem(null, 0, netItem.height / 2).y);
+                        }
                     }
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Config.openBottomPopout("network")
+                    onClicked: {
+                        NetworkService.rescan();
+                        Config.openBottomPopout("network", netItem.mapToItem(null, 0, netItem.height / 2).y);
+                    }
                 }
             }
         }
 
         // 2. Bluetooth
         Item {
+            id: btItem
             implicitWidth: root.btnSize
             implicitHeight: root.btnSize
             width: root.btnSize
@@ -97,20 +105,21 @@ Rectangle {
                 HoverHandler {
                     id: btHover
                     onHoveredChanged: {
-                        if (hovered) Config.openBottomPopout("bluetooth");
+                        if (hovered) Config.openBottomPopout("bluetooth", btItem.mapToItem(null, 0, btItem.height / 2).y);
                     }
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Config.openBottomPopout("bluetooth")
+                    onClicked: Config.openBottomPopout("bluetooth", btItem.mapToItem(null, 0, btItem.height / 2).y)
                 }
             }
         }
 
         // 3. Power Profile / Rocket
         Item {
+            id: profileItem
             implicitWidth: root.btnSize
             implicitHeight: root.btnSize
             width: root.btnSize
@@ -141,20 +150,21 @@ Rectangle {
                 HoverHandler {
                     id: profileHover
                     onHoveredChanged: {
-                        if (hovered) Config.openBottomPopout("default");
+                        if (hovered) Config.openBottomPopout("default", profileItem.mapToItem(null, 0, profileItem.height / 2).y);
                     }
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Config.openBottomPopout("default")
+                    onClicked: Config.openBottomPopout("default", profileItem.mapToItem(null, 0, profileItem.height / 2).y)
                 }
             }
         }
 
         // 4. Power Button
         Item {
+            id: pwrItem
             implicitWidth: root.btnSize
             implicitHeight: root.btnSize
             width: root.btnSize
@@ -179,14 +189,14 @@ Rectangle {
                 HoverHandler {
                     id: pwrHover
                     onHoveredChanged: {
-                        if (hovered) Config.openBottomPopout("power");
+                        if (hovered) Config.openBottomPopout("power", pwrItem.mapToItem(null, 0, pwrItem.height / 2).y);
                     }
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Config.openBottomPopout("power")
+                    onClicked: Config.openBottomPopout("power", pwrItem.mapToItem(null, 0, pwrItem.height / 2).y)
                 }
             }
         }

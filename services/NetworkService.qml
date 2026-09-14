@@ -10,12 +10,28 @@ Singleton {
 
     readonly property bool wifiEnabled: Networking.wifiEnabled
     property string activeSsid: ""
+    readonly property string ssid: (activeSsid && activeSsid.length > 0) ? activeSsid : (connected ? "Connected" : "Disconnected")
     property int signalStrength: 0
     property bool connected: false
     property var scannedNetworks: []
+    readonly property var wifiNetworks: scannedNetworks
 
     function toggleWifi() {
         Networking.wifiEnabled = !Networking.wifiEnabled;
+        if (Networking.wifiEnabled) {
+            rescan();
+        }
+    }
+
+    function connectToNetwork(targetSsid) {
+        if (!targetSsid) return;
+        Quickshell.execDetached(["nmcli", "dev", "wifi", "connect", targetSsid]);
+    }
+
+    Component.onCompleted: {
+        if (!nmcliStatus.running) {
+            nmcliStatus.running = true;
+        }
     }
 
     // Process to query active SSID & scan networks via nmcli for instant reactive list

@@ -203,7 +203,8 @@ Singleton {
 
     // Fused bottom popout state
     property bool bottomPopoutVisible: false
-    property string bottomPopoutMode: "default" // "default", "bluetooth", "network", "audio", "power"
+    property string bottomPopoutMode: "default" // "default", "bluetooth", "network", "audio", "power", "clock"
+    property real popoutTargetY: 0
 
     Timer {
         id: popoutCloseTimer
@@ -212,9 +213,12 @@ Singleton {
         onTriggered: root.bottomPopoutVisible = false
     }
 
-    function openBottomPopout(mode) {
+    function openBottomPopout(mode, targetY) {
         popoutCloseTimer.stop();
         if (mode) bottomPopoutMode = mode;
+        if (targetY !== undefined && targetY > 0) {
+            popoutTargetY = targetY;
+        }
         bottomPopoutVisible = true;
     }
 

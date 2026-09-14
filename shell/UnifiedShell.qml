@@ -47,10 +47,23 @@ PanelWindow {
     readonly property int dropH: Math.round(cardLayout.implicitHeight + Theme.padLarge * 2)
     readonly property real currentDropH: borderT + (dropH - borderT) * dropdownContainer.offsetProgress
     readonly property real currentPopW: (typeof fusedPopout !== "undefined" ? fusedPopout.popWidth : 280) * fusedBottomPopoutWrapper.offsetProgress
+    readonly property real idealPopoutY: {
+        let targetY = Config.popoutTargetY;
+        if (targetY <= 0) {
+            targetY = root.height - root.borderT - 120;
+        }
+        const idealY = targetY - (typeof fusedPopout !== "undefined" ? fusedPopout.implicitHeight : 240) / 2;
+        const minY = root.borderT + root.filletR + 4;
+        const maxY = Math.max(minY, root.height - root.borderT - (typeof fusedPopout !== "undefined" ? fusedPopout.implicitHeight : 240) - root.filletR - 4);
+        return Math.max(minY, Math.min(maxY, idealY));
+    }
     readonly property color borderColor: Theme.borderSubtle
 
     Component.onCompleted: {
         console.log("DEBUG_BORDER_SUBTLE:", Theme.borderSubtle, "DEBUG_OUTLINE:", Colors.outline);
+        if (Quickshell.env("TEST_POPOUT_TARGET_Y")) {
+            Config.popoutTargetY = parseFloat(Quickshell.env("TEST_POPOUT_TARGET_Y"));
+        }
         const testMode = Quickshell.env("TEST_POPOUT");
         if (testMode === "default" || testMode === "bluetooth" || testMode === "network" || testMode === "power" || testMode === "clock") {
             Config.bottomPopoutMode = testMode;
@@ -150,9 +163,9 @@ PanelWindow {
         // Fused Bottom Popout (when open)
         Region {
             x: root.dockW
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.max(0, root.height - root.borderT - fusedPopout.implicitHeight - root.filletR) : 0
+            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.max(0, fusedBottomPopoutWrapper.y - root.filletR) : 0
             width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (root.currentPopW + root.filletR) : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedPopout.implicitHeight + root.filletR + root.borderT) : 0
+            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.height + root.filletR * 2 + 10) : 0
         }
 
         // Taskbar App Context Menu & Dismiss Area (when open)
@@ -299,8 +312,9 @@ PanelWindow {
 
         // Inner Fillet: Bottom-Left
         CornerFillet {
-            visible: fusedBottomPopoutWrapper.offsetProgress < 0.99
-            opacity: 1.0 - fusedBottomPopoutWrapper.offsetProgress
+            readonly property bool overlapsPopout: fusedBottomPopoutWrapper.offsetProgress > 0.01 && (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height >= root.height - root.borderT - root.filletR - 2)
+            visible: !overlapsPopout || fusedBottomPopoutWrapper.offsetProgress < 0.99
+            opacity: overlapsPopout ? (1.0 - fusedBottomPopoutWrapper.offsetProgress) : 1.0
             x: root.dockW
             y: root.height - root.borderT - root.filletR
             orientation: "bottomLeft"
@@ -437,7 +451,7 @@ PanelWindow {
             x: root.dockW
             y: fusedBottomPopoutWrapper.y
             width: root.currentPopW
-            height: fusedBottomPopoutWrapper.height + root.borderT
+            height: fusedBottomPopoutWrapper.height
             visible: fusedBottomPopoutWrapper.offsetProgress > 0.001
 
             readonly property real filletFactor: Math.max(0.0, Math.min(1.0, root.currentPopW / Math.max(1, root.filletR)))
@@ -486,8 +500,19 @@ PanelWindow {
                         direction: PathArc.Clockwise
                     }
                     PathLine {
-                        x: -2
+                        x: root.filletR
                         y: fusedBottomPopoutWrapper.height
+                    }
+                    PathArc {
+                        x: 0
+                        y: fusedBottomPopoutWrapper.height + root.filletR
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: -2
+                        y: fusedBottomPopoutWrapper.height + root.filletR
                     }
                     PathLine {
                         x: -2
@@ -531,6 +556,17 @@ PanelWindow {
                         radiusX: root.filletR
                         radiusY: root.filletR
                         direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: root.filletR
+                        y: fusedBottomPopoutWrapper.height
+                    }
+                    PathArc {
+                        x: 0
+                        y: fusedBottomPopoutWrapper.height + root.filletR
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Counterclockwise
                     }
                 }
             }
@@ -1875,7 +1911,7 @@ PanelWindow {
                         cursorShape: Qt.PointingHandCursor
                         onHoveredChanged: {
                             if (hovered) {
-                                Config.openBottomPopout("clock");
+                                Config.openBottomPopout("clock", dockClockArea.mapToItem(null, 0, dockClockArea.height / 2).y);
                             } else {
                                 Config.scheduleCloseBottomPopout();
                             }
@@ -1889,7 +1925,7 @@ PanelWindow {
                             if (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock") {
                                 Config.closeBottomPopout();
                             } else {
-                                Config.openBottomPopout("clock");
+                                Config.openBottomPopout("clock", dockClockArea.mapToItem(null, 0, dockClockArea.height / 2).y);
                             }
                         }
                     }
@@ -1909,7 +1945,7 @@ PanelWindow {
     Item {
         id: fusedBottomPopoutWrapper
         x: root.dockW
-        y: Math.max(root.borderT + 10, root.height - root.borderT - fusedPopout.implicitHeight)
+        y: root.idealPopoutY
         width: root.currentPopW
         height: fusedPopout.implicitHeight
         visible: offsetProgress > 0.001

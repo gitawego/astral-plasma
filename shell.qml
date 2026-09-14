@@ -34,14 +34,14 @@ ShellRoot {
 
     IpcHandler {
         target: "popout"
-        function toggle(mode: string): void {
+        function toggle(mode: string, targetY: real): void {
             if (Config.bottomPopoutVisible) {
                 Config.closeBottomPopout();
             } else {
-                Config.openBottomPopout(mode || "default");
+                Config.openBottomPopout(mode || "default", targetY);
             }
         }
-        function open(mode: string): void { Config.openBottomPopout(mode || "default"); }
+        function open(mode: string, targetY: real): void { Config.openBottomPopout(mode || "default", targetY); }
         function close(): void { Config.closeBottomPopout(); }
     }
 
