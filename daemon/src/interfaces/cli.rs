@@ -1,0 +1,91 @@
+use crate::application::get_metrics::GetMetricsUseCase;
+use crate::application::launch_app::LaunchAppUseCase;
+use crate::application::watch_events::run_event_daemon;
+use crate::application::window_control::WindowControlUseCase;
+use crate::application::workspace_control::WorkspaceControlUseCase;
+use crate::domain::ports::DynResult;
+use crate::infrastructure::kwin_adapter::KWinAdapter;
+use crate::infrastructure::launcher::DesktopLauncherAdapter;
+use crate::infrastructure::proc_metrics::ProcMetricsAdapter;
+use std::env;
+
+pub async fn run_cli() -> DynResult<()> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Usage: caelestia-daemon <command> [args...]");
+        eprintln!("Commands:");
+        eprintln!("  watch                   - Run event-driven background watcher");
+        eprintln!("  activate <window_id>    - Activate window by internal UUID");
+        eprintln!("  close <window_id>       - Close window by internal UUID");
+        eprintln!("  launch <app/desktop>    - Launch application");
+        eprintln!("  workspaces query        - Query virtual desktops JSON");
+        eprintln!("  workspaces switch <id>  - Switch to virtual desktop by ID");
+        eprintln!("  workspaces ensure <idx> - Ensure virtual desktop at index exists and switch");
+        eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
+        eprintln!("  notifs                  - Monitor desktop notifications (Notify)");
+        return Ok(());
+    }
+
+    match args[1].as_str() {
+        "notifs" => {
+            crate::application::notif_monitor::run_notif_monitor();
+        }
+        "watch" | "--daemon" => {
+            run_event_daemon().await?;
+        }
+        "activate" => {
+            if args.len() >= 3 {
+                let win_ctrl = WindowControlUseCase::new(KWinAdapter::new());
+                win_ctrl.activate(&args[2])?;
+            }
+        }
+        "close" => {
+            if args.len() >= 3 {
+                let win_ctrl = WindowControlUseCase::new(KWinAdapter::new());
+                win_ctrl.close(&args[2])?;
+            }
+        }
+        "launch" => {
+            if args.len() >= 3 {
+                let launcher = LaunchAppUseCase::new(DesktopLauncherAdapter::new());
+                launcher.execute(&args[2])?;
+            }
+        }
+        "workspaces" => {
+            let ws_ctrl = WorkspaceControlUseCase::new(KWinAdapter::new());
+            let sub = if args.len() >= 3 { args[2].as_str() } else { "query" };
+            match sub {
+                "query" => {
+                    let json = ws_ctrl.query_json()?;
+                    println!("{}", json);
+                }
+                "switch" => {
+                    if args.len() >= 4 {
+                        ws_ctrl.switch(&args[3])?;
+                    }
+                }
+                "ensure" => {
+                    if args.len() >= 4 {
+                        if let Ok(idx) = args[3].parse::<u32>() {
+                            ws_ctrl.ensure_and_switch(idx)?;
+                        }
+                    }
+                }
+                _ => {
+                    let json = ws_ctrl.query_json()?;
+                    println!("{}", json);
+                }
+            }
+        }
+        "metrics" => {
+            let metrics_ctrl = GetMetricsUseCase::new(ProcMetricsAdapter::new());
+            let json = metrics_ctrl.execute_json()?;
+            println!("{}", json);
+        }
+        _ => {
+            eprintln!("Unknown command: {}", args[1]);
+        }
+    }
+
+    Ok(())
+}

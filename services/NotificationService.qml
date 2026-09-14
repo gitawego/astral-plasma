@@ -17,6 +17,7 @@ Singleton {
     property var currentActions: []
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
+    readonly property string daemonBin: root.serviceDir + "/../bin/caelestia-daemon"
 
     signal notificationReceived(string summary, string body, string icon, string appName)
 
@@ -54,7 +55,7 @@ Singleton {
     // Background DBus Monitor process (captures notify-send / KDE system notifications seamlessly)
     Process {
         id: notifProc
-        command: [root.serviceDir + "/notif_monitor.py"]
+        command: [root.daemonBin, "notifs"]
         running: true
         stdout: SplitParser {
             onRead: data => {

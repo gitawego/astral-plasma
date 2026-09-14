@@ -25,6 +25,7 @@ Singleton {
     }
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
+    readonly property string daemonBin: root.serviceDir + "/../bin/caelestia-daemon"
 
     // Helper process to activate a window or tray item
     Process {
@@ -33,19 +34,19 @@ Singleton {
 
     function activateWindow(winId) {
         if (!winId) return;
-        activateProc.command = [root.serviceDir + "/activate_window.py", winId];
+        activateProc.command = [root.daemonBin, "activate", winId];
         activateProc.running = true;
     }
 
     function closeWindow(winId) {
         if (!winId) return;
-        activateProc.command = [root.serviceDir + "/close_window.py", winId];
+        activateProc.command = [root.daemonBin, "close", winId];
         activateProc.running = true;
     }
 
     function launchApp(target) {
         if (!target) return;
-        activateProc.command = [root.serviceDir + "/launch_app.py", target];
+        activateProc.command = [root.daemonBin, "launch", target];
         activateProc.running = true;
     }
 
@@ -70,7 +71,7 @@ Singleton {
     // Real-Time Event-Driven Window Watcher Daemon
     Process {
         id: watcherDaemon
-        command: [root.serviceDir + "/window_watcher.py", "--daemon"]
+        command: [root.daemonBin, "watch"]
         running: true
         stdout: SplitParser {
             splitMarker: "\n"

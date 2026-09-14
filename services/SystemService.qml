@@ -13,29 +13,12 @@ Singleton {
     property real cpuUsage: 0.15
     property real ramUsage: 0.40
 
+    readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
+    readonly property string daemonBin: root.serviceDir + "/../bin/caelestia-daemon"
+
     Process {
         id: sysInfoProc
-        command: ["python3", "-c",
-            "import os, re, json\n" +
-            "uptime_str = ''\n" +
-            "try:\n" +
-            "    with open('/proc/uptime') as f:\n" +
-            "        s = float(f.readline().split()[0])\n" +
-            "        h = int(s // 3600)\n" +
-            "        m = int((s % 3600) // 60)\n" +
-            "        uptime_str = f'up {h} hours, {m} minutes' if h > 0 else f'up {m} minutes'\n" +
-            "except: pass\n" +
-            "ram_pct = 0.0\n" +
-            "try:\n" +
-            "    with open('/proc/meminfo') as f:\n" +
-            "        lines = f.readlines()\n" +
-            "        mem = {l.split(':')[0]: float(l.split(':')[1].strip().split()[0]) for l in lines}\n" +
-            "        total = mem.get('MemTotal', 1)\n" +
-            "        avail = mem.get('MemAvailable', 0)\n" +
-            "        ram_pct = (total - avail) / total\n" +
-            "except: pass\n" +
-            "print(json.dumps({'uptime': uptime_str, 'ram': ram_pct}))\n"
-        ]
+        command: [root.daemonBin, "metrics"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
