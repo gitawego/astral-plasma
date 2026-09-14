@@ -559,10 +559,13 @@ PanelWindow {
 
         // MIDDLE SECTION: Vertical Rotated Active Window / Desktop
         Item {
-            anchors.centerIn: parent
-            anchors.verticalCenterOffset: -40
+            id: activeWindowPill
+            anchors.top: topSection.bottom
+            anchors.topMargin: 24
+            anchors.horizontalCenter: parent.horizontalCenter
             implicitWidth: 34
-            implicitHeight: 120
+            implicitHeight: 130
+            visible: (dockContent.height - bottomCol.implicitHeight) > 340
 
             Row {
                 anchors.centerIn: parent
@@ -573,7 +576,13 @@ PanelWindow {
                     id: activeIconImg
                     width: 16
                     height: 16
-                    source: WindowService.activeIconName ? Quickshell.iconPath(WindowService.activeIconName) : ""
+                    source: {
+                        if (!WindowService.activeIconName) return "";
+                        if (WindowService.activeIconName.indexOf("/") !== -1) {
+                            return WindowService.activeIconName.startsWith("file://") ? WindowService.activeIconName : ("file://" + WindowService.activeIconName);
+                        }
+                        return Quickshell.iconPath(WindowService.activeIconName);
+                    }
                     fillMode: Image.PreserveAspectFit
                     visible: status === Image.Ready
                     anchors.verticalCenter: parent.verticalCenter
@@ -600,6 +609,7 @@ PanelWindow {
 
         // LOWER SECTION (Tray + Running Apps + Clock) & BOTTOM SECTION (Status Icons)
         Column {
+            id: bottomCol
             anchors.bottom: parent.bottom
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 10
@@ -612,13 +622,7 @@ PanelWindow {
                 visible: WindowService.windows.length > 0
 
                 Repeater {
-                    model: {
-                        const wins = WindowService.windows;
-                        if (wins.length <= 7) return wins;
-                        const activeIdx = wins.findIndex(w => w.isActive);
-                        if (activeIdx === -1 || activeIdx < 7) return wins.slice(0, 7);
-                        return wins.slice(0, 6).concat([wins[activeIdx]]);
-                    }
+                    model: WindowService.windows
 
                     delegate: Rectangle {
                         id: appDelegate
@@ -653,7 +657,13 @@ PanelWindow {
                             anchors.centerIn: parent
                             width: 22
                             height: 22
-                            source: modelData.iconName ? Quickshell.iconPath(modelData.iconName) : ""
+                            source: {
+                                if (!modelData.iconName) return "";
+                                if (modelData.iconName.indexOf("/") !== -1) {
+                                    return modelData.iconName.startsWith("file://") ? modelData.iconName : ("file://" + modelData.iconName);
+                                }
+                                return Quickshell.iconPath(modelData.iconName);
+                            }
                             fillMode: Image.PreserveAspectFit
                             visible: status === Image.Ready
                         }
@@ -726,6 +736,13 @@ PanelWindow {
                         id: trayDelegate
                         required property var modelData
 
+                        readonly property bool isInputMethod: {
+                            const raw = (modelData.rawIcon || "").toLowerCase();
+                            const id = (modelData.id || "").toLowerCase();
+                            const title = (modelData.title || "").toLowerCase();
+                            return raw.includes("keyboard") || raw.includes("fcitx") || id.includes("fcitx") || id.includes("input") || title.includes("input");
+                        }
+
                         width: 26
                         height: 26
                         implicitWidth: 26
@@ -738,17 +755,19 @@ PanelWindow {
                             anchors.centerIn: parent
                             width: 16
                             height: 16
-                            source: modelData.rawIcon ? Quickshell.iconPath(modelData.rawIcon) : ""
+                            source: (!isInputMethod && modelData.rawIcon) ? Quickshell.iconPath(modelData.rawIcon) : ""
                             fillMode: Image.PreserveAspectFit
-                            visible: status === Image.Ready
+                            visible: !isInputMethod && status === Image.Ready
                         }
 
                         MaterialIcon {
                             anchors.centerIn: parent
-                            text: modelData.materialIcon || "circle"
+                            text: modelData.materialIcon || (isInputMethod ? "keyboard" : "circle")
                             size: 16
-                            color: Colors.onSurfaceVariant
-                            visible: !trayIconImg.visible || trayIconImg.status !== Image.Ready
+                            color: isInputMethod
+                                ? (trayHover.containsMouse ? Colors.primary : Colors.textOnSurface)
+                                : (trayHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                            visible: isInputMethod || !trayIconImg.visible || trayIconImg.status !== Image.Ready
                         }
 
                         MouseArea {

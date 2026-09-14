@@ -3,104 +3,131 @@ import subprocess
 import re
 import json
 
-def get_window_meta(title, wid, krunner_icon):
-    t_lower = title.lower()
+def get_window_meta(title, cls, app, krunner_icon=''):
+    cls_lower = (cls or '').lower()
+    app_lower = (app or '').lower()
+    t_lower = (title or '').lower()
     
-    app_name = 'Window'
-    icon_name = krunner_icon if krunner_icon else ''
-    mat_icon = 'desktop_windows'
+    # 1. High-priority exact or class-based matches
+    if 'cloudmusic' in cls_lower or 'netease' in cls_lower or 'cloudmusic' in app_lower:
+        return 'CloudMusic', 'netease-cloud-music', 'music_note'
     
-    if 'edge' in t_lower:
-        app_name = 'Edge'
-        icon_name = icon_name or 'microsoft-edge'
-        mat_icon = 'language'
-    elif 'code' in t_lower or 'visual studio' in t_lower:
-        app_name = 'VS Code'
-        icon_name = icon_name or 'vscode'
-        mat_icon = 'code'
-    elif 'dolphin' in t_lower:
-        app_name = 'Files'
-        icon_name = icon_name or 'org.kde.dolphin'
-        mat_icon = 'folder'
-    elif 'ghostty' in t_lower or 'terminal' in t_lower or 'konsole' in t_lower or 'workspace' in t_lower:
-        app_name = 'Terminal'
-        icon_name = icon_name or 'utilities-terminal'
-        mat_icon = 'terminal'
-    elif 'haruna' in t_lower or 'mp4' in t_lower or 'mkv' in t_lower:
-        app_name = 'Haruna'
-        icon_name = icon_name or 'haruna'
-        mat_icon = 'movie'
-    elif 'lutris' in t_lower:
-        app_name = 'Lutris'
-        icon_name = icon_name or 'net.lutris.Lutris'
-        mat_icon = 'sports_esports'
-    elif 'token tracker' in t_lower:
-        app_name = 'Tracker'
-        icon_name = icon_name or 'token-tracker'
-        mat_icon = 'insights'
-    elif 'discord' in t_lower or 'vesktop' in t_lower:
-        app_name = 'Discord'
-        icon_name = icon_name or 'discord'
-        mat_icon = 'chat'
-    elif 'steam' in t_lower:
-        app_name = 'Steam'
-        icon_name = icon_name or 'steam'
-        mat_icon = 'sports_esports'
-    elif 'spotify' in t_lower or 'music' in t_lower or 'raye' in t_lower or 'bikabreezy' in t_lower or 'song' in t_lower:
-        app_name = 'Music'
-        icon_name = icon_name or 'org.strawberrymusicplayer.strawberry'
-        mat_icon = 'music_note'
-    elif 'antigravity' in t_lower or 'caelestia' in t_lower:
-        app_name = 'Antigravity'
-        icon_name = icon_name or 'ai.opencode.desktop'
-        mat_icon = 'smart_toy'
-    elif 'gradia' in t_lower:
-        app_name = 'Gradia'
-        icon_name = icon_name or 'image-viewer'
-        mat_icon = 'palette'
+    if 'antigravity' in cls_lower or 'antigravity' in app_lower or 'opencode' in cls_lower:
+        return 'Antigravity', 'antigravity', 'smart_toy'
+
+    if 'edge' in cls_lower or 'msedge' in cls_lower:
+        return 'Edge', 'microsoft-edge', 'language'
+
+    if 'ghostty' in cls_lower or 'ghostty' in app_lower:
+        return 'Terminal', 'com.mitchellh.ghostty', 'terminal'
+
+    if 'code' in cls_lower:
+        return 'VS Code', 'vscode', 'code'
+
+    if 'dolphin' in cls_lower:
+        return 'Files', 'org.kde.dolphin', 'folder'
+
+    if 'lutris' in cls_lower:
+        return 'Lutris', 'net.lutris.Lutris', 'sports_esports'
+
+    if 'token-tracker' in cls_lower or 'token-tracker' in app_lower:
+        return 'Tracker', 'token-tracker', 'insights'
+
+    if 'haruna' in cls_lower or 'mp4' in t_lower or 'mkv' in t_lower:
+        return 'Haruna', 'org.kde.haruna', 'movie'
+
+    if 'gradia' in cls_lower:
+        return 'Gradia', 'be.alexandervanhee.gradia', 'palette'
+
+    if 'spectacle' in cls_lower:
+        return 'Spectacle', 'org.kde.spectacle', 'photo_camera'
+
+    if 'discord' in cls_lower or 'vesktop' in cls_lower:
+        return 'Discord', 'discord', 'chat'
+
+    if 'steam' in cls_lower:
+        return 'Steam', 'steam', 'sports_esports'
+
+    if 'spotify' in cls_lower:
+        return 'Spotify', 'spotify', 'music_note'
+
+    # 2. Wine executable recognition
+    if cls_lower.endswith('.exe'):
+        clean = cls[:-4]
+        clean_lower = clean.lower()
+        if 'cloudmusic' in clean_lower or 'netease' in clean_lower:
+            return 'CloudMusic', 'netease-cloud-music', 'music_note'
+        if 'wechat' in clean_lower:
+            return 'WeChat', 'wechat', 'chat'
+        if 'qq' in clean_lower:
+            return 'QQ', 'qq', 'chat'
+        return clean.capitalize()[:14], krunner_icon or 'wine', 'window'
+
+    # 3. Title-based fallbacks
+    if 'antigravity' in t_lower:
+        return 'Antigravity', 'antigravity', 'smart_toy'
+    if 'netease' in t_lower or 'cloudmusic' in t_lower:
+        return 'CloudMusic', 'netease-cloud-music', 'music_note'
+    if 'visual studio code' in t_lower:
+        return 'VS Code', 'vscode', 'code'
+    if 'terminal' in t_lower or 'konsole' in t_lower or 'workspace' in t_lower:
+        return 'Terminal', 'utilities-terminal', 'terminal'
+
+    # 4. General fallback
+    icon_candidate = krunner_icon or app or cls
+    if icon_candidate == 'ai.opencode.desktop':
+        icon_candidate = 'antigravity'
+
+    parts = re.split(r' [—\-] ', title) if title else []
+    if len(parts) > 1:
+        app_name = parts[-1].strip()[:14]
+    elif cls:
+        app_name = cls.split('.')[-1].capitalize()[:14]
     else:
-        parts = re.split(r' [—\-] ', title)
-        if len(parts) > 1:
-            app_name = parts[-1].strip()[:14]
-        else:
-            app_name = title[:14]
-        mat_icon = 'window'
+        app_name = (title or 'Window')[:14]
 
-    return app_name, icon_name, mat_icon
+    return app_name, icon_candidate, 'window'
 
-def get_active_uuid():
-    try:
-        script = """
-        var w = workspace.activeWindow;
-        if (w) {
-            console.warn("CAELESTIA_ACTIVE_ID:" + ("" + w.internalId).replace("{", "").replace("}", ""));
-        } else {
-            console.warn("CAELESTIA_ACTIVE_ID:NONE");
+def query_kwin():
+    script = """
+    var activeId = workspace.activeWindow ? ('' + workspace.activeWindow.internalId).replace('{','').replace('}','') : '';
+    var wins = workspace.windowList();
+    var res = [];
+    for (var i = 0; i < wins.length; i++) {
+        var w = wins[i];
+        if (w.normalWindow && w.caption && w.resourceClass !== 'quickshell') {
+            res.push({
+                id: ('' + w.internalId).replace('{','').replace('}',''),
+                title: w.caption,
+                cls: '' + w.resourceClass,
+                app: '' + w.desktopFileName,
+                active: ('' + w.internalId).replace('{','').replace('}','') === activeId
+            });
         }
-        """
-        with open('/tmp/caelestia_active_query.js', 'w') as f:
-            f.write(script)
+    }
+    console.warn('CAELESTIA_WINS:' + JSON.stringify(res));
+    """
+    with open('/tmp/caelestia_kwin_query.js', 'w') as f:
+        f.write(script)
 
+    try:
         num = subprocess.check_output(
-            ['qdbus6', 'org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.loadScript', '/tmp/caelestia_active_query.js'],
+            ['qdbus6', 'org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.loadScript', '/tmp/caelestia_kwin_query.js'],
             stderr=subprocess.DEVNULL
         ).decode().strip()
         subprocess.run(['qdbus6', 'org.kde.KWin', f'/Scripting/Script{num}', 'org.kde.kwin.Script.run'], stderr=subprocess.DEVNULL)
         subprocess.run(['qdbus6', 'org.kde.KWin', f'/Scripting/Script{num}', 'org.kde.kwin.Script.stop'], stderr=subprocess.DEVNULL)
 
-        j = subprocess.check_output(['journalctl', '--user', '-b', '-n', '3', '-o', 'cat'], stderr=subprocess.DEVNULL).decode()
+        j = subprocess.check_output(['journalctl', '--user', '-b', '-n', '5', '-o', 'cat'], stderr=subprocess.DEVNULL).decode()
         for line in j.splitlines():
-            if 'CAELESTIA_ACTIVE_ID:' in line:
-                return line.split('CAELESTIA_ACTIVE_ID:')[-1].strip()
+            if 'CAELESTIA_WINS:' in line:
+                return json.loads(line.split('CAELESTIA_WINS:')[-1])
     except Exception:
         pass
-    return ""
+    return []
 
-def main():
-    active_uuid = get_active_uuid()
-
-    windows = []
-    active_win = None
+def query_krunner():
+    krunner_icons = {}
     try:
         out = subprocess.check_output(
             ['qdbus6', '--literal', 'org.kde.KWin', '/WindowsRunner', 'org.kde.krunner1.Match', ''],
@@ -108,27 +135,48 @@ def main():
         ).decode('utf-8')
         pattern = r'\[Argument:\s*\(sssida\{sv\}\)\s*\"([^\"]+)\",\s*\"([^\"]+)\",\s*\"([^\"]*)\"'
         matches = re.findall(pattern, out)
-        seen = set()
-        for idx, (wid, title, icon) in enumerate(matches):
-            if title in seen:
-                continue
-            seen.add(title)
-            app_name, icon_name, mat_icon = get_window_meta(title, wid, icon)
-            is_active = (active_uuid and active_uuid in wid) if active_uuid else (idx == 0)
-            win_obj = {
-                'id': wid,
-                'title': title,
-                'appName': app_name,
-                'iconName': icon_name,
-                'materialIcon': mat_icon,
-                'isActive': is_active
-            }
-            if is_active:
-                active_win = win_obj
-            windows.append(win_obj)
+        for wid, title, icon in matches:
+            if icon:
+                krunner_icons[title] = icon
     except Exception:
         pass
+    return krunner_icons
 
+def main():
+    raw_wins = query_kwin()
+    krunner_icons = query_krunner()
+
+    windows = []
+    active_win = None
+    seen_ids = set()
+
+    for w in raw_wins:
+        wid = w['id']
+        if wid in seen_ids:
+            continue
+        seen_ids.add(wid)
+
+        title = w['title']
+        cls = w['cls']
+        app = w['app']
+        is_active = w.get('active', False)
+
+        k_icon = krunner_icons.get(title, '')
+        app_name, icon_name, mat_icon = get_window_meta(title, cls, app, k_icon)
+
+        win_obj = {
+            'id': wid,
+            'title': title,
+            'appName': app_name,
+            'iconName': icon_name,
+            'materialIcon': mat_icon,
+            'isActive': is_active
+        }
+        if is_active:
+            active_win = win_obj
+        windows.append(win_obj)
+
+    # Tray items
     tray = []
     try:
         items_out = subprocess.check_output(
