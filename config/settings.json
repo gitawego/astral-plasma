@@ -1,0 +1,99 @@
+{
+  "dock": {
+    "enabled": true,
+    "position": "left",
+    "width": 56,
+    "margin": 0,
+    "exclusiveZone": true,
+    "entries": [
+      "launcher",
+      "taskbar",
+      "activeWindow",
+      "tray",
+      "clock",
+      "statusIcons",
+      "settings",
+      "power"
+    ],
+    "tray": {
+      "enabled": true,
+      "compact": false,
+      "hiddenIcons": []
+    },
+    "statusIcons": [
+      {
+        "id": "kblayout",
+        "enabled": true
+      },
+      {
+        "id": "network",
+        "enabled": true
+      },
+      {
+        "id": "bluetooth",
+        "enabled": true
+      },
+      {
+        "id": "brightness",
+        "enabled": true
+      },
+      {
+        "id": "audio",
+        "enabled": true
+      },
+      {
+        "id": "battery",
+        "enabled": true
+      }
+    ]
+  },
+  "border": {
+    "thickness": 14,
+    "rounding": 20
+  },
+  "dashboard": {
+    "enabled": true,
+    "showOnHover": true,
+    "width": 780,
+    "defaultTab": "dashboard",
+    "tabs": [
+      {
+        "id": "dashboard",
+        "label": "Dashboard",
+        "enabled": true
+      },
+      {
+        "id": "media",
+        "label": "Media",
+        "enabled": true
+      },
+      {
+        "id": "performance",
+        "label": "Performance",
+        "enabled": true
+      },
+      {
+        "id": "workspaces",
+        "label": "Workspaces",
+        "enabled": true
+      }
+    ],
+    "weather": {
+      "location": "auto",
+      "units": "metric"
+    }
+  },
+  "topBar": {
+    "enabled": false,
+    "height": 38,
+    "exclusiveZone": false,
+    "showTitle": true,
+    "showTabs": true
+  },
+  "theme": {
+    "mode": "dynamic",
+    "preset": "caelestia-pastel",
+    "blurStrength": 0.85,
+    "cornerRadius": 20
+  }
+}
