@@ -25,13 +25,6 @@
         "desktopFile": "com.mitchellh.ghostty"
       },
       {
-        "appId": "code",
-        "appName": "VS Code",
-        "iconName": "vscode",
-        "materialIcon": "code",
-        "desktopFile": "code"
-      },
-      {
         "appId": "microsoft-edge",
         "appName": "Edge",
         "iconName": "microsoft-edge",
@@ -44,6 +37,13 @@
         "iconName": "netease-cloud-music",
         "materialIcon": "music_note",
         "desktopFile": "lutris:rungame/netease-cloud-music"
+      },
+      {
+        "appId": "code",
+        "appName": "VS Code",
+        "iconName": "vscode",
+        "materialIcon": "code",
+        "desktopFile": "code"
       }
     ],
     "tray": {
@@ -77,10 +77,6 @@
         "enabled": true
       }
     ]
-  },
-  "border": {
-    "thickness": 14,
-    "rounding": 20
   },
   "dashboard": {
     "enabled": true,
@@ -126,5 +122,9 @@
     "preset": "iris",
     "blurStrength": 0.85,
     "cornerRadius": 20
+  },
+  "border": {
+    "thickness": 14,
+    "rounding": 20
   }
 }

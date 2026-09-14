@@ -543,15 +543,38 @@ PanelWindow {
                     visible: !parent.children[0].visible
                 }
 
-                Text {
-                    text: appContextMenu.targetApp ? appContextMenu.targetApp.appName : ""
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                    color: Colors.textOnSurface
-                    elide: Text.ElideRight
+                Column {
                     width: parent.width - 32
                     anchors.verticalCenter: parent.verticalCenter
+                    spacing: 1
+
+                    Text {
+                        text: appContextMenu.targetApp ? appContextMenu.targetApp.appName : ""
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        color: Colors.textOnSurface
+                        elide: Text.ElideRight
+                        width: parent.width
+                    }
+
+                    Text {
+                        text: {
+                            if (!appContextMenu.targetApp) return "";
+                            if (appContextMenu.targetApp.isPinned && appContextMenu.targetApp.isRunning) {
+                                return "Pinned • Running";
+                            } else if (appContextMenu.targetApp.isPinned) {
+                                return "Pinned";
+                            } else {
+                                return "Running (Unpinned)";
+                            }
+                        }
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Colors.textMuted
+                        elide: Text.ElideRight
+                        width: parent.width
+                    }
                 }
             }
 
@@ -712,13 +735,12 @@ PanelWindow {
         width: root.dockW
         height: root.height - root.borderT * 2 - 12
 
-        readonly property var taskbarList: {
+        readonly property var pinnedList: {
             const pinned = Config.pinnedApps || [];
             const wins = WindowService.windows || [];
             const result = [];
             const matchedWinIds = new Set();
 
-            // 1. Process pinned apps
             for (let i = 0; i < pinned.length; i++) {
                 const p = pinned[i];
                 const pId = (p.appId || "").toLowerCase();
@@ -771,8 +793,38 @@ PanelWindow {
                     });
                 }
             }
+            return result;
+        }
 
-            // 2. Add unpinned running apps
+        readonly property var unpinnedList: {
+            const pinned = Config.pinnedApps || [];
+            const wins = WindowService.windows || [];
+            const result = [];
+            const matchedWinIds = new Set();
+
+            for (let i = 0; i < pinned.length; i++) {
+                const p = pinned[i];
+                const pId = (p.appId || "").toLowerCase();
+                const pDesk = (p.desktopFile || "").toLowerCase();
+                const pName = (p.appName || "").toLowerCase();
+
+                for (let j = 0; j < wins.length; j++) {
+                    const w = wins[j];
+                    if (matchedWinIds.has(w.id)) continue;
+                    const wId = (w.appId || "").toLowerCase();
+                    const wDesk = (w.desktopFile || "").toLowerCase();
+                    const wName = (w.appName || "").toLowerCase();
+                    const wCls = (w.cls || "").toLowerCase();
+
+                    if ((pId && (wId === pId || wDesk === pId || wCls === pId))
+                        || (pDesk && (wDesk === pDesk || wId === pDesk))
+                        || (pName && wName === pName)) {
+                        matchedWinIds.add(w.id);
+                        break;
+                    }
+                }
+            }
+
             for (let k = 0; k < wins.length; k++) {
                 const w = wins[k];
                 if (!matchedWinIds.has(w.id)) {
@@ -793,6 +845,8 @@ PanelWindow {
 
             return result;
         }
+
+        readonly property var taskbarList: pinnedList.concat(unpinnedList)
 
         // TOP SECTION: Launcher & Workspaces Pill
         Column {
@@ -1016,10 +1070,10 @@ PanelWindow {
                     anchors.centerIn: parent
                     spacing: 4
 
-                    Repeater {
-                        model: dockContent.taskbarList
+                    Component {
+                        id: appDelegateComponent
 
-                        delegate: Rectangle {
+                        Rectangle {
                             id: appDelegate
                             required property var modelData
 
@@ -1126,15 +1180,50 @@ PanelWindow {
                                 Text {
                                     id: tipText
                                     anchors.centerIn: parent
-                                    text: modelData.isRunning
-                                        ? (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : ""))
-                                        : (modelData.appName + " (Click to launch)")
+                                    text: {
+                                        if (modelData.isPinned && modelData.isRunning) {
+                                            return (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : "")) + " (Pinned)";
+                                        } else if (modelData.isPinned && !modelData.isRunning) {
+                                            return modelData.appName + " (Click to launch)";
+                                        } else {
+                                            return (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : "")) + " (Running)";
+                                        }
+                                    }
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 12
                                     color: Colors.onSurface
                                 }
                             }
                         }
+                    }
+
+                    // 1. Pinned Apps
+                    Repeater {
+                        model: dockContent.pinnedList
+                        delegate: appDelegateComponent
+                    }
+
+                    // 2. Clear Divider between Pinned Apps and Unpinned Running Apps
+                    Item {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        implicitWidth: root.iconS + 10
+                        implicitHeight: 12
+                        visible: dockContent.pinnedList.length > 0 && dockContent.unpinnedList.length > 0
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: Math.round(root.iconS * 0.65)
+                            height: 2
+                            radius: 1
+                            color: Colors.outline
+                            opacity: 0.7
+                        }
+                    }
+
+                    // 3. Unpinned Running Apps
+                    Repeater {
+                        model: dockContent.unpinnedList
+                        delegate: appDelegateComponent
                     }
                 }
             }
