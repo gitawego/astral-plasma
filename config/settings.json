@@ -44,6 +44,13 @@
         "iconName": "vscode",
         "materialIcon": "code",
         "desktopFile": "code"
+      },
+      {
+        "appId": "systemsettings",
+        "appName": "System Setting",
+        "iconName": "preferences-system",
+        "materialIcon": "window",
+        "desktopFile": "systemsettings"
       }
     ],
     "tray": {

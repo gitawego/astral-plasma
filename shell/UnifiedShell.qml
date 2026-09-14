@@ -47,7 +47,7 @@ PanelWindow {
     readonly property int dropH: Math.round(cardLayout.implicitHeight + Theme.padLarge * 2)
     readonly property real currentDropH: borderT + (dropH - borderT) * dropdownContainer.offsetProgress
     readonly property real currentPopW: (typeof fusedPopout !== "undefined" ? fusedPopout.popWidth : 280) * fusedBottomPopoutWrapper.offsetProgress
-    readonly property color borderColor: Qt.alpha(Colors.textMain, 0.28)
+    readonly property color borderColor: Theme.borderSubtle
 
     Component.onCompleted: {
         console.log("DEBUG_BORDER_SUBTLE:", Theme.borderSubtle, "DEBUG_OUTLINE:", Colors.outline);
@@ -58,6 +58,10 @@ PanelWindow {
         }
         if (Quickshell.env("TEST_DASHBOARD") === "1") {
             Config.dashboardVisible = true;
+        }
+        const testTab = Quickshell.env("TEST_DASHBOARD_TAB");
+        if (testTab) {
+            Config.activeDashboardTab = testTab;
         }
     }
 
@@ -184,9 +188,10 @@ PanelWindow {
             color: Colors.surface
 
             Rectangle {
-                anchors.right: parent.right
+                x: parent.width - 1
+                y: root.borderT + root.filletR
                 width: 1
-                height: parent.height
+                height: Math.max(0, parent.height - (root.borderT * 2 + root.filletR * 2))
                 color: root.borderColor
             }
         }
@@ -200,10 +205,24 @@ PanelWindow {
             height: root.borderT
             color: Colors.surface
 
+            // Segment left of dropdown
             Rectangle {
-                anchors.bottom: parent.bottom
+                x: root.dockW + root.filletR
+                y: parent.height - 1
                 height: 1
-                width: parent.width
+                width: dropdownContainer.offsetProgress > 0.001 
+                    ? Math.max(0, root.dropX - root.filletR - (root.dockW + root.filletR))
+                    : Math.max(0, root.width - root.borderT - root.filletR - (root.dockW + root.filletR))
+                color: root.borderColor
+            }
+
+            // Segment right of dropdown (only when dropdown is open)
+            Rectangle {
+                visible: dropdownContainer.offsetProgress > 0.001
+                x: root.dropX + root.dropW + root.filletR
+                y: parent.height - 1
+                height: 1
+                width: Math.max(0, root.width - root.borderT - root.filletR - (root.dropX + root.dropW + root.filletR))
                 color: root.borderColor
             }
         }
@@ -218,9 +237,10 @@ PanelWindow {
             color: Colors.surface
 
             Rectangle {
-                anchors.left: parent.left
+                x: 0
+                y: root.borderT + root.filletR
                 width: 1
-                height: parent.height
+                height: Math.max(0, parent.height - (root.borderT * 2 + root.filletR * 2))
                 color: root.borderColor
             }
         }
@@ -235,9 +255,10 @@ PanelWindow {
             color: Colors.surface
 
             Rectangle {
-                anchors.top: parent.top
+                x: root.dockW + root.filletR
+                y: 0
                 height: 1
-                width: parent.width
+                width: Math.max(0, parent.width - (root.dockW + root.borderT + root.filletR * 2))
                 color: root.borderColor
             }
         }
@@ -604,8 +625,8 @@ PanelWindow {
 
                                 width: 175
                                 height: 50
-                                radius: 14
-                                color: tabHover.containsMouse ? Colors.surfaceContainerHigh : (isSelected ? Qt.alpha(Colors.surfaceContainerHigh, 0.6) : "transparent")
+                                radius: Theme.radiusSmall
+                                color: tabHover.containsMouse ? Qt.alpha(Colors.textMain, 0.04) : "transparent"
 
                                 Behavior on color {
                                     ColorAnimation {
@@ -656,12 +677,12 @@ PanelWindow {
                         }
                     }
 
-                    // Fluid Sliding Underline Indicator (Exact width of active tab item)
+                    // Fluid Sliding Underline Indicator (Centered under active tab)
                     Rectangle {
                         id: tabSlidingIndicator
                         anchors.bottom: parent.bottom
-                        height: 3
-                        radius: 1.5
+                        height: 2
+                        radius: 1
                         color: Colors.primary
 
                         readonly property int activeIdx: {
@@ -675,8 +696,8 @@ PanelWindow {
                         }
 
                         readonly property Item activeTabItem: (tabRepeater.count > activeIdx) ? tabRepeater.itemAt(activeIdx) : null
-                        readonly property real targetWidth: activeTabItem ? activeTabItem.width : 175
-                        readonly property real targetX: activeTabItem ? (tabsRow.x + activeTabItem.x) : 0
+                        readonly property real targetWidth: 60
+                        readonly property real targetX: activeTabItem ? (tabsRow.x + activeTabItem.x + (activeTabItem.width - targetWidth) / 2) : 0
 
                         x: targetX
                         width: targetWidth
@@ -1717,7 +1738,7 @@ PanelWindow {
                                 anchors.centerIn: parent
                                 width: root.iconS
                                 height: root.iconS
-                                source: modelData.rawIcon ? Quickshell.iconPath(modelData.rawIcon) : ""
+                                source: (modelData.rawIcon && !modelData.rawIcon.startsWith("Error")) ? Quickshell.iconPath(modelData.rawIcon) : ""
                                 fillMode: Image.PreserveAspectFit
                                 visible: !imBadgeText.visible && status === Image.Ready
                             }
@@ -1762,7 +1783,7 @@ PanelWindow {
                                 Text {
                                     id: trayTipText
                                     anchors.centerIn: parent
-                                    text: modelData.title || modelData.id
+                                    text: (modelData.title && !modelData.title.startsWith("Error")) ? modelData.title : ((modelData.id && !modelData.id.startsWith("Error")) ? modelData.id : "Application")
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 12
                                     color: Colors.onSurface

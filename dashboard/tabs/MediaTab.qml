@@ -10,9 +10,8 @@ Item {
     implicitWidth: 680
     implicitHeight: 320
 
-    Card {
+    Item {
         anchors.fill: parent
-        radius: Theme.radiusLarge
 
         RowLayout {
             anchors.fill: parent

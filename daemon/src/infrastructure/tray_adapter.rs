@@ -2,6 +2,18 @@ use crate::domain::model::TrayItem;
 use crate::domain::ports::{DynResult, TrayPort};
 use std::process::Command;
 
+fn qdbus_get(svc: &str, path: &str, method: &str) -> String {
+    if let Ok(out) = Command::new("qdbus6").args([svc, path, method]).output() {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.starts_with("Error:") && !s.starts_with("Cannot find") {
+                return s;
+            }
+        }
+    }
+    String::new()
+}
+
 pub struct TrayAdapter;
 
 impl TrayAdapter {
@@ -40,29 +52,21 @@ impl TrayPort for TrayAdapter {
                 (trimmed, "/")
             };
 
-            let item_id = Command::new("qdbus6")
-                .args([svc, path, "org.kde.StatusNotifierItem.Id"])
-                .output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_default();
+            let item_id = qdbus_get(svc, path, "org.kde.StatusNotifierItem.Id");
+            let mut item_icon = qdbus_get(svc, path, "org.kde.StatusNotifierItem.IconName");
+            let mut item_title = qdbus_get(svc, path, "org.kde.StatusNotifierItem.Title");
 
-            let mut item_icon = Command::new("qdbus6")
-                .args([svc, path, "org.kde.StatusNotifierItem.IconName"])
-                .output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_default();
-
-            let mut item_title = Command::new("qdbus6")
-                .args([svc, path, "org.kde.StatusNotifierItem.Title"])
-                .output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_default();
-
-            if item_id.is_empty() && item_title.is_empty() {
+            if item_id.is_empty() && item_title.is_empty() && item_icon.is_empty() {
                 continue;
             }
             if item_id.chars().all(|c| c.is_ascii_digit()) && item_icon.is_empty() && item_title.is_empty() {
                 continue;
+            }
+            if item_icon.starts_with("Error") {
+                item_icon.clear();
+            }
+            if item_title.starts_with("Error") {
+                item_title.clear();
             }
 
             let mut m_icon = "circle".to_string();
