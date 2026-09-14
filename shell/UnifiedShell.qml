@@ -35,6 +35,7 @@ PanelWindow {
     color: "transparent"
 
     readonly property int dockW: Config.dockWidth
+    readonly property int iconS: Config.dockIconSize
     readonly property int borderT: Config.borderThickness
     readonly property int filletR: Config.borderRounding
     readonly property int dropW: Config.dashboardWidth
@@ -790,8 +791,8 @@ PanelWindow {
             // 1. App Launcher Button (^)
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                implicitWidth: 38
-                implicitHeight: 38
+                implicitWidth: root.iconS + 10
+                implicitHeight: root.iconS + 10
                 radius: Theme.radiusFull
                 color: launcherHover.containsMouse ? Colors.surfaceContainerHigh : Colors.surfaceContainer
                 border.color: Theme.borderSubtle
@@ -800,7 +801,7 @@ PanelWindow {
                 MaterialIcon {
                     anchors.centerIn: parent
                     text: "expand_less"
-                    size: 20
+                    size: Math.round(root.iconS * 0.82)
                     color: Colors.primary
                 }
 
@@ -818,8 +819,8 @@ PanelWindow {
             // 2. Workspaces Vertical Pill
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                implicitWidth: 34
-                implicitHeight: 128
+                implicitWidth: root.iconS + 16
+                implicitHeight: (root.iconS + 10 + 4) * 4 + 8
                 radius: Theme.radiusFull
                 color: Colors.surfaceContainer
                 border.color: Theme.borderSubtle
@@ -827,7 +828,7 @@ PanelWindow {
 
                 Column {
                     anchors.centerIn: parent
-                    spacing: 3
+                    spacing: 4
 
                     Repeater {
                         model: [
@@ -843,15 +844,17 @@ PanelWindow {
                                 ? KWinWorkspaces.desktops[modelData.index].active
                                 : (modelData.index === 0)
 
-                            implicitWidth: 26
-                            implicitHeight: 26
+                            readonly property int wsBtnSize: root.iconS + 10
+
+                            implicitWidth: wsBtnSize
+                            implicitHeight: wsBtnSize
                             radius: Theme.radiusFull
                             color: isActive ? Colors.primaryContainer : (wsHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
 
                             MaterialIcon {
                                 anchors.centerIn: parent
                                 text: modelData.icon
-                                size: (modelData.icon === "circle") ? 8 : 14
+                                size: (modelData.icon === "circle") ? Math.round(root.iconS * 0.45) : Math.round(root.iconS * 0.72)
                                 color: isActive ? Colors.primary : Colors.onSurfaceVariant
                             }
 
@@ -876,21 +879,21 @@ PanelWindow {
         Item {
             id: activeWindowPill
             anchors.top: topSection.bottom
-            anchors.topMargin: 24
+            anchors.topMargin: 20
             anchors.horizontalCenter: parent.horizontalCenter
-            implicitWidth: 34
-            implicitHeight: 130
-            visible: (dockContent.height - bottomCol.implicitHeight) > 340
+            implicitWidth: root.iconS + 16
+            implicitHeight: 140
+            visible: (dockContent.height - bottomCol.implicitHeight) > 300
 
             Row {
                 anchors.centerIn: parent
                 rotation: 90
-                spacing: 6
+                spacing: 8
 
                 Image {
                     id: activeIconImg
-                    width: 16
-                    height: 16
+                    width: root.iconS
+                    height: root.iconS
                     source: {
                         if (!WindowService.activeIconName) return "";
                         if (WindowService.activeIconName.indexOf("/") !== -1) {
@@ -905,7 +908,7 @@ PanelWindow {
 
                 MaterialIcon {
                     text: WindowService.activeMaterialIcon || "desktop_windows"
-                    size: 16
+                    size: Math.round(root.iconS * 0.82)
                     color: Colors.textOnSurfaceVariant
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !activeIconImg.visible || activeIconImg.status !== Image.Ready
@@ -914,7 +917,7 @@ PanelWindow {
                 Text {
                     text: WindowService.activeTitle || "Desktop"
                     font.family: Theme.fontFamily
-                    font.pixelSize: 13
+                    font.pixelSize: Math.max(13, Math.round(root.iconS * 0.45))
                     font.weight: Font.Medium
                     color: Colors.textOnSurfaceVariant
                     anchors.verticalCenter: parent.verticalCenter
@@ -934,9 +937,9 @@ PanelWindow {
             Rectangle {
                 id: appsContainer
                 anchors.horizontalCenter: parent.horizontalCenter
-                implicitWidth: 38
+                implicitWidth: root.iconS + 16
                 implicitHeight: appsCol.implicitHeight + 8
-                radius: 12
+                radius: Math.round((root.iconS + 16) * 0.25)
                 color: Colors.surfaceContainer
                 border.color: Theme.borderSubtle
                 border.width: 1
@@ -954,21 +957,23 @@ PanelWindow {
                             id: appDelegate
                             required property var modelData
 
-                            width: 32
-                            height: 32
-                            implicitWidth: 32
-                            implicitHeight: 32
-                            radius: 8
+                            readonly property int itemSize: root.iconS + 10
+
+                            width: itemSize
+                            height: itemSize
+                            implicitWidth: itemSize
+                            implicitHeight: itemSize
+                            radius: Math.max(6, Math.round(itemSize * 0.22))
                             color: modelData.isActive ? Colors.primaryContainer : (appHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
 
                             // Active left pill indicator
                             Rectangle {
                                 anchors.left: parent.left
-                                anchors.leftMargin: -4
+                                anchors.leftMargin: 1
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 3.5
-                                height: modelData.isActive ? 16 : 0
-                                radius: 1.75
+                                width: 3
+                                height: modelData.isActive ? Math.round(root.iconS * 0.65) : 0
+                                radius: 1.5
                                 color: Colors.primary
                                 visible: modelData.isActive
 
@@ -980,7 +985,7 @@ PanelWindow {
                             // Running dot indicator for inactive running windows
                             Rectangle {
                                 anchors.left: parent.left
-                                anchors.leftMargin: -3
+                                anchors.leftMargin: 1
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 3
                                 height: 3
@@ -993,8 +998,8 @@ PanelWindow {
                             Image {
                                 id: appIconImg
                                 anchors.centerIn: parent
-                                width: 22
-                                height: 22
+                                width: root.iconS
+                                height: root.iconS
                                 opacity: modelData.isRunning ? 1.0 : 0.65
                                 source: {
                                     if (!modelData.iconName) return "";
@@ -1010,7 +1015,7 @@ PanelWindow {
                             MaterialIcon {
                                 anchors.centerIn: parent
                                 text: modelData.materialIcon || "desktop_windows"
-                                size: 18
+                                size: Math.round(root.iconS * 0.82)
                                 opacity: modelData.isRunning ? 1.0 : 0.65
                                 color: modelData.isActive ? Colors.primary : Colors.onSurfaceVariant
                                 visible: !appIconImg.visible || appIconImg.status !== Image.Ready
@@ -1071,13 +1076,13 @@ PanelWindow {
             // 2. CLEAR VISUAL DIVIDER BETWEEN APPS & STATUS
             Item {
                 anchors.horizontalCenter: parent.horizontalCenter
-                implicitWidth: 36
+                implicitWidth: root.iconS + 16
                 implicitHeight: 16
                 visible: dockContent.taskbarList.length > 0 && WindowService.tray.length > 0
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 24
+                    width: Math.round(root.iconS * 0.75)
                     height: 2.5
                     radius: 1.25
                     color: Colors.outline
@@ -1089,9 +1094,9 @@ PanelWindow {
             Rectangle {
                 id: trayContainer
                 anchors.horizontalCenter: parent.horizontalCenter
-                implicitWidth: 34
+                implicitWidth: root.iconS + 16
                 implicitHeight: trayCol.implicitHeight + 8
-                radius: 10
+                radius: Math.round((root.iconS + 16) * 0.25)
                 color: Colors.surfaceContainer
                 border.color: Theme.borderSubtle
                 border.width: 1
@@ -1116,18 +1121,20 @@ PanelWindow {
                                 return raw.includes("keyboard") || raw.includes("fcitx") || id.includes("fcitx") || id.includes("input") || title.includes("input");
                             }
 
-                            width: 26
-                            height: 26
-                            implicitWidth: 26
-                            implicitHeight: 26
-                            radius: 6
+                            readonly property int itemSize: root.iconS + 10
+
+                            width: itemSize
+                            height: itemSize
+                            implicitWidth: itemSize
+                            implicitHeight: itemSize
+                            radius: Math.max(6, Math.round(itemSize * 0.22))
                             color: trayHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
 
                             Image {
                                 id: trayIconImg
                                 anchors.centerIn: parent
-                                width: 16
-                                height: 16
+                                width: root.iconS
+                                height: root.iconS
                                 source: (!isInputMethod && modelData.rawIcon) ? Quickshell.iconPath(modelData.rawIcon) : ""
                                 fillMode: Image.PreserveAspectFit
                                 visible: !isInputMethod && status === Image.Ready
@@ -1136,7 +1143,7 @@ PanelWindow {
                             MaterialIcon {
                                 anchors.centerIn: parent
                                 text: modelData.materialIcon || (isInputMethod ? "keyboard" : "circle")
-                                size: 16
+                                size: Math.round(root.iconS * 0.82)
                                 color: isInputMethod
                                     ? (trayHover.containsMouse ? Colors.primary : Colors.textOnSurface)
                                     : (trayHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
@@ -1209,7 +1216,7 @@ PanelWindow {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "12"
                     font.family: Theme.fontFamily
-                    font.pixelSize: 13
+                    font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
                     font.weight: Font.DemiBold
                     color: Colors.textOnSurface
                 }
@@ -1219,7 +1226,7 @@ PanelWindow {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "00"
                     font.family: Theme.fontFamily
-                    font.pixelSize: 13
+                    font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
                     font.weight: Font.DemiBold
                     color: Colors.textOnSurface
                 }

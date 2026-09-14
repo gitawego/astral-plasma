@@ -2,7 +2,8 @@
   "dock": {
     "enabled": true,
     "position": "left",
-    "width": 56,
+    "width": 64,
+    "iconSize": 32,
     "margin": 0,
     "exclusiveZone": true,
     "entries": [

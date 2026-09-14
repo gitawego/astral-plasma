@@ -41,14 +41,25 @@ ColumnLayout {
 
     SettingSlider {
         Layout.fillWidth: true
-        title: "Dock Width"
-        min: 44
-        max: 80
+        title: "Icon Size"
+        min: 20
+        max: 56
         suffix: "px"
-        value: Config.settings.dock ? Config.settings.dock.width : 56
+        value: Config.dockIconSize
         onValueModified: val => {
-            Config.settings.dock.width = Math.round(val);
-            Config.saveSettings();
+            Config.setDockIconSize(Math.round(val));
+        }
+    }
+
+    SettingSlider {
+        Layout.fillWidth: true
+        title: "Dock Width"
+        min: 48
+        max: 96
+        suffix: "px"
+        value: Config.dockWidth
+        onValueModified: val => {
+            Config.setDockWidth(Math.round(val));
         }
     }
 

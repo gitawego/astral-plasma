@@ -15,7 +15,8 @@ Singleton {
         "dock": {
             "enabled": true,
             "position": "left",
-            "width": 56,
+            "width": 64,
+            "iconSize": 32,
             "margin": 12,
             "exclusiveZone": true,
             "entries": [
@@ -72,7 +73,15 @@ Singleton {
 
     // Convenient getters
     readonly property bool dockEnabled: root.settings.dock ? (root.settings.dock.enabled ?? true) : true
-    readonly property int dockWidth: root.settings.dock ? (root.settings.dock.width ?? 56) : 56
+    readonly property int dockIconSize: (root.settings.dock && root.settings.dock.iconSize !== undefined) ? root.settings.dock.iconSize : 32
+    readonly property int dockStatusIconSize: (root.settings.dock && root.settings.dock.statusIconSize !== undefined)
+        ? root.settings.dock.statusIconSize
+        : root.dockIconSize
+    readonly property int dockWidth: {
+        const rawW = root.settings.dock ? (root.settings.dock.width ?? 64) : 64;
+        const maxIcon = Math.max(root.dockIconSize, root.dockStatusIconSize);
+        return Math.max(rawW, maxIcon + 24);
+    }
     readonly property int borderThickness: root.settings.border ? (root.settings.border.thickness ?? 14) : 14
     readonly property int borderRounding: root.settings.border ? (root.settings.border.rounding ?? 20) : 20
     readonly property bool topBarEnabled: root.settings.topBar ? (root.settings.topBar.enabled ?? false) : false
@@ -122,6 +131,33 @@ Singleton {
             item => item.appId !== appId && item.desktopFile !== appId
         );
 
+        root.settings = newSettings;
+        root.saveSettings();
+    }
+
+    function setDockIconSize(size) {
+        if (!size || size < 16) return;
+        let newSettings = JSON.parse(JSON.stringify(root.settings));
+        if (!newSettings.dock) newSettings.dock = {};
+        newSettings.dock.iconSize = size;
+        root.settings = newSettings;
+        root.saveSettings();
+    }
+
+    function setDockWidth(width) {
+        if (!width || width < 30) return;
+        let newSettings = JSON.parse(JSON.stringify(root.settings));
+        if (!newSettings.dock) newSettings.dock = {};
+        newSettings.dock.width = width;
+        root.settings = newSettings;
+        root.saveSettings();
+    }
+
+    function setDockStatusIconSize(size) {
+        if (!size || size < 16) return;
+        let newSettings = JSON.parse(JSON.stringify(root.settings));
+        if (!newSettings.dock) newSettings.dock = {};
+        newSettings.dock.statusIconSize = size;
         root.settings = newSettings;
         root.saveSettings();
     }

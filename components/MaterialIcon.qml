@@ -121,11 +121,13 @@ Item {
 
     Text {
         anchors.centerIn: parent
+        width: root.size
+        height: root.size
         visible: root.iconName === ""
         text: root.displaySymbol
         color: root.color
         font.pixelSize: root.size
-        font.family: "JetBrainsMono Nerd Font, Google Sans Flex, sans-serif"
+        font.family: "JetBrainsMono Nerd Font Propo, JetBrainsMonoNF Propo, MesloLGS Nerd Font Propo, JetBrainsMono Nerd Font, sans-serif"
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
     }

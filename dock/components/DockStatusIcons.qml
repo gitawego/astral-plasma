@@ -7,9 +7,12 @@ import "../../config"
 Rectangle {
     id: root
 
-    implicitWidth: 42
+    readonly property int btnSize: Config.dockIconSize + 10
+    readonly property int iconSize: Math.round(Config.dockIconSize * 0.82)
+
+    implicitWidth: Config.dockIconSize + 16
     implicitHeight: layout.implicitHeight + Theme.padSmall * 2
-    radius: Theme.radiusFull
+    radius: Math.round((Config.dockIconSize + 16) * 0.25)
     color: Colors.surfaceContainer
     border.color: Theme.borderSubtle
     border.width: 1
@@ -32,8 +35,8 @@ Rectangle {
 
         // 1. Network / Wi-Fi
         Item {
-            implicitWidth: 34
-            implicitHeight: 34
+            implicitWidth: root.btnSize
+            implicitHeight: root.btnSize
 
             Rectangle {
                 anchors.fill: parent
@@ -45,7 +48,7 @@ Rectangle {
                 MaterialIcon {
                     anchors.centerIn: parent
                     text: NetworkService.getIcon()
-                    size: 18
+                    size: root.iconSize
                     color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "network") 
                         ? Colors.textOnPrimary 
                         : Colors.textOnSurfaceVariant
@@ -68,8 +71,8 @@ Rectangle {
 
         // 2. Bluetooth
         Item {
-            implicitWidth: 34
-            implicitHeight: 34
+            implicitWidth: root.btnSize
+            implicitHeight: root.btnSize
 
             Rectangle {
                 anchors.fill: parent
@@ -81,7 +84,7 @@ Rectangle {
                 MaterialIcon {
                     anchors.centerIn: parent
                     text: BluetoothService.getIcon()
-                    size: 18
+                    size: root.iconSize
                     color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "bluetooth") 
                         ? Colors.textOnPrimary 
                         : Colors.textOnSurfaceVariant
@@ -104,8 +107,8 @@ Rectangle {
 
         // 3. Power Profile / Rocket
         Item {
-            implicitWidth: 34
-            implicitHeight: 34
+            implicitWidth: root.btnSize
+            implicitHeight: root.btnSize
 
             Rectangle {
                 anchors.fill: parent
@@ -123,7 +126,7 @@ Rectangle {
                             default: return "rocket_launch";
                         }
                     }
-                    size: 18
+                    size: root.iconSize
                     color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "default") 
                         ? Colors.textOnPrimary 
                         : Colors.textOnSurfaceVariant
@@ -146,8 +149,8 @@ Rectangle {
 
         // 4. Power Button
         Item {
-            implicitWidth: 34
-            implicitHeight: 34
+            implicitWidth: root.btnSize
+            implicitHeight: root.btnSize
 
             Rectangle {
                 anchors.fill: parent
@@ -159,7 +162,7 @@ Rectangle {
                 MaterialIcon {
                     anchors.centerIn: parent
                     text: "power_settings_new"
-                    size: 18
+                    size: root.iconSize
                     color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "power") 
                         ? "#FFFFFF" 
                         : "#C8372D"
