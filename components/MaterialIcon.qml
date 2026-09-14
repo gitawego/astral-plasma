@@ -102,10 +102,10 @@ Item {
         "translate": "󰗊",
         "fcitx": "󰌌",
         "rime": "󰗊",
-        "push_pin": "󰤩",
-        "pin": "󰤩",
-        "keep_off": "󰤪",
-        "unpin": "󰤪"
+        "push_pin": "󰐃",
+        "pin": "󰐃",
+        "keep_off": "󰐄",
+        "unpin": "󰐄"
     })
 
     readonly property string displaySymbol: {
