@@ -24,13 +24,39 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 
 ---
 
-## 3. Repository Map
+## 3. Mandatory Test-Driven Development (TDD) & Zero Regressions
+
+> [!CAUTION]
+> **TDD is MANDATORY for all work in this repository.**
+> Fixing one issue must NEVER break another. Every bug fix, refactor, or feature addition MUST include automated unit and regression tests.
+>
+> 1. **Write or Update Tests First**:
+>    - For every bug reported, write a reproducing unit test in `tests/tst_*.qml` (for QML/shell behavior) or `daemon/tests/` (for backend/Rust logic) before or alongside the fix.
+> 2. **Automated Verification**:
+>    - Run `make test` on every change. It runs both the Rust test suite and all QML test suites.
+>    - All tests must pass with 0 failures before any task is completed.
+> 3. **Test Scope Coverage**:
+>    - **Backend (Rust Daemon)**: Domain models, DBus error filtering, system metrics parsing, and process resolvers must have full unit test coverage.
+>    - **Frontend (QML)**: Geometry calculations, non-overlapping borders, corner fillets, auto-close timers, and component boundaries must have dedicated offscreen QML test suites (`tests/tst_*.qml`).
+
+---
+
+## 4. Repository Map
 
 ```
 caelestia-kde/
+├── Makefile                  # Build, test, and run automation (make test, make build, make run)
 ├── AGENTS.md                 # Agent instructions & development conventions (this file)
 ├── DESIGN.md                 # Design system specification, motion tokens & layout rules
 ├── README.md                 # Public documentation and setup guide
+├── daemon/                   # High-performance native Rust daemon (DDD architecture)
+│   ├── src/                  # Domain, Infrastructure, Application, Interfaces
+│   └── tests/                # Rust unit tests (make test-rust)
+├── tests/                    # QML & integration test suites (make test-qml)
+│   ├── tst_top_drawer_autoclose.qml
+│   ├── tst_top_drawer_fidelity.qml
+│   ├── tst_dock_corners_geometry.qml
+│   └── run_tests.py
 ├── shell.qml                 # Quickshell entry point loader
 ├── shell/
 │   └── UnifiedShell.qml      # Core unified desktop surface (frame, dock, dashboard, popouts)
@@ -40,7 +66,7 @@ caelestia-kde/
 ├── dashboard/
 │   ├── CentralDashboard.qml  # Fullscreen / overlay dropdown dashboard
 │   └── tabs/                 # Dashboard tabs (Media, Performance, Workspaces)
-├── components/               # Common primitives (CornerFillet, MaterialIcon, LevelBar, Card)
+├── components/               # Common primitives (CornerFillet, MaterialIcon, LevelBar, Card, PacmanIcon)
 ├── services/                 # DBus & system integration (KWinWorkspaces, WindowService, Network)
 ├── theme/
 │   ├── Theme.qml             # Motion tokens, bezier curves, sizing constants, typography
@@ -56,25 +82,25 @@ caelestia-kde/
 
 ---
 
-## 4. Development & Verification Workflow
+## 5. Development & Verification Workflow
 
-### 4.1. Running the Shell
-Run the shell in developer mode using the test launcher:
+### 5.1. Commands (Use Makefile)
+Always use `make` commands:
 ```bash
-./run.sh
-```
-Or run directly via Quickshell:
-```bash
-quickshell -p /mnt/data/workspace/caelestia-kde
+make test         # MANDATORY: Runs both Rust unit tests and all QML test suites
+make build        # Compiles release Rust daemon (bin/caelestia-daemon)
+make test-rust    # Runs Rust unit tests
+make test-qml     # Runs QML offscreen test suites
+make run          # Runs shell with daemon
 ```
 
-### 4.2. Hot Reloading & Diagnostics
+### 5.2. Hot Reloading & Diagnostics
 Quickshell automatically reloads upon file changes. Monitor the console output or active daemon log for:
 - QML syntax or parse errors (`ERROR: Failed to load configuration`).
 - Anchor cycles or undefined binding loops.
 - DBus service warnings.
 
-### 4.3. Visual Verification
+### 5.3. Visual Verification
 Because Wayland desktop shells cannot be inspected through headless DOM tools, verify all UI changes visually using Spectacle and ImageMagick:
 ```bash
 spectacle -b -n -o /tmp/screen.png && magick /tmp/screen.png -crop 120x1600+0+0 /tmp/dock_crop.png
@@ -83,7 +109,7 @@ Inspect the resulting image using `view_file` to verify alignment, centering, an
 
 ---
 
-## 5. QML Coding Standards & Best Practices
+## 6. QML Coding Standards & Best Practices
 
 1. **Explicit Sizing & No Circular Anchors**:
    - Never combine `anchors.fill: parent` with an item whose parent's `implicitHeight` depends on its children.
