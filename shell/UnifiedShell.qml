@@ -83,7 +83,7 @@ PanelWindow {
         repeat: false
         onTriggered: {
             if (Quickshell.env("TEST_DASHBOARD") === "1") return;
-            if (!dropdownHover.hovered && !topEdgeHover.hovered) {
+            if (!dropdownHover.hovered && !topEdgeHover.hovered && !clockHover.hovered) {
                 Config.dashboardVisible = false;
             }
         }
@@ -555,7 +555,7 @@ PanelWindow {
                     if (Config.dashboardShowOnHover) {
                         Config.dashboardVisible = true;
                     }
-                } else if (Config.dashboardVisible && !dropdownHover.hovered) {
+                } else if (Config.dashboardVisible && !dropdownHover.hovered && !clockHover.hovered) {
                     closeTimer.restart();
                 }
             }
@@ -593,7 +593,7 @@ PanelWindow {
             onHoveredChanged: {
                 if (hovered) {
                     closeTimer.stop();
-                } else if (Config.dashboardVisible && !topEdgeHover.hovered) {
+                } else if (Config.dashboardVisible && !topEdgeHover.hovered && !clockHover.hovered) {
                     closeTimer.restart();
                 }
             }
@@ -1809,42 +1809,101 @@ PanelWindow {
                 }
             }
 
-            // Stacked Clock (Hours over Minutes)
-            Column {
+            // Stacked Clock (Hours over Minutes) with hover drawer opening & full time tooltip
+            Item {
+                id: dockClockArea
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 1
+                width: root.iconS
+                height: clockCol.implicitHeight
 
-                Timer {
-                    id: clockTimer
-                    interval: 1000
-                    running: true
-                    repeat: true
-                    triggeredOnStart: true
-                    onTriggered: {
-                        const now = new Date();
-                        hourText.text = Qt.formatDateTime(now, "HH");
-                        minuteText.text = Qt.formatDateTime(now, "mm");
+                Column {
+                    id: clockCol
+                    anchors.centerIn: parent
+                    spacing: 1
+
+                    Timer {
+                        id: clockTimer
+                        interval: 1000
+                        running: true
+                        repeat: true
+                        triggeredOnStart: true
+                        onTriggered: {
+                            const now = new Date();
+                            hourText.text = Qt.formatDateTime(now, "HH");
+                            minuteText.text = Qt.formatDateTime(now, "mm");
+                        }
+                    }
+
+                    Text {
+                        id: hourText
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "12"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
+                        font.weight: Font.DemiBold
+                        color: clockHover.hovered ? Colors.primary : Colors.textOnSurface
+                        Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+                    }
+
+                    Text {
+                        id: minuteText
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "00"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
+                        font.weight: Font.DemiBold
+                        color: clockHover.hovered ? Colors.primary : Colors.textOnSurface
+                        Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
                     }
                 }
 
-                Text {
-                    id: hourText
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "12"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
-                    font.weight: Font.DemiBold
-                    color: Colors.textOnSurface
+                HoverHandler {
+                    id: clockHover
+                    cursorShape: Qt.PointingHandCursor
+                    onHoveredChanged: {
+                        if (hovered) {
+                            closeTimer.stop();
+                            Config.activeDashboardTab = "dashboard";
+                            Config.dashboardVisible = true;
+                        } else if (Config.dashboardVisible && !dropdownHover.hovered && !topEdgeHover.hovered) {
+                            closeTimer.restart();
+                        }
+                    }
                 }
 
-                Text {
-                    id: minuteText
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "00"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(13, Math.round(root.iconS * 0.44))
-                    font.weight: Font.DemiBold
-                    color: Colors.textOnSurface
+                TapHandler {
+                    onTapped: {
+                        if (Config.dashboardVisible && Config.activeDashboardTab === "dashboard") {
+                            Config.dashboardVisible = false;
+                        } else {
+                            Config.activeDashboardTab = "dashboard";
+                            Config.dashboardVisible = true;
+                        }
+                    }
+                }
+
+                // Tooltip showing full date and time
+                Rectangle {
+                    z: 100
+                    visible: clockHover.hovered
+                    anchors.left: parent.right
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: clockTipText.implicitWidth + 16
+                    implicitHeight: clockTipText.implicitHeight + 10
+                    radius: 8
+                    color: Colors.surfaceContainerHighest
+                    border.color: Theme.borderSubtle
+                    border.width: 1
+
+                    Text {
+                        id: clockTipText
+                        anchors.centerIn: parent
+                        text: Qt.formatDateTime(new Date(), "dddd, MMMM d, yyyy")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Colors.textOnSurface
+                    }
                 }
             }
 

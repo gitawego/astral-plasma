@@ -10,6 +10,15 @@ Item {
     implicitWidth: 940
     implicitHeight: 360
 
+    property var currentDate: new Date()
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.currentDate = new Date()
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: Theme.spaceMedium
@@ -141,7 +150,7 @@ Item {
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: Qt.formatDateTime(new Date(), "HH")
+                            text: Qt.formatDateTime(root.currentDate, "HH")
                             font.family: Theme.fontFamily
                             font.pixelSize: 26
                             font.weight: Font.DemiBold
@@ -155,7 +164,7 @@ Item {
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: Qt.formatDateTime(new Date(), "mm")
+                            text: Qt.formatDateTime(root.currentDate, "mm")
                             font.family: Theme.fontFamily
                             font.pixelSize: 26
                             font.weight: Font.DemiBold
@@ -164,7 +173,7 @@ Item {
                         Item { width: 1; height: 6 }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: Qt.formatDateTime(new Date(), "ddd, d")
+                            text: Qt.formatDateTime(root.currentDate, "ddd, d MMM")
                             font.family: Theme.fontFamily
                             font.pixelSize: 12
                             font.weight: Font.Medium
