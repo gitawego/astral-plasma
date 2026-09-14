@@ -104,7 +104,7 @@ Singleton {
 
     Timer {
         id: queryTimer
-        interval: 1500
+        interval: 750
         running: true
         repeat: true
         triggeredOnStart: true

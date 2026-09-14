@@ -11,6 +11,8 @@ Item {
 
     implicitWidth: size
     implicitHeight: size
+    width: size
+    height: size
 
     // Map common material names to clean symbols/unicode or Nerd Font glyphs
     readonly property var symbolMap: ({
@@ -96,7 +98,10 @@ Item {
         "keyboard": "󰌌",
         "system_update": "󰚰",
         "cast": "󱒃",
-        "desktop": "󰍹"
+        "desktop": "󰍹",
+        "translate": "󰗊",
+        "fcitx": "󰌌",
+        "rime": "󰗊"
     })
 
     readonly property string displaySymbol: {
@@ -127,7 +132,7 @@ Item {
         text: root.displaySymbol
         color: root.color
         font.pixelSize: root.size
-        font.family: "JetBrainsMono Nerd Font Propo, JetBrainsMonoNF Propo, MesloLGS Nerd Font Propo, JetBrainsMono Nerd Font, sans-serif"
+        font.family: "JetBrainsMono Nerd Font Propo"
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
     }

@@ -195,38 +195,80 @@ def main():
             parts = line.split('/', 1)
             svc = parts[0]
             path = '/' + parts[1]
+            item_id = ""
+            item_icon = ""
+            item_title = ""
             try:
                 item_id = subprocess.check_output(['qdbus6', svc, path, 'org.kde.StatusNotifierItem.Id'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
-                item_icon = subprocess.check_output(['qdbus6', svc, path, 'org.kde.StatusNotifierItem.IconName'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
-                item_title = subprocess.check_output(['qdbus6', svc, path, 'org.kde.StatusNotifierItem.Title'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
-                m_icon = 'circle'
-                id_lower = (item_id + ' ' + item_title + ' ' + item_icon).lower()
-                if 'keyboard' in id_lower or 'fcitx' in id_lower or 'input' in id_lower:
-                    m_icon = 'keyboard'
-                elif 'update' in id_lower or 'cachy' in id_lower:
-                    m_icon = 'system_update'
-                elif 'sunshine' in id_lower or 'stream' in id_lower:
-                    m_icon = 'cast'
-                elif 'token' in id_lower:
-                    m_icon = 'toll'
-                elif 'dropbox' in id_lower or 'cloud' in id_lower:
-                    m_icon = 'cloud'
-                elif 'bluetooth' in id_lower:
-                    m_icon = 'bluetooth'
-                elif 'volume' in id_lower or 'audio' in id_lower:
-                    m_icon = 'volume_up'
-                elif 'wifi' in id_lower or 'network' in id_lower:
-                    m_icon = 'wifi'
-                tray.append({
-                    'service': svc,
-                    'path': path,
-                    'id': item_id,
-                    'title': item_title,
-                    'materialIcon': m_icon,
-                    'rawIcon': item_icon
-                })
             except Exception:
                 pass
+            try:
+                item_icon = subprocess.check_output(['qdbus6', svc, path, 'org.kde.StatusNotifierItem.IconName'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+            except Exception:
+                pass
+            try:
+                item_title = subprocess.check_output(['qdbus6', svc, path, 'org.kde.StatusNotifierItem.Title'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+            except Exception:
+                pass
+
+            if not item_id and not item_title:
+                continue
+            if item_id.isdigit() and not item_icon and not item_title:
+                continue
+
+            m_icon = 'circle'
+            id_lower = (item_id + ' ' + item_title + ' ' + item_icon).lower()
+            im_badge = ''
+
+            if 'keyboard' in id_lower or 'fcitx' in id_lower or 'input' in id_lower:
+                m_icon = 'keyboard'
+                try:
+                    cur_im = subprocess.check_output(['fcitx5-remote', '-n'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+                    if cur_im:
+                        if 'rime' in cur_im.lower():
+                            item_icon = 'fcitx-rime'
+                            m_icon = 'rime'
+                            im_badge = '中'
+                            item_title = 'Input Method: Rime (中)'
+                        elif 'pinyin' in cur_im.lower():
+                            item_icon = 'fcitx-pinyin'
+                            m_icon = 'translate'
+                            im_badge = '拼'
+                            item_title = 'Input Method: Pinyin (拼)'
+                        elif 'us' in cur_im.lower() or 'keyboard' in cur_im.lower():
+                            item_icon = 'input-keyboard'
+                            m_icon = 'keyboard'
+                            im_badge = 'EN'
+                            item_title = 'Input Method: English (EN)'
+                        else:
+                            im_badge = cur_im[:2].upper()
+                            item_title = f'Input Method: {cur_im}'
+                except Exception:
+                    pass
+            elif 'update' in id_lower or 'cachy' in id_lower:
+                m_icon = 'system_update'
+            elif 'sunshine' in id_lower or 'stream' in id_lower:
+                m_icon = 'cast'
+            elif 'token' in id_lower:
+                m_icon = 'toll'
+            elif 'dropbox' in id_lower or 'cloud' in id_lower:
+                m_icon = 'cloud'
+            elif 'bluetooth' in id_lower:
+                m_icon = 'bluetooth'
+            elif 'volume' in id_lower or 'audio' in id_lower:
+                m_icon = 'volume_up'
+            elif 'wifi' in id_lower or 'network' in id_lower:
+                m_icon = 'wifi'
+
+            tray.append({
+                'service': svc,
+                'path': path,
+                'id': item_id,
+                'title': item_title,
+                'materialIcon': m_icon,
+                'rawIcon': item_icon,
+                'imBadge': im_badge
+            })
     except Exception:
         pass
 

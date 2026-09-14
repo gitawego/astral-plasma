@@ -37,6 +37,8 @@ Rectangle {
         Item {
             implicitWidth: root.btnSize
             implicitHeight: root.btnSize
+            width: root.btnSize
+            height: root.btnSize
 
             Rectangle {
                 anchors.fill: parent
@@ -73,6 +75,8 @@ Rectangle {
         Item {
             implicitWidth: root.btnSize
             implicitHeight: root.btnSize
+            width: root.btnSize
+            height: root.btnSize
 
             Rectangle {
                 anchors.fill: parent
@@ -109,6 +113,8 @@ Rectangle {
         Item {
             implicitWidth: root.btnSize
             implicitHeight: root.btnSize
+            width: root.btnSize
+            height: root.btnSize
 
             Rectangle {
                 anchors.fill: parent
@@ -151,6 +157,8 @@ Rectangle {
         Item {
             implicitWidth: root.btnSize
             implicitHeight: root.btnSize
+            width: root.btnSize
+            height: root.btnSize
 
             Rectangle {
                 anchors.fill: parent

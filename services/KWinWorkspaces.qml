@@ -39,12 +39,43 @@ Singleton {
         id: switchProc
     }
 
+    Process {
+        id: createAndSwitchProc
+        onRunningChanged: {
+            if (!running) root.refresh();
+        }
+    }
+
+    function refresh() {
+        if (!queryDesktops.running) queryDesktops.running = true;
+    }
+
     function switchTo(id) {
         switchProc.command = ["qdbus6", "org.kde.KWin", "/VirtualDesktopManager", "org.kde.KWin.VirtualDesktopManager.current", id];
         switchProc.running = true;
         root.currentId = id;
         for (let i = 0; i < root.desktops.length; i++) {
             root.desktops[i].active = (root.desktops[i].id === id);
+        }
+        root.desktopsChanged();
+    }
+
+    function switchToWorkspace(index) {
+        if (index < root.desktops.length && root.desktops[index] && root.desktops[index].id) {
+            switchTo(root.desktops[index].id);
+        } else {
+            const script = 
+                "import subprocess, re\n" +
+                "out = subprocess.check_output(['qdbus6', '--literal', 'org.kde.KWin', '/VirtualDesktopManager', 'org.kde.KWin.VirtualDesktopManager.desktops']).decode('utf-8')\n" +
+                "matches = re.findall(r'\\(uss\\)\\s*(\\d+),\\s*\"([^\"]+)\",\\s*\"([^\"]+)\"', out)\n" +
+                "for i in range(len(matches), " + (index + 1) + "):\n" +
+                "    subprocess.run(['qdbus6', 'org.kde.KWin', '/VirtualDesktopManager', 'org.kde.KWin.VirtualDesktopManager.createDesktop', str(i), f'Desktop {i+1}'])\n" +
+                "out = subprocess.check_output(['qdbus6', '--literal', 'org.kde.KWin', '/VirtualDesktopManager', 'org.kde.KWin.VirtualDesktopManager.desktops']).decode('utf-8')\n" +
+                "matches = re.findall(r'\\(uss\\)\\s*(\\d+),\\s*\"([^\"]+)\",\\s*\"([^\"]+)\"', out)\n" +
+                "if " + index + " < len(matches):\n" +
+                "    subprocess.run(['qdbus6', 'org.kde.KWin', '/VirtualDesktopManager', 'org.kde.KWin.VirtualDesktopManager.current', matches[" + index + "][1]])\n";
+            createAndSwitchProc.command = ["python3", "-c", script];
+            createAndSwitchProc.running = true;
         }
     }
 

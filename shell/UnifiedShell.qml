@@ -791,6 +791,8 @@ PanelWindow {
             // 1. App Launcher Button (^)
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
+                width: root.iconS + 10
+                height: root.iconS + 10
                 implicitWidth: root.iconS + 10
                 implicitHeight: root.iconS + 10
                 radius: Theme.radiusFull
@@ -814,9 +816,33 @@ PanelWindow {
                         Config.dashboardVisible = !Config.dashboardVisible;
                     }
                 }
+
+                // Launcher Tooltip
+                Rectangle {
+                    z: 100
+                    visible: launcherHover.containsMouse
+                    anchors.left: parent.right
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: launcherTipText.implicitWidth + 16
+                    implicitHeight: launcherTipText.implicitHeight + 10
+                    radius: 8
+                    color: Colors.surfaceContainerHighest
+                    border.color: Theme.borderSubtle
+                    border.width: 1
+
+                    Text {
+                        id: launcherTipText
+                        anchors.centerIn: parent
+                        text: "App Launcher & Dashboard"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Colors.textOnSurface
+                    }
+                }
             }
 
-            // 2. Workspaces Vertical Pill
+            // 2. Workspaces Vertical Pill (KDE Plasma Virtual Desktops)
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 implicitWidth: root.iconS + 16
@@ -832,13 +858,14 @@ PanelWindow {
 
                     Repeater {
                         model: [
-                            { index: 0, icon: "bedtime" },
-                            { index: 1, icon: "web_asset" },
-                            { index: 2, icon: "radio_button_unchecked" },
-                            { index: 3, icon: "circle" }
+                            { index: 0, icon: "bedtime", name: "Workspace 1" },
+                            { index: 1, icon: "web_asset", name: "Workspace 2" },
+                            { index: 2, icon: "radio_button_unchecked", name: "Workspace 3" },
+                            { index: 3, icon: "circle", name: "Workspace 4" }
                         ]
 
                         delegate: Rectangle {
+                            id: wsDelegate
                             required property var modelData
                             readonly property bool isActive: (KWinWorkspaces.desktops.length > modelData.index)
                                 ? KWinWorkspaces.desktops[modelData.index].active
@@ -846,6 +873,8 @@ PanelWindow {
 
                             readonly property int wsBtnSize: root.iconS + 10
 
+                            width: wsBtnSize
+                            height: wsBtnSize
                             implicitWidth: wsBtnSize
                             implicitHeight: wsBtnSize
                             radius: Theme.radiusFull
@@ -864,9 +893,33 @@ PanelWindow {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (KWinWorkspaces.desktops.length > modelData.index) {
-                                        KWinWorkspaces.switchTo(KWinWorkspaces.desktops[modelData.index].id);
-                                    }
+                                    KWinWorkspaces.switchToWorkspace(modelData.index);
+                                }
+                            }
+
+                            // Workspace Tooltip
+                            Rectangle {
+                                z: 100
+                                visible: wsHover.containsMouse
+                                anchors.left: parent.right
+                                anchors.leftMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                implicitWidth: wsTipText.implicitWidth + 16
+                                implicitHeight: wsTipText.implicitHeight + 10
+                                radius: 8
+                                color: Colors.surfaceContainerHighest
+                                border.color: Theme.borderSubtle
+                                border.width: 1
+
+                                Text {
+                                    id: wsTipText
+                                    anchors.centerIn: parent
+                                    text: (KWinWorkspaces.desktops.length > modelData.index && KWinWorkspaces.desktops[modelData.index].name)
+                                        ? KWinWorkspaces.desktops[modelData.index].name
+                                        : modelData.name
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 12
+                                    color: Colors.textOnSurface
                                 }
                             }
                         }
@@ -1029,7 +1082,7 @@ PanelWindow {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: mouse => {
                                     if (mouse.button === Qt.RightButton) {
-                                        const mapped = mapToItem(root, 0, 0);
+                                        const mapped = mapToItem(dockContent, 0, 0);
                                         appContextMenu.targetApp = modelData;
                                         appContextMenu.targetGlobalY = mapped.y;
                                         appContextMenu.visible = true;
@@ -1130,24 +1183,36 @@ PanelWindow {
                             radius: Math.max(6, Math.round(itemSize * 0.22))
                             color: trayHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
 
+                            // Text badge for Input Method (EN / 中 / 拼) for highest readability
+                            Text {
+                                id: imBadgeText
+                                anchors.centerIn: parent
+                                visible: isInputMethod && !!modelData.imBadge
+                                text: modelData.imBadge || ""
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Math.max(13, Math.round(root.iconS * 0.48))
+                                font.bold: true
+                                color: (modelData.imBadge === "中" || modelData.imBadge === "拼")
+                                    ? Colors.primary
+                                    : (trayHover.containsMouse ? Colors.primary : Colors.textOnSurface)
+                            }
+
                             Image {
                                 id: trayIconImg
                                 anchors.centerIn: parent
                                 width: root.iconS
                                 height: root.iconS
-                                source: (!isInputMethod && modelData.rawIcon) ? Quickshell.iconPath(modelData.rawIcon) : ""
+                                source: modelData.rawIcon ? Quickshell.iconPath(modelData.rawIcon) : ""
                                 fillMode: Image.PreserveAspectFit
-                                visible: !isInputMethod && status === Image.Ready
+                                visible: !imBadgeText.visible && status === Image.Ready
                             }
 
                             MaterialIcon {
                                 anchors.centerIn: parent
-                                text: modelData.materialIcon || (isInputMethod ? "keyboard" : "circle")
+                                text: modelData.materialIcon || "circle"
                                 size: Math.round(root.iconS * 0.82)
-                                color: isInputMethod
-                                    ? (trayHover.containsMouse ? Colors.primary : Colors.textOnSurface)
-                                    : (trayHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
-                                visible: isInputMethod || !trayIconImg.visible || trayIconImg.status !== Image.Ready
+                                color: trayHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant
+                                visible: !imBadgeText.visible && (!trayIconImg.visible || trayIconImg.status !== Image.Ready)
                             }
 
                             MouseArea {
