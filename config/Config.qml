@@ -96,40 +96,65 @@ Singleton {
     // Pinned apps management
     readonly property var pinnedApps: (root.settings.dock && root.settings.dock.pinnedApps) ? root.settings.dock.pinnedApps : []
 
-    function isPinned(appId) {
-        if (!appId) return false;
+    function isPinned(appId, desktopFile, appName) {
+        if (!appId && !desktopFile && !appName) return false;
         const list = root.pinnedApps;
-        return list.some(item => item.appId === appId || item.desktopFile === appId);
+        const idLow = (appId || "").toLowerCase();
+        const deskLow = (desktopFile || "").toLowerCase();
+        const nameLow = (appName || "").toLowerCase();
+
+        return list.some(item => {
+            const pId = (item.appId || "").toLowerCase();
+            const pDesk = (item.desktopFile || "").toLowerCase();
+            const pName = (item.appName || "").toLowerCase();
+            if (idLow && (pId === idLow || pDesk === idLow)) return true;
+            if (deskLow && (pDesk === deskLow || pId === deskLow)) return true;
+            if (nameLow && pName === nameLow) return true;
+            return false;
+        });
     }
 
     function pinApp(appObj) {
-        if (!appObj || !appObj.appId) return;
-        if (isPinned(appObj.appId)) return;
+        if (!appObj) return;
+        const appId = appObj.appId || appObj.desktopFile || appObj.appName;
+        if (!appId) return;
+        if (isPinned(appObj.appId, appObj.desktopFile, appObj.appName)) return;
 
         let newSettings = JSON.parse(JSON.stringify(root.settings));
         if (!newSettings.dock) newSettings.dock = {};
         if (!Array.isArray(newSettings.dock.pinnedApps)) newSettings.dock.pinnedApps = [];
 
         newSettings.dock.pinnedApps.push({
-            appId: appObj.appId,
+            appId: appObj.appId || appId,
             appName: appObj.appName || "App",
             iconName: appObj.iconName || "",
             materialIcon: appObj.materialIcon || "apps",
-            desktopFile: appObj.desktopFile || appObj.appId
+            desktopFile: appObj.desktopFile || appObj.appId || appId
         });
 
         root.settings = newSettings;
         root.saveSettings();
     }
 
-    function unpinApp(appId) {
-        if (!appId) return;
+    function unpinApp(appId, desktopFile, appName) {
+        if (!appId && !desktopFile && !appName) return;
         let newSettings = JSON.parse(JSON.stringify(root.settings));
         if (!newSettings.dock || !Array.isArray(newSettings.dock.pinnedApps)) return;
 
-        newSettings.dock.pinnedApps = newSettings.dock.pinnedApps.filter(
-            item => item.appId !== appId && item.desktopFile !== appId
-        );
+        const idLow = (appId || "").toLowerCase();
+        const deskLow = (desktopFile || "").toLowerCase();
+        const nameLow = (appName || "").toLowerCase();
+
+        newSettings.dock.pinnedApps = newSettings.dock.pinnedApps.filter(item => {
+            const pId = (item.appId || "").toLowerCase();
+            const pDesk = (item.desktopFile || "").toLowerCase();
+            const pName = (item.appName || "").toLowerCase();
+
+            if (idLow && (pId === idLow || pDesk === idLow)) return false;
+            if (deskLow && (pDesk === deskLow || pId === deskLow)) return false;
+            if (nameLow && pName === nameLow) return false;
+            return true;
+        });
 
         root.settings = newSettings;
         root.saveSettings();

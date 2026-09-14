@@ -101,7 +101,11 @@ Item {
         "desktop": "󰍹",
         "translate": "󰗊",
         "fcitx": "󰌌",
-        "rime": "󰗊"
+        "rime": "󰗊",
+        "push_pin": "󰤩",
+        "pin": "󰤩",
+        "keep_off": "󰤪",
+        "unpin": "󰤪"
     })
 
     readonly property string displaySymbol: {

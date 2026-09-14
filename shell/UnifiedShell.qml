@@ -132,6 +132,14 @@ PanelWindow {
             width: Config.bottomPopoutVisible ? (fusedPopout.popWidth + root.filletR) : 0
             height: Config.bottomPopoutVisible ? (fusedPopout.implicitHeight + root.filletR + root.borderT) : 0
         }
+
+        // Taskbar App Context Menu & Dismiss Area (when open)
+        Region {
+            x: 0
+            y: 0
+            width: appContextMenu.visible ? root.width : 0
+            height: appContextMenu.visible ? root.height : 0
+        }
     }
 
     // ==========================================
@@ -558,19 +566,21 @@ PanelWindow {
             // Pin / Unpin Action
             Rectangle {
                 width: parent.width
-                height: 30
+                height: 32
                 radius: 6
-                color: pinHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
+                color: pinHover.containsMouse ? Colors.surfaceContainerHighest : "transparent"
 
                 Row {
                     anchors.fill: parent
-                    anchors.leftMargin: 8
-                    spacing: 8
+                    anchors.leftMargin: 10
+                    spacing: 10
 
                     MaterialIcon {
                         text: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? "keep_off" : "push_pin"
                         size: 16
-                        color: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? Colors.accentPrimary : Colors.textOnSurfaceVariant
+                        color: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) 
+                            ? Colors.primary 
+                            : (pinHover.containsMouse ? Colors.primary : Colors.textOnSurfaceVariant)
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
@@ -578,7 +588,8 @@ PanelWindow {
                         text: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? "Unpin from dock" : "Pin to dock"
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
-                        color: Colors.textOnSurface
+                        font.weight: pinHover.containsMouse ? Font.Medium : Font.Normal
+                        color: pinHover.containsMouse ? Colors.primary : Colors.textOnSurface
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -591,7 +602,7 @@ PanelWindow {
                     onClicked: {
                         if (!appContextMenu.targetApp) return;
                         if (appContextMenu.targetApp.isPinned) {
-                            Config.unpinApp(appContextMenu.targetApp.appId);
+                            Config.unpinApp(appContextMenu.targetApp.appId, appContextMenu.targetApp.desktopFile, appContextMenu.targetApp.appName);
                         } else {
                             Config.pinApp(appContextMenu.targetApp);
                         }
@@ -603,15 +614,15 @@ PanelWindow {
             // Close Window Action (if running)
             Rectangle {
                 width: parent.width
-                height: 30
+                height: 32
                 radius: 6
                 visible: appContextMenu.targetApp && appContextMenu.targetApp.isRunning
-                color: closeHover.containsMouse ? "#FCE8E6" : "transparent"
+                color: closeHover.containsMouse ? Qt.rgba(0.85, 0.2, 0.15, 0.12) : "transparent"
 
                 Row {
                     anchors.fill: parent
-                    anchors.leftMargin: 8
-                    spacing: 8
+                    anchors.leftMargin: 10
+                    spacing: 10
 
                     MaterialIcon {
                         text: "close"
@@ -624,6 +635,7 @@ PanelWindow {
                         text: "Close window"
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
+                        font.weight: closeHover.containsMouse ? Font.Medium : Font.Normal
                         color: closeHover.containsMouse ? "#D93025" : Colors.textOnSurface
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -646,28 +658,29 @@ PanelWindow {
             // Launch Action (if pinned and not running)
             Rectangle {
                 width: parent.width
-                height: 30
+                height: 32
                 radius: 6
                 visible: appContextMenu.targetApp && !appContextMenu.targetApp.isRunning
-                color: launchHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
+                color: launchHover.containsMouse ? Colors.surfaceContainerHighest : "transparent"
 
                 Row {
                     anchors.fill: parent
-                    anchors.leftMargin: 8
-                    spacing: 8
+                    anchors.leftMargin: 10
+                    spacing: 10
 
                     MaterialIcon {
                         text: "play_arrow"
                         size: 16
-                        color: Colors.primary
+                        color: launchHover.containsMouse ? Colors.primary : Colors.textOnSurfaceVariant
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
                     Text {
-                        text: "Launch"
+                        text: "Launch application"
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
-                        color: Colors.textOnSurface
+                        font.weight: launchHover.containsMouse ? Font.Medium : Font.Normal
+                        color: launchHover.containsMouse ? Colors.primary : Colors.textOnSurface
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
