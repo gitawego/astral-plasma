@@ -17,6 +17,7 @@ import qs.dock.popouts
 import qs.dashboard.tabs
 import "../menus"
 import "../notifications"
+import "../components"
 
 PanelWindow {
     id: root
@@ -1055,25 +1056,33 @@ PanelWindow {
             id: topSection
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 8
+            spacing: 10
 
-            // 1. App Launcher Button (^)
-            Rectangle {
+            // 1. App Launcher Button (Arch Linux Logo matching reference)
+            Item {
+                id: launcherBtn
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: root.iconS + 10
-                height: root.iconS + 10
-                implicitWidth: root.iconS + 10
-                implicitHeight: root.iconS + 10
-                radius: Theme.radiusFull
-                color: launcherHover.containsMouse ? Colors.surfaceContainerHigh : Colors.surfaceContainer
-                border.color: Theme.borderSubtle
-                border.width: 1
+                width: root.iconS
+                height: root.iconS
+                implicitWidth: root.iconS
+                implicitHeight: root.iconS
 
-                MaterialIcon {
+                Text {
+                    id: launcherIcon
                     anchors.centerIn: parent
-                    text: "expand_less"
-                    size: Math.round(root.iconS * 0.82)
-                    color: Colors.primary
+                    text: "\uf303" // Arch Linux logo glyph
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Math.round(root.iconS * 0.72)
+                    color: launcherHover.containsMouse ? Colors.primary : Colors.primary
+                    opacity: launcherHover.containsMouse ? 1.0 : 0.85
+                    scale: launcherHover.pressed ? 0.9 : (launcherHover.containsMouse ? 1.12 : 1.0)
+
+                    Behavior on scale {
+                        NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutQuad }
+                    }
+                    Behavior on opacity {
+                        NumberAnimation { duration: Theme.animDurationFast }
+                    }
                 }
 
                 MouseArea {
@@ -1111,14 +1120,14 @@ PanelWindow {
                 }
             }
 
-            // 2. Workspaces Vertical Pill (KDE Plasma Virtual Desktops) with Liquid Active Trail
+            // 2. Workspaces Vertical Pill with 4 Gray Dots and Active Pacman Icon
             Rectangle {
                 id: wsContainer
                 anchors.horizontalCenter: parent.horizontalCenter
-                readonly property int wsBtnSize: root.iconS + 10
-                readonly property int wsSpacing: 4
-                readonly property int wsPad: 4
-                implicitWidth: root.iconS + 16
+                readonly property int wsBtnSize: 24
+                readonly property int wsSpacing: 8
+                readonly property int wsPad: 6
+                implicitWidth: 30
                 implicitHeight: (wsBtnSize + wsSpacing) * 4 - wsSpacing + wsPad * 2
                 radius: Theme.radiusFull
                 color: Colors.surfaceContainer
@@ -1155,7 +1164,7 @@ PanelWindow {
                 onActiveWsIndexChanged: updateLiquidTrail()
                 Component.onCompleted: updateLiquidTrail()
 
-                // Liquid Pill Graphic
+                // Liquid Pill Graphic (Warm Primary / Terracotta capsule)
                 Rectangle {
                     id: wsLiquidIndicator
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -1163,8 +1172,8 @@ PanelWindow {
                     width: wsContainer.wsBtnSize
                     height: Math.max(wsContainer.wsBtnSize, wsContainer.endY - wsContainer.startY)
                     radius: Theme.radiusFull
-                    color: Colors.primaryContainer
-                    border.color: Qt.alpha(Colors.primary, 0.4)
+                    color: Colors.primary
+                    border.color: Qt.alpha(Colors.textOnPrimary, 0.15)
                     border.width: 1
                     z: 0
 
@@ -1192,13 +1201,13 @@ PanelWindow {
 
                     Repeater {
                         model: [
-                            { index: 0, icon: "bedtime", name: "Workspace 1" },
-                            { index: 1, icon: "web_asset", name: "Workspace 2" },
-                            { index: 2, icon: "radio_button_unchecked", name: "Workspace 3" },
-                            { index: 3, icon: "circle", name: "Workspace 4" }
+                            { index: 0, name: "Desktop 1" },
+                            { index: 1, name: "Desktop 2" },
+                            { index: 2, name: "Desktop 3" },
+                            { index: 3, name: "Desktop 4" }
                         ]
 
-                        delegate: Rectangle {
+                        delegate: Item {
                             id: wsDelegate
                             required property var modelData
                             readonly property bool isActive: wsContainer.activeWsIndex === modelData.index
@@ -1208,16 +1217,43 @@ PanelWindow {
                             height: itemSize
                             implicitWidth: itemSize
                             implicitHeight: itemSize
-                            radius: Theme.radiusFull
-                            color: wsHover.containsMouse ? (isActive ? "transparent" : Colors.surfaceContainerHigh) : "transparent"
 
-                            MaterialIcon {
+                            // Inactive State: Gray Dot Icon
+                            Rectangle {
                                 anchors.centerIn: parent
-                                text: modelData.icon
-                                size: (modelData.icon === "circle") ? Math.round(root.iconS * 0.45) : Math.round(root.iconS * 0.72)
-                                color: isActive ? Colors.primary : (wsHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                                width: 6
+                                height: 6
+                                radius: 3
+                                visible: !wsDelegate.isActive
+                                color: wsHover.containsMouse ? Colors.primary : Colors.outline
+                                scale: wsHover.containsMouse ? 1.3 : 1.0
+
                                 Behavior on color {
-                                    ColorAnimation { duration: Theme.animExpressiveFastEffects }
+                                    ColorAnimation { duration: Theme.animDurationFast }
+                                }
+                                Behavior on scale {
+                                    NumberAnimation { duration: Theme.animDurationFast }
+                                }
+                            }
+
+                            // Active State: Pacman SVG Icon from Lucida/Lucide
+                            PacmanIcon {
+                                anchors.centerIn: parent
+                                visible: wsDelegate.isActive
+                                size: 16
+                                color: Colors.textOnPrimary
+                                scale: wsDelegate.isActive ? 1.0 : 0.4
+                                opacity: wsDelegate.isActive ? 1.0 : 0.0
+
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: Theme.animDurationNormal
+                                        easing.type: Easing.BezierSpline
+                                        easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                                    }
+                                }
+                                Behavior on opacity {
+                                    NumberAnimation { duration: Theme.animDurationFast }
                                 }
                             }
 

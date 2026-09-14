@@ -251,7 +251,7 @@ Item {
                                             font.family: Theme.fontFamily
                                             font.pixelSize: 11
                                             font.weight: isToday ? Font.Bold : Font.Normal
-                                            color: isToday ? Colors.onPrimary : (isCurrMonth ? Colors.onSurface : Qt.alpha(Colors.onSurfaceVariant, 0.35))
+                                            color: isToday ? Colors.textOnPrimary : (isCurrMonth ? Colors.textOnSurface : Qt.alpha(Colors.textOnSurfaceVariant, 0.35))
                                         }
                                     }
                                 }
