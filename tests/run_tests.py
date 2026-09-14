@@ -43,6 +43,20 @@ def main():
             print(f"  ✗ {test_name} ERROR: {e}")
             all_passed = False
 
+    # Also run python test suites
+    py_test_files = sorted(glob.glob(os.path.join(test_dir, "test_*.py")))
+    for py_test in py_test_files:
+        test_name = os.path.basename(py_test)
+        print(f"\n[TEST] {test_name} ...", flush=True)
+        res = subprocess.run([sys.executable, py_test], capture_output=True, text=True)
+        if res.returncode == 0:
+            print(f"  ✓ {test_name} PASSED")
+        else:
+            print(f"  ✗ {test_name} FAILED (exit {res.returncode})")
+            if res.stdout: print("  STDOUT:\n   ", res.stdout)
+            if res.stderr: print("  STDERR:\n   ", res.stderr)
+            all_passed = False
+
     print("\n" + "="*45)
     if all_passed:
         print("ALL TESTS PASSED! No regressions detected.")
