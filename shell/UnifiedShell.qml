@@ -582,7 +582,7 @@ PanelWindow {
                 MaterialIcon {
                     text: WindowService.activeMaterialIcon || "desktop_windows"
                     size: 16
-                    color: Colors.onSurfaceVariant
+                    color: Colors.textOnSurfaceVariant
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !activeIconImg.visible || activeIconImg.status !== Image.Ready
                 }
@@ -592,7 +592,7 @@ PanelWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: 13
                     font.weight: Font.Medium
-                    color: Colors.onSurfaceVariant
+                    color: Colors.textOnSurfaceVariant
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -818,7 +818,7 @@ PanelWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
-                    color: Colors.onSurface
+                    color: Colors.textOnSurface
                 }
 
                 Text {
@@ -828,7 +828,7 @@ PanelWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
-                    color: Colors.onSurface
+                    color: Colors.textOnSurface
                 }
             }
 

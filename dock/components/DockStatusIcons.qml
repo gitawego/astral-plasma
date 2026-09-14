@@ -39,7 +39,7 @@ Rectangle {
                 anchors.fill: parent
                 radius: Theme.radiusFull
                 color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "network") 
-                    ? Colors.primaryContainer 
+                    ? Colors.primary 
                     : (netHover.hovered ? Colors.surfaceContainerHigh : "transparent")
 
                 MaterialIcon {
@@ -47,8 +47,8 @@ Rectangle {
                     text: NetworkService.getIcon()
                     size: 18
                     color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "network") 
-                        ? Colors.primary 
-                        : Colors.onSurfaceVariant
+                        ? Colors.textOnPrimary 
+                        : Colors.textOnSurfaceVariant
                 }
 
                 HoverHandler {
@@ -75,7 +75,7 @@ Rectangle {
                 anchors.fill: parent
                 radius: Theme.radiusFull
                 color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "bluetooth") 
-                    ? Colors.primaryContainer 
+                    ? Colors.primary 
                     : (btHover.hovered ? Colors.surfaceContainerHigh : "transparent")
 
                 MaterialIcon {
@@ -83,8 +83,8 @@ Rectangle {
                     text: BluetoothService.getIcon()
                     size: 18
                     color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "bluetooth") 
-                        ? Colors.primary 
-                        : Colors.onSurfaceVariant
+                        ? Colors.textOnPrimary 
+                        : Colors.textOnSurfaceVariant
                 }
 
                 HoverHandler {
@@ -111,7 +111,7 @@ Rectangle {
                 anchors.fill: parent
                 radius: Theme.radiusFull
                 color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "default") 
-                    ? Colors.primaryContainer 
+                    ? Colors.primary 
                     : (profileHover.hovered ? Colors.surfaceContainerHigh : "transparent")
 
                 MaterialIcon {
@@ -125,8 +125,8 @@ Rectangle {
                     }
                     size: 18
                     color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "default") 
-                        ? Colors.primary 
-                        : Colors.onSurfaceVariant
+                        ? Colors.textOnPrimary 
+                        : Colors.textOnSurfaceVariant
                 }
 
                 HoverHandler {
@@ -153,7 +153,7 @@ Rectangle {
                 anchors.fill: parent
                 radius: Theme.radiusFull
                 color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "power") 
-                    ? Colors.primaryContainer 
+                    ? "#C8372D" 
                     : (pwrHover.hovered ? Colors.surfaceContainerHigh : "transparent")
 
                 MaterialIcon {
@@ -161,7 +161,7 @@ Rectangle {
                     text: "power_settings_new"
                     size: 18
                     color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "power") 
-                        ? Colors.primary 
+                        ? "#FFFFFF" 
                         : "#C8372D"
                 }
 

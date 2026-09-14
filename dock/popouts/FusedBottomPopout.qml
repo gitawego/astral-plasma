@@ -96,15 +96,15 @@ Item {
                         text: PowerService.batteryString
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMedium
-                        font.weight: Font.Medium
-                        color: Colors.onSurface
+                        font.weight: Font.DemiBold
+                        color: Colors.textOnSurface
                     }
 
                     Text {
                         text: "Power profile: " + PowerService.currentProfile.charAt(0).toUpperCase() + PowerService.currentProfile.slice(1)
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSmall
-                        color: Colors.onSurfaceVariant
+                        color: Colors.textOnSurfaceVariant
                     }
                 }
 
@@ -143,7 +143,7 @@ Item {
                                     anchors.centerIn: parent
                                     text: modelData.icon
                                     size: 16
-                                    color: isCurrent ? Colors.onPrimary : Colors.onSurfaceVariant
+                                    color: isCurrent ? Colors.textOnPrimary : Colors.textOnSurfaceVariant
                                 }
 
                                 MouseArea {
@@ -205,7 +205,7 @@ Item {
                     delegate: ActionItem {
                         required property var modelData
                         icon: "headphones"
-                        iconColor: modelData.connected ? "#388E3C" : Colors.onSurfaceVariant
+                        iconColor: modelData.connected ? "#388E3C" : Colors.textOnSurfaceVariant
                         label: (modelData.name || modelData.address || "Audio Device")
                         onClicked: {
                             if (modelData.connected) modelData.disconnect();
@@ -313,7 +313,7 @@ Item {
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMedium
                         font.weight: Font.Bold
-                        color: Colors.onSurface
+                        color: Colors.textOnSurface
                     }
 
                     Rectangle {
@@ -326,7 +326,7 @@ Item {
                             anchors.centerIn: parent
                             text: PipewireAudio.muted ? "volume_off" : "volume_up"
                             size: 14
-                            color: PipewireAudio.muted ? Colors.onPrimary : Colors.onSurface
+                            color: PipewireAudio.muted ? Colors.textOnPrimary : Colors.textOnSurface
                         }
 
                         MouseArea {
@@ -421,7 +421,7 @@ Item {
     component ActionItem: Rectangle {
         id: actionRoot
         property string icon: ""
-        property color iconColor: Colors.onSurface
+        property color iconColor: Colors.textOnSurface
         property string label: ""
         property string detail: ""
         signal clicked()
@@ -449,7 +449,7 @@ Item {
                 text: actionRoot.label
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
-                color: Colors.onSurface
+                color: Colors.textOnSurface
                 elide: Text.ElideRight
             }
 
@@ -458,7 +458,7 @@ Item {
                 text: actionRoot.detail
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontLabelSmall
-                color: Colors.onSurfaceVariant
+                color: Colors.textOnSurfaceVariant
             }
         }
 
