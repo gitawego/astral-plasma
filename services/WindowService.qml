@@ -27,6 +27,20 @@ Singleton {
         refreshTimer.restart();
     }
 
+    function closeWindow(winId) {
+        if (!winId) return;
+        activateProc.command = [root.serviceDir + "/close_window.py", winId];
+        activateProc.running = true;
+        refreshTimer.restart();
+    }
+
+    function launchApp(target) {
+        if (!target) return;
+        activateProc.command = [root.serviceDir + "/launch_app.py", target];
+        activateProc.running = true;
+        refreshTimer.restart();
+    }
+
     function activateTray(service, path) {
         if (!service || !path) return;
         activateProc.command = ["qdbus6", service, path, "org.kde.StatusNotifierItem.Activate", "0", "0"];

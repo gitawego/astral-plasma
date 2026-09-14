@@ -455,7 +455,240 @@ PanelWindow {
     }
 
     // ==========================================
-    // 4. LEFT DOCK CONTENT
+    // 4. TASKBAR APP CONTEXT MENU
+    // ==========================================
+    MouseArea {
+        id: menuDismissArea
+        anchors.fill: parent
+        z: 9998
+        visible: appContextMenu.visible
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: appContextMenu.visible = false
+    }
+
+    Rectangle {
+        id: appContextMenu
+        visible: false
+        z: 9999
+
+        property var targetApp: null
+        property real targetGlobalY: 0
+
+        x: root.dockW + 10
+        y: Math.max(12, Math.min(root.height - height - 12, targetGlobalY - 10))
+        width: 175
+        height: menuCol.implicitHeight + 16
+        radius: 12
+        color: Colors.surfaceContainerLowest
+        border.color: Colors.outlineVariant
+        border.width: 1
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -1
+            radius: 13
+            color: "transparent"
+            border.color: Qt.alpha(Colors.primary, 0.15)
+            border.width: 1
+            z: -1
+        }
+
+        Column {
+            id: menuCol
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 8
+            spacing: 4
+
+            // Header: App icon + App Name
+            Row {
+                spacing: 8
+                width: parent.width
+                leftPadding: 4
+                rightPadding: 4
+                bottomPadding: 4
+
+                Image {
+                    width: 18
+                    height: 18
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: {
+                        if (!appContextMenu.targetApp || !appContextMenu.targetApp.iconName) return "";
+                        if (appContextMenu.targetApp.iconName.indexOf("/") !== -1) {
+                            return appContextMenu.targetApp.iconName.startsWith("file://") ? appContextMenu.targetApp.iconName : ("file://" + appContextMenu.targetApp.iconName);
+                        }
+                        return Quickshell.iconPath(appContextMenu.targetApp.iconName);
+                    }
+                    fillMode: Image.PreserveAspectFit
+                    visible: status === Image.Ready
+                }
+
+                MaterialIcon {
+                    width: 18
+                    height: 18
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: appContextMenu.targetApp ? (appContextMenu.targetApp.materialIcon || "apps") : "apps"
+                    size: 16
+                    color: Colors.primary
+                    visible: !parent.children[0].visible
+                }
+
+                Text {
+                    text: appContextMenu.targetApp ? appContextMenu.targetApp.appName : ""
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    color: Colors.textOnSurface
+                    elide: Text.ElideRight
+                    width: parent.width - 32
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            // Divider
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Colors.outlineVariant
+                opacity: 0.6
+            }
+
+            // Pin / Unpin Action
+            Rectangle {
+                width: parent.width
+                height: 30
+                radius: 6
+                color: pinHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    spacing: 8
+
+                    MaterialIcon {
+                        text: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? "keep_off" : "push_pin"
+                        size: 16
+                        color: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? Colors.accentPrimary : Colors.textOnSurfaceVariant
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: (appContextMenu.targetApp && appContextMenu.targetApp.isPinned) ? "Unpin from dock" : "Pin to dock"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Colors.textOnSurface
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    id: pinHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (!appContextMenu.targetApp) return;
+                        if (appContextMenu.targetApp.isPinned) {
+                            Config.unpinApp(appContextMenu.targetApp.appId);
+                        } else {
+                            Config.pinApp(appContextMenu.targetApp);
+                        }
+                        appContextMenu.visible = false;
+                    }
+                }
+            }
+
+            // Close Window Action (if running)
+            Rectangle {
+                width: parent.width
+                height: 30
+                radius: 6
+                visible: appContextMenu.targetApp && appContextMenu.targetApp.isRunning
+                color: closeHover.containsMouse ? "#FCE8E6" : "transparent"
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    spacing: 8
+
+                    MaterialIcon {
+                        text: "close"
+                        size: 16
+                        color: closeHover.containsMouse ? "#D93025" : Colors.textOnSurfaceVariant
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: "Close window"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: closeHover.containsMouse ? "#D93025" : Colors.textOnSurface
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    id: closeHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (appContextMenu.targetApp && appContextMenu.targetApp.id) {
+                            WindowService.closeWindow(appContextMenu.targetApp.id);
+                        }
+                        appContextMenu.visible = false;
+                    }
+                }
+            }
+
+            // Launch Action (if pinned and not running)
+            Rectangle {
+                width: parent.width
+                height: 30
+                radius: 6
+                visible: appContextMenu.targetApp && !appContextMenu.targetApp.isRunning
+                color: launchHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    spacing: 8
+
+                    MaterialIcon {
+                        text: "play_arrow"
+                        size: 16
+                        color: Colors.primary
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: "Launch"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Colors.textOnSurface
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    id: launchHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (appContextMenu.targetApp) {
+                            WindowService.launchApp(appContextMenu.targetApp.desktopFile || appContextMenu.targetApp.appId);
+                        }
+                        appContextMenu.visible = false;
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // 5. LEFT DOCK CONTENT
     // ==========================================
     Item {
         id: dockContent
@@ -464,6 +697,88 @@ PanelWindow {
         y: root.borderT + 6
         width: root.dockW
         height: root.height - root.borderT * 2 - 12
+
+        readonly property var taskbarList: {
+            const pinned = Config.pinnedApps || [];
+            const wins = WindowService.windows || [];
+            const result = [];
+            const matchedWinIds = new Set();
+
+            // 1. Process pinned apps
+            for (let i = 0; i < pinned.length; i++) {
+                const p = pinned[i];
+                const pId = (p.appId || "").toLowerCase();
+                const pDesk = (p.desktopFile || "").toLowerCase();
+                const pName = (p.appName || "").toLowerCase();
+
+                let found = null;
+                for (let j = 0; j < wins.length; j++) {
+                    const w = wins[j];
+                    if (matchedWinIds.has(w.id)) continue;
+                    const wId = (w.appId || "").toLowerCase();
+                    const wDesk = (w.desktopFile || "").toLowerCase();
+                    const wName = (w.appName || "").toLowerCase();
+                    const wCls = (w.cls || "").toLowerCase();
+
+                    if ((pId && (wId === pId || wDesk === pId || wCls === pId))
+                        || (pDesk && (wDesk === pDesk || wId === pDesk))
+                        || (pName && wName === pName)) {
+                        found = w;
+                        break;
+                    }
+                }
+
+                if (found) {
+                    matchedWinIds.add(found.id);
+                    result.push({
+                        isPinned: true,
+                        isRunning: true,
+                        id: found.id,
+                        appId: p.appId,
+                        appName: p.appName || found.appName,
+                        iconName: p.iconName || found.iconName,
+                        materialIcon: p.materialIcon || found.materialIcon,
+                        desktopFile: p.desktopFile || found.desktopFile,
+                        title: found.title,
+                        isActive: found.isActive
+                    });
+                } else {
+                    result.push({
+                        isPinned: true,
+                        isRunning: false,
+                        id: "",
+                        appId: p.appId,
+                        appName: p.appName,
+                        iconName: p.iconName,
+                        materialIcon: p.materialIcon,
+                        desktopFile: p.desktopFile,
+                        title: "",
+                        isActive: false
+                    });
+                }
+            }
+
+            // 2. Add unpinned running apps
+            for (let k = 0; k < wins.length; k++) {
+                const w = wins[k];
+                if (!matchedWinIds.has(w.id)) {
+                    result.push({
+                        isPinned: false,
+                        isRunning: true,
+                        id: w.id,
+                        appId: w.appId || (w.appName ? w.appName.toLowerCase() : "window"),
+                        appName: w.appName,
+                        iconName: w.iconName,
+                        materialIcon: w.materialIcon,
+                        desktopFile: w.desktopFile || w.appId,
+                        title: w.title,
+                        isActive: w.isActive
+                    });
+                }
+            }
+
+            return result;
+        }
 
         // TOP SECTION: Launcher & Workspaces Pill
         Column {
@@ -612,200 +927,259 @@ PanelWindow {
             id: bottomCol
             anchors.bottom: parent.bottom
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 10
+            spacing: 8
             anchors.bottomMargin: 8
 
-            // Running Apps (Taskbar)
-            Column {
+            // 1. APPS CONTAINER (Dedicated capsule pill for applications)
+            Rectangle {
+                id: appsContainer
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 5
-                visible: WindowService.windows.length > 0
+                implicitWidth: 38
+                implicitHeight: appsCol.implicitHeight + 8
+                radius: 12
+                color: Colors.surfaceContainer
+                border.color: Theme.borderSubtle
+                border.width: 1
+                visible: dockContent.taskbarList.length > 0
 
-                Repeater {
-                    model: WindowService.windows
+                Column {
+                    id: appsCol
+                    anchors.centerIn: parent
+                    spacing: 4
 
-                    delegate: Rectangle {
-                        id: appDelegate
-                        required property var modelData
+                    Repeater {
+                        model: dockContent.taskbarList
 
-                        width: 32
-                        height: 32
-                        implicitWidth: 32
-                        implicitHeight: 32
-                        radius: 8
-                        color: modelData.isActive ? Colors.primaryContainer : (appHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
+                        delegate: Rectangle {
+                            id: appDelegate
+                            required property var modelData
 
-                        // Active left pill indicator
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.leftMargin: -5
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 3.5
-                            height: modelData.isActive ? 16 : 0
-                            radius: 1.75
-                            color: Colors.primary
-                            visible: modelData.isActive
+                            width: 32
+                            height: 32
+                            implicitWidth: 32
+                            implicitHeight: 32
+                            radius: 8
+                            color: modelData.isActive ? Colors.primaryContainer : (appHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
 
-                            Behavior on height {
-                                NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                            }
-                        }
+                            // Active left pill indicator
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.leftMargin: -4
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 3.5
+                                height: modelData.isActive ? 16 : 0
+                                radius: 1.75
+                                color: Colors.primary
+                                visible: modelData.isActive
 
-                        // App Icon
-                        Image {
-                            id: appIconImg
-                            anchors.centerIn: parent
-                            width: 22
-                            height: 22
-                            source: {
-                                if (!modelData.iconName) return "";
-                                if (modelData.iconName.indexOf("/") !== -1) {
-                                    return modelData.iconName.startsWith("file://") ? modelData.iconName : ("file://" + modelData.iconName);
+                                Behavior on height {
+                                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
                                 }
-                                return Quickshell.iconPath(modelData.iconName);
                             }
-                            fillMode: Image.PreserveAspectFit
-                            visible: status === Image.Ready
-                        }
 
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            text: modelData.materialIcon || "desktop_windows"
-                            size: 18
-                            color: modelData.isActive ? Colors.primary : Colors.onSurfaceVariant
-                            visible: !appIconImg.visible || appIconImg.status !== Image.Ready
-                        }
-
-                        MouseArea {
-                            id: appHover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                WindowService.activateWindow(modelData.id);
+                            // Running dot indicator for inactive running windows
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.leftMargin: -3
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 3
+                                height: 3
+                                radius: 1.5
+                                color: Colors.textMuted
+                                visible: modelData.isRunning && !modelData.isActive
                             }
-                        }
 
-                        // Tooltip on hover
-                        Rectangle {
-                            z: 100
-                            visible: appHover.containsMouse
-                            anchors.left: parent.right
-                            anchors.leftMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            implicitWidth: tipText.implicitWidth + 16
-                            implicitHeight: tipText.implicitHeight + 10
-                            radius: 7
-                            color: Colors.surfaceContainerHighest
-                            border.color: Colors.outlineVariant
-                            border.width: 1
-
-                            Text {
-                                id: tipText
+                            // App Icon
+                            Image {
+                                id: appIconImg
                                 anchors.centerIn: parent
-                                text: modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : "")
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 12
-                                color: Colors.onSurface
+                                width: 22
+                                height: 22
+                                opacity: modelData.isRunning ? 1.0 : 0.65
+                                source: {
+                                    if (!modelData.iconName) return "";
+                                    if (modelData.iconName.indexOf("/") !== -1) {
+                                        return modelData.iconName.startsWith("file://") ? modelData.iconName : ("file://" + modelData.iconName);
+                                    }
+                                    return Quickshell.iconPath(modelData.iconName);
+                                }
+                                fillMode: Image.PreserveAspectFit
+                                visible: status === Image.Ready
+                            }
+
+                            MaterialIcon {
+                                anchors.centerIn: parent
+                                text: modelData.materialIcon || "desktop_windows"
+                                size: 18
+                                opacity: modelData.isRunning ? 1.0 : 0.65
+                                color: modelData.isActive ? Colors.primary : Colors.onSurfaceVariant
+                                visible: !appIconImg.visible || appIconImg.status !== Image.Ready
+                            }
+
+                            MouseArea {
+                                id: appHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: mouse => {
+                                    if (mouse.button === Qt.RightButton) {
+                                        const mapped = mapToItem(root, 0, 0);
+                                        appContextMenu.targetApp = modelData;
+                                        appContextMenu.targetGlobalY = mapped.y;
+                                        appContextMenu.visible = true;
+                                    } else {
+                                        if (modelData.isRunning) {
+                                            WindowService.activateWindow(modelData.id);
+                                        } else {
+                                            WindowService.launchApp(modelData.desktopFile || modelData.appId);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Tooltip on hover
+                            Rectangle {
+                                z: 100
+                                visible: appHover.containsMouse && !appContextMenu.visible
+                                anchors.left: parent.right
+                                anchors.leftMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                implicitWidth: tipText.implicitWidth + 16
+                                implicitHeight: tipText.implicitHeight + 10
+                                radius: 7
+                                color: Colors.surfaceContainerHighest
+                                border.color: Colors.outlineVariant
+                                border.width: 1
+
+                                Text {
+                                    id: tipText
+                                    anchors.centerIn: parent
+                                    text: modelData.isRunning
+                                        ? (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : ""))
+                                        : (modelData.appName + " (Click to launch)")
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 12
+                                    color: Colors.onSurface
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Subtle divider between Running Apps and Tray
-            Rectangle {
+            // 2. CLEAR VISUAL DIVIDER BETWEEN APPS & STATUS
+            Item {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 18
-                height: 1
-                color: Colors.outlineVariant
-                visible: WindowService.windows.length > 0 && WindowService.tray.length > 0
-                opacity: 0.5
+                implicitWidth: 36
+                implicitHeight: 16
+                visible: dockContent.taskbarList.length > 0 && WindowService.tray.length > 0
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 24
+                    height: 2.5
+                    radius: 1.25
+                    color: Colors.outline
+                    opacity: 0.85
+                }
             }
 
-            // System Tray Icons
-            Column {
+            // 3. SYSTEM TRAY ICONS CONTAINER (Dedicated capsule pill for system status tray)
+            Rectangle {
+                id: trayContainer
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 5
+                implicitWidth: 34
+                implicitHeight: trayCol.implicitHeight + 8
+                radius: 10
+                color: Colors.surfaceContainer
+                border.color: Theme.borderSubtle
+                border.width: 1
                 visible: WindowService.tray.length > 0
 
-                Repeater {
-                    model: WindowService.tray
+                Column {
+                    id: trayCol
+                    anchors.centerIn: parent
+                    spacing: 4
 
-                    delegate: Rectangle {
-                        id: trayDelegate
-                        required property var modelData
+                    Repeater {
+                        model: WindowService.tray
 
-                        readonly property bool isInputMethod: {
-                            const raw = (modelData.rawIcon || "").toLowerCase();
-                            const id = (modelData.id || "").toLowerCase();
-                            const title = (modelData.title || "").toLowerCase();
-                            return raw.includes("keyboard") || raw.includes("fcitx") || id.includes("fcitx") || id.includes("input") || title.includes("input");
-                        }
+                        delegate: Rectangle {
+                            id: trayDelegate
+                            required property var modelData
 
-                        width: 26
-                        height: 26
-                        implicitWidth: 26
-                        implicitHeight: 26
-                        radius: 6
-                        color: trayHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
+                            readonly property bool isInputMethod: {
+                                const raw = (modelData.rawIcon || "").toLowerCase();
+                                const id = (modelData.id || "").toLowerCase();
+                                const title = (modelData.title || "").toLowerCase();
+                                return raw.includes("keyboard") || raw.includes("fcitx") || id.includes("fcitx") || id.includes("input") || title.includes("input");
+                            }
 
-                        Image {
-                            id: trayIconImg
-                            anchors.centerIn: parent
-                            width: 16
-                            height: 16
-                            source: (!isInputMethod && modelData.rawIcon) ? Quickshell.iconPath(modelData.rawIcon) : ""
-                            fillMode: Image.PreserveAspectFit
-                            visible: !isInputMethod && status === Image.Ready
-                        }
+                            width: 26
+                            height: 26
+                            implicitWidth: 26
+                            implicitHeight: 26
+                            radius: 6
+                            color: trayHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
 
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            text: modelData.materialIcon || (isInputMethod ? "keyboard" : "circle")
-                            size: 16
-                            color: isInputMethod
-                                ? (trayHover.containsMouse ? Colors.primary : Colors.textOnSurface)
-                                : (trayHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
-                            visible: isInputMethod || !trayIconImg.visible || trayIconImg.status !== Image.Ready
-                        }
+                            Image {
+                                id: trayIconImg
+                                anchors.centerIn: parent
+                                width: 16
+                                height: 16
+                                source: (!isInputMethod && modelData.rawIcon) ? Quickshell.iconPath(modelData.rawIcon) : ""
+                                fillMode: Image.PreserveAspectFit
+                                visible: !isInputMethod && status === Image.Ready
+                            }
 
-                        MouseArea {
-                            id: trayHover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: mouse => {
-                                if (mouse.button === Qt.RightButton) {
-                                    WindowService.contextMenuTray(modelData.service, modelData.path);
-                                } else {
-                                    WindowService.activateTray(modelData.service, modelData.path);
+                            MaterialIcon {
+                                anchors.centerIn: parent
+                                text: modelData.materialIcon || (isInputMethod ? "keyboard" : "circle")
+                                size: 16
+                                color: isInputMethod
+                                    ? (trayHover.containsMouse ? Colors.primary : Colors.textOnSurface)
+                                    : (trayHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                                visible: isInputMethod || !trayIconImg.visible || trayIconImg.status !== Image.Ready
+                            }
+
+                            MouseArea {
+                                id: trayHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: mouse => {
+                                    if (mouse.button === Qt.RightButton) {
+                                        WindowService.contextMenuTray(modelData.service, modelData.path);
+                                    } else {
+                                        WindowService.activateTray(modelData.service, modelData.path);
+                                    }
                                 }
                             }
-                        }
 
-                        // Tooltip on hover
-                        Rectangle {
-                            z: 100
-                            visible: trayHover.containsMouse
-                            anchors.left: parent.right
-                            anchors.leftMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            implicitWidth: trayTipText.implicitWidth + 16
-                            implicitHeight: trayTipText.implicitHeight + 10
-                            radius: 7
-                            color: Colors.surfaceContainerHighest
-                            border.color: Colors.outlineVariant
-                            border.width: 1
+                            // Tooltip on hover
+                            Rectangle {
+                                z: 100
+                                visible: trayHover.containsMouse
+                                anchors.left: parent.right
+                                anchors.leftMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                implicitWidth: trayTipText.implicitWidth + 16
+                                implicitHeight: trayTipText.implicitHeight + 10
+                                radius: 7
+                                color: Colors.surfaceContainerHighest
+                                border.color: Colors.outlineVariant
+                                border.width: 1
 
-                            Text {
-                                id: trayTipText
-                                anchors.centerIn: parent
-                                text: modelData.title || modelData.id
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 12
-                                color: Colors.onSurface
+                                Text {
+                                    id: trayTipText
+                                    anchors.centerIn: parent
+                                    text: modelData.title || modelData.id
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 12
+                                    color: Colors.onSurface
+                                }
                             }
                         }
                     }

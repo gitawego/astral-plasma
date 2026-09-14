@@ -84,6 +84,48 @@ Singleton {
     readonly property bool dashboardShowOnHover: root.settings.dashboard ? (root.settings.dashboard.showOnHover ?? true) : true
     readonly property int dashboardWidth: root.settings.dashboard ? (root.settings.dashboard.width ?? 780) : 780
 
+    // Pinned apps management
+    readonly property var pinnedApps: (root.settings.dock && root.settings.dock.pinnedApps) ? root.settings.dock.pinnedApps : []
+
+    function isPinned(appId) {
+        if (!appId) return false;
+        const list = root.pinnedApps;
+        return list.some(item => item.appId === appId || item.desktopFile === appId);
+    }
+
+    function pinApp(appObj) {
+        if (!appObj || !appObj.appId) return;
+        if (isPinned(appObj.appId)) return;
+
+        let newSettings = JSON.parse(JSON.stringify(root.settings));
+        if (!newSettings.dock) newSettings.dock = {};
+        if (!Array.isArray(newSettings.dock.pinnedApps)) newSettings.dock.pinnedApps = [];
+
+        newSettings.dock.pinnedApps.push({
+            appId: appObj.appId,
+            appName: appObj.appName || "App",
+            iconName: appObj.iconName || "",
+            materialIcon: appObj.materialIcon || "apps",
+            desktopFile: appObj.desktopFile || appObj.appId
+        });
+
+        root.settings = newSettings;
+        root.saveSettings();
+    }
+
+    function unpinApp(appId) {
+        if (!appId) return;
+        let newSettings = JSON.parse(JSON.stringify(root.settings));
+        if (!newSettings.dock || !Array.isArray(newSettings.dock.pinnedApps)) return;
+
+        newSettings.dock.pinnedApps = newSettings.dock.pinnedApps.filter(
+            item => item.appId !== appId && item.desktopFile !== appId
+        );
+
+        root.settings = newSettings;
+        root.saveSettings();
+    }
+
     // Active selected dashboard tab ("dashboard", "media", "performance", "workspaces")
     property string activeDashboardTab: (root.settings.dashboard && root.settings.dashboard.defaultTab) ? root.settings.dashboard.defaultTab : "dashboard"
 

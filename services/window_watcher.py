@@ -10,68 +10,68 @@ def get_window_meta(title, cls, app, krunner_icon=''):
     
     # 1. High-priority exact or class-based matches
     if 'cloudmusic' in cls_lower or 'netease' in cls_lower or 'cloudmusic' in app_lower:
-        return 'CloudMusic', 'netease-cloud-music', 'music_note'
+        return 'CloudMusic', 'netease-cloud-music', 'music_note', 'cloudmusic', 'lutris:rungame/netease-cloud-music'
     
     if 'antigravity' in cls_lower or 'antigravity' in app_lower or 'opencode' in cls_lower:
-        return 'Antigravity', 'antigravity', 'smart_toy'
+        return 'Antigravity', 'antigravity', 'smart_toy', 'antigravity', 'ai.opencode.desktop'
 
     if 'edge' in cls_lower or 'msedge' in cls_lower:
-        return 'Edge', 'microsoft-edge', 'language'
+        return 'Edge', 'microsoft-edge', 'language', 'microsoft-edge', 'microsoft-edge'
 
     if 'ghostty' in cls_lower or 'ghostty' in app_lower:
-        return 'Terminal', 'com.mitchellh.ghostty', 'terminal'
+        return 'Terminal', 'com.mitchellh.ghostty', 'terminal', 'ghostty', 'com.mitchellh.ghostty'
 
     if 'code' in cls_lower:
-        return 'VS Code', 'vscode', 'code'
+        return 'VS Code', 'vscode', 'code', 'code', 'code'
 
     if 'dolphin' in cls_lower:
-        return 'Files', 'org.kde.dolphin', 'folder'
+        return 'Files', 'org.kde.dolphin', 'folder', 'org.kde.dolphin', 'org.kde.dolphin'
 
     if 'lutris' in cls_lower:
-        return 'Lutris', 'net.lutris.Lutris', 'sports_esports'
+        return 'Lutris', 'net.lutris.Lutris', 'sports_esports', 'net.lutris.Lutris', 'net.lutris.Lutris'
 
     if 'token-tracker' in cls_lower or 'token-tracker' in app_lower:
-        return 'Tracker', 'token-tracker', 'insights'
+        return 'Tracker', 'token-tracker', 'insights', 'token-tracker', 'com.gitawego.token-tracker-dashboard'
 
     if 'haruna' in cls_lower or 'mp4' in t_lower or 'mkv' in t_lower:
-        return 'Haruna', 'org.kde.haruna', 'movie'
+        return 'Haruna', 'org.kde.haruna', 'movie', 'haruna', 'org.kde.haruna'
 
     if 'gradia' in cls_lower:
-        return 'Gradia', 'be.alexandervanhee.gradia', 'palette'
+        return 'Gradia', 'be.alexandervanhee.gradia', 'palette', 'gradia', 'be.alexandervanhee.gradia'
 
     if 'spectacle' in cls_lower:
-        return 'Spectacle', 'org.kde.spectacle', 'photo_camera'
+        return 'Spectacle', 'org.kde.spectacle', 'photo_camera', 'spectacle', 'org.kde.spectacle'
 
     if 'discord' in cls_lower or 'vesktop' in cls_lower:
-        return 'Discord', 'discord', 'chat'
+        return 'Discord', 'discord', 'chat', 'discord', 'discord'
 
     if 'steam' in cls_lower:
-        return 'Steam', 'steam', 'sports_esports'
+        return 'Steam', 'steam', 'sports_esports', 'steam', 'steam'
 
     if 'spotify' in cls_lower:
-        return 'Spotify', 'spotify', 'music_note'
+        return 'Spotify', 'spotify', 'music_note', 'spotify', 'spotify'
 
     # 2. Wine executable recognition
     if cls_lower.endswith('.exe'):
         clean = cls[:-4]
         clean_lower = clean.lower()
         if 'cloudmusic' in clean_lower or 'netease' in clean_lower:
-            return 'CloudMusic', 'netease-cloud-music', 'music_note'
+            return 'CloudMusic', 'netease-cloud-music', 'music_note', 'cloudmusic', 'lutris:rungame/netease-cloud-music'
         if 'wechat' in clean_lower:
-            return 'WeChat', 'wechat', 'chat'
+            return 'WeChat', 'wechat', 'chat', 'wechat', 'wechat'
         if 'qq' in clean_lower:
-            return 'QQ', 'qq', 'chat'
-        return clean.capitalize()[:14], krunner_icon or 'wine', 'window'
+            return 'QQ', 'qq', 'chat', 'qq', 'qq'
+        return clean.capitalize()[:14], krunner_icon or 'wine', 'window', clean_lower, clean_lower
 
     # 3. Title-based fallbacks
     if 'antigravity' in t_lower:
-        return 'Antigravity', 'antigravity', 'smart_toy'
+        return 'Antigravity', 'antigravity', 'smart_toy', 'antigravity', 'ai.opencode.desktop'
     if 'netease' in t_lower or 'cloudmusic' in t_lower:
-        return 'CloudMusic', 'netease-cloud-music', 'music_note'
+        return 'CloudMusic', 'netease-cloud-music', 'music_note', 'cloudmusic', 'lutris:rungame/netease-cloud-music'
     if 'visual studio code' in t_lower:
-        return 'VS Code', 'vscode', 'code'
+        return 'VS Code', 'vscode', 'code', 'code', 'code'
     if 'terminal' in t_lower or 'konsole' in t_lower or 'workspace' in t_lower:
-        return 'Terminal', 'utilities-terminal', 'terminal'
+        return 'Terminal', 'utilities-terminal', 'terminal', 'terminal', 'utilities-terminal'
 
     # 4. General fallback
     icon_candidate = krunner_icon or app or cls
@@ -86,7 +86,10 @@ def get_window_meta(title, cls, app, krunner_icon=''):
     else:
         app_name = (title or 'Window')[:14]
 
-    return app_name, icon_candidate, 'window'
+    app_id = (app or cls or app_name).lower().replace(' ', '-')
+    desktop_file = app or cls or app_id
+
+    return app_name, icon_candidate, 'window', app_id, desktop_file
 
 def query_kwin():
     script = """
@@ -162,7 +165,7 @@ def main():
         is_active = w.get('active', False)
 
         k_icon = krunner_icons.get(title, '')
-        app_name, icon_name, mat_icon = get_window_meta(title, cls, app, k_icon)
+        app_name, icon_name, mat_icon, app_id, desktop_file = get_window_meta(title, cls, app, k_icon)
 
         win_obj = {
             'id': wid,
@@ -170,6 +173,8 @@ def main():
             'appName': app_name,
             'iconName': icon_name,
             'materialIcon': mat_icon,
+            'appId': app_id,
+            'desktopFile': desktop_file,
             'isActive': is_active
         }
         if is_active:

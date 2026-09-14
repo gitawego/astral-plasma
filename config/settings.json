@@ -15,6 +15,36 @@
       "settings",
       "power"
     ],
+    "pinnedApps": [
+      {
+        "appId": "ghostty",
+        "appName": "Terminal",
+        "iconName": "com.mitchellh.ghostty",
+        "materialIcon": "terminal",
+        "desktopFile": "com.mitchellh.ghostty"
+      },
+      {
+        "appId": "code",
+        "appName": "VS Code",
+        "iconName": "vscode",
+        "materialIcon": "code",
+        "desktopFile": "code"
+      },
+      {
+        "appId": "microsoft-edge",
+        "appName": "Edge",
+        "iconName": "microsoft-edge",
+        "materialIcon": "language",
+        "desktopFile": "microsoft-edge"
+      },
+      {
+        "appId": "cloudmusic",
+        "appName": "CloudMusic",
+        "iconName": "netease-cloud-music",
+        "materialIcon": "music_note",
+        "desktopFile": "lutris:rungame/netease-cloud-music"
+      }
+    ],
     "tray": {
       "enabled": true,
       "compact": false,
