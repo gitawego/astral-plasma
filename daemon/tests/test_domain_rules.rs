@@ -109,3 +109,38 @@ fn test_json_event_serialization() {
     assert!(serialized.contains(r#""iconName":"test-icon""#));
     assert!(serialized.contains(r#""isActive":true"#));
 }
+
+#[test]
+fn test_tray_error_filtering_rules() {
+    fn is_valid_sni(item_id: &str, item_icon: &str, item_title: &str) -> bool {
+        if item_id.is_empty() && item_title.is_empty() && item_icon.is_empty() {
+            return false;
+        }
+        if item_id.starts_with("Error:") || item_title.starts_with("Error:") || item_icon.starts_with("Error:") {
+            return false;
+        }
+        if item_id.chars().all(|c| c.is_ascii_digit()) && item_icon.is_empty() && item_title.is_empty() {
+            return false;
+        }
+        true
+    }
+
+    // DBus error string from ghost service must be rejected
+    assert!(!is_valid_sni(
+        "Error: org.freedesktop.DBus.Error.UnknownMethod",
+        "Error: org.freedesktop.DBus.Error.UnknownMethod",
+        "Error: org.freedesktop.DBus.Error.UnknownMethod"
+    ));
+
+    // Empty numeric proxy must be rejected
+    assert!(!is_valid_sni("31457293", "", ""));
+
+    // Completely empty item must be rejected
+    assert!(!is_valid_sni("", "", ""));
+
+    // Valid real items must be accepted
+    assert!(is_valid_sni("Fcitx", "input-keyboard", "Input Method"));
+    assert!(is_valid_sni("Cachy-Update", "cachy-update-blue", "Cachy-Update"));
+    assert!(is_valid_sni("trayid62821", "dev.lizardbyte.app.Sunshine-tray", "sunshine"));
+    assert!(is_valid_sni("dropbox-client-7074", "dropboxstatus-idle", "dropbox"));
+}

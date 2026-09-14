@@ -68,10 +68,9 @@ PanelWindow {
     // Auto-close grace timer when leaving the dropdown
     Timer {
         id: closeTimer
-        interval: 500
+        interval: 350
         repeat: false
         onTriggered: {
-            if (Quickshell.env("TEST_DASHBOARD") === "1") return;
             if (!dropdownHover.hovered && !topEdgeHover.hovered) {
                 Config.dashboardVisible = false;
             }
@@ -539,9 +538,13 @@ PanelWindow {
         HoverHandler {
             id: topEdgeHover
             onHoveredChanged: {
-                if (hovered && Config.dashboardShowOnHover) {
+                if (hovered) {
                     closeTimer.stop();
-                    Config.dashboardVisible = true;
+                    if (Config.dashboardShowOnHover) {
+                        Config.dashboardVisible = true;
+                    }
+                } else if (Config.dashboardVisible && !dropdownHover.hovered) {
+                    closeTimer.restart();
                 }
             }
         }
@@ -578,7 +581,7 @@ PanelWindow {
             onHoveredChanged: {
                 if (hovered) {
                     closeTimer.stop();
-                } else if (Config.dashboardShowOnHover && Config.dashboardVisible) {
+                } else if (Config.dashboardVisible && !topEdgeHover.hovered) {
                     closeTimer.restart();
                 }
             }
