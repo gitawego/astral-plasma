@@ -22,8 +22,8 @@ Item {
         visible: root.orientation === "topLeft"
         ShapePath {
             fillColor: root.fillColor
-            strokeColor: root.strokeColor
-            strokeWidth: root.strokeWidth
+            strokeColor: "transparent"
+            strokeWidth: 0
             startX: -root.overlap; startY: -root.overlap
             PathLine { x: root.width; y: -root.overlap }
             PathLine { x: root.width; y: 0 }
@@ -40,8 +40,8 @@ Item {
         visible: root.orientation === "topRight"
         ShapePath {
             fillColor: root.fillColor
-            strokeColor: root.strokeColor
-            strokeWidth: root.strokeWidth
+            strokeColor: "transparent"
+            strokeWidth: 0
             startX: root.width + root.overlap; startY: -root.overlap
             PathLine { x: 0; y: -root.overlap }
             PathLine { x: 0; y: 0 }
@@ -58,8 +58,8 @@ Item {
         visible: root.orientation === "bottomLeft"
         ShapePath {
             fillColor: root.fillColor
-            strokeColor: root.strokeColor
-            strokeWidth: root.strokeWidth
+            strokeColor: "transparent"
+            strokeWidth: 0
             startX: -root.overlap; startY: root.height + root.overlap
             PathLine { x: -root.overlap; y: 0 }
             PathLine { x: 0; y: 0 }
@@ -76,8 +76,8 @@ Item {
         visible: root.orientation === "bottomRight"
         ShapePath {
             fillColor: root.fillColor
-            strokeColor: root.strokeColor
-            strokeWidth: root.strokeWidth
+            strokeColor: "transparent"
+            strokeWidth: 0
             startX: root.width + root.overlap; startY: root.height + root.overlap
             PathLine { x: root.width + root.overlap; y: 0 }
             PathLine { x: root.width; y: 0 }
@@ -94,8 +94,8 @@ Item {
         visible: root.orientation === "dropdownLeft"
         ShapePath {
             fillColor: root.fillColor
-            strokeColor: root.strokeColor
-            strokeWidth: root.strokeWidth
+            strokeColor: "transparent"
+            strokeWidth: 0
             startX: 0; startY: -root.overlap
             PathLine { x: root.width + root.overlap; y: -root.overlap }
             PathLine { x: root.width + root.overlap; y: root.height }
@@ -112,14 +112,101 @@ Item {
         visible: root.orientation === "dropdownRight"
         ShapePath {
             fillColor: root.fillColor
-            strokeColor: root.strokeColor
-            strokeWidth: root.strokeWidth
+            strokeColor: "transparent"
+            strokeWidth: 0
             startX: -root.overlap; startY: root.height
             PathLine { x: -root.overlap; y: -root.overlap }
             PathLine { x: root.width; y: -root.overlap }
             PathLine { x: root.width; y: 0 }
             PathArc { x: 0; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Counterclockwise }
             PathLine { x: -root.overlap; y: root.height }
+        }
+    }
+
+    // ==========================================
+    // Dedicated Arc Stroke Layers (Border Outline)
+    // ==========================================
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.strokeWidth > 0 && root.strokeColor !== "transparent" && root.orientation === "topLeft"
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            capStyle: ShapePath.FlatCap
+            startX: 0; startY: root.height
+            PathArc { x: root.width; y: 0; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
+        }
+    }
+
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.strokeWidth > 0 && root.strokeColor !== "transparent" && root.orientation === "topRight"
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            capStyle: ShapePath.FlatCap
+            startX: 0; startY: 0
+            PathArc { x: root.width; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
+        }
+    }
+
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.strokeWidth > 0 && root.strokeColor !== "transparent" && root.orientation === "bottomLeft"
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            capStyle: ShapePath.FlatCap
+            startX: 0; startY: 0
+            PathArc { x: root.width; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Counterclockwise }
+        }
+    }
+
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.strokeWidth > 0 && root.strokeColor !== "transparent" && root.orientation === "bottomRight"
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            capStyle: ShapePath.FlatCap
+            startX: root.width; startY: 0
+            PathArc { x: 0; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
+        }
+    }
+
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.strokeWidth > 0 && root.strokeColor !== "transparent" && root.orientation === "dropdownLeft"
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            capStyle: ShapePath.FlatCap
+            startX: 0; startY: 0
+            PathArc { x: root.width; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
+        }
+    }
+
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.strokeWidth > 0 && root.strokeColor !== "transparent" && root.orientation === "dropdownRight"
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            capStyle: ShapePath.FlatCap
+            startX: 0; startY: root.height
+            PathArc { x: root.width; y: 0; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
         }
     }
 }

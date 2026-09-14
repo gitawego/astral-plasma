@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import qs.theme
@@ -45,6 +46,7 @@ PanelWindow {
     readonly property int dropH: Math.round(cardLayout.implicitHeight + Theme.padLarge * 2)
     readonly property real currentDropH: borderT + (dropH - borderT) * dropdownContainer.offsetProgress
     readonly property real currentPopW: (typeof fusedPopout !== "undefined" ? fusedPopout.popWidth : 280) * fusedBottomPopoutWrapper.offsetProgress
+    readonly property color borderColor: Qt.alpha(Colors.textMain, 0.28)
 
     Component.onCompleted: {
         console.log("DEBUG_BORDER_SUBTLE:", Theme.borderSubtle, "DEBUG_OUTLINE:", Colors.outline);
@@ -164,9 +166,10 @@ PanelWindow {
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
-            blurMax: 16
+            blurMax: 32
             shadowBlur: 1.0
-            shadowColor: Qt.rgba(0, 0, 0, 0.35)
+            shadowVerticalOffset: 3
+            shadowColor: Qt.rgba(0, 0, 0, 0.28)
         }
 
         // Left Dock Surface
@@ -178,6 +181,13 @@ PanelWindow {
             width: root.dockW
             height: root.height
             color: Colors.surface
+
+            Rectangle {
+                anchors.right: parent.right
+                width: 1
+                height: parent.height
+                color: root.borderColor
+            }
         }
 
         // Thin Top Border
@@ -188,6 +198,13 @@ PanelWindow {
             width: root.width
             height: root.borderT
             color: Colors.surface
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                height: 1
+                width: parent.width
+                color: root.borderColor
+            }
         }
 
         // Thin Right Border
@@ -198,6 +215,13 @@ PanelWindow {
             width: root.borderT
             height: root.height
             color: Colors.surface
+
+            Rectangle {
+                anchors.left: parent.left
+                width: 1
+                height: parent.height
+                color: root.borderColor
+            }
         }
 
         // Thin Bottom Border
@@ -208,6 +232,13 @@ PanelWindow {
             width: root.width
             height: root.borderT
             color: Colors.surface
+
+            Rectangle {
+                anchors.top: parent.top
+                height: 1
+                width: parent.width
+                color: root.borderColor
+            }
         }
 
         // Inner Fillet: Top-Left
@@ -217,7 +248,8 @@ PanelWindow {
             orientation: "topLeft"
             cornerRadius: root.filletR
             fillColor: Colors.surface
-            strokeColor: "transparent"
+            strokeColor: root.borderColor
+            strokeWidth: 1
         }
 
         // Inner Fillet: Top-Right
@@ -228,7 +260,8 @@ PanelWindow {
             orientation: "topRight"
             cornerRadius: root.filletR
             fillColor: Colors.surface
-            strokeColor: "transparent"
+            strokeColor: root.borderColor
+            strokeWidth: 1
         }
 
         // Inner Fillet: Bottom-Left
@@ -240,7 +273,8 @@ PanelWindow {
             orientation: "bottomLeft"
             cornerRadius: root.filletR
             fillColor: Colors.surface
-            strokeColor: "transparent"
+            strokeColor: root.borderColor
+            strokeWidth: 1
         }
 
         // Inner Fillet: Bottom-Right
@@ -250,7 +284,8 @@ PanelWindow {
             orientation: "bottomRight"
             cornerRadius: root.filletR
             fillColor: Colors.surface
-            strokeColor: "transparent"
+            strokeColor: root.borderColor
+            strokeWidth: 1
         }
 
         // ======================================
@@ -302,6 +337,63 @@ PanelWindow {
                 bottomLeftRadius: root.filletR
                 bottomRightRadius: root.filletR
             }
+
+            // Continuous 1px Gray Border around Expanding Dropdown & Inverted Fillets
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+                visible: dashSurfaceWrapper.filletFactor > 0.01
+                opacity: dashSurfaceWrapper.filletFactor
+
+                ShapePath {
+                    fillColor: "transparent"
+                    strokeColor: root.borderColor
+                    strokeWidth: 1
+                    capStyle: ShapePath.FlatCap
+
+                    startX: -root.filletR; startY: root.borderT
+                    PathArc {
+                        x: 0
+                        y: root.borderT + root.filletR
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: 0
+                        y: Math.max(root.borderT + root.filletR, root.currentDropH - root.filletR)
+                    }
+                    PathArc {
+                        x: root.filletR
+                        y: root.currentDropH
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: Math.max(root.filletR, root.dropW - root.filletR)
+                        y: root.currentDropH
+                    }
+                    PathArc {
+                        x: root.dropW
+                        y: Math.max(root.borderT + root.filletR, root.currentDropH - root.filletR)
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: root.dropW
+                        y: root.borderT + root.filletR
+                    }
+                    PathArc {
+                        x: root.dropW + root.filletR
+                        y: root.borderT
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Clockwise
+                    }
+                }
+            }
         }
 
         // ======================================
@@ -317,41 +409,97 @@ PanelWindow {
 
             readonly property real filletFactor: Math.max(0.0, Math.min(1.0, root.currentPopW / Math.max(1, root.filletR)))
 
-            // Top-Left Inverted Fillet (Dock to Popout)
-            CornerFillet {
-                x: 0
-                y: -root.filletR
-                orientation: "bottomLeft"
-                cornerRadius: root.filletR
-                fillColor: Colors.surface
-                strokeColor: "transparent"
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
                 visible: bottomPopoutSurface.filletFactor > 0.01
                 opacity: bottomPopoutSurface.filletFactor
-            }
 
-            // Expanding Popout Body anchored permanently to dock right edge
-            Rectangle {
-                x: -2
-                y: 0
-                width: root.currentPopW + 2
-                height: fusedBottomPopoutWrapper.height + root.borderT + 2
-                color: Colors.surface
-                topLeftRadius: 0
-                bottomLeftRadius: 0
-                topRightRadius: Config.borderRounding
-                bottomRightRadius: 0
-            }
+                // Solid Surface Fill
+                ShapePath {
+                    fillColor: Colors.surface
+                    strokeColor: "transparent"
+                    strokeWidth: 0
 
-            // Bottom-Right Inverted Fillet (Glides along bottom border as width expands)
-            CornerFillet {
-                x: root.currentPopW - 1
-                y: fusedBottomPopoutWrapper.height - root.filletR
-                orientation: "bottomLeft"
-                cornerRadius: root.filletR
-                fillColor: Colors.surface
-                strokeColor: "transparent"
-                visible: bottomPopoutSurface.filletFactor > 0.01
-                opacity: bottomPopoutSurface.filletFactor
+                    startX: -2; startY: -root.filletR
+                    PathLine { x: 0; y: -root.filletR }
+                    PathArc {
+                        x: root.filletR
+                        y: 0
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: Math.max(root.filletR, root.currentPopW - root.filletR)
+                        y: 0
+                    }
+                    PathArc {
+                        x: root.currentPopW
+                        y: root.filletR
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: root.currentPopW
+                        y: Math.max(root.filletR, fusedBottomPopoutWrapper.height - root.filletR)
+                    }
+                    PathArc {
+                        x: Math.max(root.filletR, root.currentPopW - root.filletR)
+                        y: fusedBottomPopoutWrapper.height
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: -2
+                        y: fusedBottomPopoutWrapper.height
+                    }
+                    PathLine {
+                        x: -2
+                        y: -root.filletR
+                    }
+                }
+
+                // Continuous 1px Gray Border Outline
+                ShapePath {
+                    fillColor: "transparent"
+                    strokeColor: root.borderColor
+                    strokeWidth: 1
+                    capStyle: ShapePath.FlatCap
+
+                    startX: 0; startY: -root.filletR
+                    PathArc {
+                        x: root.filletR
+                        y: 0
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: Math.max(root.filletR, root.currentPopW - root.filletR)
+                        y: 0
+                    }
+                    PathArc {
+                        x: root.currentPopW
+                        y: root.filletR
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: root.currentPopW
+                        y: Math.max(root.filletR, fusedBottomPopoutWrapper.height - root.filletR)
+                    }
+                    PathArc {
+                        x: Math.max(root.filletR, root.currentPopW - root.filletR)
+                        y: fusedBottomPopoutWrapper.height
+                        radiusX: root.filletR
+                        radiusY: root.filletR
+                        direction: PathArc.Clockwise
+                    }
+                }
             }
         }
     }
