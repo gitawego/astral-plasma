@@ -31,6 +31,15 @@ fn test_ghostty_terminal_resolution() {
 }
 
 #[test]
+fn test_quickshell_resolution() {
+    let meta = resolve_window_meta("Quickshell", "quickshell", "quickshell", "");
+    assert_eq!(meta.app_name, "Quickshell");
+    assert_eq!(meta.icon_name, "org.quickshell");
+    assert_eq!(meta.material_icon, "widgets");
+    assert_eq!(meta.app_id, "quickshell");
+}
+
+#[test]
 fn test_wine_executable_resolution() {
     let meta = resolve_window_meta("Notepad Application", "notepad.exe", "", "");
     assert_eq!(meta.app_name, "Notepad");
@@ -178,4 +187,48 @@ fn test_kwin_watcher_dbus_casing() {
     assert!(script.contains(r#""UpdateWindowList""#), "Script must call UpdateWindowList (capital U)");
     assert!(!script.contains(r#""updateWindowList""#), "Script must NOT call updateWindowList (lowercase u)");
 }
+
+#[test]
+fn test_workspace_control_use_case() {
+    use std::sync::Mutex;
+    use caelestia_daemon::domain::ports::{DynResult, WorkspacePort};
+    use caelestia_daemon::domain::model::Desktop;
+    use caelestia_daemon::application::workspace_control::WorkspaceControlUseCase;
+
+    struct MockWorkspacePort {
+        switched_to: Mutex<Option<String>>,
+        created_idx: Mutex<Option<u32>>,
+    }
+
+    impl WorkspacePort for MockWorkspacePort {
+        fn query_desktops(&self) -> DynResult<(String, u32, Vec<Desktop>)> {
+            Ok(("desktop-1".to_string(), 2, vec![
+                Desktop { id: "desktop-1".to_string(), name: "Workspace 1".to_string(), index: 0, active: true },
+                Desktop { id: "desktop-2".to_string(), name: "Workspace 2".to_string(), index: 1, active: false },
+            ]))
+        }
+        fn switch_to(&self, id: &str) -> DynResult<()> {
+            *self.switched_to.lock().unwrap() = Some(id.to_string());
+            Ok(())
+        }
+        fn create_and_switch(&self, index: u32) -> DynResult<()> {
+            *self.created_idx.lock().unwrap() = Some(index);
+            Ok(())
+        }
+    }
+
+    let port = MockWorkspacePort {
+        switched_to: Mutex::new(None),
+        created_idx: Mutex::new(None),
+    };
+    let uc = WorkspaceControlUseCase::new(port);
+
+    let json_str = uc.query_json().unwrap();
+    assert!(json_str.contains(r#""current":"desktop-1""#));
+    assert!(json_str.contains(r#""count":2"#));
+
+    uc.switch("desktop-2").unwrap();
+    uc.ensure_and_switch(3).unwrap();
+}
+
 

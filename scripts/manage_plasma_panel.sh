@@ -17,18 +17,13 @@ resolve_backup_dir() {
 
     if [ -f "$SETTINGS_FILE" ]; then
         local configured_dir
-        configured_dir=$(python3 -c "
-import json, os, sys
-try:
-    with open('$SETTINGS_FILE') as f:
-        data = json.load(f)
-    b = data.get('plasma', {}).get('backupDir', '')
-    if b:
-        print(os.path.expanduser(b))
-except Exception:
-    pass
-" 2>/dev/null || true)
+        if command -v jq >/dev/null 2>&1; then
+            configured_dir=$(jq -r '.plasma.backupDir // empty' "$SETTINGS_FILE" 2>/dev/null || true)
+        else
+            configured_dir=$(grep -oP '"backupDir"\s*:\s*"\K[^"]+' "$SETTINGS_FILE" 2>/dev/null || true)
+        fi
         if [ -n "$configured_dir" ]; then
+            configured_dir="${configured_dir/#\~/$HOME}"
             echo "$configured_dir"
             return
         fi
@@ -39,7 +34,6 @@ except Exception:
 
 BACKUP_DIR="$(resolve_backup_dir)"
 WATCHDOG_PID_FILE="/tmp/caelestia_plasma_watchdog.pid"
-NOTIF_HELPER="$SCRIPT_DIR/manage_plasma_notifications.py"
 
 APPLETSRC="$CONFIG_DIR/plasma-org.kde.plasma.desktop-appletsrc"
 SHELLRC="$CONFIG_DIR/plasmashellrc"
@@ -125,13 +119,7 @@ case "$ACTION" in
             echo "KDE Plasma panels ($TARGET) are now hidden/disabled."
         fi
 
-        # 3. Suppress native notifications if helper exists
-        if [ -f "$NOTIF_HELPER" ] && [ "${CAELESTIA_TEST_MODE:-0}" != "1" ]; then
-            python3 "$NOTIF_HELPER" inhibit >/dev/null 2>&1 &
-            echo "Suppressed native KDE notifications (handled by Caelestia)."
-        fi
-
-        # 4. Start watchdog for quickshell process
+        # 3. Start watchdog for quickshell process
         MONITOR_PID="$PID_PARAM"
         if [ -z "$MONITOR_PID" ]; then
             MONITOR_PID=$(pgrep -x quickshell | head -n 1 || true)
@@ -149,13 +137,7 @@ case "$ACTION" in
     enable|restore)
         stop_watchdog
 
-        # 1. Restore native notifications
-        if [ -f "$NOTIF_HELPER" ] && [ "${CAELESTIA_TEST_MODE:-0}" != "1" ]; then
-            python3 "$NOTIF_HELPER" restore >/dev/null 2>&1 || true
-            echo "Native KDE notifications restored."
-        fi
-
-        # 2. Restore active KDE Plasma theme and panel configurations from generic backup
+        # 1. Restore active KDE Plasma theme and panel configurations from generic backup
         local_restored=0
         if [ -f "$BACKUP_DIR/plasma-org.kde.plasma.desktop-appletsrc" ]; then
             if [ "${CAELESTIA_TEST_MODE:-0}" != "1" ]; then

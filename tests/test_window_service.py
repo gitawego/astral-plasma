@@ -33,5 +33,21 @@ class TestCaelestiaDaemon(unittest.TestCase):
         self.assertIn("items", data)
         self.assertIsInstance(data["items"], list)
 
+    def test_daemon_workspaces_switch_and_ensure(self):
+        # Query existing workspaces
+        res = subprocess.run([BIN_PATH, "workspaces", "query"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        data = json.loads(res.stdout.strip())
+
+        # If there are workspaces, test switching to current workspace (safe no-op switch)
+        if data.get("items"):
+            first_id = data["items"][0]["id"]
+            res_switch = subprocess.run([BIN_PATH, "workspaces", "switch", str(first_id)], capture_output=True, text=True)
+            self.assertEqual(res_switch.returncode, 0)
+
+        # Test ensure command contract (with valid index)
+        res_ensure = subprocess.run([BIN_PATH, "workspaces", "ensure", "0"], capture_output=True, text=True)
+        self.assertEqual(res_ensure.returncode, 0)
+
 if __name__ == "__main__":
     unittest.main()

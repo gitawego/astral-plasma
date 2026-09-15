@@ -60,6 +60,10 @@ Singleton {
         root.desktops = updated;
     }
 
+    function switchToDesktop(id) {
+        switchTo(id);
+    }
+
     function switchToWorkspace(index) {
         if (index < root.desktops.length && root.desktops[index] && root.desktops[index].id) {
             switchTo(root.desktops[index].id);

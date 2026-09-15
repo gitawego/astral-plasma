@@ -324,8 +324,10 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (KWinWorkspaces.desktops.length > modelData.index) {
+                                if (KWinWorkspaces.desktops && KWinWorkspaces.desktops.length > modelData.index && KWinWorkspaces.desktops[modelData.index]) {
                                     KWinWorkspaces.switchToDesktop(KWinWorkspaces.desktops[modelData.index].id);
+                                } else {
+                                    KWinWorkspaces.switchToWorkspace(modelData.index);
                                 }
                             }
                         }

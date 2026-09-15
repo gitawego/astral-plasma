@@ -321,12 +321,9 @@ Singleton {
     function saveSettings() {
         try {
             const jsonStr = JSON.stringify(root.settings, null, 2);
-            saveProcess.command = ["python3", "-c", 
-                "import sys, os\n" +
-                "path = sys.argv[1]\n" +
-                "os.makedirs(os.path.dirname(path), exist_ok=True)\n" +
-                "with open(path, 'w') as f:\n" +
-                "    f.write(sys.argv[2])\n",
+            saveProcess.command = ["sh", "-c",
+                "mkdir -p \"$(dirname \"$1\")\" && printf '%s' \"$2\" > \"$1\"",
+                "_",
                 root.localConfigPath,
                 jsonStr
             ];

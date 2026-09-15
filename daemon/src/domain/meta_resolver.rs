@@ -51,6 +51,16 @@ pub fn resolve_window_meta(
         };
     }
 
+    if cls_lower.contains("quickshell") || app_lower.contains("quickshell") {
+        return WindowMeta {
+            app_name: "Quickshell".to_string(),
+            icon_name: "org.quickshell".to_string(),
+            material_icon: "widgets".to_string(),
+            app_id: "quickshell".to_string(),
+            desktop_file: "org.quickshell".to_string(),
+        };
+    }
+
     if cls_lower.contains("code") {
         return WindowMeta {
             app_name: "VS Code".to_string(),
