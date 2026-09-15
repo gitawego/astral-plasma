@@ -66,9 +66,38 @@ PanelWindow {
         return Math.max(minY, Math.min(maxY, desiredY));
     }
 
-    // Dynamic continuous fusion progress: 0.0 = floating, 1.0 = fused to bottom border.
+    // Fusion State Policy:
+    // Only fuse once the drawer has physically arrived at the bottom border.
+    // While in flight from a mid-dock icon, keep it floating to prevent premature shape deformation.
+    // Once docked, latch until the user selects a floating icon (!isPopoutFusedBottom) or closes the drawer.
     readonly property real popoutDistToBottom: Math.max(0, (root.height - root.borderT) - (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height))
-    readonly property real fusedProgress: isPopoutFusedBottom ? 1.0 : Math.max(0.0, Math.min(1.0, 1.0 - (popoutDistToBottom / Math.max(1, root.filletR * 2))))
+    readonly property bool isPopoutAtBottom: isPopoutFusedBottom && Config.bottomPopoutVisible && ((fusedBottomPopoutWrapper.offsetProgress <= 0.01) || (popoutDistToBottom <= 3.0))
+
+    property bool isFusedToBottom: isPopoutAtBottom
+
+    onIsPopoutAtBottomChanged: {
+        if (isPopoutAtBottom) {
+            isFusedToBottom = true;
+        } else if (!isPopoutFusedBottom || !Config.bottomPopoutVisible) {
+            isFusedToBottom = false;
+        }
+    }
+
+    Connections {
+        target: Config
+        function onBottomPopoutVisibleChanged() {
+            if (!Config.bottomPopoutVisible) {
+                isFusedToBottom = false;
+            }
+        }
+        function onBottomPopoutModeChanged() {
+            if (!isPopoutFusedBottom) {
+                isFusedToBottom = false;
+            }
+        }
+    }
+
+    readonly property real fusedProgress: isFusedToBottom ? 1.0 : 0.0
     readonly property color borderColor: Theme.borderSubtle
 
     Component.onCompleted: {
