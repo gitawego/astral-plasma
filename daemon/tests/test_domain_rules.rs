@@ -166,3 +166,16 @@ fn test_tray_error_filtering_rules() {
     assert!(is_valid_sni("trayid62821", "dev.lizardbyte.app.Sunshine-tray", "sunshine"));
     assert!(is_valid_sni("dropbox-client-7074", "dropboxstatus-idle", "dropbox"));
 }
+
+#[test]
+fn test_kwin_watcher_dbus_casing() {
+    let script = caelestia_daemon::application::watch_events::get_kwin_watcher_script();
+    // Must call WindowActivated with capital W to match zbus default CamelCase
+    assert!(script.contains(r#""WindowActivated""#), "Script must call WindowActivated (capital W)");
+    assert!(!script.contains(r#""windowActivated""#), "Script must NOT call windowActivated (lowercase w)");
+
+    // Must call UpdateWindowList with capital U to match zbus default CamelCase
+    assert!(script.contains(r#""UpdateWindowList""#), "Script must call UpdateWindowList (capital U)");
+    assert!(!script.contains(r#""updateWindowList""#), "Script must NOT call updateWindowList (lowercase u)");
+}
+

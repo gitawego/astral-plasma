@@ -47,6 +47,7 @@ pub struct WatcherService {
 
 #[zbus::interface(name = "org.caelestia.WindowWatcher")]
 impl WatcherService {
+    #[zbus(name = "WindowActivated")]
     async fn window_activated(&self, title: &str, cls: &str, app: &str, wid: &str) {
         let meta = resolve_window_meta(title, cls, app, "");
         let mut st = self.state.lock().await;
@@ -76,6 +77,7 @@ impl WatcherService {
         }
     }
 
+    #[zbus(name = "UpdateWindowList")]
     async fn update_window_list(&self, json_str: &str) {
         let Ok(raw) = serde_json::from_str::<Value>(json_str) else {
             return;
@@ -163,6 +165,85 @@ impl WatcherService {
     }
 }
 
+pub fn get_kwin_watcher_script() -> &'static str {
+    r#"
+function notifyActive(c) {
+    try {
+        if (c) {
+            callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "WindowActivated",
+                     "" + (c.caption || ""),
+                     "" + (c.resourceClass || ""),
+                     "" + (c.desktopFileName || ""),
+                     ("" + c.internalId).replace("{","").replace("}",""));
+        } else {
+            callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "WindowActivated",
+                     "Desktop", "", "", "");
+        }
+    } catch(e) {}
+}
+
+function getWindowList() {
+    var wins = workspace.windowList();
+    var res = [];
+    var activeId = workspace.activeWindow ? ("" + workspace.activeWindow.internalId).replace("{","").replace("}","") : "";
+    for (var i = 0; i < wins.length; i++) {
+        var w = wins[i];
+        if (w.normalWindow && w.caption && w.resourceClass !== "quickshell") {
+            res.push({
+                id: ("" + w.internalId).replace("{","").replace("}",""),
+                title: "" + (w.caption || ""),
+                cls: "" + (w.resourceClass || ""),
+                app: "" + (w.desktopFileName || ""),
+                active: ("" + w.internalId).replace("{","").replace("}","") === activeId
+            });
+        }
+    }
+    return res;
+}
+
+function notifyList() {
+    try {
+        var list = getWindowList();
+        callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "UpdateWindowList", JSON.stringify(list));
+    } catch(e) {}
+}
+
+function connectWindow(c) {
+    if (!c || c._caelestiaHooked) return;
+    c._caelestiaHooked = true;
+    try {
+        c.captionChanged.connect(function() {
+            if (workspace.activeWindow === c) {
+                notifyActive(c);
+            }
+        });
+    } catch(e) {}
+}
+
+function onActiveChanged(c) {
+    connectWindow(c);
+    notifyActive(c);
+}
+
+workspace.windowActivated.connect(onActiveChanged);
+workspace.windowAdded.connect(function(c) {
+    connectWindow(c);
+    notifyList();
+});
+workspace.windowRemoved.connect(notifyList);
+
+try {
+    var wins = workspace.stackingOrder;
+    for (var i = 0; i < wins.length; i++) {
+        connectWindow(wins[i]);
+    }
+} catch(e) {}
+
+notifyActive(workspace.activeWindow);
+notifyList();
+"#
+}
+
 pub fn cleanup_kwin_script() {
     let _ = Command::new("qdbus6")
         .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", KWIN_SCRIPT_NAME])
@@ -225,84 +306,9 @@ pub async fn run_event_daemon() -> DynResult<()> {
         .await?;
 
     // Install and start KWin script
-    let kwin_js = r#"
-function notifyActive(c) {
-    try {
-        if (c) {
-            callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "windowActivated",
-                     "" + (c.caption || ""),
-                     "" + (c.resourceClass || ""),
-                     "" + (c.desktopFileName || ""),
-                     ("" + c.internalId).replace("{","").replace("}",""));
-        } else {
-            callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "windowActivated",
-                     "Desktop", "", "", "");
-        }
-    } catch(e) {}
-}
-
-function getWindowList() {
-    var wins = workspace.windowList();
-    var res = [];
-    var activeId = workspace.activeWindow ? ("" + workspace.activeWindow.internalId).replace("{","").replace("}","") : "";
-    for (var i = 0; i < wins.length; i++) {
-        var w = wins[i];
-        if (w.normalWindow && w.caption && w.resourceClass !== "quickshell") {
-            res.push({
-                id: ("" + w.internalId).replace("{","").replace("}",""),
-                title: "" + (w.caption || ""),
-                cls: "" + (w.resourceClass || ""),
-                app: "" + (w.desktopFileName || ""),
-                active: ("" + w.internalId).replace("{","").replace("}","") === activeId
-            });
-        }
-    }
-    return res;
-}
-
-function notifyList() {
-    try {
-        var list = getWindowList();
-        callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "updateWindowList", JSON.stringify(list));
-    } catch(e) {}
-}
-
-function connectWindow(c) {
-    if (!c || c._caelestiaHooked) return;
-    c._caelestiaHooked = true;
-    try {
-        c.captionChanged.connect(function() {
-            if (workspace.activeWindow === c) {
-                notifyActive(c);
-            }
-        });
-    } catch(e) {}
-}
-
-function onActiveChanged(c) {
-    connectWindow(c);
-    notifyActive(c);
-}
-
-workspace.windowActivated.connect(onActiveChanged);
-workspace.windowAdded.connect(function(c) {
-    connectWindow(c);
-    notifyList();
-});
-workspace.windowRemoved.connect(notifyList);
-
-try {
-    var wins = workspace.stackingOrder;
-    for (var i = 0; i < wins.length; i++) {
-        connectWindow(wins[i]);
-    }
-} catch(e) {}
-
-notifyActive(workspace.activeWindow);
-notifyList();
-"#;
+    cleanup_kwin_script();
     let script_file = "/tmp/caelestia_kwin_watcher.js";
-    fs::write(script_file, kwin_js)?;
+    fs::write(script_file, get_kwin_watcher_script())?;
 
     let _ = Command::new("qdbus6")
         .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", script_file, KWIN_SCRIPT_NAME])

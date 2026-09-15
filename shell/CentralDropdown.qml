@@ -9,12 +9,15 @@ Item {
     id: root
 
     property real dropX: (parent.width - dropW) / 2
-    property real dropW: Config.dashboardWidth
+    property real dropW: (typeof Config !== "undefined" && Config.dashboardWidth) ? Config.dashboardWidth : 980
     property real dropH: 520
+    property bool isOpen: (typeof Config !== "undefined") ? Config.dashboardVisible : false
     readonly property real currentDropH: dropH * offsetProgress
-    property real offsetProgress: Config.dashboardVisible ? 1.0 : 0.0
+    property real offsetProgress: isOpen ? 1.0 : 0.0
 
-    readonly property alias isHovered: dropdownHover.hovered
+    property bool hoverOverrideActive: false
+    property bool hoverOverride: false
+    readonly property bool isHovered: hoverOverrideActive ? hoverOverride : dropdownHover.hovered
 
     x: dropX
     y: 0
@@ -32,7 +35,10 @@ Item {
     }
 
     focus: true
-    Keys.onEscapePressed: Config.dashboardVisible = false
+    Keys.onEscapePressed: {
+        root.isOpen = false;
+        if (typeof Config !== "undefined") Config.dashboardVisible = false;
+    }
 
     HoverHandler {
         id: dropdownHover

@@ -100,6 +100,26 @@ PanelWindow {
         }
     }
 
+    // Domain Policy: Central Dropdown Dashboard Hover & Auto-Close
+    readonly property bool isDashboardHovered: (dropdownContainer ? dropdownContainer.isHovered : false) || topEdgeHover.hovered
+
+    onIsDashboardHoveredChanged: {
+        if (isDashboardHovered) {
+            closeTimer.stop();
+        } else if (Config.dashboardVisible) {
+            closeTimer.restart();
+        }
+    }
+
+    Connections {
+        target: Config
+        function onDashboardVisibleChanged() {
+            if (!Config.dashboardVisible) {
+                closeTimer.stop();
+            }
+        }
+    }
+
     // Auto-close grace timer when leaving the dropdown
     Timer {
         id: closeTimer
@@ -107,7 +127,7 @@ PanelWindow {
         repeat: false
         onTriggered: {
             if (Quickshell.env("TEST_DASHBOARD") === "1") return;
-            if (!dropdownContainer.isHovered && !topEdgeHover.hovered) {
+            if (!root.isDashboardHovered) {
                 Config.dashboardVisible = false;
             }
         }
@@ -223,8 +243,6 @@ PanelWindow {
                 if (hovered && Config.dashboardShowOnHover) {
                     closeTimer.stop();
                     Config.dashboardVisible = true;
-                } else if (Config.dashboardVisible && !dropdownContainer.isHovered) {
-                    closeTimer.restart();
                 }
             }
         }
@@ -232,7 +250,12 @@ PanelWindow {
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: Config.dashboardVisible = !Config.dashboardVisible
+            onClicked: {
+                Config.dashboardVisible = !Config.dashboardVisible;
+                if (!Config.dashboardVisible) {
+                    closeTimer.stop();
+                }
+            }
         }
     }
 
