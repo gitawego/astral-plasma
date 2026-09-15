@@ -625,24 +625,34 @@ Item {
                                 hoverEnabled: true
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 cursorShape: Qt.PointingHandCursor
+                                onEntered: {
+                                    WindowService.loadAppPreview(modelData);
+                                    const targetCenterY = appDelegate.mapToItem(null, 0, appDelegate.height / 2).y;
+                                    Config.openBottomPopout("app", targetCenterY);
+                                }
+                                onExited: {
+                                    Config.scheduleCloseBottomPopout();
+                                }
                                 onClicked: mouse => {
                                     if (mouse.button === Qt.RightButton) {
                                         const mapped = mapToItem(null, 0, 0);
                                         root.requestContextMenu(modelData, mapped.y);
+                                        Config.closeBottomPopout();
                                     } else {
                                         if (modelData.isRunning) {
                                             WindowService.activateWindow(modelData.id);
                                         } else {
                                             WindowService.launchApp(modelData.desktopFile || modelData.appId);
                                         }
+                                        Config.closeBottomPopout();
                                     }
                                 }
                             }
 
-                            // Tooltip on hover
+                            // Tooltip on hover (hidden when drawer is open)
                             Rectangle {
                                 z: 100
-                                visible: appHover.containsMouse
+                                visible: appHover.containsMouse && !Config.bottomPopoutVisible
                                 anchors.left: parent.right
                                 anchors.leftMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter

@@ -128,6 +128,12 @@ Singleton {
         }
     }
 
+    property var activePreviewApp: null
+
+    function loadAppPreview(app) {
+        root.activePreviewApp = app;
+    }
+
     function triggerTrayMenuItem(service, menuPath, itemId) {
         if (!service || !menuPath || itemId === undefined) return;
         trayClickProc.running = false;

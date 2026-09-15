@@ -32,7 +32,8 @@ Item {
             case "power": return 260;
             case "clock":
             case "time": return 300;
-            case "tray": return 300;
+            case "tray": return 380;
+            case "app": return 340;
             default: return 280;
         }
     }
@@ -54,6 +55,7 @@ Item {
             case "clock":
             case "time": return clockSection.implicitHeight;
             case "tray": return traySection.implicitHeight;
+            case "app": return appSection.implicitHeight;
             default: return defaultSection.implicitHeight;
         }
     }
@@ -575,23 +577,29 @@ Item {
                     spacing: Theme.spaceSmall
                     Layout.bottomMargin: 4
 
-                    Image {
-                        width: 18
-                        height: 18
-                        source: {
-                            if (!WindowService.activeTrayItem || !WindowService.activeTrayItem.rawIcon) return "";
-                            if (WindowService.activeTrayItem.rawIcon.startsWith("Error")) return "";
-                            return Quickshell.iconPath(WindowService.activeTrayItem.rawIcon);
-                        }
-                        fillMode: Image.PreserveAspectFit
-                        visible: status === Image.Ready
-                    }
+                    Item {
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        Layout.alignment: Qt.AlignVCenter
 
-                    MaterialIcon {
-                        text: (WindowService.activeTrayItem && WindowService.activeTrayItem.materialIcon) ? WindowService.activeTrayItem.materialIcon : "widgets"
-                        size: 18
-                        color: Colors.primary
-                        visible: !parent.children[0].visible
+                        Image {
+                            anchors.fill: parent
+                            source: {
+                                if (!WindowService.activeTrayItem || !WindowService.activeTrayItem.rawIcon) return "";
+                                if (WindowService.activeTrayItem.rawIcon.startsWith("Error")) return "";
+                                return Quickshell.iconPath(WindowService.activeTrayItem.rawIcon);
+                            }
+                            fillMode: Image.PreserveAspectFit
+                            visible: status === Image.Ready
+                        }
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: (WindowService.activeTrayItem && WindowService.activeTrayItem.materialIcon) ? WindowService.activeTrayItem.materialIcon : "widgets"
+                            size: 20
+                            color: Colors.primary
+                            visible: !parent.children[0].visible
+                        }
                     }
 
                     ColumnLayout {
@@ -685,6 +693,240 @@ Item {
                     }
                 }
             }
+
+            // ==========================================
+            // 8. APPLICATION PREVIEW DRAWER
+            // ==========================================
+            ColumnLayout {
+                id: appSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                spacing: 8
+                readonly property bool isCurrent: root.mode === "app"
+                visible: isCurrent
+                opacity: isCurrent ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
+
+                readonly property var currentApp: WindowService.activePreviewApp
+
+                // 1. App Header: Icon, App Name & Status Pill
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+                    Layout.bottomMargin: 2
+
+                    Item {
+                        Layout.preferredWidth: 26
+                        Layout.preferredHeight: 26
+                        Layout.alignment: Qt.AlignVCenter
+
+                        Image {
+                            anchors.fill: parent
+                            source: {
+                                const app = appSection.currentApp;
+                                if (!app || !app.iconName) return "";
+                                if (app.iconName.indexOf("/") !== -1) {
+                                    return app.iconName.startsWith("file://") ? app.iconName : ("file://" + app.iconName);
+                                }
+                                return Quickshell.iconPath(app.iconName);
+                            }
+                            fillMode: Image.PreserveAspectFit
+                            visible: status === Image.Ready
+                        }
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: (appSection.currentApp && appSection.currentApp.materialIcon) ? appSection.currentApp.materialIcon : "desktop_windows"
+                            size: 22
+                            color: Colors.primary
+                            visible: !parent.children[0].visible
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: (appSection.currentApp && appSection.currentApp.appName) ? appSection.currentApp.appName : "Application"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMedium
+                            font.weight: Font.DemiBold
+                            color: Colors.textOnSurface
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: {
+                                const app = appSection.currentApp;
+                                if (!app) return "";
+                                if (app.isActive) return "Active Window";
+                                if (app.isRunning) return "Running";
+                                if (app.isPinned) return "Pinned to Dock";
+                                return "Ready to launch";
+                            }
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontLabelSmall
+                            color: (appSection.currentApp && appSection.currentApp.isActive) ? Colors.primary : Colors.textOnSurfaceVariant
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                ActionDivider {}
+
+                // 2. Window / App Preview Card
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 96
+                    radius: Theme.radiusSmall
+                    color: Colors.surfaceContainerLowest
+                    border.color: (appSection.currentApp && appSection.currentApp.isActive) ? Colors.primary : Theme.borderSubtle
+                    border.width: (appSection.currentApp && appSection.currentApp.isActive) ? 1.5 : 1
+                    clip: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 6
+
+                        // Mini Titlebar with macOS-style dots
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+
+                            Rectangle {
+                                width: 8
+                                height: 8
+                                radius: 4
+                                color: "#ff5f56"
+                            }
+                            Rectangle {
+                                width: 8
+                                height: 8
+                                radius: 4
+                                color: "#ffbd2e"
+                            }
+                            Rectangle {
+                                width: 8
+                                height: 8
+                                radius: 4
+                                color: "#27c93f"
+                            }
+
+                            Item { Layout.preferredWidth: 4 }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: {
+                                    const app = appSection.currentApp;
+                                    if (app && app.title && app.title.trim() !== "") {
+                                        return app.title;
+                                    }
+                                    return (app && app.appName) ? app.appName : "Window";
+                                }
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontLabelSmall
+                                font.weight: Font.Medium
+                                color: Colors.textOnSurface
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        // Simulated Window Content Preview
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: 4
+                            color: Colors.surfaceContainer
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 8
+
+                                MaterialIcon {
+                                    text: (appSection.currentApp && appSection.currentApp.isRunning) ? "picture_in_picture" : "play_circle"
+                                    size: 18
+                                    color: (appSection.currentApp && appSection.currentApp.isActive) ? Colors.primary : Colors.textOnSurfaceVariant
+                                }
+
+                                Text {
+                                    text: (appSection.currentApp && appSection.currentApp.isRunning) 
+                                        ? (appSection.currentApp.isActive ? "Currently in focus" : "Running in background")
+                                        : "Click to start"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontSmall
+                                    color: Colors.textOnSurfaceVariant
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ActionDivider {}
+
+                // 3. Quick Actions
+                ActionItem {
+                    visible: appSection.currentApp && appSection.currentApp.isRunning
+                    label: "Bring to Front"
+                    icon: "open_in_new"
+                    onClicked: {
+                        if (appSection.currentApp && appSection.currentApp.id) {
+                            WindowService.activateWindow(appSection.currentApp.id);
+                        }
+                        Config.closeBottomPopout();
+                    }
+                }
+
+                ActionItem {
+                    visible: appSection.currentApp && !appSection.currentApp.isRunning
+                    label: "Launch Application"
+                    icon: "play_arrow"
+                    onClicked: {
+                        if (appSection.currentApp) {
+                            WindowService.launchApp(appSection.currentApp.desktopFile || appSection.currentApp.appId);
+                        }
+                        Config.closeBottomPopout();
+                    }
+                }
+
+                ActionItem {
+                    visible: appSection.currentApp !== null
+                    label: (appSection.currentApp && appSection.currentApp.isPinned) ? "Unpin from Dock" : "Pin to Dock"
+                    icon: (appSection.currentApp && appSection.currentApp.isPinned) ? "keep_off" : "push_pin"
+                    onClicked: {
+                        if (!appSection.currentApp) return;
+                        if (appSection.currentApp.isPinned) {
+                            Config.unpinApp(appSection.currentApp.appId, appSection.currentApp.desktopFile, appSection.currentApp.appName);
+                        } else {
+                            Config.pinApp(appSection.currentApp);
+                        }
+                        Config.closeBottomPopout();
+                    }
+                }
+
+                ActionItem {
+                    visible: appSection.currentApp && appSection.currentApp.isRunning
+                    label: "Close Window"
+                    icon: "close"
+                    iconColor: "#ffb4ab"
+                    onClicked: {
+                        if (appSection.currentApp && appSection.currentApp.id) {
+                            WindowService.closeWindow(appSection.currentApp.id);
+                        }
+                        Config.closeBottomPopout();
+                    }
+                }
+            }
         }
     }
 
@@ -712,19 +954,15 @@ Item {
             anchors.rightMargin: Theme.padSmall
             spacing: Theme.spaceSmall
 
-            Image {
-                visible: actionRoot.iconSource !== "" && status === Image.Ready
+            ThemedIcon {
+                Layout.preferredWidth: (actionRoot.iconSource !== "" || actionRoot.icon !== "") ? 18 : 0
+                Layout.preferredHeight: 18
+                Layout.alignment: Qt.AlignVCenter
+                visible: actionRoot.iconSource !== "" || actionRoot.icon !== ""
                 source: actionRoot.iconSource
-                width: 16
-                height: 16
-                fillMode: Image.PreserveAspectFit
-            }
-
-            MaterialIcon {
-                visible: (!parent.children[0].visible) && actionRoot.icon !== ""
-                text: actionRoot.icon
-                size: 16
+                materialIcon: actionRoot.icon
                 color: actionRoot.iconColor
+                size: 16
             }
 
             Text {

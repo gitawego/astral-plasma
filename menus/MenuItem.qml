@@ -41,29 +41,18 @@ Rectangle {
         anchors.rightMargin: 10
         spacing: 10
 
-        Item {
+        ThemedIcon {
             width: 20
             height: 20
             anchors.verticalCenter: parent.verticalCenter
-
-            Image {
-                anchors.fill: parent
-                source: root.iconSource
-                fillMode: Image.PreserveAspectFit
-                visible: root.iconSource !== "" && status === Image.Ready
-            }
-
-            MaterialIcon {
-                anchors.centerIn: parent
-                text: root.materialIcon
-                size: 18
-                visible: root.materialIcon !== "" && (!parent.children[0] || !parent.children[0].visible)
-                color: {
-                    if (root.isDangerous && hoverArea.containsMouse) return "#ffb4ab";
-                    if (root.checked) return (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#d0bcff";
-                    if (hoverArea.containsMouse) return (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#d0bcff";
-                    return (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0";
-                }
+            source: root.iconSource
+            materialIcon: root.materialIcon
+            size: 18
+            color: {
+                if (root.isDangerous && hoverArea.containsMouse) return "#ffb4ab";
+                if (root.checked) return (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#d0bcff";
+                if (hoverArea.containsMouse) return (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#d0bcff";
+                return (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0";
             }
         }
 
