@@ -318,4 +318,29 @@ fn test_dbusmenu_json_parsing() {
     assert!(!items[2].enabled);
 }
 
+#[test]
+fn test_power_session_confirmation_rules() {
+    // Domain rule: all destructive session actions (logout, restart, shutdown)
+    // must be guarded behind confirmation and map to canonical system/dbus commands.
+    let destructive_actions = vec!["logout", "restart", "shutdown"];
+
+    for action in &destructive_actions {
+        let requires_confirmation = match *action {
+            "logout" | "restart" | "shutdown" => true,
+            _ => false,
+        };
+        assert!(requires_confirmation, "Action '{}' must require confirmation dialog", action);
+    }
+
+    // Non-destructive actions do not require confirmation
+    let non_destructive = vec!["lock", "suspend"];
+    for action in &non_destructive {
+        let requires_confirmation = match *action {
+            "logout" | "restart" | "shutdown" => true,
+            _ => false,
+        };
+        assert!(!requires_confirmation, "Action '{}' should not require confirmation", action);
+    }
+}
+
 

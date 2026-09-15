@@ -473,16 +473,22 @@ Item {
                 ActionDivider {}
 
                 ActionItem {
+                    icon: "logout"
+                    label: "Log Out..."
+                    onClicked: PowerService.requestLogout()
+                }
+
+                ActionItem {
                     icon: "restart_alt"
                     label: "Restart..."
-                    onClicked: PowerService.reboot()
+                    onClicked: PowerService.requestReboot()
                 }
 
                 ActionItem {
                     icon: "power_settings_new"
-                    iconColor: "#D32F2F"
+                    iconColor: (typeof Colors !== "undefined" && Colors.error) ? Colors.error : "#D32F2F"
                     label: "Shut Down..."
-                    onClicked: PowerService.poweroff()
+                    onClicked: PowerService.requestPoweroff()
                 }
             }
 

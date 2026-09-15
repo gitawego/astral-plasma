@@ -93,6 +93,7 @@ Item {
         "help": "󰋖",
         "speaker": "󰕾",
         "lock": "󰌾",
+        "logout": "󰍃",
         "restart_alt": "󰑓",
         "terminal": "󰆍",
         "code": "󰅩",

@@ -94,6 +94,15 @@ ShellRoot {
         function trigger(): void { Config.triggerVolumeOsd(); }
     }
 
+    IpcHandler {
+        target: "power"
+        function logout(): void { PowerService.requestLogout(); }
+        function reboot(): void { PowerService.requestReboot(); }
+        function shutdown(): void { PowerService.requestPoweroff(); }
+        function confirm(): void { PowerService.confirmAction(); }
+        function cancel(): void { PowerService.cancelAction(); }
+    }
+
     // Unified Desktop Shell (Flush Fused Left Dock + Top Bar with Corner Fillet)
     Variants {
         model: Quickshell.screens

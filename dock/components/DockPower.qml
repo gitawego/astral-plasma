@@ -1,7 +1,7 @@
 import QtQuick
-import Quickshell.Io
 import "../../theme"
 import "../../components"
+import "../../services"
 
 Item {
     id: root
@@ -14,12 +14,7 @@ Item {
         iconText: "power"
         iconSize: 18
         onClicked: {
-            logoutProc.running = true;
+            PowerService.requestPoweroff();
         }
-    }
-
-    Process {
-        id: logoutProc
-        command: ["qdbus6", "org.kde.LogoutPrompt", "/LogoutPrompt", "org.kde.LogoutPrompt.promptShutDown"]
     }
 }

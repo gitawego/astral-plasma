@@ -62,6 +62,11 @@ Singleton {
     property color accentSecondaryContainer: "#D8E4F8"
     property color accentOnSecondaryContainer: "#0E1D2A"
 
+    property color accentError: "#BA1A1A"
+    property color accentOnError: "#FFFFFF"
+    property color accentErrorContainer: "#FFDAD6"
+    property color accentOnErrorContainer: "#410002"
+
     // Refined modern typography
     property color textMain: "#1D1B20"                // Obsidian / deep charcoal (never harsh black)
     property color textMuted: "#49454F"               // Refined slate
@@ -80,6 +85,10 @@ Singleton {
     readonly property color primaryContainer: root.accentPrimaryContainer
     readonly property color secondary: root.accentSecondary
     readonly property color secondaryContainer: root.accentSecondaryContainer
+    readonly property color error: root.accentError
+    readonly property color onError: root.accentOnError
+    readonly property color errorContainer: root.accentErrorContainer
+    readonly property color onErrorContainer: root.accentOnErrorContainer
 
     readonly property color textOnPrimary: root.accentOnPrimary
     readonly property color textOnPrimaryContainer: root.accentOnPrimaryContainer

@@ -14,6 +14,19 @@ Singleton {
     property bool hasBattery: false
     property bool isCharging: false
 
+    // Confirmation dialog state
+    property bool confirmDialogVisible: false
+    property string pendingAction: "" // "logout", "restart", "shutdown"
+    property string pendingTitle: ""
+    property string pendingMessage: ""
+    property string pendingIcon: ""
+    property string pendingConfirmLabel: ""
+    property color pendingAccentColor: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#6B4FA0"
+
+    // Testing and safety guards
+    property bool isTesting: false
+    property string lastExecutedAction: ""
+
     function setProfile(profile) {
         currentProfile = profile;
         Quickshell.execDetached(["powerprofilesctl", "set", profile]);
@@ -27,12 +40,103 @@ Singleton {
         Quickshell.execDetached(["systemctl", "suspend"]);
     }
 
-    function reboot() {
+    // Request methods that trigger confirmation dialog
+    function requestLogout() {
+        if (typeof Config !== "undefined" && Config.closeBottomPopout) {
+            Config.closeBottomPopout();
+        }
+        pendingAction = "logout";
+        pendingTitle = "Log Out";
+        pendingMessage = "Are you sure you want to end your current session and log out?";
+        pendingIcon = "logout";
+        pendingConfirmLabel = "Log Out";
+        pendingAccentColor = (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#6B4FA0";
+        confirmDialogVisible = true;
+    }
+
+    function requestReboot() {
+        if (typeof Config !== "undefined" && Config.closeBottomPopout) {
+            Config.closeBottomPopout();
+        }
+        pendingAction = "restart";
+        pendingTitle = "Restart";
+        pendingMessage = "Are you sure you want to restart your computer? Any unsaved work will be lost.";
+        pendingIcon = "restart_alt";
+        pendingConfirmLabel = "Restart";
+        pendingAccentColor = (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#6B4FA0";
+        confirmDialogVisible = true;
+    }
+
+    function requestPoweroff() {
+        if (typeof Config !== "undefined" && Config.closeBottomPopout) {
+            Config.closeBottomPopout();
+        }
+        pendingAction = "shutdown";
+        pendingTitle = "Shut Down";
+        pendingMessage = "Are you sure you want to shut down your computer? Any unsaved work will be lost.";
+        pendingIcon = "power_settings_new";
+        pendingConfirmLabel = "Shut Down";
+        pendingAccentColor = (typeof Colors !== "undefined" && Colors.error) ? Colors.error : "#BA1A1A";
+        confirmDialogVisible = true;
+    }
+
+    function cancelAction() {
+        confirmDialogVisible = false;
+        pendingAction = "";
+        pendingTitle = "";
+        pendingMessage = "";
+        pendingIcon = "";
+        pendingConfirmLabel = "";
+    }
+
+    function confirmAction() {
+        const act = pendingAction;
+        confirmDialogVisible = false;
+        pendingAction = "";
+        pendingTitle = "";
+        pendingMessage = "";
+        pendingIcon = "";
+        pendingConfirmLabel = "";
+
+        if (act === "logout") {
+            executeLogout();
+        } else if (act === "restart") {
+            executeReboot();
+        } else if (act === "shutdown") {
+            executePoweroff();
+        }
+    }
+
+    // Direct execution methods (called only after user confirmation)
+    function executeLogout() {
+        lastExecutedAction = "logout";
+        if (isTesting) return;
+        Quickshell.execDetached(["qdbus6", "org.kde.Shutdown", "/Shutdown", "org.kde.Shutdown.logout"]);
+    }
+
+    function executeReboot() {
+        lastExecutedAction = "restart";
+        if (isTesting) return;
         Quickshell.execDetached(["systemctl", "reboot"]);
     }
 
-    function poweroff() {
+    function executePoweroff() {
+        lastExecutedAction = "shutdown";
+        if (isTesting) return;
         Quickshell.execDetached(["systemctl", "poweroff"]);
+    }
+
+    // Safe entry points: always require confirmation
+    function logout() {
+        requestLogout();
+    }
+
+    function reboot() {
+        requestReboot();
+    }
+
+    function poweroff() {
+        requestPoweroff();
     }
 
     function getIcon() {

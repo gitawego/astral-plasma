@@ -24,7 +24,7 @@ PanelWindow {
 
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: (dropdownContainer.offsetProgress > 0.001 || Config.bottomPopoutVisible) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: (PowerService.confirmDialogVisible || dropdownContainer.offsetProgress > 0.001 || Config.bottomPopoutVisible) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     WlrLayershell.exclusionMode: ExclusionMode.Ignore
 
     // Configuration and Tokens
@@ -526,5 +526,12 @@ PanelWindow {
         id: volumeOsd
         anchors.centerIn: parent
         z: 1100
+    }
+
+    // 10. POWER CONFIRMATION DIALOG (LOGOUT / RESTART / SHUTDOWN)
+    PowerConfirmDialog {
+        id: powerConfirmDialog
+        anchors.fill: parent
+        z: 2000
     }
 }
