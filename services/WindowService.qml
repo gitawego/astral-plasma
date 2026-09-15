@@ -97,6 +97,37 @@ Singleton {
         trayMenuProc.running = true;
     }
 
+    property var activeTrayItem: null
+    property var activeTrayMenuItems: []
+    property bool activeTrayLoading: false
+    property var _menuCache: ({})
+
+    function loadTrayMenu(item) {
+        if (!item) return;
+        root.activeTrayItem = item;
+        const cacheKey = (item.service || "") + ":" + (item.menuPath || "");
+        if (root._menuCache[cacheKey]) {
+            root.activeTrayMenuItems = root._menuCache[cacheKey];
+            root.activeTrayLoading = false;
+        } else {
+            root.activeTrayLoading = true;
+            root.activeTrayMenuItems = [];
+        }
+
+        if (item.menuPath) {
+            root.fetchTrayMenu(item.service, item.menuPath, (items) => {
+                if (root.activeTrayItem && root.activeTrayItem.service === item.service) {
+                    root.activeTrayLoading = false;
+                    root.activeTrayMenuItems = items;
+                }
+                root._menuCache[cacheKey] = items;
+            });
+        } else {
+            root.activeTrayLoading = false;
+            root.activeTrayMenuItems = [];
+        }
+    }
+
     function triggerTrayMenuItem(service, menuPath, itemId) {
         if (!service || !menuPath || itemId === undefined) return;
         trayClickProc.running = false;

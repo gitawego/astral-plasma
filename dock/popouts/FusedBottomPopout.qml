@@ -32,6 +32,7 @@ Item {
             case "power": return 260;
             case "clock":
             case "time": return 300;
+            case "tray": return 300;
             default: return 280;
         }
     }
@@ -52,6 +53,7 @@ Item {
             case "power": return powerSection.implicitHeight;
             case "clock":
             case "time": return clockSection.implicitHeight;
+            case "tray": return traySection.implicitHeight;
             default: return defaultSection.implicitHeight;
         }
     }
@@ -546,6 +548,143 @@ Item {
                     onClicked: Quickshell.execDetached(["kcmshell6", "kcm_clock"])
                 }
             }
+
+            // ==========================================
+            // 7. SYSTEM TRAY MENU POPUP
+            // ==========================================
+            ColumnLayout {
+                id: traySection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                spacing: 2
+                readonly property bool isCurrent: root.mode === "tray"
+                visible: isCurrent
+                opacity: isCurrent ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
+
+                // Header with App Title & Icon
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+                    Layout.bottomMargin: 4
+
+                    Image {
+                        width: 18
+                        height: 18
+                        source: {
+                            if (!WindowService.activeTrayItem || !WindowService.activeTrayItem.rawIcon) return "";
+                            if (WindowService.activeTrayItem.rawIcon.startsWith("Error")) return "";
+                            return Quickshell.iconPath(WindowService.activeTrayItem.rawIcon);
+                        }
+                        fillMode: Image.PreserveAspectFit
+                        visible: status === Image.Ready
+                    }
+
+                    MaterialIcon {
+                        text: (WindowService.activeTrayItem && WindowService.activeTrayItem.materialIcon) ? WindowService.activeTrayItem.materialIcon : "widgets"
+                        size: 18
+                        color: Colors.primary
+                        visible: !parent.children[0].visible
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: (WindowService.activeTrayItem && WindowService.activeTrayItem.title && !WindowService.activeTrayItem.title.startsWith("Error")) 
+                                ? WindowService.activeTrayItem.title 
+                                : ((WindowService.activeTrayItem && WindowService.activeTrayItem.id) ? WindowService.activeTrayItem.id : "Application")
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMedium
+                            font.weight: Font.DemiBold
+                            color: Colors.textOnSurface
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: (WindowService.activeTrayItem && WindowService.activeTrayItem.service) ? WindowService.activeTrayItem.service : "System Tray"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontLabelSmall
+                            color: Colors.textOnSurfaceVariant
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                ActionDivider {}
+
+                // Loading State
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: 30
+                    visible: WindowService.activeTrayLoading
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Loading menu..."
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        color: Colors.textOnSurfaceVariant
+                    }
+                }
+
+                // Empty State
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: 30
+                    visible: !WindowService.activeTrayLoading && WindowService.activeTrayMenuItems.length === 0
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "No actions available"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        color: Colors.textOnSurfaceVariant
+                    }
+                }
+
+                // Dynamic DBusMenu Actions
+                Repeater {
+                    model: WindowService.activeTrayMenuItems
+
+                    Item {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        visible: modelData.isSeparator || (modelData.label !== undefined && modelData.label.trim() !== "")
+                        implicitHeight: visible ? (modelData.isSeparator ? 9 : 30) : 0
+
+                        ActionDivider {
+                            anchors.centerIn: parent
+                            visible: modelData.isSeparator
+                        }
+
+                        ActionItem {
+                            anchors.fill: parent
+                            visible: !modelData.isSeparator
+                            label: modelData.label || ""
+                            enabled: modelData.enabled !== false
+                            iconSource: (modelData.icon && modelData.icon !== "") ? Quickshell.iconPath(modelData.icon) : ""
+                            iconColor: (modelData.label && modelData.label.toLowerCase().includes("quit")) ? "#ffb4ab" : Colors.textOnSurface
+                            onClicked: {
+                                if (WindowService.activeTrayItem && WindowService.activeTrayItem.menuPath) {
+                                    WindowService.triggerTrayMenuItem(WindowService.activeTrayItem.service, WindowService.activeTrayItem.menuPath, modelData.id);
+                                }
+                                Config.closeBottomPopout();
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -555,15 +694,17 @@ Item {
     component ActionItem: Rectangle {
         id: actionRoot
         property string icon: ""
+        property string iconSource: ""
         property color iconColor: Colors.textOnSurface
         property string label: ""
         property string detail: ""
+        property bool enabled: true
         signal clicked()
 
         Layout.fillWidth: true
         implicitHeight: 30
         radius: Theme.radiusSmall
-        color: actionMouse.containsMouse ? Colors.surfaceContainerHigh : "transparent"
+        color: (actionRoot.enabled && actionMouse.containsMouse) ? Colors.surfaceContainerHigh : "transparent"
 
         RowLayout {
             anchors.fill: parent
@@ -571,8 +712,16 @@ Item {
             anchors.rightMargin: Theme.padSmall
             spacing: Theme.spaceSmall
 
+            Image {
+                visible: actionRoot.iconSource !== "" && status === Image.Ready
+                source: actionRoot.iconSource
+                width: 16
+                height: 16
+                fillMode: Image.PreserveAspectFit
+            }
+
             MaterialIcon {
-                visible: actionRoot.icon !== ""
+                visible: (!parent.children[0].visible) && actionRoot.icon !== ""
                 text: actionRoot.icon
                 size: 16
                 color: actionRoot.iconColor
@@ -583,7 +732,7 @@ Item {
                 text: actionRoot.label
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSmall
-                color: Colors.textOnSurface
+                color: actionRoot.enabled ? Colors.textOnSurface : Colors.textOnSurfaceVariant
                 elide: Text.ElideRight
             }
 
@@ -599,9 +748,11 @@ Item {
         MouseArea {
             id: actionMouse
             anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: actionRoot.clicked()
+            hoverEnabled: actionRoot.enabled
+            cursorShape: actionRoot.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: {
+                if (actionRoot.enabled) actionRoot.clicked();
+            }
         }
     }
 

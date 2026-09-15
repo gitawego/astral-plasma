@@ -19,6 +19,7 @@ Item {
     property bool isLoading: false
 
     function show(item, globalY) {
+        console.log("TrayContextMenu.show() called! item=" + JSON.stringify(item) + " globalY=" + globalY);
         root.targetItem = item;
         menuCard.targetGlobalY = globalY;
         menuCard.visible = true;
@@ -26,11 +27,14 @@ Item {
         root.menuItems = [];
 
         if (item && item.menuPath) {
+            console.log("Fetching tray menu for " + item.service + " " + item.menuPath);
             WindowService.fetchTrayMenu(item.service, item.menuPath, (items) => {
+                console.log("Tray menu received " + items.length + " items: " + JSON.stringify(items));
                 root.isLoading = false;
                 root.menuItems = items;
             });
         } else {
+            console.log("Tray item has no menuPath!");
             root.isLoading = false;
             root.menuItems = [];
         }

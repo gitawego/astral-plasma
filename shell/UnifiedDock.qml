@@ -799,18 +799,29 @@ Item {
                             hoverEnabled: true
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             cursorShape: Qt.PointingHandCursor
+                            onEntered: {
+                                if (modelData.menuPath && modelData.menuPath.length > 0) {
+                                    WindowService.loadTrayMenu(modelData);
+                                    const targetCenterY = trayDelegate.mapToItem(null, 0, trayDelegate.height / 2).y;
+                                    Config.openBottomPopout("tray", targetCenterY);
+                                }
+                            }
+                            onExited: {
+                                Config.scheduleCloseBottomPopout();
+                            }
                             onClicked: mouse => {
-                                const mapped = mapToItem(root, 0, 0);
+                                const targetCenterY = trayDelegate.mapToItem(null, 0, trayDelegate.height / 2).y;
                                 if (mouse.button === Qt.RightButton) {
                                     if (modelData.menuPath && modelData.menuPath.length > 0) {
-                                        root.requestTrayContextMenu(modelData, mapped.y);
+                                        WindowService.loadTrayMenu(modelData);
+                                        Config.openBottomPopout("tray", targetCenterY);
                                     } else {
                                         WindowService.contextMenuTray(modelData.service, modelData.path);
                                     }
                                 } else {
-                                    const idLower = (modelData.id || "").toLowerCase();
-                                    if (modelData.menuPath && (idLower.includes("token") || idLower.includes("dropbox") || idLower.includes("sunshine"))) {
-                                        root.requestTrayContextMenu(modelData, mapped.y);
+                                    if (modelData.menuPath && modelData.menuPath.length > 0) {
+                                        WindowService.loadTrayMenu(modelData);
+                                        Config.openBottomPopout("tray", targetCenterY);
                                     } else {
                                         WindowService.activateTray(modelData.service, modelData.path);
                                     }
@@ -818,10 +829,10 @@ Item {
                             }
                         }
 
-                        // Tooltip on hover
+                        // Tooltip on hover (hidden when drawer is open)
                         Rectangle {
                             z: 100
-                            visible: trayHover.containsMouse
+                            visible: trayHover.containsMouse && !Config.bottomPopoutVisible
                             anchors.left: parent.right
                             anchors.leftMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
