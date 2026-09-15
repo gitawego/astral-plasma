@@ -12,6 +12,8 @@ Singleton {
     property string activeTitle: "Desktop"
     property string activeMaterialIcon: "desktop_windows"
     property string activeIconName: ""
+    property string activeAppId: ""
+    property string activeId: ""
 
     property alias title: root.activeTitle
     property alias appId: root.activeIconName
@@ -129,9 +131,66 @@ Singleton {
     }
 
     property var activePreviewApp: null
+    property string activePreviewThumbnail: ""
+    property bool activePreviewLoading: false
+    property var _previewCache: ({})
+
+    Process {
+        id: previewCaptureProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const lines = this.text.trim().split("\n");
+                const outPath = lines.length > 0 ? lines[lines.length - 1].trim() : "";
+                if (outPath.startsWith("/")) {
+                    const fileUrl = "file://" + outPath;
+                    if (root.activePreviewApp && root.activePreviewApp.id) {
+                        root._previewCache[root.activePreviewApp.id.toString()] = fileUrl;
+                        root.activePreviewThumbnail = fileUrl;
+                    }
+                }
+                root.activePreviewLoading = false;
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const err = this.text.trim();
+                if (err) console.warn("Window preview error:", err);
+            }
+        }
+        onExited: (exitCode, exitStatus) => {
+            root.activePreviewLoading = false;
+        }
+    }
 
     function loadAppPreview(app) {
         root.activePreviewApp = app;
+        const isRunning = app ? (Boolean(app.isRunning) || Boolean(app.id)) : false;
+        if (!app || !isRunning || !app.id) {
+            root.activePreviewThumbnail = "";
+            root.activePreviewLoading = false;
+            previewCaptureProc.running = false;
+            return;
+        }
+
+        const winKey = app.id.toString();
+        const cached = root._previewCache[winKey];
+        if (cached) {
+            root.activePreviewThumbnail = cached;
+        } else {
+            root.activePreviewThumbnail = "";
+        }
+
+        root.activePreviewLoading = true;
+        previewCaptureProc.running = false;
+        previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
+        previewCaptureProc.running = true;
+    }
+
+    function refreshAppPreview(app) {
+        if (!app || !app.id || previewCaptureProc.running) return;
+        const winKey = app.id.toString();
+        previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
+        previewCaptureProc.running = true;
     }
 
     function triggerTrayMenuItem(service, menuPath, itemId) {
@@ -164,11 +223,18 @@ Singleton {
                     if (data.activeTitle !== undefined) root.activeTitle = data.activeTitle;
                     if (data.activeMaterialIcon !== undefined) root.activeMaterialIcon = data.activeMaterialIcon;
                     if (data.activeIconName !== undefined) root.activeIconName = data.activeIconName;
+                    if (data.activeAppId !== undefined) root.activeAppId = data.activeAppId;
+                    if (data.activeId !== undefined) root.activeId = data.activeId;
                     if (data.windows) root.windows = data.windows;
                     if (data.tray) root.tray = data.tray;
                 } catch (e) {
                     console.warn("WindowService parse error:", e);
                 }
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                if (this.text.trim()) console.warn("WindowWatcher daemon error:", this.text);
             }
         }
         onExited: (exitCode, exitStatus) => {

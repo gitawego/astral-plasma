@@ -33,7 +33,7 @@ Item {
             case "clock":
             case "time": return 300;
             case "tray": return 380;
-            case "app": return 340;
+            case "app": return 350;
             default: return 280;
         }
     }
@@ -62,6 +62,22 @@ Item {
 
     implicitWidth: popWidth
     implicitHeight: popCard.implicitHeight
+
+    readonly property real appIconCenterY: {
+        if (typeof appHeaderIcon !== "undefined" && appHeaderIcon) {
+            const mapped = appHeaderIcon.mapToItem(root, 0, appHeaderIcon.height / 2);
+            if (mapped && mapped.y > 0) return mapped.y;
+        }
+        return 49.5;
+    }
+
+    readonly property real trayIconCenterY: {
+        if (typeof trayHeaderIcon !== "undefined" && trayHeaderIcon) {
+            const mapped = trayHeaderIcon.mapToItem(root, 0, trayHeaderIcon.height / 2);
+            if (mapped && mapped.y > 0) return mapped.y;
+        }
+        return 49.5;
+    }
 
     Item {
         id: popCard
@@ -578,6 +594,7 @@ Item {
                     Layout.bottomMargin: 4
 
                     Item {
+                        id: trayHeaderIcon
                         Layout.preferredWidth: 24
                         Layout.preferredHeight: 24
                         Layout.alignment: Qt.AlignVCenter
@@ -715,6 +732,20 @@ Item {
                 }
 
                 readonly property var currentApp: WindowService.activePreviewApp
+                readonly property bool isRunning: currentApp ? (Boolean(currentApp.isRunning) || Boolean(currentApp.id)) : false
+
+                // Live preview auto-refresh while hovering over app or drawer
+                Timer {
+                    id: liveRefreshTimer
+                    interval: 1000
+                    repeat: true
+                    running: appSection.isCurrent && appSection.isRunning && Config.bottomPopoutVisible
+                    onTriggered: {
+                        if (appSection.currentApp && appSection.currentApp.id) {
+                            WindowService.refreshAppPreview(appSection.currentApp);
+                        }
+                    }
+                }
 
                 // 1. App Header: Icon, App Name & Status Pill
                 RowLayout {
@@ -723,6 +754,7 @@ Item {
                     Layout.bottomMargin: 2
 
                     Item {
+                        id: appHeaderIcon
                         Layout.preferredWidth: 26
                         Layout.preferredHeight: 26
                         Layout.alignment: Qt.AlignVCenter
@@ -770,7 +802,7 @@ Item {
                                 const app = appSection.currentApp;
                                 if (!app) return "";
                                 if (app.isActive) return "Active Window";
-                                if (app.isRunning) return "Running";
+                                if (appSection.isRunning) return "Running";
                                 if (app.isPinned) return "Pinned to Dock";
                                 return "Ready to launch";
                             }
@@ -786,13 +818,37 @@ Item {
 
                 // 2. Window / App Preview Card
                 Rectangle {
+                    id: appPreviewCard
                     Layout.fillWidth: true
-                    implicitHeight: 96
+                    implicitHeight: (appSection.currentApp && appSection.isRunning) ? 200 : 96
                     radius: Theme.radiusSmall
                     color: Colors.surfaceContainerLowest
                     border.color: (appSection.currentApp && appSection.currentApp.isActive) ? Colors.primary : Theme.borderSubtle
                     border.width: (appSection.currentApp && appSection.currentApp.isActive) ? 1.5 : 1
                     clip: true
+
+                    Behavior on implicitHeight {
+                        NumberAnimation {
+                            duration: Theme.animExpressiveDefaultSpatial
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            const app = appSection.currentApp;
+                            if (!app) return;
+                            if (appSection.isRunning && app.id) {
+                                WindowService.activateWindow(app.id);
+                            } else {
+                                WindowService.launchApp(app.desktopFile || app.appId);
+                            }
+                            Config.closeBottomPopout();
+                        }
+                    }
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -840,29 +896,136 @@ Item {
                                 color: Colors.textOnSurface
                                 elide: Text.ElideRight
                             }
+
+                            // Live badge indicator
+                            RowLayout {
+                                spacing: 4
+                                visible: appSection.currentApp && appSection.isRunning
+
+                                Rectangle {
+                                    width: 6
+                                    height: 6
+                                    radius: 3
+                                    color: (appSection.currentApp && appSection.currentApp.isActive) ? "#27c93f" : Colors.primary
+                                }
+
+                                Text {
+                                    text: (appSection.currentApp && appSection.currentApp.isActive) ? "ACTIVE" : "LIVE"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    color: (appSection.currentApp && appSection.currentApp.isActive) ? "#27c93f" : Colors.primary
+                                }
+                            }
                         }
 
-                        // Simulated Window Content Preview
+                        // Live Window Content Preview
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             radius: 4
                             color: Colors.surfaceContainer
+                            clip: true
 
+                            // Double-buffered live thumbnail container to prevent flicker during updates
+                            Item {
+                                id: livePreviewBufContainer
+                                anchors.fill: parent
+
+                                readonly property string targetSource: (appSection.currentApp && appSection.isRunning) ? WindowService.activePreviewThumbnail : ""
+                                property string activeBuffer: "A"
+                                property var lastAppId: null
+                                property bool hasLoadedPreview: false
+                                readonly property bool hasImage: hasLoadedPreview || (bufA.status === Image.Ready && bufA.source !== "") || (bufB.status === Image.Ready && bufB.source !== "")
+
+                                function onTargetChanged() {
+                                    const curId = (appSection.currentApp && appSection.currentApp.id) ? appSection.currentApp.id : null;
+                                    if (curId !== lastAppId) {
+                                        lastAppId = curId;
+                                        hasLoadedPreview = false;
+                                        bufA.source = "";
+                                        bufB.source = "";
+                                        activeBuffer = "A";
+                                    }
+
+                                    if (targetSource === "") {
+                                        hasLoadedPreview = false;
+                                        bufA.source = "";
+                                        bufB.source = "";
+                                        return;
+                                    }
+
+                                    if (activeBuffer === "A") {
+                                        bufB.source = targetSource;
+                                    } else {
+                                        bufA.source = targetSource;
+                                    }
+                                }
+
+                                onTargetSourceChanged: onTargetChanged()
+
+                                Image {
+                                    id: bufA
+                                    anchors.fill: parent
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                    cache: false
+                                    z: livePreviewBufContainer.activeBuffer === "A" ? 2 : 1
+                                    visible: livePreviewBufContainer.hasLoadedPreview ? (livePreviewBufContainer.activeBuffer === "A" || livePreviewBufContainer.activeBuffer === "B") : (status === Image.Ready)
+
+                                    onStatusChanged: {
+                                        if (status === Image.Ready) {
+                                            livePreviewBufContainer.hasLoadedPreview = true;
+                                            if (livePreviewBufContainer.activeBuffer === "B") {
+                                                livePreviewBufContainer.activeBuffer = "A";
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Image {
+                                    id: bufB
+                                    anchors.fill: parent
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                    cache: false
+                                    z: livePreviewBufContainer.activeBuffer === "B" ? 2 : 1
+                                    visible: livePreviewBufContainer.hasLoadedPreview ? (livePreviewBufContainer.activeBuffer === "B" || livePreviewBufContainer.activeBuffer === "A") : (status === Image.Ready)
+
+                                    onStatusChanged: {
+                                        if (status === Image.Ready) {
+                                            livePreviewBufContainer.hasLoadedPreview = true;
+                                            if (livePreviewBufContainer.activeBuffer === "A") {
+                                                livePreviewBufContainer.activeBuffer = "B";
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Fallback placeholder / loading indicator
                             RowLayout {
                                 anchors.centerIn: parent
                                 spacing: 8
+                                visible: !livePreviewBufContainer.hasImage
 
                                 MaterialIcon {
-                                    text: (appSection.currentApp && appSection.currentApp.isRunning) ? "picture_in_picture" : "play_circle"
+                                    text: (appSection.currentApp && appSection.isRunning)
+                                        ? (WindowService.activePreviewLoading ? "sync" : "picture_in_picture")
+                                        : "play_circle"
                                     size: 18
                                     color: (appSection.currentApp && appSection.currentApp.isActive) ? Colors.primary : Colors.textOnSurfaceVariant
                                 }
 
                                 Text {
-                                    text: (appSection.currentApp && appSection.currentApp.isRunning) 
-                                        ? (appSection.currentApp.isActive ? "Currently in focus" : "Running in background")
-                                        : "Click to start"
+                                    text: {
+                                        const app = appSection.currentApp;
+                                        if (!app) return "";
+                                        if (appSection.isRunning) {
+                                            return WindowService.activePreviewLoading ? "Capturing live preview..." : (app.isActive ? "Currently in focus" : "Running in background");
+                                        }
+                                        return "Click to start";
+                                    }
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontSmall
                                     color: Colors.textOnSurfaceVariant
@@ -876,7 +1039,7 @@ Item {
 
                 // 3. Quick Actions
                 ActionItem {
-                    visible: appSection.currentApp && appSection.currentApp.isRunning
+                    visible: appSection.currentApp && appSection.isRunning
                     label: "Bring to Front"
                     icon: "open_in_new"
                     onClicked: {
@@ -888,7 +1051,7 @@ Item {
                 }
 
                 ActionItem {
-                    visible: appSection.currentApp && !appSection.currentApp.isRunning
+                    visible: appSection.currentApp && !appSection.isRunning
                     label: "Launch Application"
                     icon: "play_arrow"
                     onClicked: {
@@ -915,7 +1078,7 @@ Item {
                 }
 
                 ActionItem {
-                    visible: appSection.currentApp && appSection.currentApp.isRunning
+                    visible: appSection.currentApp && appSection.isRunning
                     label: "Close Window"
                     icon: "close"
                     iconColor: "#ffb4ab"

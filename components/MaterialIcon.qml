@@ -33,6 +33,10 @@ Item {
         "volume_down": "󰖀",
         "volume_mute": "󰖁",
         "brightness": "󰃠",
+        "brightness_6": "󰃠",
+        "brightness_5": "󰃠",
+        "brightness_7": "󰃠",
+        "brightness_medium": "󰃠",
         "battery": "󰁹",
         "battery_charging": "󰂄",
         "battery_charging_full": "󰂄",
@@ -111,7 +115,11 @@ Item {
         "push_pin": "󰐃",
         "pin": "󰐃",
         "keep_off": "󰐄",
-        "unpin": "󰐄"
+        "unpin": "󰐄",
+        "open_in_new": "󰏌",
+        "launch": "󰏌",
+        "picture_in_picture": "󰹩",
+        "sync": "󰑓"
     })
 
     readonly property string displaySymbol: {

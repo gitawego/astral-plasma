@@ -28,6 +28,12 @@ Item {
     required property real popoutOffsetProgress
     required property real fusedProgress
 
+    // Right edge control geometry
+    property real rightControlW: 60
+    property real rightControlH: 280
+    property real rightControlY: Math.round((root.height - rightControlH) / 2)
+    property real rightControlOffsetProgress: 0.0
+
     layer.enabled: true
     layer.effect: MultiEffect {
         shadowEnabled: true
@@ -91,6 +97,14 @@ Item {
         }
     }
 
+    readonly property real rightBorderTopLimit: (typeof NotificationService !== "undefined" && NotificationService.hasNotification)
+        ? (74 + root.filletR)
+        : (root.borderT + root.filletR)
+    readonly property real rightBorderBottomLimit: root.height - (root.borderT + root.filletR)
+
+    readonly property real rightControlGapTop: root.rightControlY - root.filletR * root.rightControlOffsetProgress
+    readonly property real rightControlGapBottom: root.rightControlY + root.rightControlH + root.filletR * root.rightControlOffsetProgress
+
     // Thin Right Border
     Rectangle {
         id: rightBorder
@@ -100,13 +114,24 @@ Item {
         height: root.height
         color: Colors.surface
 
+        // Upper segment
         Rectangle {
             x: 0
-            y: (typeof NotificationService !== "undefined" && NotificationService.hasNotification)
-                ? (74 + root.filletR)
-                : (root.borderT + root.filletR)
+            y: root.rightBorderTopLimit
             width: 1
-            height: Math.max(0, parent.height - y - (root.borderT + root.filletR))
+            height: root.rightControlOffsetProgress > 0.001
+                ? Math.max(0, root.rightControlGapTop - y)
+                : Math.max(0, root.rightBorderBottomLimit - y)
+            color: root.borderColor
+        }
+
+        // Lower segment (active when right edge control is open)
+        Rectangle {
+            visible: root.rightControlOffsetProgress > 0.001
+            x: 0
+            y: root.rightControlGapBottom
+            width: 1
+            height: Math.max(0, root.rightBorderBottomLimit - y)
             color: root.borderColor
         }
     }
@@ -492,6 +517,164 @@ Item {
                     radiusX: root.filletR
                     radiusY: root.filletR
                     direction: PathArc.Counterclockwise
+                }
+            }
+        }
+    }
+
+    // Right Border Edge Volume/Brightness Control Fused Solid Surface & Fillets
+    Item {
+        id: rightControlSurface
+        x: root.width - root.borderT - currentW
+        y: root.rightControlY - root.filletR
+        width: currentW + root.borderT
+        height: root.rightControlH + root.filletR * 2
+        visible: root.rightControlOffsetProgress > 0.001
+
+        readonly property real currentW: root.rightControlW * root.rightControlOffsetProgress
+        readonly property real filletFactor: Math.max(0.0, Math.min(1.0, currentW / Math.max(1, root.filletR)))
+        readonly property real activeR: root.filletR * filletFactor
+        readonly property real offsetY: root.filletR
+        readonly property real h: root.rightControlH
+
+        // Fused solid surface fill
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            visible: rightControlSurface.filletFactor > 0.01
+            opacity: rightControlSurface.filletFactor
+
+            ShapePath {
+                fillColor: Colors.surface
+                strokeColor: "transparent"
+                strokeWidth: 0
+
+                startX: rightControlSurface.currentW
+                startY: rightControlSurface.offsetY - rightControlSurface.activeR
+
+                PathArc {
+                    x: rightControlSurface.currentW - rightControlSurface.activeR
+                    y: rightControlSurface.offsetY
+                    radiusX: rightControlSurface.activeR
+                    radiusY: rightControlSurface.activeR
+                    direction: PathArc.Clockwise
+                }
+
+                PathLine {
+                    x: rightControlSurface.activeR
+                    y: rightControlSurface.offsetY
+                }
+
+                PathArc {
+                    x: 0
+                    y: rightControlSurface.offsetY + rightControlSurface.activeR
+                    radiusX: rightControlSurface.activeR
+                    radiusY: rightControlSurface.activeR
+                    direction: PathArc.Counterclockwise
+                }
+
+                PathLine {
+                    x: 0
+                    y: rightControlSurface.offsetY + rightControlSurface.h - rightControlSurface.activeR
+                }
+
+                PathArc {
+                    x: rightControlSurface.activeR
+                    y: rightControlSurface.offsetY + rightControlSurface.h
+                    radiusX: rightControlSurface.activeR
+                    radiusY: rightControlSurface.activeR
+                    direction: PathArc.Counterclockwise
+                }
+
+                PathLine {
+                    x: rightControlSurface.currentW - rightControlSurface.activeR
+                    y: rightControlSurface.offsetY + rightControlSurface.h
+                }
+
+                PathArc {
+                    x: rightControlSurface.currentW
+                    y: rightControlSurface.offsetY + rightControlSurface.h + rightControlSurface.activeR
+                    radiusX: rightControlSurface.activeR
+                    radiusY: rightControlSurface.activeR
+                    direction: PathArc.Clockwise
+                }
+
+                PathLine {
+                    x: rightControlSurface.width + 2
+                    y: rightControlSurface.offsetY + rightControlSurface.h + rightControlSurface.activeR
+                }
+                PathLine {
+                    x: rightControlSurface.width + 2
+                    y: rightControlSurface.offsetY - rightControlSurface.activeR
+                }
+                PathLine {
+                    x: rightControlSurface.currentW
+                    y: rightControlSurface.offsetY - rightControlSurface.activeR
+                }
+            }
+        }
+
+        // Continuous Border Outline Stroke
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            visible: rightControlSurface.filletFactor > 0.01
+            opacity: rightControlSurface.filletFactor
+
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: root.borderColor
+                strokeWidth: 1
+                capStyle: ShapePath.FlatCap
+
+                startX: rightControlSurface.currentW
+                startY: rightControlSurface.offsetY - rightControlSurface.activeR
+
+                PathArc {
+                    x: rightControlSurface.currentW - rightControlSurface.activeR
+                    y: rightControlSurface.offsetY
+                    radiusX: rightControlSurface.activeR
+                    radiusY: rightControlSurface.activeR
+                    direction: PathArc.Clockwise
+                }
+
+                PathLine {
+                    x: rightControlSurface.activeR
+                    y: rightControlSurface.offsetY
+                }
+
+                PathArc {
+                    x: 0
+                    y: rightControlSurface.offsetY + rightControlSurface.activeR
+                    radiusX: rightControlSurface.activeR
+                    radiusY: rightControlSurface.activeR
+                    direction: PathArc.Counterclockwise
+                }
+
+                PathLine {
+                    x: 0
+                    y: rightControlSurface.offsetY + rightControlSurface.h - rightControlSurface.activeR
+                }
+
+                PathArc {
+                    x: rightControlSurface.activeR
+                    y: rightControlSurface.offsetY + rightControlSurface.h
+                    radiusX: rightControlSurface.activeR
+                    radiusY: rightControlSurface.activeR
+                    direction: PathArc.Counterclockwise
+                }
+
+                PathLine {
+                    x: rightControlSurface.currentW - rightControlSurface.activeR
+                    y: rightControlSurface.offsetY + rightControlSurface.h
+                }
+
+                PathArc {
+                    x: rightControlSurface.currentW
+                    y: rightControlSurface.offsetY + rightControlSurface.h + rightControlSurface.activeR
+                    radiusX: rightControlSurface.activeR
+                    radiusY: rightControlSurface.activeR
+                    direction: PathArc.Clockwise
                 }
             }
         }

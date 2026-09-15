@@ -14,8 +14,10 @@ Item {
     signal requestTrayContextMenu(var item, real globalY)
 
     readonly property var pinnedList: {
-        const pinned = Config.pinnedApps || [];
+        const _actId = WindowService.activeId;
+        const _actApp = WindowService.activeAppId;
         const wins = WindowService.windows || [];
+        const pinned = Config.pinnedApps || [];
         const result = [];
         const matchedWinIds = new Set();
 
@@ -24,8 +26,8 @@ Item {
             const pId = (p.appId || "").toLowerCase();
             const pDesk = (p.desktopFile || "").toLowerCase();
             const pName = (p.appName || "").toLowerCase();
-
             let found = null;
+
             for (let j = 0; j < wins.length; j++) {
                 const w = wins[j];
                 if (matchedWinIds.has(w.id)) continue;
@@ -44,6 +46,9 @@ Item {
 
             if (found) {
                 matchedWinIds.add(found.id);
+                const isAct = Boolean(found.isActive)
+                    || (Boolean(_actId) && String(found.id).replace(/[{}]/g, "") === String(_actId).replace(/[{}]/g, ""))
+                    || (Boolean(_actApp) && (String(p.appId).toLowerCase() === String(_actApp).toLowerCase() || String(found.appId).toLowerCase() === String(_actApp).toLowerCase()));
                 result.push({
                     isPinned: true,
                     isRunning: true,
@@ -54,7 +59,7 @@ Item {
                     materialIcon: p.materialIcon || found.materialIcon,
                     desktopFile: p.desktopFile || found.desktopFile || p.appId,
                     title: found.title,
-                    isActive: found.isActive
+                    isActive: isAct
                 });
             } else {
                 result.push({
@@ -75,6 +80,8 @@ Item {
     }
 
     readonly property var unpinnedList: {
+        const _actId = WindowService.activeId;
+        const _actApp = WindowService.activeAppId;
         const wins = WindowService.windows || [];
         const pinned = Config.pinnedApps || [];
         const result = [];
@@ -106,6 +113,9 @@ Item {
         for (let k = 0; k < wins.length; k++) {
             const w = wins[k];
             if (!matchedWinIds.has(w.id)) {
+                const isAct = Boolean(w.isActive)
+                    || (Boolean(_actId) && String(w.id).replace(/[{}]/g, "") === String(_actId).replace(/[{}]/g, ""))
+                    || (Boolean(_actApp) && String(w.appId).toLowerCase() === String(_actApp).toLowerCase());
                 result.push({
                     isPinned: false,
                     isRunning: true,
@@ -116,7 +126,7 @@ Item {
                     materialIcon: w.materialIcon,
                     desktopFile: w.desktopFile || w.appId,
                     title: w.title,
-                    isActive: w.isActive
+                    isActive: isAct
                 });
             }
         }

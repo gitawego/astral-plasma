@@ -52,14 +52,37 @@ impl WatcherService {
         let meta = resolve_window_meta(title, cls, app, "");
         let mut st = self.state.lock().await;
 
+        let clean_wid = wid.trim_matches(|c| c == '{' || c == '}');
+
         st.active_title = meta.app_name.clone();
         st.active_material_icon = meta.material_icon.clone();
         st.active_icon_name = meta.icon_name.clone();
         st.active_app_id = meta.app_id.clone();
-        st.active_id = wid.to_string();
+        st.active_id = clean_wid.to_string();
 
+        let mut found = false;
         for w in &mut st.cached_windows {
-            w.is_active = w.id == wid;
+            let w_clean_id = w.id.trim_matches(|c| c == '{' || c == '}');
+            if !clean_wid.is_empty() && w_clean_id == clean_wid {
+                w.is_active = true;
+                w.title = title.to_string();
+                found = true;
+            } else {
+                w.is_active = false;
+            }
+        }
+
+        if !found && !clean_wid.is_empty() {
+            st.cached_windows.push(Window {
+                id: clean_wid.to_string(),
+                title: title.to_string(),
+                app_name: meta.app_name.clone(),
+                icon_name: meta.icon_name.clone(),
+                material_icon: meta.material_icon.clone(),
+                app_id: meta.app_id.clone(),
+                desktop_file: meta.desktop_file.clone(),
+                is_active: true,
+            });
         }
 
         let payload = ActiveWindowPayload {
@@ -68,7 +91,7 @@ impl WatcherService {
             active_material_icon: meta.material_icon,
             active_icon_name: meta.icon_name,
             active_app_id: meta.app_id,
-            active_id: wid.to_string(),
+            active_id: clean_wid.to_string(),
             windows: st.cached_windows.clone(),
         };
 
@@ -88,11 +111,12 @@ impl WatcherService {
 
         let mut enriched = Vec::new();
         let mut st = self.state.lock().await;
-        let active_wid = st.active_id.clone();
+        let active_wid = st.active_id.trim_matches(|c| c == '{' || c == '}').to_string();
         let mut seen_ids = HashSet::new();
 
         for item in items {
-            let wid = item["id"].as_str().unwrap_or_default().to_string();
+            let raw_wid = item["id"].as_str().unwrap_or_default();
+            let wid = raw_wid.trim_matches(|c| c == '{' || c == '}').to_string();
             if wid.is_empty() || seen_ids.contains(&wid) {
                 continue;
             }
@@ -251,6 +275,10 @@ pub fn cleanup_kwin_script() {
 }
 
 pub async fn run_event_daemon() -> DynResult<()> {
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+    }
     cleanup_kwin_script();
 
     let state = Arc::new(Mutex::new(DaemonState::default()));

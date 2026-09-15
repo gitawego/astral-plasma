@@ -43,6 +43,27 @@ ShellRoot {
         }
         function open(mode: string, targetY: real): void { Config.openBottomPopout(mode || "default", targetY); }
         function close(): void { Config.closeBottomPopout(); }
+        function previewApp(index: int, customY: real): void {
+            const wins = WindowService.windows || [];
+            if (wins.length > index) {
+                const w = wins[index];
+                const appObj = {
+                    id: w.id,
+                    appId: w.appId,
+                    appName: w.appName,
+                    iconName: w.iconName,
+                    materialIcon: w.materialIcon,
+                    desktopFile: w.desktopFile,
+                    title: w.title,
+                    isActive: w.isActive,
+                    isRunning: true,
+                    isPinned: false
+                };
+                WindowService.loadAppPreview(appObj);
+                const y = (customY !== undefined && customY > 0) ? customY : 650;
+                Config.openBottomPopout("app", y);
+            }
+        }
     }
 
     IpcHandler {
@@ -53,6 +74,19 @@ ShellRoot {
         function dismiss(): void {
             NotificationService.dismiss();
         }
+    }
+
+    IpcHandler {
+        target: "rightedge"
+        function toggle(): void {
+            if (Config.rightEdgeControlVisible) {
+                Config.closeRightEdgeControl();
+            } else {
+                Config.openRightEdgeControl();
+            }
+        }
+        function open(): void { Config.openRightEdgeControl(); }
+        function close(): void { Config.closeRightEdgeControl(); }
     }
 
     // Unified Desktop Shell (Flush Fused Left Dock + Top Bar with Corner Fillet)

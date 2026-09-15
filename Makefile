@@ -39,14 +39,15 @@ test-rust:
 	$(CARGO) test --manifest-path $(DAEMON_DIR)/Cargo.toml
 
 test-qml:
-	python3 tests/run_tests.py
+	bash tests/run_qml_tests.sh
 
 run: build
 	@trap './scripts/manage_plasma_panel.sh restore' EXIT INT TERM; \
 	quickshell -p .
 
 stop:
-	@pkill -x quickshell 2>/dev/null || true
+	@pkill -9 -x quickshell 2>/dev/null || true
+	@pkill -9 -f "caelestia-daemon" 2>/dev/null || true
 	@./scripts/manage_plasma_panel.sh restore
 
 restore:

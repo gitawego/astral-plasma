@@ -22,6 +22,7 @@ pub async fn run_cli() -> DynResult<()> {
         eprintln!("  workspaces switch <id>  - Switch to virtual desktop by ID");
         eprintln!("  workspaces ensure <idx> - Ensure virtual desktop at index exists and switch");
         eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
+        eprintln!("  preview <window_id>     - Capture live window thumbnail");
         eprintln!("  notifs                  - Monitor desktop notifications (Notify)");
         return Ok(());
     }
@@ -123,6 +124,25 @@ pub async fn run_cli() -> DynResult<()> {
                 _ => {
                     eprintln!("Usage: caelestia-daemon tray <menu|click|activate> [args...]");
                 }
+            }
+        }
+        "preview" => {
+            if args.len() >= 3 {
+                let win_id = &args[2];
+                let width: u32 = args.get(3).and_then(|w| w.parse().ok()).unwrap_or(320);
+                let slot = args.get(4).map(|s| s.as_str());
+
+                match crate::infrastructure::preview_capture::capture_window(win_id, width, slot).await {
+                    Ok(path) => {
+                        println!("{}", path);
+                    }
+                    Err(e) => {
+                        eprintln!("Preview capture failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                eprintln!("Usage: caelestia-daemon preview <window_id> [target_width] [slot]");
             }
         }
         _ => {

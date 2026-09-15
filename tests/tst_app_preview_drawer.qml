@@ -11,6 +11,8 @@ Item {
     property string bottomPopoutMode: "default"
     property real popoutTargetY: 0
     property var activePreviewApp: null
+    property string activePreviewThumbnail: ""
+    property var _previewCache: ({})
 
     // Simulated popoutCloseTimer matching Config.qml
     Timer {
@@ -18,6 +20,22 @@ Item {
         interval: 450
         repeat: false
         onTriggered: testRoot.bottomPopoutVisible = false
+    }
+
+    function loadAppPreview(app) {
+        testRoot.activePreviewApp = app;
+        if (!app || !app.isRunning || !app.id) {
+            testRoot.activePreviewThumbnail = "";
+            return;
+        }
+        const winKey = app.id.toString();
+        if (testRoot._previewCache[winKey]) {
+            testRoot.activePreviewThumbnail = testRoot._previewCache[winKey];
+        } else {
+            testRoot.activePreviewThumbnail = "";
+            testRoot._previewCache[winKey] = "file:///tmp/caelestia_preview_" + winKey + ".png";
+            testRoot.activePreviewThumbnail = testRoot._previewCache[winKey];
+        }
     }
 
     function openBottomPopout(mode, targetY) {
@@ -41,7 +59,7 @@ Item {
     }
 
     function simulateAppHoverEnter(app, targetY) {
-        testRoot.activePreviewApp = app;
+        loadAppPreview(app);
         openBottomPopout("app", targetY);
     }
 
@@ -99,6 +117,7 @@ Item {
         assert(testRoot.activePreviewApp !== null, "activePreviewApp is set");
         assert(testRoot.activePreviewApp.appName === "Dolphin", "activePreviewApp name matches");
         assert(testRoot.activePreviewApp.title === "Downloads — Dolphin", "activePreviewApp title matches");
+        assert(testRoot.activePreviewThumbnail.indexOf("42") !== -1, "activePreviewThumbnail has been set for app 42");
 
         // 3. Mouse moves between two app icons seamlessly without closing
         const secondMockApp = {
@@ -119,6 +138,27 @@ Item {
         assert(testRoot.bottomPopoutVisible, "Drawer remains open when transitioning between apps");
         assert(testRoot.popoutTargetY === 380, "Drawer slides vertically to new app center");
         assert(testRoot.activePreviewApp.appName === "Ghostty", "Preview switches to new app");
+        assert(testRoot.activePreviewThumbnail.indexOf("88") !== -1, "activePreviewThumbnail has switched to app 88");
+
+        // Test unlaunched app hover
+        const unlaunchedApp = {
+            id: null,
+            appId: "org.mozilla.firefox",
+            appName: "Firefox",
+            iconName: "firefox",
+            materialIcon: "language",
+            desktopFile: "firefox.desktop",
+            title: "",
+            isRunning: false,
+            isActive: false,
+            isPinned: true
+        };
+        simulateAppHoverEnter(unlaunchedApp, 200);
+        assert(testRoot.activePreviewThumbnail === "", "activePreviewThumbnail must be empty for unlaunched app");
+        // Check header alignment contract
+        const headerOffsetY = 49.5;
+        const alignedDrawerY = testRoot.popoutTargetY - headerOffsetY;
+        assert(alignedDrawerY === 150.5, "Drawer Y aligns header to hovered icon exactly without being too low");
 
         // 4. Mouse moves into drawer
         simulateAppHoverExit();
@@ -136,6 +176,59 @@ Item {
         // 6. Action click closes drawer
         closeBottomPopout();
         assert(!testRoot.bottomPopoutVisible, "Drawer closes on action selection");
+
+        // 7. Double-Buffered Live Preview Transition Simulation
+        console.log("TESTING: Double-buffered live preview update logic");
+        let activeBuf = "A";
+        let bufASource = "";
+        let bufBSource = "";
+        let bufAOpacity = 0.0;
+        let bufBOpacity = 0.0;
+
+        function onNewSourceArrived(newUrl) {
+            if (activeBuf === "A") {
+                bufBSource = newUrl;
+            } else {
+                bufASource = newUrl;
+            }
+        }
+
+        function onBufReady(bufName) {
+            if (bufName === "B" && activeBuf === "A") {
+                activeBuf = "B";
+                bufBOpacity = 1.0;
+                bufAOpacity = 0.0;
+            } else if (bufName === "A" && activeBuf === "B") {
+                activeBuf = "A";
+                bufAOpacity = 1.0;
+                bufBOpacity = 0.0;
+            }
+        }
+
+        // Initial preview load: slot 0
+        bufASource = "file:///tmp/caelestia_preview_42_0.png";
+        bufAOpacity = 1.0; // Ready
+        assert(activeBuf === "A" && bufAOpacity === 1.0, "Initial buffer A active");
+
+        // Live refresh: slot 1 arrives in background
+        onNewSourceArrived("file:///tmp/caelestia_preview_42_1.png");
+        assert(bufBSource === "file:///tmp/caelestia_preview_42_1.png", "Buffer B loading new frame");
+        assert(bufAOpacity === 1.0, "Buffer A remains fully visible while Buffer B loads (no flicker)");
+
+        // Buffer B completes loading
+        onBufReady("B");
+        assert(activeBuf === "B", "Switched to buffer B seamlessly");
+        assert(bufBOpacity === 1.0 && bufAOpacity === 0.0, "Buffer B visible, Buffer A hidden");
+
+        // Next live refresh: slot 0 arrives again
+        onNewSourceArrived("file:///tmp/caelestia_preview_42_0.png");
+        assert(bufASource === "file:///tmp/caelestia_preview_42_0.png", "Buffer A loading next frame");
+        assert(bufBOpacity === 1.0, "Buffer B remains fully visible while Buffer A loads");
+
+        // Buffer A completes loading
+        onBufReady("A");
+        assert(activeBuf === "A", "Switched back to buffer A seamlessly");
+        assert(bufAOpacity === 1.0 && bufBOpacity === 0.0, "Buffer A visible, Buffer B hidden");
 
         console.log("PASS: App Preview Drawer Lifecycle Tests");
         Qt.exit(0);

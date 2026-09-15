@@ -43,6 +43,11 @@ PanelWindow {
     readonly property real currentPopW: (typeof fusedPopout !== "undefined" ? fusedPopout.popWidth : 280) * fusedBottomPopoutWrapper.offsetProgress
     readonly property real popoutH: (typeof fusedPopout !== "undefined" ? fusedPopout.implicitHeight : 240)
 
+    // Right Edge Volume/Brightness Control Geometry
+    readonly property real rightControlW: 60
+    readonly property real rightControlH: 280
+    readonly property real rightControlY: Math.round((root.height - rightControlH) / 2)
+
     // Domain Rules:
     // Status drawers originating from bottom dock group (Power, Battery/Profiles) or near bottom
     // clamp flush to the bottom border (root.height - root.borderT - root.popoutH) with zero gap.
@@ -50,9 +55,23 @@ PanelWindow {
         if (Config.bottomPopoutMode === "power" || Config.bottomPopoutMode === "battery" || Config.bottomPopoutMode === "default") {
             return true;
         }
+        if (Config.bottomPopoutMode === "app") {
+            return false;
+        }
         let targetCenter = Config.popoutTargetY;
         if (targetCenter <= 0) return true;
         return (targetCenter >= root.height - root.borderT - 180) || ((targetCenter + root.popoutH / 2) >= (root.height - root.borderT - 2));
+    }
+
+    readonly property real popoutHeaderCenterY: {
+        if (typeof fusedPopout === "undefined" || !fusedPopout) return 49.5;
+        if (Config.bottomPopoutMode === "app") {
+            return fusedPopout.appIconCenterY;
+        }
+        if (Config.bottomPopoutMode === "tray") {
+            return fusedPopout.trayIconCenterY;
+        }
+        return root.popoutH / 2;
     }
 
     readonly property real idealPopoutY: {
@@ -60,7 +79,11 @@ PanelWindow {
             return root.height - root.borderT - root.popoutH;
         }
         let targetCenter = Config.popoutTargetY;
-        const desiredY = targetCenter - root.popoutH / 2;
+        // For app and tray drawers, anchor the drawer header icon to the dock item center so both icons align on the exact same line.
+        const headerOffsetY = (Config.bottomPopoutMode === "app" || Config.bottomPopoutMode === "tray")
+            ? root.popoutHeaderCenterY
+            : (root.popoutH / 2);
+        const desiredY = targetCenter - headerOffsetY;
         const minY = root.borderT;
         const maxY = root.height - root.borderT - root.popoutH;
         return Math.max(minY, Math.min(maxY, desiredY));
@@ -180,11 +203,11 @@ PanelWindow {
             height: Math.max(root.borderT, 16)
         }
 
-        // Right Border
+        // Right Border / Right Edge Hover Area
         Region {
-            x: root.width - root.borderT
+            x: root.width - Math.max(root.borderT, 16)
             y: 0
-            width: root.borderT
+            width: Math.max(root.borderT, 16)
             height: root.height
         }
 
@@ -228,6 +251,22 @@ PanelWindow {
             height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.height + root.filletR * 2 + 10) : 0
         }
 
+        // Right Edge Volume/Brightness Control (when open)
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - root.rightControlW - root.filletR)
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? Math.max(0, root.rightControlY - root.filletR)
+                : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.rightControlW + root.borderT + root.filletR)
+                : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.rightControlH + root.filletR * 2)
+                : 0
+        }
+
         // System Notifications Popup
         Region {
             x: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.x - root.filletR) : 0
@@ -263,6 +302,11 @@ PanelWindow {
         popoutHeight: fusedBottomPopoutWrapper.height
         popoutOffsetProgress: fusedBottomPopoutWrapper.offsetProgress
         fusedProgress: root.fusedProgress
+
+        rightControlW: root.rightControlW
+        rightControlH: root.rightControlH
+        rightControlY: root.rightControlY
+        rightControlOffsetProgress: rightEdgeControlWrapper.offsetProgress
     }
 
     // 2. TOP EDGE HOVER AREA FOR CENTRAL DROPDOWN TRIGGER
@@ -291,6 +335,27 @@ PanelWindow {
                 Config.dashboardVisible = !Config.dashboardVisible;
                 if (!Config.dashboardVisible) {
                     closeTimer.stop();
+                }
+            }
+        }
+    }
+
+    // 2b. RIGHT BORDER EDGE HOVER AREA FOR VOLUME & BRIGHTNESS TRIGGER
+    Item {
+        id: rightEdgeHoverArea
+        x: root.width - Math.max(root.borderT, 16)
+        y: 0
+        width: Math.max(root.borderT, 16)
+        height: root.height
+        z: 900
+
+        HoverHandler {
+            id: rightEdgeHover
+            onHoveredChanged: {
+                if (hovered) {
+                    Config.openRightEdgeControl();
+                } else if (!rightEdgeControlWrapper.isHovered) {
+                    Config.scheduleCloseRightEdgeControl();
                 }
             }
         }
@@ -415,6 +480,44 @@ PanelWindow {
                 id: fusedPopout
                 mode: Config.bottomPopoutMode
             }
+        }
+    }
+
+    // 8. RIGHT BORDER EDGE VOLUME & BRIGHTNESS CONTROL TAB
+    Item {
+        id: rightEdgeControlWrapper
+        x: root.width - root.borderT - root.rightControlW * offsetProgress
+        y: root.rightControlY
+        width: root.rightControlW
+        height: root.rightControlH
+        visible: offsetProgress > 0.001
+        clip: true
+        z: 950
+
+        property real offsetProgress: Config.rightEdgeControlVisible ? 1.0 : 0.0
+        readonly property bool isHovered: rightControlHover.hovered
+
+        Behavior on offsetProgress {
+            NumberAnimation {
+                duration: Theme.animExpressiveDefaultSpatial
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+            }
+        }
+
+        HoverHandler {
+            id: rightControlHover
+            onHoveredChanged: {
+                if (hovered) {
+                    Config.keepRightEdgeControl();
+                } else if (!rightEdgeHover.hovered) {
+                    Config.scheduleCloseRightEdgeControl();
+                }
+            }
+        }
+
+        RightEdgeControl {
+            anchors.fill: parent
         }
     }
 }

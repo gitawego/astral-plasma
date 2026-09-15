@@ -271,6 +271,34 @@ Singleton {
         bottomPopoutVisible = false;
     }
 
+    // Right border edge control (volume & brightness) state
+    property bool rightEdgeControlVisible: false
+
+    Timer {
+        id: rightEdgeCloseTimer
+        interval: 450
+        repeat: false
+        onTriggered: root.rightEdgeControlVisible = false
+    }
+
+    function openRightEdgeControl() {
+        rightEdgeCloseTimer.stop();
+        root.rightEdgeControlVisible = true;
+    }
+
+    function keepRightEdgeControl() {
+        rightEdgeCloseTimer.stop();
+    }
+
+    function scheduleCloseRightEdgeControl() {
+        rightEdgeCloseTimer.restart();
+    }
+
+    function closeRightEdgeControl() {
+        rightEdgeCloseTimer.stop();
+        root.rightEdgeControlVisible = false;
+    }
+
     function toggleDashboard() {
         dashboardVisible = !dashboardVisible;
         if (dashboardVisible) activePopout = "";
