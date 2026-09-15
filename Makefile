@@ -25,12 +25,14 @@ release:
 	@mkdir -p $(BIN_DIR)
 	$(CARGO) build --release --manifest-path $(DAEMON_DIR)/Cargo.toml
 	install -m 755 $(DAEMON_DIR)/target/release/caelestia-daemon $(TARGET)
-	@echo "Built: $(TARGET)"
+	ln -sf caelestia-daemon $(BIN_DIR)/caelestia
+	@echo "Built: $(TARGET) and $(BIN_DIR)/caelestia"
 
 debug:
 	@mkdir -p $(BIN_DIR)
 	$(CARGO) build --manifest-path $(DAEMON_DIR)/Cargo.toml
 	install -m 755 $(DAEMON_DIR)/target/debug/caelestia-daemon $(TARGET)
+	ln -sf caelestia-daemon $(BIN_DIR)/caelestia
 	@echo "Built debug: $(TARGET)"
 
 test: test-rust test-qml
@@ -42,16 +44,16 @@ test-qml:
 	bash tests/run_qml_tests.sh
 
 run: build
-	@trap './scripts/manage_plasma_panel.sh restore' EXIT INT TERM; \
-	quickshell -p .
+	@trap './bin/caelestia plasma restore' EXIT INT TERM; \
+	./bin/caelestia run
 
 stop:
 	@pkill -9 -x quickshell 2>/dev/null || true
 	@pkill -9 -f "caelestia-daemon" 2>/dev/null || true
-	@./scripts/manage_plasma_panel.sh restore
+	@./bin/caelestia plasma restore
 
 restore:
-	@./scripts/manage_plasma_panel.sh restore
+	@./bin/caelestia plasma restore
 
 clean:
 	$(CARGO) clean --manifest-path $(DAEMON_DIR)/Cargo.toml

@@ -4,3 +4,5 @@ pub mod workspace_control;
 pub mod launch_app;
 pub mod get_metrics;
 pub mod notif_monitor;
+pub mod plasma_service;
+pub mod systemd_service;

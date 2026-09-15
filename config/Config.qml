@@ -108,25 +108,48 @@ Singleton {
 
     // Dynamic script path resolution (config-driven, agnostic, zero hardcoded paths)
     readonly property string scriptsDir: {
-        let base = "";
-        try {
-            if (typeof Quickshell !== "undefined" && Quickshell.configPath) {
-                base = Quickshell.configPath;
-            }
-        } catch (e) {}
-        if (!base) {
-            let url = Qt.resolvedUrl("..").toString();
-            if (url.startsWith("file://")) {
-                base = url.substring(7);
-            } else {
-                base = url;
-            }
+        let url = Qt.resolvedUrl("../scripts").toString();
+        if (url.startsWith("file://")) {
+            return url.substring(7);
         }
-        return base + "/scripts";
+        return url;
     }
 
-    function scriptPath(scriptName: string): string {
+    function scriptPath(scriptName) {
         return root.scriptsDir + "/" + scriptName;
+    }
+
+    readonly property string daemonBin: {
+        let url = Qt.resolvedUrl("../bin/caelestia-daemon").toString();
+        if (url.startsWith("file://")) return url.substring(7);
+        return url;
+    }
+
+    // Systemd Service Management (Strictly Opt-in by User in Settings)
+    property bool systemdServiceInstalled: false
+    property bool systemdServiceActive: false
+    property bool systemdServiceEnabled: false
+    property string systemdServiceStatusText: "Not Installed"
+
+    function checkSystemdServiceStatus() {
+        if (typeof sysServiceProc !== "undefined" && !sysServiceProc.running) {
+            sysServiceProc.command = [root.daemonBin, "systemd", "status"];
+            sysServiceProc.running = true;
+        }
+    }
+
+    function installSystemdService() {
+        if (typeof sysServiceProc !== "undefined" && !sysServiceProc.running) {
+            sysServiceProc.command = [root.daemonBin, "systemd", "install"];
+            sysServiceProc.running = true;
+        }
+    }
+
+    function removeSystemdService() {
+        if (typeof sysServiceProc !== "undefined" && !sysServiceProc.running) {
+            sysServiceProc.command = [root.daemonBin, "systemd", "remove"];
+            sysServiceProc.running = true;
+        }
     }
 
     // Pinned apps management
@@ -378,5 +401,37 @@ Singleton {
         } catch (e) {
             console.error("[Config] Failed to save settings:", e);
         }
+    }
+
+    // Systemd User Service Process
+    Process {
+        id: sysServiceProc
+        command: [root.daemonBin, "systemd", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const res = JSON.parse(this.text.trim());
+                    if (res.action === "installed") {
+                        root.systemdServiceInstalled = true;
+                        root.systemdServiceStatusText = "Installed";
+                        root.checkSystemdServiceStatus();
+                    } else if (res.action === "removed") {
+                        root.systemdServiceInstalled = false;
+                        root.systemdServiceActive = false;
+                        root.systemdServiceEnabled = false;
+                        root.systemdServiceStatusText = "Not Installed";
+                    } else if (res.installed !== undefined) {
+                        root.systemdServiceInstalled = res.installed;
+                        root.systemdServiceActive = !!res.active;
+                        root.systemdServiceEnabled = !!res.enabled;
+                        root.systemdServiceStatusText = res.installed ? (res.active ? "Active & Installed" : "Installed (Inactive)") : "Not Installed";
+                    }
+                } catch (e) {}
+            }
+        }
+    }
+
+    Component.onCompleted: {
+        root.checkSystemdServiceStatus();
     }
 }

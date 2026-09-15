@@ -1,4 +1,6 @@
 use crate::domain::model::{Desktop, SystemMetrics, TrayItem, Window};
+use crate::domain::plasma::{PlasmaPanelInfo, PlasmaStatus};
+use crate::domain::systemd::ServiceStatus;
 use std::error::Error;
 
 pub type DynResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -27,4 +29,18 @@ pub trait MetricsPort: Send + Sync {
 
 pub trait AppLauncherPort: Send + Sync {
     fn launch(&self, target: &str) -> DynResult<()>;
+}
+
+pub trait PlasmaControlPort: Send + Sync {
+    fn query_panels(&self) -> DynResult<Vec<PlasmaPanelInfo>>;
+    fn disable_panels(&self, target: &str) -> DynResult<u32>;
+    fn backup_config(&self) -> DynResult<bool>;
+    fn restore_config(&self) -> DynResult<bool>;
+    fn get_status(&self) -> DynResult<PlasmaStatus>;
+}
+
+pub trait SystemdControlPort: Send + Sync {
+    fn query_status(&self) -> DynResult<ServiceStatus>;
+    fn install_service(&self) -> DynResult<ServiceStatus>;
+    fn remove_service(&self) -> DynResult<ServiceStatus>;
 }

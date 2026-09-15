@@ -111,6 +111,13 @@ PanelWindow {
                             active: navState.currentPage === "dashboard"
                             onClicked: navState.currentPage = "dashboard"
                         }
+                        PillButton {
+                            width: parent.width
+                            label: "System & Services"
+                            iconText: "memory"
+                            active: navState.currentPage === "system"
+                            onClicked: navState.currentPage = "system"
+                        }
                     }
 
                     Item { Layout.fillHeight: true }
@@ -152,6 +159,7 @@ PanelWindow {
                                 case "status": return statusPageComp;
                                 case "theme": return themePageComp;
                                 case "dashboard": return dashPageComp;
+                                case "system": return systemPageComp;
                                 default: return dockPageComp;
                             }
                         }
@@ -164,5 +172,6 @@ PanelWindow {
         Component { id: statusPageComp; StatusIconsPage {} }
         Component { id: themePageComp; ThemePage {} }
         Component { id: dashPageComp; DashboardPage {} }
+        Component { id: systemPageComp; SystemPage {} }
     }
 }

@@ -1,33 +1,98 @@
 use crate::application::get_metrics::GetMetricsUseCase;
 use crate::application::launch_app::LaunchAppUseCase;
+use crate::application::plasma_service::{run_watchdog_loop, PlasmaControlUseCase};
+use crate::application::systemd_service::SystemdControlUseCase;
 use crate::application::watch_events::run_event_daemon;
 use crate::application::window_control::WindowControlUseCase;
 use crate::application::workspace_control::WorkspaceControlUseCase;
 use crate::domain::ports::DynResult;
+use crate::infrastructure::embedded_bundle::{extract_embedded_theme, get_default_package_dir};
 use crate::infrastructure::kwin_adapter::KWinAdapter;
 use crate::infrastructure::launcher::DesktopLauncherAdapter;
+use crate::infrastructure::plasma_adapter::PlasmaAdapter;
 use crate::infrastructure::proc_metrics::ProcMetricsAdapter;
+use crate::infrastructure::systemd_adapter::SystemdAdapter;
+use crate::interfaces::api_server::{run_api_server, DEFAULT_API_PORT};
 use std::env;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 pub async fn run_cli() -> DynResult<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: caelestia-daemon <command> [args...]");
-        eprintln!("Commands:");
-        eprintln!("  watch                   - Run event-driven background watcher");
-        eprintln!("  activate <window_id>    - Activate window by internal UUID");
-        eprintln!("  close <window_id>       - Close window by internal UUID");
-        eprintln!("  launch <app/desktop>    - Launch application");
-        eprintln!("  workspaces query        - Query virtual desktops JSON");
-        eprintln!("  workspaces switch <id>  - Switch to virtual desktop by ID");
-        eprintln!("  workspaces ensure <idx> - Ensure virtual desktop at index exists and switch");
-        eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
-        eprintln!("  preview <window_id>     - Capture live window thumbnail");
-        eprintln!("  notifs                  - Monitor desktop notifications (Notify)");
+        print_usage();
         return Ok(());
     }
 
     match args[1].as_str() {
+        "run" => {
+            run_self_contained_app().await?;
+        }
+        "serve" | "server" => {
+            let port = args.get(2).and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_API_PORT);
+            run_api_server(port).await?;
+        }
+        "extract" => {
+            let target = if args.len() >= 3 {
+                PathBuf::from(&args[2])
+            } else {
+                get_default_package_dir()
+            };
+            println!("Extracting embedded theme to: {}", target.display());
+            extract_embedded_theme(&target)?;
+            println!("Theme extraction complete.");
+        }
+        "plasma" => {
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
+            let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
+            match sub {
+                "disable" => {
+                    let target = args.get(3).map(|s| s.as_str()).unwrap_or("all");
+                    let pid = args.get(4).and_then(|p| p.parse::<u32>().ok());
+                    let removed = plasma.backup_and_disable(target, pid)?;
+                    println!(r#"{{"success":true,"removed":{}}}"#, removed);
+                }
+                "restore" => {
+                    let restored = plasma.restore()?;
+                    println!(r#"{{"success":true,"restored":{}}}"#, restored);
+                }
+                "watchdog" => {
+                    if let Some(pid_str) = args.get(3) {
+                        if let Ok(pid) = pid_str.parse::<u32>() {
+                            run_watchdog_loop(pid)?;
+                        }
+                    }
+                }
+                "status" => {
+                    let st = plasma.get_status()?;
+                    println!("{}", serde_json::to_string(&st)?);
+                }
+                _ => {
+                    eprintln!("Usage: caelestia-daemon plasma <disable|restore|status|watchdog> [args...]");
+                }
+            }
+        }
+        "systemd" => {
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
+            let systemd = SystemdControlUseCase::new(SystemdAdapter::new());
+            match sub {
+                "status" => {
+                    let st = systemd.get_status()?;
+                    println!("{}", serde_json::to_string(&st)?);
+                }
+                "install" => {
+                    let st = systemd.install()?;
+                    println!("{}", serde_json::to_string(&st)?);
+                }
+                "remove" => {
+                    let st = systemd.remove()?;
+                    println!("{}", serde_json::to_string(&st)?);
+                }
+                _ => {
+                    eprintln!("Usage: caelestia-daemon systemd <status|install|remove>");
+                }
+            }
+        }
         "notifs" => {
             crate::application::notif_monitor::run_notif_monitor();
         }
@@ -147,8 +212,61 @@ pub async fn run_cli() -> DynResult<()> {
         }
         _ => {
             eprintln!("Unknown command: {}", args[1]);
+            print_usage();
         }
     }
+
+    Ok(())
+}
+
+fn print_usage() {
+    eprintln!("Usage: caelestia-daemon <command> [args...]");
+    eprintln!("Commands:");
+    eprintln!("  run                     - Run full self-contained Caelestia desktop shell");
+    eprintln!("  serve [--port <port>]   - Run native REST & Unix socket API server");
+    eprintln!("  extract [target_dir]    - Extract embedded QML theme bundle");
+    eprintln!("  plasma <cmd>            - Plasma panels management: disable, restore, status, watchdog");
+    eprintln!("  systemd <cmd>           - User-directed systemd service management: status, install, remove");
+    eprintln!("  watch                   - Run event-driven background watcher");
+    eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
+    eprintln!("  workspaces <cmd>        - Virtual desktops: query, switch, ensure");
+    eprintln!("  preview <window_id>     - Capture live window thumbnail");
+    eprintln!("  tray <cmd>              - System tray operations");
+}
+
+async fn run_self_contained_app() -> DynResult<()> {
+    // 1. Determine theme path: if shell.qml exists in current dir, use it (dev mode); otherwise extract embedded theme
+    let theme_dir = if Path::new("shell.qml").exists() {
+        std::env::current_dir()?
+    } else {
+        let pkg_dir = get_default_package_dir();
+        extract_embedded_theme(&pkg_dir)?;
+        pkg_dir
+    };
+
+    println!("[Caelestia] Starting desktop shell using package at: {}", theme_dir.display());
+
+    // 2. Start API server in background task
+    tokio::spawn(async move {
+        let _ = run_api_server(DEFAULT_API_PORT).await;
+    });
+
+    // 3. Backup and disable KDE Plasma panels
+    let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
+    let _ = plasma.backup_and_disable("all", Some(std::process::id()));
+
+    // 4. Launch Quickshell
+    let mut child = Command::new("quickshell")
+        .arg("-p")
+        .arg(&theme_dir)
+        .spawn()?;
+
+    // 5. Wait for Quickshell process or signal
+    let _ = child.wait();
+
+    // 6. On exit, restore original Plasma panels cleanly
+    println!("[Caelestia] Quickshell stopped. Restoring original KDE Plasma panels...");
+    let _ = plasma.restore();
 
     Ok(())
 }

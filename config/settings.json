@@ -125,7 +125,7 @@
     "showTabs": true
   },
   "theme": {
-    "mode": "preset",
+    "mode": "dynamic",
     "preset": "iris",
     "blurStrength": 0.85,
     "cornerRadius": 20
