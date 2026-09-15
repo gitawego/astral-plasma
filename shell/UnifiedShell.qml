@@ -520,4 +520,11 @@ PanelWindow {
             anchors.fill: parent
         }
     }
+
+    // 9. CENTRAL TRANSLUCENT VOLUME OSD (~0.6 transparency, macOS style)
+    VolumeOsd {
+        id: volumeOsd
+        anchors.centerIn: parent
+        z: 1100
+    }
 }

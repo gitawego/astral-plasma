@@ -130,6 +130,7 @@ Item {
                     if (pressed) {
                         if (Math.abs(mouse.y - pressY) > 4) {
                             isDragging = true;
+                            if (typeof Config !== "undefined") Config.isUserDraggingVolume = true;
                         }
                         if (isDragging) {
                             updateVolume(mouse.y);
@@ -138,6 +139,7 @@ Item {
                 }
 
                 onReleased: mouse => {
+                    if (typeof Config !== "undefined") Config.isUserDraggingVolume = false;
                     if (!isDragging) {
                         // Pure single click without dragging:
                         const knobTop = volumeKnob.y;

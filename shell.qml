@@ -89,6 +89,11 @@ ShellRoot {
         function close(): void { Config.closeRightEdgeControl(); }
     }
 
+    IpcHandler {
+        target: "volumeosd"
+        function trigger(): void { Config.triggerVolumeOsd(); }
+    }
+
     // Unified Desktop Shell (Flush Fused Left Dock + Top Bar with Corner Fillet)
     Variants {
         model: Quickshell.screens

@@ -299,6 +299,25 @@ Singleton {
         root.rightEdgeControlVisible = false;
     }
 
+    // Flag indicating user is currently dragging the volume slider (suppresses central OSD)
+    property bool isUserDraggingVolume: false
+
+    // Central Volume OSD state
+    property bool volumeOsdVisible: false
+
+    Timer {
+        id: volumeOsdTimer
+        interval: 1600
+        repeat: false
+        onTriggered: root.volumeOsdVisible = false
+    }
+
+    function triggerVolumeOsd() {
+        if (root.isUserDraggingVolume) return;
+        root.volumeOsdVisible = true;
+        volumeOsdTimer.restart();
+    }
+
     function toggleDashboard() {
         dashboardVisible = !dashboardVisible;
         if (dashboardVisible) activePopout = "";
