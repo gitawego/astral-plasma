@@ -24,8 +24,10 @@ Item {
         : ((typeof PipewireAudio !== "undefined" && PipewireAudio) ? (PipewireAudio.muted ?? false) : false)
 
     // Smoothed animated volume for 60fps buttery motion
+    property bool isTesting: false
     property real animatedVolume: currentVolume
     Behavior on animatedVolume {
+        enabled: !root.isTesting
         NumberAnimation {
             duration: 160
             easing.type: Easing.OutCubic
@@ -152,6 +154,37 @@ Item {
     readonly property real wave3Spread: wave3Progress * 7.5
     readonly property real wave3Scale: 0.88 + 0.14 * wave3Progress
 
+    // =========================================================================
+    // THEME PALETTE BINDINGS (Consistent with Iris & Caelestia pastel presets)
+    // =========================================================================
+    readonly property color cardColor: (typeof Colors !== "undefined" && Colors.surface)
+        ? Qt.alpha(Colors.surface, 0.60)
+        : Qt.rgba(0.98, 0.97, 0.96, 0.60)
+
+    readonly property color cardBorderColor: (typeof Colors !== "undefined" && Colors.outline)
+        ? Qt.alpha(Colors.outline, 0.35)
+        : Qt.rgba(0, 0, 0, 0.12)
+
+    readonly property color fgColor: (typeof Colors !== "undefined" && Colors.textMain)
+        ? Colors.textMain
+        : "#1D1B20"
+
+    readonly property color accentColor: (typeof Colors !== "undefined" && Colors.primary)
+        ? Colors.primary
+        : "#6B4FA0"
+
+    readonly property color trackBgColor: (typeof Colors !== "undefined" && Colors.surfaceContainerHigh)
+        ? Qt.alpha(Colors.surfaceContainerHigh, 0.80)
+        : Qt.rgba(0, 0, 0, 0.08)
+
+    readonly property color trackBorderColor: (typeof Colors !== "undefined" && Colors.outlineVariant)
+        ? Qt.alpha(Colors.outlineVariant, 0.45)
+        : Qt.rgba(0, 0, 0, 0.06)
+
+    readonly property color tickUnfilledColor: (typeof Colors !== "undefined" && Colors.surfaceContainerLowest)
+        ? Qt.alpha(Colors.surfaceContainerLowest, 0.65)
+        : Qt.rgba(1, 1, 1, 0.50)
+
     // ==========================================
     // 1. TRANSLUCENT CONTAINER CARD (~0.6 opacity)
     // ==========================================
@@ -159,21 +192,19 @@ Item {
         id: cardBg
         anchors.fill: parent
         radius: 28
-        color: Qt.rgba(0.20, 0.26, 0.36, 0.60)
+        color: root.cardColor
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.18)
+        border.color: root.cardBorderColor
 
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
             blurMax: 32
-            shadowBlur: 0.8
+            shadowBlur: 0.7
             shadowVerticalOffset: 4
-            shadowColor: Qt.rgba(0, 0, 0, 0.35)
+            shadowColor: Qt.rgba(0, 0, 0, 0.16)
         }
     }
-
-    readonly property color fgColor: "#0A0F1D"
 
     // ==========================================
     // 2. VECTOR SPEAKER ICON & SOUND WAVES
@@ -221,7 +252,7 @@ Item {
             }
         }
 
-        // Sound Wave 1 Container
+        // Sound Wave 1 Container (themed Iris accent)
         Item {
             id: wave1Item
             anchors.fill: parent
@@ -241,7 +272,7 @@ Item {
 
                 ShapePath {
                     fillColor: "transparent"
-                    strokeColor: root.fgColor
+                    strokeColor: root.accentColor
                     strokeWidth: 4.5
                     capStyle: ShapePath.RoundCap
 
@@ -255,7 +286,7 @@ Item {
             }
         }
 
-        // Sound Wave 2 Container
+        // Sound Wave 2 Container (themed Iris accent)
         Item {
             id: wave2Item
             anchors.fill: parent
@@ -275,7 +306,7 @@ Item {
 
                 ShapePath {
                     fillColor: "transparent"
-                    strokeColor: root.fgColor
+                    strokeColor: root.accentColor
                     strokeWidth: 4.5
                     capStyle: ShapePath.RoundCap
 
@@ -289,7 +320,7 @@ Item {
             }
         }
 
-        // Sound Wave 3 Container
+        // Sound Wave 3 Container (themed Iris accent)
         Item {
             id: wave3Item
             anchors.fill: parent
@@ -309,7 +340,7 @@ Item {
 
                 ShapePath {
                     fillColor: "transparent"
-                    strokeColor: root.fgColor
+                    strokeColor: root.accentColor
                     strokeWidth: 4.5
                     capStyle: ShapePath.RoundCap
 
@@ -363,7 +394,7 @@ Item {
     }
 
     // ==========================================
-    // 3. 16-SEGMENT TICK PROGRESS BAR
+    // 3. 16-SEGMENT THEMED PROGRESS TICK BAR
     // ==========================================
     Rectangle {
         id: tickBarFrame
@@ -372,10 +403,10 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 26
-        color: "#080C14"
-        radius: 1
+        color: root.trackBgColor
+        radius: 2
         border.width: 1
-        border.color: "#080C14"
+        border.color: root.trackBorderColor
 
         Row {
             anchors.centerIn: parent
@@ -389,20 +420,20 @@ Item {
                     required property int index
                     width: 8
                     height: 8
-                    radius: 0.5
+                    radius: 1
 
                     readonly property real tickFraction: Math.max(0.0, Math.min(1.0, (root.animatedVolume * 16) - tickItem.index))
                     readonly property bool isFullyFilled: !root.isMuted && (tickFraction >= 0.99)
                     readonly property bool isPartiallyFilled: !root.isMuted && (tickFraction > 0.01)
 
                     color: root.isMuted
-                        ? "#080C14"
+                        ? root.tickUnfilledColor
                         : (isFullyFilled
-                            ? "#FFFFFF"
-                            : (isPartiallyFilled ? Qt.rgba(1, 1, 1, 0.20 + 0.80 * tickFraction) : "#080C14"))
+                            ? root.accentColor
+                            : (isPartiallyFilled ? Qt.alpha(root.accentColor, 0.25 + 0.75 * tickFraction) : root.tickUnfilledColor))
 
                     border.width: 0.5
-                    border.color: (!root.isMuted && isPartiallyFilled) ? "#080C14" : "transparent"
+                    border.color: (!root.isMuted && isPartiallyFilled) ? Qt.alpha(root.accentColor, 0.40) : "transparent"
                 }
             }
         }

@@ -88,6 +88,8 @@ Item {
         assert(Math.abs(volumeOsd.y - expectedY) < 1, "VolumeOsd must be centered vertically at 440px");
 
         // 5. Continuous Wave Dynamics (Reflects values upon EVERY volume change)
+        volumeOsd.isTesting = true;
+
         // Test at 0% (Silent)
         volumeOsd.testVolume = 0.0;
         volumeOsd.testMuted = 0;
@@ -146,6 +148,19 @@ Item {
 
         // 6. Pulse Scale Behavior
         assert(volumeOsd.iconPulseScale >= 0.95 && volumeOsd.iconPulseScale <= 1.20, "Pulse scale must be within normalized bounds");
+
+        // 7. Theme Palette Consistency Verification
+        assert(volumeOsd.accentColor !== undefined && volumeOsd.accentColor !== "", "accentColor must be bound");
+        assert(volumeOsd.cardColor !== undefined && volumeOsd.cardColor !== "", "cardColor must be bound");
+        assert(volumeOsd.fgColor !== undefined && volumeOsd.fgColor !== "", "fgColor must be bound");
+        assert(volumeOsd.trackBgColor !== undefined && volumeOsd.trackBgColor !== "", "trackBgColor must be bound");
+        assert(volumeOsd.tickUnfilledColor !== undefined && volumeOsd.tickUnfilledColor !== "", "tickUnfilledColor must be bound");
+
+        // Ensure Iris violet accent matches Colors.primary (#6B4FA0 in Iris preset)
+        if (typeof Colors !== "undefined" && Colors.primary) {
+            assert(volumeOsd.accentColor === Colors.primary, "VolumeOsd accentColor must equal Colors.primary");
+            assert(volumeOsd.fgColor === Colors.textMain, "VolumeOsd fgColor must equal Colors.textMain");
+        }
 
         console.log("PASS: Volume OSD Unit Tests");
         Qt.exit(0);
