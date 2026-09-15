@@ -79,4 +79,17 @@ ShellRoot {
     SettingsWindow {
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
+
+    Component.onCompleted: {
+        if (Config.disablePlasmaPanels) {
+            const target = (typeof Config.disablePlasmaPanels === "string") ? Config.disablePlasmaPanels : "all";
+            Quickshell.execDetached([Config.scriptPath("manage_plasma_panel.sh"), "disable", target, "" + Quickshell.processId]);
+        }
+    }
+
+    Component.onDestruction: {
+        if (Config.disablePlasmaPanels && Config.autoRestorePlasmaOnExit) {
+            Quickshell.execDetached([Config.scriptPath("manage_plasma_panel.sh"), "restore"]);
+        }
+    }
 }

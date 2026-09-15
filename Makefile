@@ -3,7 +3,7 @@ BIN_DIR = bin
 TARGET = $(BIN_DIR)/caelestia-daemon
 DAEMON_DIR = daemon
 
-.PHONY: all build release debug test test-rust test-qml run clean install help
+.PHONY: all build release debug test test-rust test-qml run stop restore clean install help
 
 all: build
 
@@ -14,7 +14,9 @@ help:
 	@echo "  make test        - Run all tests (Rust unit tests + QML integration tests)"
 	@echo "  make test-rust   - Run only Rust unit tests"
 	@echo "  make test-qml    - Run only QML test suites"
-	@echo "  make run         - Reload/start quickshell with current configuration"
+	@echo "  make run         - Run theme (auto-restores original top panel on exit)"
+	@echo "  make stop        - Stop theme and restore original top panel"
+	@echo "  make restore     - Restore original KDE Plasma top panel"
 	@echo "  make clean       - Clean build artifacts"
 
 build: release
@@ -40,7 +42,15 @@ test-qml:
 	python3 tests/run_tests.py
 
 run: build
+	@trap './scripts/manage_plasma_panel.sh restore' EXIT INT TERM; \
 	quickshell -p .
+
+stop:
+	@pkill -x quickshell 2>/dev/null || true
+	@./scripts/manage_plasma_panel.sh restore
+
+restore:
+	@./scripts/manage_plasma_panel.sh restore
 
 clean:
 	$(CARGO) clean --manifest-path $(DAEMON_DIR)/Cargo.toml

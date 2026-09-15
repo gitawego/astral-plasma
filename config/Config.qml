@@ -92,6 +92,42 @@ Singleton {
     readonly property bool topBarShowWeather: true
     readonly property bool dashboardShowOnHover: root.settings.dashboard ? (root.settings.dashboard.showOnHover ?? true) : true
     readonly property int dashboardWidth: root.settings.dashboard ? (root.settings.dashboard.width ?? 980) : 980
+    readonly property var disablePlasmaPanels: {
+        if (!root.settings.plasma) return "all";
+        if (root.settings.plasma.disablePanels !== undefined) return root.settings.plasma.disablePanels;
+        if (root.settings.plasma.disableTopPanel) return "all";
+        return "all";
+    }
+    readonly property bool disablePlasmaNotifications: {
+        if (!root.settings.plasma) return true;
+        if (root.settings.plasma.disableNotifications !== undefined) return root.settings.plasma.disableNotifications;
+        return true;
+    }
+    readonly property string plasmaBackupDir: root.settings.plasma?.backupDir ?? ""
+    readonly property bool autoRestorePlasmaOnExit: root.settings.plasma?.autoRestoreOnExit ?? true
+
+    // Dynamic script path resolution (config-driven, agnostic, zero hardcoded paths)
+    readonly property string scriptsDir: {
+        let base = "";
+        try {
+            if (typeof Quickshell !== "undefined" && Quickshell.configPath) {
+                base = Quickshell.configPath;
+            }
+        } catch (e) {}
+        if (!base) {
+            let url = Qt.resolvedUrl("..").toString();
+            if (url.startsWith("file://")) {
+                base = url.substring(7);
+            } else {
+                base = url;
+            }
+        }
+        return base + "/scripts";
+    }
+
+    function scriptPath(scriptName: string): string {
+        return root.scriptsDir + "/" + scriptName;
+    }
 
     // Pinned apps management
     readonly property var pinnedApps: (root.settings.dock && root.settings.dock.pinnedApps) ? root.settings.dock.pinnedApps : []

@@ -83,8 +83,8 @@ Item {
                 anchors.top: parent.top
                 spacing: Theme.spaceMedium
                 readonly property bool isCurrent: root.mode === "default" || root.mode === "battery"
+                visible: isCurrent
                 opacity: isCurrent ? 1.0 : 0.0
-                visible: opacity > 0.001
                 Behavior on opacity {
                     NumberAnimation {
                         duration: 220
@@ -174,8 +174,8 @@ Item {
                 anchors.top: parent.top
                 spacing: 2
                 readonly property bool isCurrent: root.mode === "bluetooth"
+                visible: isCurrent
                 opacity: isCurrent ? 1.0 : 0.0
-                visible: opacity > 0.001
                 Behavior on opacity {
                     NumberAnimation {
                         duration: 220
@@ -279,8 +279,8 @@ Item {
                 anchors.top: parent.top
                 spacing: 2
                 readonly property bool isCurrent: root.mode === "network"
+                visible: isCurrent
                 opacity: isCurrent ? 1.0 : 0.0
-                visible: opacity > 0.001
                 Behavior on opacity {
                     NumberAnimation {
                         duration: 220
@@ -328,8 +328,8 @@ Item {
                 anchors.top: parent.top
                 spacing: Theme.spaceMedium
                 readonly property bool isCurrent: root.mode === "audio"
+                visible: isCurrent
                 opacity: isCurrent ? 1.0 : 0.0
-                visible: opacity > 0.001
                 Behavior on opacity {
                     NumberAnimation {
                         duration: 220
@@ -428,8 +428,8 @@ Item {
                 anchors.top: parent.top
                 spacing: 2
                 readonly property bool isCurrent: root.mode === "power"
+                visible: isCurrent
                 opacity: isCurrent ? 1.0 : 0.0
-                visible: opacity > 0.001
                 Behavior on opacity {
                     NumberAnimation {
                         duration: 220
@@ -476,8 +476,8 @@ Item {
                 anchors.top: parent.top
                 spacing: Theme.spaceMedium
                 readonly property bool isCurrent: root.mode === "clock" || root.mode === "time"
+                visible: isCurrent
                 opacity: isCurrent ? 1.0 : 0.0
-                visible: opacity > 0.001
                 Behavior on opacity {
                     NumberAnimation {
                         duration: 220

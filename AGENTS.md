@@ -27,15 +27,21 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 ## 3. Mandatory Test-Driven Development (TDD) & Zero Regressions
 
 > [!CAUTION]
-> **TDD is MANDATORY for all work in this repository.**
-> Fixing one issue must NEVER break another. Every bug fix, refactor, or feature addition MUST include automated unit and regression tests.
+> **CRITICAL MANDATORY RULE: For each modification, you must make sure no regression, so TDD is mandatory.**
+> Fixing one issue or adding a feature must NEVER break another existing feature. Every bug fix, refactor, or modification MUST follow strict TDD discipline:
 >
-> 1. **Write or Update Tests First**:
+> 1. **No Monkey Patching - Root Cause First**:
+>    - You must NEVER monkey patch an issue (e.g. hardcoding string checks for specific modes, adding arbitrary pixel offsets, or applying superficial band-aids).
+>    - Always investigate deeply to find the true root cause, understand the design architecture (including references like `caelestia-dots/shell`), and implement a clean, proper, and permanent solution.
+> 2. **Zero Regressions Guarantee**:
+>    - Never consider any task complete without running `make test` and ensuring 100% pass rate across all suites.
+>    - For every modification, identify potential regression points (borders, fillets, overlapping panels, auto-hide timers, popout geometries) and verify them with automated tests.
+> 3. **Write or Update Tests First**:
 >    - For every bug reported, write a reproducing unit test in `tests/tst_*.qml` (for QML/shell behavior) or `daemon/tests/` (for backend/Rust logic) before or alongside the fix.
-> 2. **Automated Verification**:
+> 4. **Automated Verification**:
 >    - Run `make test` on every change. It runs both the Rust test suite and all QML test suites.
->    - All tests must pass with 0 failures before any task is completed.
-> 3. **Test Scope Coverage**:
+>    - All tests must pass with 0 failures before completing any work.
+> 5. **Test Scope Coverage**:
 >    - **Backend (Rust Daemon)**: Domain models, DBus error filtering, system metrics parsing, and process resolvers must have full unit test coverage.
 >    - **Frontend (QML)**: Geometry calculations, non-overlapping borders, corner fillets, auto-close timers, and component boundaries must have dedicated offscreen QML test suites (`tests/tst_*.qml`).
 

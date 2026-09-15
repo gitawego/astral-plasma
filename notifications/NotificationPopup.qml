@@ -38,9 +38,12 @@ Item {
         interval: root.timeoutMs
         running: root.visible && !hoverHandler.hovered && root.timeoutMs > 0
         repeat: false
-        onTriggered: {
-            root.closed();
-            root.visible = false;
+        onTriggered: root.closed()
+    }
+
+    onSummaryChanged: {
+        if (root.visible) {
+            autoCloseTimer.restart();
         }
     }
 
@@ -235,10 +238,7 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.closed();
-                                    root.visible = false;
-                                }
+                                onClicked: root.closed()
                             }
                         }
                     }
