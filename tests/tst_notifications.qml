@@ -58,6 +58,31 @@ Item {
         notifPopup.toggleExpanded();
         assert(notifPopup.expanded === false, "toggleExpanded should switch expanded back to false");
 
+        // Test 5: Auto-close timer lifecycle
+        assert(notifPopup.timeoutMs === 5000, "Default timeoutMs should be 5000ms");
+        assert(notifPopup.autoCloseTimer.interval === 5000, "autoCloseTimer interval should be 5000");
+        assert(notifPopup.autoCloseTimer.running === true, "autoCloseTimer should be running when visible and not hovered");
+        assert(notifPopup.isDismissed === false, "isDismissed initially false");
+        assert(notifPopup.fusedPanel.isOpen === true, "fusedPanel should be open initially");
+
+        // Test 6: Border stroke & color fusion
+        assert(notifPopup.fusedPanel.strokeWidth === 1, "fusedPanel strokeWidth must be 1 for border fusion");
+        assert(notifPopup.fusedPanel.fillet1.strokeWidth === 1, "fillet1 strokeWidth must be 1");
+        assert(notifPopup.fusedPanel.fillet2.strokeWidth === 1, "fillet2 strokeWidth must be 1");
+        assert(notifPopup.fusedPanel.fillColor !== "transparent", "fusedPanel fillColor must not be transparent");
+
+        // Test 7: Dismissal via close() method
+        var closedSignalFired = false;
+        notifPopup.closed.connect(function() {
+            closedSignalFired = true;
+        });
+
+        notifPopup.close();
+        assert(closedSignalFired === true, "closed() signal must be emitted when close() is invoked");
+        assert(notifPopup.isDismissed === true, "isDismissed must be true after close()");
+        assert(notifPopup.autoCloseTimer.running === false, "autoCloseTimer must be stopped after close()");
+        assert(notifPopup.fusedPanel.isOpen === false, "fusedPanel must be closed after close()");
+
         console.log("PASS: NotificationPopup Tests");
         Qt.exit(0);
     }

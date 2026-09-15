@@ -56,6 +56,10 @@ Item {
         }
     }
 
+    readonly property real topBorderRightLimit: (typeof NotificationService !== "undefined" && NotificationService.hasNotification)
+        ? (root.width - 380 - root.filletR)
+        : (root.width - root.borderT - root.filletR)
+
     // Thin Top Border
     Rectangle {
         id: topBorder
@@ -72,7 +76,7 @@ Item {
             height: 1
             width: root.dropdownOffsetProgress > 0.001 
                 ? Math.max(0, root.dropX - root.filletR - (root.dockW + root.filletR))
-                : Math.max(0, root.width - root.borderT - root.filletR - (root.dockW + root.filletR))
+                : Math.max(0, root.topBorderRightLimit - (root.dockW + root.filletR))
             color: root.borderColor
         }
 
@@ -82,7 +86,7 @@ Item {
             x: root.dropX + root.dropW + root.filletR
             y: parent.height - 1
             height: 1
-            width: Math.max(0, root.width - root.borderT - root.filletR - (root.dropX + root.dropW + root.filletR))
+            width: Math.max(0, root.topBorderRightLimit - (root.dropX + root.dropW + root.filletR))
             color: root.borderColor
         }
     }
@@ -98,9 +102,11 @@ Item {
 
         Rectangle {
             x: 0
-            y: root.borderT + root.filletR
+            y: (typeof NotificationService !== "undefined" && NotificationService.hasNotification)
+                ? (74 + root.filletR)
+                : (root.borderT + root.filletR)
             width: 1
-            height: Math.max(0, parent.height - (root.borderT * 2 + root.filletR * 2))
+            height: Math.max(0, parent.height - y - (root.borderT + root.filletR))
             color: root.borderColor
         }
     }

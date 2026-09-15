@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import "../theme"
 
 Item {
@@ -10,6 +11,8 @@ Item {
     property real borderThickness: (typeof Config !== "undefined" && Config.borderThickness) ? Config.borderThickness : 14
     property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 20
     property color fillColor: (typeof Colors !== "undefined" && Colors.surface) ? Colors.surface : "#141318"
+    property color borderColor: (typeof Theme !== "undefined" && Theme.borderColor) ? Theme.borderColor : "#33ffffff"
+    property real strokeWidth: 1
     property bool isOpen: false
 
     property real offsetProgress: isOpen ? 1.0 : 0.0
@@ -60,7 +63,8 @@ Item {
         opacity: root.filletFactor
         cornerRadius: root.borderRounding
         fillColor: root.fillColor
-        strokeColor: "transparent"
+        strokeColor: root.strokeWidth > 0 ? root.borderColor : "transparent"
+        strokeWidth: root.strokeWidth
         z: 1
 
         x: -root.borderRounding
@@ -75,7 +79,8 @@ Item {
         opacity: root.filletFactor
         cornerRadius: root.borderRounding
         fillColor: root.fillColor
-        strokeColor: "transparent"
+        strokeColor: root.strokeWidth > 0 ? root.borderColor : "transparent"
+        strokeWidth: root.strokeWidth
         z: 1
 
         x: {
@@ -90,11 +95,45 @@ Item {
             if (root.attachEdge === "top") {
                 return root.borderThickness;
             } else if (root.attachEdge === "topRight") {
-                return root.panelHeight;
+                return root.currentEnvelopeHeight;
             }
             return root.borderThickness;
         }
         orientation: root.attachEdge === "topRight" ? "topRight" : "dropdownRight"
+    }
+
+    // Dedicated Outline Stroke for topRight fused panel
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        visible: root.attachEdge === "topRight" && root.filletFactor > 0.01 && root.strokeWidth > 0
+        opacity: root.filletFactor
+        z: 2
+
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: root.borderColor
+            strokeWidth: root.strokeWidth
+            capStyle: ShapePath.FlatCap
+
+            startX: 0
+            startY: root.borderThickness + root.borderRounding
+            PathLine {
+                x: 0
+                y: Math.max(root.borderThickness + root.borderRounding, root.currentEnvelopeHeight - root.borderRounding)
+            }
+            PathArc {
+                x: root.borderRounding
+                y: root.currentEnvelopeHeight
+                radiusX: root.borderRounding
+                radiusY: root.borderRounding
+                direction: PathArc.Counterclockwise
+            }
+            PathLine {
+                x: Math.max(root.borderRounding, (root.panelWidth - root.borderThickness) - root.borderRounding)
+                y: root.currentEnvelopeHeight
+            }
+        }
     }
 
     // Main Fused Card Surface - Permanently anchored to the border, height morphs organically

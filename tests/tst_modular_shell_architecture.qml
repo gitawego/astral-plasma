@@ -56,6 +56,7 @@ Item {
         assert(frame.borderT === 14, "Frame borderT matches");
         assert(frame.filletR === 20, "Frame filletR matches");
         assert(frame.currentDropH === 300, "Frame dropdown height bound");
+        assert(frame.topBorderRightLimit === 1920 - 14 - 20, "Top border right limit without notifications is 1886");
 
         // 2. CentralDropdown verification
         assert(dropdown.dropW === 980, "Dropdown width matches");

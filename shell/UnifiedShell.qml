@@ -230,10 +230,10 @@ PanelWindow {
 
         // System Notifications Popup
         Region {
-            x: notifPopup.x
-            y: notifPopup.y
-            width: notifPopup.visible ? notifPopup.width : 0
-            height: notifPopup.visible ? notifPopup.height : 0
+            x: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.x - root.filletR) : 0
+            y: 0
+            width: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.width + root.filletR) : 0
+            height: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.height + root.filletR) : 0
         }
     }
 
@@ -307,10 +307,19 @@ PanelWindow {
     NotificationPopup {
         id: notifPopup
         anchors.right: parent.right
-        anchors.rightMargin: root.borderT + 12
+        anchors.rightMargin: 0
         anchors.top: parent.top
-        anchors.topMargin: root.borderT + 12
+        anchors.topMargin: 0
         z: 1000
+        visible: NotificationService.hasNotification
+        summary: NotificationService.currentSummary
+        body: NotificationService.currentBody
+        appName: NotificationService.currentAppName
+        materialIcon: NotificationService.currentIcon
+        iconSource: (NotificationService.currentIcon && (NotificationService.currentIcon.indexOf("/") !== -1 || NotificationService.currentIcon.indexOf("file:") !== -1)) ? NotificationService.currentIcon : ""
+        onClosed: {
+            NotificationService.dismiss();
+        }
     }
 
     // 6. LEFT DOCK CONTENT

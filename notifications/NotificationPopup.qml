@@ -19,13 +19,22 @@ Item {
     property real borderThickness: (typeof Config !== "undefined" && Config.borderThickness) ? Config.borderThickness : 14
     property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 24
 
+    property bool isDismissed: false
+
     readonly property alias fusedPanel: panel
+    readonly property alias autoCloseTimer: autoCloseTimer
 
     signal closed()
     signal actionInvoked(string actionId)
 
     function toggleExpanded() {
         expanded = !expanded;
+    }
+
+    function close() {
+        autoCloseTimer.stop();
+        root.isDismissed = true;
+        root.closed();
     }
 
     width: 380
@@ -36,13 +45,23 @@ Item {
     Timer {
         id: autoCloseTimer
         interval: root.timeoutMs
-        running: root.visible && !hoverHandler.hovered && root.timeoutMs > 0
+        running: root.visible && !root.isDismissed && !hoverHandler.hovered && root.timeoutMs > 0
         repeat: false
-        onTriggered: root.closed()
+        onTriggered: root.close()
+    }
+
+    onVisibleChanged: {
+        if (root.visible) {
+            root.isDismissed = false;
+            autoCloseTimer.restart();
+        } else {
+            autoCloseTimer.stop();
+        }
     }
 
     onSummaryChanged: {
         if (root.visible) {
+            root.isDismissed = false;
             autoCloseTimer.restart();
         }
     }
@@ -55,8 +74,8 @@ Item {
         panelHeight: root.expanded ? (expandedContent.implicitHeight + 36) : 74
         borderThickness: root.borderThickness
         borderRounding: root.borderRounding
-        fillColor: (typeof Colors !== "undefined" && Colors.surfaceContainer) ? Colors.surfaceContainer : "#1c1b20"
-        isOpen: root.visible
+        fillColor: (typeof Colors !== "undefined" && Colors.surface) ? Colors.surface : "#141318"
+        isOpen: root.visible && !root.isDismissed
 
         Behavior on panelHeight {
             NumberAnimation {
@@ -114,11 +133,12 @@ Item {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
 
-                // Row 1: Summary + Time + Expand Button
+                // Row 1: Summary + Time + Controls
                 Row {
                     id: headerRow
                     anchors.left: parent.left
-                    anchors.right: expandBtn.left
+                    anchors.right: headerControls.left
+                    anchors.rightMargin: 6
                     anchors.top: parent.top
                     spacing: 6
 
@@ -146,38 +166,68 @@ Item {
                     }
                 }
 
-                // Expand Chevron Button
-                Rectangle {
-                    id: expandBtn
+                // Header Controls (Expand + Close Buttons)
+                Row {
+                    id: headerControls
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    width: 24
-                    height: 24
-                    radius: 12
-                    color: expandHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.surfaceContainerHighest) ? Colors.surfaceContainerHighest : "#36343b") : "transparent"
+                    spacing: 4
 
-                    MaterialIcon {
-                        anchors.centerIn: parent
-                        text: "expand_more"
-                        size: 18
-                        color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0"
-                        rotation: root.expanded ? 180 : 0
+                    // Expand Chevron Button
+                    Rectangle {
+                        id: expandBtn
+                        width: 24
+                        height: 24
+                        radius: 12
+                        color: expandHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.surfaceContainerHighest) ? Colors.surfaceContainerHighest : "#36343b") : "transparent"
 
-                        Behavior on rotation {
-                            NumberAnimation {
-                                duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastSpatial) ? Theme.animExpressiveFastSpatial : 350
-                                easing.type: Easing.BezierSpline
-                                easing.bezierCurve: (typeof Theme !== "undefined" && Theme.curveExpressiveFastSpatial) ? Theme.curveExpressiveFastSpatial : [0.42, 1.67, 0.21, 0.9, 1.0, 1.0]
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "expand_more"
+                            size: 18
+                            color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0"
+                            rotation: root.expanded ? 180 : 0
+
+                            Behavior on rotation {
+                                NumberAnimation {
+                                    duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastSpatial) ? Theme.animExpressiveFastSpatial : 350
+                                    easing.type: Easing.BezierSpline
+                                    easing.bezierCurve: (typeof Theme !== "undefined" && Theme.curveExpressiveFastSpatial) ? Theme.curveExpressiveFastSpatial : [0.42, 1.67, 0.21, 0.9, 1.0, 1.0]
+                                }
                             }
+                        }
+
+                        MouseArea {
+                            id: expandHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.toggleExpanded()
                         }
                     }
 
-                    MouseArea {
-                        id: expandHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.toggleExpanded()
+                    // Direct Close Button
+                    Rectangle {
+                        id: headerCloseBtn
+                        width: 24
+                        height: 24
+                        radius: 12
+                        color: closeBtnHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.surfaceContainerHighest) ? Colors.surfaceContainerHighest : "#36343b") : "transparent"
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "close"
+                            size: 16
+                            color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0"
+                        }
+
+                        MouseArea {
+                            id: closeBtnHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.close()
+                        }
                     }
                 }
 
@@ -238,7 +288,7 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.closed()
+                                onClicked: root.close()
                             }
                         }
                     }
