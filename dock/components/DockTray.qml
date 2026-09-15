@@ -36,7 +36,13 @@ Item {
                         anchors.centerIn: parent
                         width: 22
                         height: 22
-                        source: modelData.icon || ""
+                        source: {
+                            if (!modelData.icon || modelData.icon.startsWith("Error")) return "";
+                            if (modelData.icon.indexOf("/") !== -1) {
+                                return modelData.icon.startsWith("file://") ? modelData.icon : ("file://" + modelData.icon);
+                            }
+                            return Quickshell.iconPath(modelData.icon);
+                        }
                         fillMode: Image.PreserveAspectFit
                     }
 

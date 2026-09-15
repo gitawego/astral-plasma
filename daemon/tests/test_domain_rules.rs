@@ -174,6 +174,23 @@ fn test_tray_error_filtering_rules() {
     assert!(is_valid_sni("Cachy-Update", "cachy-update-blue", "Cachy-Update"));
     assert!(is_valid_sni("trayid62821", "dev.lizardbyte.app.Sunshine-tray", "sunshine"));
     assert!(is_valid_sni("dropbox-client-7074", "dropboxstatus-idle", "dropbox"));
+    assert!(is_valid_sni("Antigravity_status_icon_1", "", "Antigravity"));
+    assert!(is_valid_sni("Antigravity_status_icon_1", "antigravity", ""));
+}
+
+#[test]
+fn test_tray_antigravity_resolution() {
+    use caelestia_daemon::infrastructure::tray_adapter::TrayAdapter;
+
+    let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("Antigravity_status_icon_1", "", "");
+    assert_eq!(title, "Antigravity");
+    assert_eq!(icon, "antigravity");
+    assert_eq!(m_icon, "smart_toy");
+
+    let (title2, icon2, m_icon2) = TrayAdapter::resolve_tray_meta("Antigravity_status_icon_1", "Antigravity", "");
+    assert_eq!(title2, "Antigravity");
+    assert_eq!(icon2, "antigravity");
+    assert_eq!(m_icon2, "smart_toy");
 }
 
 #[test]

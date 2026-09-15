@@ -14,23 +14,81 @@ fn qdbus_get(svc: &str, path: &str, method: &str) -> String {
     String::new()
 }
 
-fn busctl_get_objpath(svc: &str, path: &str, iface: &str, prop: &str) -> String {
-    if let Ok(out) = Command::new("busctl")
-        .args(["--user", "get-property", svc, path, iface, prop])
-        .output()
-    {
-        if out.status.success() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if let Some(rest) = s.strip_prefix("o \"") {
-                if let Some(val) = rest.strip_suffix('"') {
-                    return val.to_string();
+fn sni_get_str(svc: &str, path: &str, prop: &str) -> String {
+    for iface in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
+        if let Ok(out) = Command::new("busctl")
+            .args(["--user", "get-property", svc, path, iface, prop])
+            .output()
+        {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if let Some(rest) = s.strip_prefix("s \"") {
+                    if let Some(val) = rest.strip_suffix('"') {
+                        if !val.starts_with("Error") {
+                            return val.to_string();
+                        }
+                    }
+                } else if let Some(rest) = s.strip_prefix('"') {
+                    if let Some(val) = rest.strip_suffix('"') {
+                        if !val.starts_with("Error") {
+                            return val.to_string();
+                        }
+                    }
+                } else if !s.starts_with("Error") && !s.starts_with("Failed") {
+                    return s;
                 }
-            } else if let Some(rest) = s.strip_prefix('"') {
-                if let Some(val) = rest.strip_suffix('"') {
-                    return val.to_string();
+            }
+        }
+    }
+
+    for iface in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
+        let method = format!("{}.{}", iface, prop);
+        let val = qdbus_get(svc, path, &method);
+        if !val.is_empty() && !val.starts_with("Error") {
+            return val;
+        }
+    }
+
+    String::new()
+}
+
+fn sni_get_tooltip_title(svc: &str, path: &str) -> String {
+    for iface in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
+        if let Ok(out) = Command::new("busctl")
+            .args(["--user", "get-property", svc, path, iface, "ToolTip"])
+            .output()
+        {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                let quotes: Vec<&str> = s.split('"').collect();
+                if quotes.len() >= 4 && !quotes[3].is_empty() {
+                    return quotes[3].to_string();
                 }
-            } else if !s.starts_with("Error") {
-                return s;
+            }
+        }
+    }
+    String::new()
+}
+
+fn busctl_get_objpath(svc: &str, path: &str, prop: &str) -> String {
+    for iface in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
+        if let Ok(out) = Command::new("busctl")
+            .args(["--user", "get-property", svc, path, iface, prop])
+            .output()
+        {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if let Some(rest) = s.strip_prefix("o \"") {
+                    if let Some(val) = rest.strip_suffix('"') {
+                        return val.to_string();
+                    }
+                } else if let Some(rest) = s.strip_prefix('"') {
+                    if let Some(val) = rest.strip_suffix('"') {
+                        return val.to_string();
+                    }
+                } else if !s.starts_with("Error") && !s.starts_with("Failed") {
+                    return s;
+                }
             }
         }
     }
@@ -42,6 +100,66 @@ pub struct TrayAdapter;
 impl TrayAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    pub fn resolve_tray_meta(item_id: &str, item_title: &str, item_icon: &str) -> (String, String, String) {
+        let mut title = item_title.to_string();
+        let mut icon = item_icon.to_string();
+        let mut m_icon = "circle".to_string();
+
+        let id_lower = format!("{} {} {}", item_id, title, icon).to_lowercase();
+
+        if id_lower.contains("keyboard") || id_lower.contains("fcitx") || id_lower.contains("input") {
+            m_icon = "keyboard".to_string();
+        } else if id_lower.contains("antigravity") || id_lower.contains("opencode") {
+            m_icon = "smart_toy".to_string();
+            if icon.is_empty() {
+                icon = "antigravity".to_string();
+            }
+            if title.is_empty() {
+                title = "Antigravity".to_string();
+            }
+        } else if id_lower.contains("update") || id_lower.contains("cachy") {
+            m_icon = "system_update".to_string();
+        } else if id_lower.contains("sunshine") || id_lower.contains("stream") {
+            m_icon = "cast".to_string();
+        } else if id_lower.contains("token") {
+            m_icon = "toll".to_string();
+        } else if id_lower.contains("dropbox") || id_lower.contains("cloud") {
+            m_icon = "cloud".to_string();
+        } else if id_lower.contains("discord") {
+            m_icon = "chat".to_string();
+            if icon.is_empty() { icon = "discord".to_string(); }
+        } else if id_lower.contains("slack") {
+            m_icon = "forum".to_string();
+            if icon.is_empty() { icon = "slack".to_string(); }
+        } else if id_lower.contains("code") || id_lower.contains("vscode") {
+            m_icon = "code".to_string();
+            if icon.is_empty() { icon = "vscode".to_string(); }
+        } else if id_lower.contains("spotify") {
+            m_icon = "music_note".to_string();
+            if icon.is_empty() { icon = "spotify".to_string(); }
+        } else if id_lower.contains("steam") {
+            m_icon = "sports_esports".to_string();
+            if icon.is_empty() { icon = "steam".to_string(); }
+        } else if id_lower.contains("telegram") {
+            m_icon = "send".to_string();
+            if icon.is_empty() { icon = "telegram".to_string(); }
+        } else if id_lower.contains("bluetooth") {
+            m_icon = "bluetooth".to_string();
+        } else if id_lower.contains("volume") || id_lower.contains("audio") {
+            m_icon = "volume_up".to_string();
+        } else if id_lower.contains("wifi") || id_lower.contains("network") {
+            m_icon = "wifi".to_string();
+        } else if icon.is_empty() {
+            if let Some(prefix) = item_id.split('_').next() {
+                if !prefix.is_empty() && !prefix.chars().all(|c| c.is_ascii_digit()) {
+                    icon = prefix.to_lowercase();
+                }
+            }
+        }
+
+        (title, icon, m_icon)
     }
 
     pub fn parse_dbusmenu_json(raw: &serde_json::Value) -> DynResult<Vec<TrayMenuItem>> {
@@ -134,9 +252,16 @@ impl TrayPort for TrayAdapter {
                 (trimmed, "/")
             };
 
-            let item_id = qdbus_get(svc, path, "org.kde.StatusNotifierItem.Id");
-            let mut item_icon = qdbus_get(svc, path, "org.kde.StatusNotifierItem.IconName");
-            let mut item_title = qdbus_get(svc, path, "org.kde.StatusNotifierItem.Title");
+            let item_id = sni_get_str(svc, path, "Id");
+            let mut item_icon = sni_get_str(svc, path, "IconName");
+            let mut item_title = sni_get_str(svc, path, "Title");
+
+            if item_title.is_empty() {
+                let tt = sni_get_tooltip_title(svc, path);
+                if !tt.is_empty() {
+                    item_title = tt;
+                }
+            }
 
             if item_id.is_empty() && item_title.is_empty() && item_icon.is_empty() {
                 continue;
@@ -151,10 +276,10 @@ impl TrayPort for TrayAdapter {
                 item_title.clear();
             }
 
-            let mut m_icon = "circle".to_string();
-            let id_lower = format!("{} {} {}", item_id, item_title, item_icon).to_lowercase();
+            let (item_title, mut item_icon, mut m_icon) = Self::resolve_tray_meta(&item_id, &item_title, &item_icon);
             let mut im_badge = String::new();
 
+            let id_lower = format!("{} {} {}", item_id, item_title, item_icon).to_lowercase();
             if id_lower.contains("keyboard") || id_lower.contains("fcitx") || id_lower.contains("input") {
                 m_icon = "keyboard".to_string();
                 if let Ok(cur_out) = Command::new("fcitx5-remote").arg("-n").output() {
@@ -164,39 +289,21 @@ impl TrayPort for TrayAdapter {
                         item_icon = "fcitx-rime".to_string();
                         m_icon = "rime".to_string();
                         im_badge = "中".to_string();
-                        item_title = "Input Method: Rime (中)".to_string();
                     } else if cur_lower.contains("pinyin") {
                         item_icon = "fcitx-pinyin".to_string();
                         m_icon = "translate".to_string();
                         im_badge = "拼".to_string();
-                        item_title = "Input Method: Pinyin (拼)".to_string();
                     } else if cur_lower.contains("us") || cur_lower.contains("keyboard") {
                         item_icon = "input-keyboard".to_string();
                         m_icon = "keyboard".to_string();
                         im_badge = "EN".to_string();
-                        item_title = "Input Method: English (EN)".to_string();
                     } else if !cur_im.is_empty() {
                         im_badge = cur_im.chars().take(2).collect::<String>().to_uppercase();
-                        item_title = format!("Input Method: {}", cur_im);
                     }
                 }
-            } else if id_lower.contains("update") || id_lower.contains("cachy") {
-                m_icon = "system_update".to_string();
-            } else if id_lower.contains("sunshine") || id_lower.contains("stream") {
-                m_icon = "cast".to_string();
-            } else if id_lower.contains("token") {
-                m_icon = "toll".to_string();
-            } else if id_lower.contains("dropbox") || id_lower.contains("cloud") {
-                m_icon = "cloud".to_string();
-            } else if id_lower.contains("bluetooth") {
-                m_icon = "bluetooth".to_string();
-            } else if id_lower.contains("volume") || id_lower.contains("audio") {
-                m_icon = "volume_up".to_string();
-            } else if id_lower.contains("wifi") || id_lower.contains("network") {
-                m_icon = "wifi".to_string();
             }
 
-            let menu_path = busctl_get_objpath(svc, path, "org.kde.StatusNotifierItem", "Menu");
+            let menu_path = busctl_get_objpath(svc, path, "Menu");
 
             tray_items.push(TrayItem {
                 service: svc.to_string(),

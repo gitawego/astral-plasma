@@ -800,7 +800,13 @@ Item {
                             anchors.centerIn: parent
                             width: root.iconS
                             height: root.iconS
-                            source: (modelData.rawIcon && !modelData.rawIcon.startsWith("Error")) ? Quickshell.iconPath(modelData.rawIcon) : ""
+                            source: {
+                                if (!modelData.rawIcon || modelData.rawIcon.startsWith("Error")) return "";
+                                if (modelData.rawIcon.indexOf("/") !== -1) {
+                                    return modelData.rawIcon.startsWith("file://") ? modelData.rawIcon : ("file://" + modelData.rawIcon);
+                                }
+                                return Quickshell.iconPath(modelData.rawIcon);
+                            }
                             fillMode: Image.PreserveAspectFit
                             visible: !imBadgeText.visible && status === Image.Ready
                         }
