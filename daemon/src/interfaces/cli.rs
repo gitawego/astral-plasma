@@ -82,6 +82,49 @@ pub async fn run_cli() -> DynResult<()> {
             let json = metrics_ctrl.execute_json()?;
             println!("{}", json);
         }
+        "tray" => {
+            use crate::domain::ports::TrayPort;
+            let sub = if args.len() >= 3 { args[2].as_str() } else { "query" };
+            match sub {
+                "menu" => {
+                    if args.len() >= 5 {
+                        let svc = &args[3];
+                        let menu_path = &args[4];
+                        let tray = crate::infrastructure::tray_adapter::TrayAdapter::new();
+                        let items = tray.fetch_menu(svc, menu_path)?;
+                        let json = serde_json::to_string(&items)?;
+                        println!("{}", json);
+                    } else {
+                        eprintln!("Usage: caelestia-daemon tray menu <service> <menu_path>");
+                    }
+                }
+                "click" => {
+                    if args.len() >= 6 {
+                        let svc = &args[3];
+                        let menu_path = &args[4];
+                        let id: i32 = args[5].parse().unwrap_or(0);
+                        let tray = crate::infrastructure::tray_adapter::TrayAdapter::new();
+                        tray.click_item(svc, menu_path, id)?;
+                    } else {
+                        eprintln!("Usage: caelestia-daemon tray click <service> <menu_path> <id>");
+                    }
+                }
+                "activate" => {
+                    if args.len() >= 5 {
+                        let svc = &args[3];
+                        let path = &args[4];
+                        let _ = std::process::Command::new("qdbus6")
+                            .args([svc, path, "org.kde.StatusNotifierItem.Activate", "0", "0"])
+                            .output();
+                    } else {
+                        eprintln!("Usage: caelestia-daemon tray activate <service> <path>");
+                    }
+                }
+                _ => {
+                    eprintln!("Usage: caelestia-daemon tray <menu|click|activate> [args...]");
+                }
+            }
+        }
         _ => {
             eprintln!("Unknown command: {}", args[1]);
         }

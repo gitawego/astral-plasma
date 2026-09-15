@@ -39,7 +39,20 @@ pub struct TrayItem {
     pub raw_icon: String,
     #[serde(rename = "imBadge")]
     pub im_badge: String,
+    #[serde(rename = "menuPath")]
+    pub menu_path: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TrayMenuItem {
+    pub id: i32,
+    pub label: String,
+    #[serde(rename = "isSeparator")]
+    pub is_separator: bool,
+    pub enabled: bool,
+    pub icon: String,
+}
+
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Desktop {

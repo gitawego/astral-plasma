@@ -235,6 +235,14 @@ PanelWindow {
             width: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.width + root.filletR) : 0
             height: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.height + root.filletR) : 0
         }
+
+        // App Context Menu or Tray Context Menu (when open)
+        Region {
+            x: 0
+            y: 0
+            width: (appContextMenu.visible || trayContextMenu.visible) ? root.width : 0
+            height: (appContextMenu.visible || trayContextMenu.visible) ? root.height : 0
+        }
     }
 
     // 1. DESKTOP BORDER FRAME & INNER FILLETS
@@ -303,6 +311,13 @@ PanelWindow {
         screenH: root.height
     }
 
+    // 4b. SYSTEM TRAY CONTEXT MENU
+    TrayContextMenu {
+        id: trayContextMenu
+        dockW: root.dockW
+        screenH: root.height
+    }
+
     // 5. SYSTEM NOTIFICATIONS POPUP (TOP-RIGHT FUSED)
     NotificationPopup {
         id: notifPopup
@@ -335,6 +350,7 @@ PanelWindow {
             anchors.fill: parent
             iconS: root.iconS
             onRequestContextMenu: (app, globalY) => appContextMenu.show(app, globalY)
+            onRequestTrayContextMenu: (item, globalY) => trayContextMenu.show(item, globalY)
         }
     }
 

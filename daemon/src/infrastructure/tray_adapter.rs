@@ -1,4 +1,4 @@
-use crate::domain::model::TrayItem;
+use crate::domain::model::{TrayItem, TrayMenuItem};
 use crate::domain::ports::{DynResult, TrayPort};
 use std::process::Command;
 
@@ -14,11 +14,93 @@ fn qdbus_get(svc: &str, path: &str, method: &str) -> String {
     String::new()
 }
 
+fn busctl_get_objpath(svc: &str, path: &str, iface: &str, prop: &str) -> String {
+    if let Ok(out) = Command::new("busctl")
+        .args(["--user", "get-property", svc, path, iface, prop])
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if let Some(rest) = s.strip_prefix("o \"") {
+                if let Some(val) = rest.strip_suffix('"') {
+                    return val.to_string();
+                }
+            } else if let Some(rest) = s.strip_prefix('"') {
+                if let Some(val) = rest.strip_suffix('"') {
+                    return val.to_string();
+                }
+            } else if !s.starts_with("Error") {
+                return s;
+            }
+        }
+    }
+    String::new()
+}
+
 pub struct TrayAdapter;
 
 impl TrayAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    pub fn parse_dbusmenu_json(raw: &serde_json::Value) -> DynResult<Vec<TrayMenuItem>> {
+        let mut items = Vec::new();
+        if let Some(data) = raw.get("data").and_then(|d| d.as_array()) {
+            if data.len() >= 2 {
+                if let Some(root_node) = data[1].as_array() {
+                    if root_node.len() >= 3 {
+                        if let Some(children) = root_node[2].as_array() {
+                            for child in children {
+                                if let Some(cdata) = child.get("data").and_then(|d| d.as_array()) {
+                                    if cdata.len() >= 2 {
+                                        let id = cdata[0].as_i64().unwrap_or(0) as i32;
+                                        let props = cdata[1].as_object();
+
+                                        let label = props
+                                            .and_then(|p| p.get("label"))
+                                            .and_then(|l| l.get("data"))
+                                            .and_then(|s| s.as_str())
+                                            .unwrap_or("")
+                                            .replace('_', "");
+
+                                        let item_type = props
+                                            .and_then(|p| p.get("type"))
+                                            .and_then(|t| t.get("data"))
+                                            .and_then(|s| s.as_str())
+                                            .unwrap_or("");
+
+                                        let is_separator = item_type == "separator";
+
+                                        let enabled = props
+                                            .and_then(|p| p.get("enabled"))
+                                            .and_then(|e| e.get("data"))
+                                            .and_then(|b| b.as_bool())
+                                            .unwrap_or(true);
+
+                                        let icon = props
+                                            .and_then(|p| p.get("icon-name"))
+                                            .and_then(|i| i.get("data"))
+                                            .and_then(|s| s.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+
+                                        items.push(TrayMenuItem {
+                                            id,
+                                            label,
+                                            is_separator,
+                                            enabled,
+                                            icon,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(items)
     }
 }
 
@@ -114,9 +196,12 @@ impl TrayPort for TrayAdapter {
                 m_icon = "wifi".to_string();
             }
 
+            let menu_path = busctl_get_objpath(svc, path, "org.kde.StatusNotifierItem", "Menu");
+
             tray_items.push(TrayItem {
                 service: svc.to_string(),
                 path: path.to_string(),
+                menu_path,
                 id: item_id,
                 title: item_title,
                 material_icon: m_icon,
@@ -126,5 +211,57 @@ impl TrayPort for TrayAdapter {
         }
 
         Ok(tray_items)
+    }
+
+    fn fetch_menu(&self, service: &str, menu_path: &str) -> DynResult<Vec<TrayMenuItem>> {
+        let out = Command::new("busctl")
+            .args([
+                "--user",
+                "--json=short",
+                "call",
+                service,
+                menu_path,
+                "com.canonical.dbusmenu",
+                "GetLayout",
+                "iias",
+                "0",
+                "2",
+                "0",
+            ])
+            .output()?;
+
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr);
+            return Err(format!("busctl GetLayout failed: {}", err).into());
+        }
+
+        let val: serde_json::Value = serde_json::from_slice(&out.stdout)?;
+        Self::parse_dbusmenu_json(&val)
+    }
+
+    fn click_item(&self, service: &str, menu_path: &str, item_id: i32) -> DynResult<()> {
+        let out = Command::new("busctl")
+            .args([
+                "--user",
+                "call",
+                service,
+                menu_path,
+                "com.canonical.dbusmenu",
+                "Event",
+                "isvu",
+                &item_id.to_string(),
+                "clicked",
+                "s",
+                "",
+                "0",
+            ])
+            .output()?;
+
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr);
+            return Err(format!("busctl Event failed: {}", err).into());
+        }
+
+        Ok(())
     }
 }

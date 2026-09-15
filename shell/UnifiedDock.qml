@@ -11,6 +11,7 @@ Item {
 
     required property real iconS
     signal requestContextMenu(var app, real globalY)
+    signal requestTrayContextMenu(var item, real globalY)
 
     readonly property var pinnedList: {
         const pinned = Config.pinnedApps || [];
@@ -799,10 +800,20 @@ Item {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             cursorShape: Qt.PointingHandCursor
                             onClicked: mouse => {
+                                const mapped = mapToItem(root, 0, 0);
                                 if (mouse.button === Qt.RightButton) {
-                                    WindowService.contextMenuTray(modelData.service, modelData.path);
+                                    if (modelData.menuPath && modelData.menuPath.length > 0) {
+                                        root.requestTrayContextMenu(modelData, mapped.y);
+                                    } else {
+                                        WindowService.contextMenuTray(modelData.service, modelData.path);
+                                    }
                                 } else {
-                                    WindowService.activateTray(modelData.service, modelData.path);
+                                    const idLower = (modelData.id || "").toLowerCase();
+                                    if (modelData.menuPath && (idLower.includes("token") || idLower.includes("dropbox") || idLower.includes("sunshine"))) {
+                                        root.requestTrayContextMenu(modelData, mapped.y);
+                                    } else {
+                                        WindowService.activateTray(modelData.service, modelData.path);
+                                    }
                                 }
                             }
                         }

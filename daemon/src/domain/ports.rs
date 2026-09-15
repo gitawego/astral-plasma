@@ -11,6 +11,8 @@ pub trait WindowManagerPort: Send + Sync {
 
 pub trait TrayPort: Send + Sync {
     fn query_tray(&self) -> DynResult<Vec<TrayItem>>;
+    fn fetch_menu(&self, service: &str, menu_path: &str) -> DynResult<Vec<crate::domain::model::TrayMenuItem>>;
+    fn click_item(&self, service: &str, menu_path: &str, item_id: i32) -> DynResult<()>;
 }
 
 pub trait WorkspacePort: Send + Sync {

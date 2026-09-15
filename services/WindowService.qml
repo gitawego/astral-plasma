@@ -62,6 +62,48 @@ Singleton {
         activateProc.running = true;
     }
 
+    property var _trayMenuCallback: null
+
+    Process {
+        id: trayMenuProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (root._trayMenuCallback) {
+                    try {
+                        const items = JSON.parse(this.text.trim());
+                        root._trayMenuCallback(Array.isArray(items) ? items : []);
+                    } catch (e) {
+                        console.warn("fetchTrayMenu error:", e, this.text);
+                        root._trayMenuCallback([]);
+                    }
+                    root._trayMenuCallback = null;
+                }
+            }
+        }
+    }
+
+    Process {
+        id: trayClickProc
+    }
+
+    function fetchTrayMenu(service, menuPath, callback) {
+        if (!service || !menuPath) {
+            if (callback) callback([]);
+            return;
+        }
+        root._trayMenuCallback = callback;
+        trayMenuProc.running = false;
+        trayMenuProc.command = [root.daemonBin, "tray", "menu", service, menuPath];
+        trayMenuProc.running = true;
+    }
+
+    function triggerTrayMenuItem(service, menuPath, itemId) {
+        if (!service || !menuPath || itemId === undefined) return;
+        trayClickProc.running = false;
+        trayClickProc.command = [root.daemonBin, "tray", "click", service, menuPath, itemId.toString()];
+        trayClickProc.running = true;
+    }
+
     function refresh() {
         if (!watcherDaemon.running) {
             watcherDaemon.running = true;

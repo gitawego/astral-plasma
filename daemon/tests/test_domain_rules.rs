@@ -231,4 +231,74 @@ fn test_workspace_control_use_case() {
     uc.ensure_and_switch(3).unwrap();
 }
 
+#[test]
+fn test_dbusmenu_json_parsing() {
+    use caelestia_daemon::infrastructure::tray_adapter::TrayAdapter;
+
+    let json_str = r#"{
+        "type": "u(ia{sv}av)",
+        "data": [
+            0,
+            [
+                0,
+                {},
+                [
+                    {
+                        "type": "(ia{sv}av)",
+                        "data": [
+                            1,
+                            {
+                                "label": { "type": "s", "data": "Preferences..." },
+                                "enabled": { "type": "b", "data": true },
+                                "icon-name": { "type": "s", "data": "preferences-system" }
+                            },
+                            []
+                        ]
+                    },
+                    {
+                        "type": "(ia{sv}av)",
+                        "data": [
+                            2,
+                            {
+                                "type": { "type": "s", "data": "separator" }
+                            },
+                            []
+                        ]
+                    },
+                    {
+                        "type": "(ia{sv}av)",
+                        "data": [
+                            3,
+                            {
+                                "label": { "type": "s", "data": "_Quit" },
+                                "enabled": { "type": "b", "data": false }
+                            },
+                            []
+                        ]
+                    }
+                ]
+            ]
+        ]
+    }"#;
+
+    let val: serde_json::Value = serde_json::from_str(json_str).unwrap();
+    let items = TrayAdapter::parse_dbusmenu_json(&val).unwrap();
+
+    assert_eq!(items.len(), 3);
+
+    assert_eq!(items[0].id, 1);
+    assert_eq!(items[0].label, "Preferences...");
+    assert!(!items[0].is_separator);
+    assert!(items[0].enabled);
+    assert_eq!(items[0].icon, "preferences-system");
+
+    assert_eq!(items[1].id, 2);
+    assert!(items[1].is_separator);
+
+    assert_eq!(items[2].id, 3);
+    assert_eq!(items[2].label, "Quit"); // underscore stripped
+    assert!(!items[2].is_separator);
+    assert!(!items[2].enabled);
+}
+
 
