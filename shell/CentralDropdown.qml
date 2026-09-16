@@ -60,12 +60,67 @@ Item {
         anchors.topMargin: Theme.padLarge + Math.min(0, root.currentDropH - root.dropH)
         spacing: Theme.spaceMedium
 
-        // Tabs Header with Fluid Sliding Indicator
+        // Tabs Header with Fluid Sliding Indicator & Quick Settings Button
         Item {
             id: tabsHeader
-            Layout.alignment: Qt.AlignHCenter
-            implicitWidth: tabsRow.implicitWidth
+            Layout.fillWidth: true
             implicitHeight: 60
+
+            // Settings Button on the right
+            Rectangle {
+                id: settingsBtn
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                width: 42
+                height: 42
+                radius: Theme.radiusSmall
+                color: settingsHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : Qt.alpha(Colors.textMain, 0.03)
+                border.color: Theme.borderSubtle
+                border.width: 1
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: "settings"
+                    size: 20
+                    color: settingsHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant
+                }
+
+                MouseArea {
+                    id: settingsHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Config.dashboardVisible = false;
+                        Config.openSettings();
+                    }
+                }
+
+                // Tooltip
+                Rectangle {
+                    z: 100
+                    visible: settingsHover.containsMouse
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    implicitWidth: settingsTip.implicitWidth + 16
+                    implicitHeight: settingsTip.implicitHeight + 8
+                    radius: 6
+                    color: Colors.surfaceContainerHighest
+                    border.color: Theme.borderSubtle
+                    border.width: 1
+
+                    Text {
+                        id: settingsTip
+                        anchors.centerIn: parent
+                        text: "Theme Settings"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.onSurface
+                    }
+                }
+            }
 
             Row {
                 id: tabsRow

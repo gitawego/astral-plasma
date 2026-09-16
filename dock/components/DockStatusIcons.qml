@@ -162,7 +162,68 @@ Rectangle {
             }
         }
 
-        // 4. Power Button
+        // 4. Settings Button
+        Item {
+            id: settingsItem
+            implicitWidth: root.btnSize
+            implicitHeight: root.btnSize
+            width: root.btnSize
+            height: root.btnSize
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusFull
+                color: (Config.settingsVisible) 
+                    ? Colors.primary 
+                    : (settingsHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: "settings"
+                    size: root.iconSize
+                    color: (Config.settingsVisible) 
+                        ? Colors.textOnPrimary 
+                        : (settingsHover.containsMouse ? Colors.primary : Colors.textOnSurfaceVariant)
+                }
+
+                MouseArea {
+                    id: settingsHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Config.closeBottomPopout();
+                        Config.toggleSettings();
+                    }
+                }
+
+                // Tooltip on hover
+                Rectangle {
+                    z: 100
+                    visible: settingsHover.containsMouse && !Config.bottomPopoutVisible && !Config.settingsVisible
+                    anchors.left: parent.right
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: settingsTipText.implicitWidth + 16
+                    implicitHeight: settingsTipText.implicitHeight + 10
+                    radius: 7
+                    color: Colors.surfaceContainerHighest
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+
+                    Text {
+                        id: settingsTipText
+                        anchors.centerIn: parent
+                        text: "Theme Settings"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Colors.onSurface
+                    }
+                }
+            }
+        }
+
+        // 5. Power Button
         Item {
             id: pwrItem
             implicitWidth: root.btnSize

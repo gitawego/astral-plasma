@@ -96,6 +96,33 @@ pub async fn run_cli() -> DynResult<()> {
         "notifs" => {
             crate::application::notif_monitor::run_notif_monitor();
         }
+        "settings" => {
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("toggle");
+            let action = match sub {
+                "open" => "open",
+                "close" => "close",
+                _ => "toggle",
+            };
+            let pkg_dir = get_default_package_dir();
+            let current_dir = env::current_dir().unwrap_or_default();
+            let mut cmd = Command::new("qs");
+            cmd.arg("ipc");
+            if current_dir.join("shell.qml").exists() {
+                cmd.args(["-p", current_dir.to_str().unwrap()]);
+            } else if pkg_dir.join("shell.qml").exists() {
+                cmd.args(["-p", pkg_dir.to_str().unwrap()]);
+            }
+            cmd.args(["call", "settings", action]);
+            let status = cmd.status();
+            match status {
+                Ok(s) if s.success() => {
+                    println!(r#"{{"success":true,"action":"{}"}}"#, action);
+                }
+                _ => {
+                    eprintln!("Failed to invoke Quickshell settings IPC (is Caelestia running?)");
+                }
+            }
+        }
         "watch" | "--daemon" => {
             run_event_daemon().await?;
         }
@@ -227,6 +254,7 @@ fn print_usage() {
     eprintln!("  extract [target_dir]    - Extract embedded QML theme bundle");
     eprintln!("  plasma <cmd>            - Plasma panels management: disable, restore, status, watchdog");
     eprintln!("  systemd <cmd>           - User-directed systemd service management: status, install, remove");
+    eprintln!("  settings [toggle|open|close] - Control Settings GUI window via IPC");
     eprintln!("  watch                   - Run event-driven background watcher");
     eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
     eprintln!("  workspaces <cmd>        - Virtual desktops: query, switch, ensure");

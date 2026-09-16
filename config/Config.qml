@@ -354,6 +354,16 @@ Singleton {
         }
     }
 
+    function openSettings() {
+        settingsVisible = true;
+        dashboardVisible = false;
+        activePopout = "";
+    }
+
+    function closeSettings() {
+        settingsVisible = false;
+    }
+
     function togglePopout(id) {
         if (activePopout === id) {
             activePopout = "";

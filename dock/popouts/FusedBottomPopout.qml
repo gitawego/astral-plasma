@@ -182,6 +182,17 @@ Item {
                         }
                     }
                 }
+
+                Item { height: 2 }
+
+                ActionItem {
+                    icon: "settings"
+                    label: "Theme Settings"
+                    onClicked: {
+                        Config.closeBottomPopout();
+                        Config.openSettings();
+                    }
+                }
             }
 
             // ==========================================
