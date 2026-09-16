@@ -1,6 +1,6 @@
-use caelestia_daemon::domain::meta_resolver::resolve_window_meta;
-use caelestia_daemon::domain::model::*;
-use caelestia_daemon::domain::sys_parser::*;
+use astral_plasma::domain::meta_resolver::resolve_window_meta;
+use astral_plasma::domain::model::*;
+use astral_plasma::domain::sys_parser::*;
 
 #[test]
 fn test_antigravity_resolution() {
@@ -180,7 +180,7 @@ fn test_tray_error_filtering_rules() {
 
 #[test]
 fn test_tray_antigravity_resolution() {
-    use caelestia_daemon::infrastructure::tray_adapter::TrayAdapter;
+    use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
 
     let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("Antigravity_status_icon_1", "", "");
     assert_eq!(title, "Antigravity");
@@ -195,7 +195,7 @@ fn test_tray_antigravity_resolution() {
 
 #[test]
 fn test_kwin_watcher_dbus_casing() {
-    let script = caelestia_daemon::application::watch_events::get_kwin_watcher_script();
+    let script = astral_plasma::application::watch_events::get_kwin_watcher_script();
     // Must call WindowActivated with capital W to match zbus default CamelCase
     assert!(script.contains(r#""WindowActivated""#), "Script must call WindowActivated (capital W)");
     assert!(!script.contains(r#""windowActivated""#), "Script must NOT call windowActivated (lowercase w)");
@@ -208,9 +208,9 @@ fn test_kwin_watcher_dbus_casing() {
 #[test]
 fn test_workspace_control_use_case() {
     use std::sync::Mutex;
-    use caelestia_daemon::domain::ports::{DynResult, WorkspacePort};
-    use caelestia_daemon::domain::model::Desktop;
-    use caelestia_daemon::application::workspace_control::WorkspaceControlUseCase;
+    use astral_plasma::domain::ports::{DynResult, WorkspacePort};
+    use astral_plasma::domain::model::Desktop;
+    use astral_plasma::application::workspace_control::WorkspaceControlUseCase;
 
     struct MockWorkspacePort {
         switched_to: Mutex<Option<String>>,
@@ -250,7 +250,7 @@ fn test_workspace_control_use_case() {
 
 #[test]
 fn test_dbusmenu_json_parsing() {
-    use caelestia_daemon::infrastructure::tray_adapter::TrayAdapter;
+    use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
 
     let json_str = r#"{
         "type": "u(ia{sv}av)",

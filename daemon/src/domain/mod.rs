@@ -4,3 +4,4 @@ pub mod sys_parser;
 pub mod ports;
 pub mod plasma;
 pub mod systemd;
+pub mod wine_media;

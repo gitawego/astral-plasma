@@ -1,4 +1,4 @@
-use caelestia_daemon::interfaces::api_server::dispatch_http_request;
+use astral_plasma::interfaces::api_server::dispatch_http_request;
 
 #[tokio::test]
 async fn test_api_status_endpoint() {
@@ -6,7 +6,7 @@ async fn test_api_status_endpoint() {
     let (code, body) = dispatch_http_request(req).await;
     assert_eq!(code, 200);
     assert!(body.contains("\"ok\":true"));
-    assert!(body.contains("caelestia-daemon"));
+    assert!(body.contains("astral-plasma"));
 }
 
 #[tokio::test]

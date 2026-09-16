@@ -18,6 +18,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "astral-plasma"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "image",
+ "include_dir",
+ "libc",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "zbus",
+]
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -202,22 +218,6 @@ name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
-
-[[package]]
-name = "caelestia-daemon"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "image",
- "include_dir",
- "libc",
- "regex",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "zbus",
-]
 
 [[package]]
 name = "cfg-if"

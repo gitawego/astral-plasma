@@ -2,15 +2,15 @@ use std::process::Command;
 use serde_json::Value;
 
 fn get_bin_path() -> String {
-    if let Ok(exe) = std::env::var("CARGO_BIN_EXE_caelestia-daemon") {
+    if let Ok(exe) = std::env::var("CARGO_BIN_EXE_astral-plasma") {
         return exe;
     }
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let target_debug = format!("{}/target/debug/caelestia-daemon", manifest_dir);
+    let target_debug = format!("{}/target/debug/astral-plasma", manifest_dir);
     if std::path::Path::new(&target_debug).exists() {
         return target_debug;
     }
-    format!("{}/../bin/caelestia-daemon", manifest_dir)
+    format!("{}/../bin/astral-plasma", manifest_dir)
 }
 
 #[test]

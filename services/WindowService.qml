@@ -27,7 +27,7 @@ Singleton {
     }
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
-    readonly property string daemonBin: root.serviceDir + "/../bin/caelestia-daemon"
+    readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
 
     // Helper process to activate a window or tray item
     Process {

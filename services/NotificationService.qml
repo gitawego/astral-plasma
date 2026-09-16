@@ -17,7 +17,7 @@ Singleton {
     property var currentActions: []
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
-    readonly property string daemonBin: root.serviceDir + "/../bin/caelestia-daemon"
+    readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
 
     signal notificationReceived(string summary, string body, string icon, string appName)
 

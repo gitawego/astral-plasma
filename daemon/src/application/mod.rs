@@ -6,3 +6,4 @@ pub mod get_metrics;
 pub mod notif_monitor;
 pub mod plasma_service;
 pub mod systemd_service;
+pub mod wine_mpris;

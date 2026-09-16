@@ -6,3 +6,4 @@ pub mod preview_capture;
 pub mod plasma_adapter;
 pub mod systemd_adapter;
 pub mod embedded_bundle;
+pub mod x11_input;

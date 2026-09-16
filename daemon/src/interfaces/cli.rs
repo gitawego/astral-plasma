@@ -68,7 +68,7 @@ pub async fn run_cli() -> DynResult<()> {
                     println!("{}", serde_json::to_string(&st)?);
                 }
                 _ => {
-                    eprintln!("Usage: caelestia-daemon plasma <disable|restore|status|watchdog> [args...]");
+                    eprintln!("Usage: astral-plasma plasma <disable|restore|status|watchdog> [args...]");
                 }
             }
         }
@@ -89,7 +89,7 @@ pub async fn run_cli() -> DynResult<()> {
                     println!("{}", serde_json::to_string(&st)?);
                 }
                 _ => {
-                    eprintln!("Usage: caelestia-daemon systemd <status|install|remove>");
+                    eprintln!("Usage: astral-plasma systemd <status|install|remove>");
                 }
             }
         }
@@ -176,11 +176,11 @@ pub async fn run_cli() -> DynResult<()> {
                         std::fs::write(path, content)?;
                         println!(r#"{{"success":true,"path":"{}"}}"#, path_str);
                     } else {
-                        eprintln!("Usage: caelestia-daemon config write <path> <content>");
+                        eprintln!("Usage: astral-plasma config write <path> <content>");
                     }
                 }
                 _ => {
-                    eprintln!("Usage: caelestia-daemon config write <path> <content>");
+                    eprintln!("Usage: astral-plasma config write <path> <content>");
                 }
             }
         }
@@ -249,7 +249,7 @@ pub async fn run_cli() -> DynResult<()> {
                         let json = serde_json::to_string(&items)?;
                         println!("{}", json);
                     } else {
-                        eprintln!("Usage: caelestia-daemon tray menu <service> <menu_path>");
+                        eprintln!("Usage: astral-plasma tray menu <service> <menu_path>");
                     }
                 }
                 "click" => {
@@ -260,7 +260,7 @@ pub async fn run_cli() -> DynResult<()> {
                         let tray = crate::infrastructure::tray_adapter::TrayAdapter::new();
                         tray.click_item(svc, menu_path, id)?;
                     } else {
-                        eprintln!("Usage: caelestia-daemon tray click <service> <menu_path> <id>");
+                        eprintln!("Usage: astral-plasma tray click <service> <menu_path> <id>");
                     }
                 }
                 "activate" => {
@@ -271,11 +271,11 @@ pub async fn run_cli() -> DynResult<()> {
                             .args([svc, path, "org.kde.StatusNotifierItem.Activate", "0", "0"])
                             .output();
                     } else {
-                        eprintln!("Usage: caelestia-daemon tray activate <service> <path>");
+                        eprintln!("Usage: astral-plasma tray activate <service> <path>");
                     }
                 }
                 _ => {
-                    eprintln!("Usage: caelestia-daemon tray <menu|click|activate> [args...]");
+                    eprintln!("Usage: astral-plasma tray <menu|click|activate> [args...]");
                 }
             }
         }
@@ -295,7 +295,7 @@ pub async fn run_cli() -> DynResult<()> {
                     }
                 }
             } else {
-                eprintln!("Usage: caelestia-daemon preview <window_id> [target_width] [slot]");
+                eprintln!("Usage: astral-plasma preview <window_id> [target_width] [slot]");
             }
         }
         _ => {
@@ -308,7 +308,7 @@ pub async fn run_cli() -> DynResult<()> {
 }
 
 fn print_usage() {
-    eprintln!("Usage: caelestia-daemon <command> [args...]");
+    eprintln!("Usage: astral-plasma <command> [args...]");
     eprintln!("Commands:");
     eprintln!("  run                     - Run full self-contained Caelestia desktop shell");
     eprintln!("  serve [--port <port>]   - Run native REST & Unix socket API server");

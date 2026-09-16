@@ -1,4 +1,4 @@
-use caelestia_daemon::infrastructure::embedded_bundle::extract_embedded_theme;
+use astral_plasma::infrastructure::embedded_bundle::extract_embedded_theme;
 
 #[test]
 fn test_embedded_dir_extraction() {

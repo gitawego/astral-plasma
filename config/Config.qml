@@ -127,7 +127,7 @@ Singleton {
     }
 
     readonly property string daemonBin: {
-        let url = Qt.resolvedUrl("../bin/caelestia-daemon").toString();
+        let url = Qt.resolvedUrl("../bin/astral-plasma").toString();
         if (url.startsWith("file://")) return url.substring(7);
         return url;
     }

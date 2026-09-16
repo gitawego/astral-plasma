@@ -1,5 +1,5 @@
-use caelestia_daemon::application::systemd_service::SystemdControlUseCase;
-use caelestia_daemon::infrastructure::systemd_adapter::SystemdAdapter;
+use astral_plasma::application::systemd_service::SystemdControlUseCase;
+use astral_plasma::infrastructure::systemd_adapter::SystemdAdapter;
 use std::fs;
 
 #[test]

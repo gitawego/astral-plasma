@@ -1,6 +1,6 @@
-use caelestia_daemon::application::plasma_service::PlasmaControlUseCase;
-use caelestia_daemon::domain::plasma::is_panel_target_match;
-use caelestia_daemon::infrastructure::plasma_adapter::PlasmaAdapter;
+use astral_plasma::application::plasma_service::PlasmaControlUseCase;
+use astral_plasma::domain::plasma::is_panel_target_match;
+use astral_plasma::infrastructure::plasma_adapter::PlasmaAdapter;
 use std::fs;
 
 #[test]

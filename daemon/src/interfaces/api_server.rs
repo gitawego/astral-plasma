@@ -16,7 +16,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 
 pub const DEFAULT_API_PORT: u16 = 8942;
-pub const DEFAULT_SOCKET_PATH: &str = "/tmp/caelestia-daemon.sock";
+pub const DEFAULT_SOCKET_PATH: &str = "/tmp/astral-plasma.sock";
 
 pub async fn run_api_server(port: u16) -> DynResult<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -117,7 +117,7 @@ pub async fn dispatch_http_request(req: &str) -> (u16, String) {
 
     match (method, path) {
         ("GET", "/api/status") | ("GET", "/status") => {
-            (200, r#"{"ok":true,"name":"caelestia-daemon","version":"0.1.0"}"#.to_string())
+            (200, r#"{"ok":true,"name":"astral-plasma","version":"0.1.0"}"#.to_string())
         }
 
         ("GET", "/api/metrics") | ("GET", "/metrics") => {

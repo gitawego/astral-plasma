@@ -1,5 +1,5 @@
 use std::fs;
-use caelestia_daemon::infrastructure::preview_capture::*;
+use astral_plasma::infrastructure::preview_capture::*;
 
 #[test]
 fn test_get_target_path() {

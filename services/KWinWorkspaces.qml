@@ -12,7 +12,7 @@ Singleton {
     property var desktops: [] // Array of { id, name, index, active }
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
-    readonly property string daemonBin: root.serviceDir + "/../bin/caelestia-daemon"
+    readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
 
     Process {
         id: queryDesktops

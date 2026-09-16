@@ -1,4 +1,6 @@
 use crate::domain::meta_resolver::resolve_window_meta;
+use crate::domain::wine_media::parse_wine_media;
+use crate::application::wine_mpris::WineMprisService;
 use crate::domain::model::{
     ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowsListPayload,
 };
@@ -43,12 +45,19 @@ impl Default for DaemonState {
 
 pub struct WatcherService {
     state: Arc<Mutex<DaemonState>>,
+    wine_mpris: Option<Arc<WineMprisService>>,
 }
 
 #[zbus::interface(name = "org.caelestia.WindowWatcher")]
 impl WatcherService {
     #[zbus(name = "WindowActivated")]
     async fn window_activated(&self, title: &str, cls: &str, app: &str, wid: &str) {
+        if let Some(mpris) = &self.wine_mpris {
+            if let Some(media) = parse_wine_media(title, cls) {
+                let _ = mpris.update_media(&media).await;
+            }
+        }
+
         let meta = resolve_window_meta(title, cls, app, "");
         let mut st = self.state.lock().await;
 
@@ -159,6 +168,26 @@ impl WatcherService {
         if let Ok(serialized) = serde_json::to_string(&payload) {
             println!("{}", serialized);
         }
+
+        if let Some(mpris) = &self.wine_mpris {
+            for item in items {
+                let t = item["title"].as_str().unwrap_or_default();
+                let c = item["cls"].as_str().unwrap_or_default();
+                if let Some(media) = parse_wine_media(t, c) {
+                    let _ = mpris.update_media(&media).await;
+                    break;
+                }
+            }
+        }
+    }
+
+    #[zbus(name = "MediaWindowChanged")]
+    async fn media_window_changed(&self, caption: &str, cls: &str) {
+        if let Some(mpris) = &self.wine_mpris {
+            if let Some(media) = parse_wine_media(caption, cls) {
+                let _ = mpris.update_media(&media).await;
+            }
+        }
     }
 
     async fn window_list_changed(&self) {
@@ -232,6 +261,16 @@ function notifyList() {
     } catch(e) {}
 }
 
+function notifyMedia(c) {
+    try {
+        if (c) {
+            callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "MediaWindowChanged",
+                     "" + (c.caption || ""),
+                     "" + (c.resourceClass || ""));
+        }
+    } catch(e) {}
+}
+
 function connectWindow(c) {
     if (!c || c._caelestiaHooked) return;
     c._caelestiaHooked = true;
@@ -240,7 +279,15 @@ function connectWindow(c) {
             if (workspace.activeWindow === c) {
                 notifyActive(c);
             }
+            var cls = "" + (c.resourceClass || "");
+            if (cls.indexOf("cloudmusic") !== -1 || cls.indexOf("netease") !== -1) {
+                notifyMedia(c);
+            }
         });
+        var cls = "" + (c.resourceClass || "");
+        if (cls.indexOf("cloudmusic") !== -1 || cls.indexOf("netease") !== -1) {
+            notifyMedia(c);
+        }
     } catch(e) {}
 }
 
@@ -322,9 +369,24 @@ pub async fn run_event_daemon() -> DynResult<()> {
         }
     }
 
+    let wine_mpris = WineMprisService::new().await.ok().map(Arc::new);
+
+    if let Some(mpris) = &wine_mpris {
+        for w in &initial_wins {
+            if let Some(media) = parse_wine_media(&w.title, &w.app_id)
+                .or_else(|| parse_wine_media(&w.title, &w.icon_name))
+                .or_else(|| parse_wine_media(&w.title, &w.app_name))
+            {
+                let _ = mpris.update_media(&media).await;
+                break;
+            }
+        }
+    }
+
     // Register DBus server
     let watcher_service = WatcherService {
         state: Arc::clone(&state),
+        wine_mpris: wine_mpris.clone(),
     };
 
     let _conn = Builder::session()?
@@ -332,6 +394,40 @@ pub async fn run_event_daemon() -> DynResult<()> {
         .serve_at("/Watcher", watcher_service)?
         .build()
         .await?;
+
+    if let Some(mpris_audio) = wine_mpris.clone() {
+        tokio::spawn(async move {
+            use tokio::io::AsyncBufReadExt;
+            use tokio::process::Command;
+            let mut cmd = Command::new("pactl");
+            cmd.arg("subscribe");
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::null());
+            if let Ok(mut child) = cmd.spawn() {
+                if let Some(stdout) = child.stdout.take() {
+                    let mut reader = tokio::io::BufReader::new(stdout).lines();
+                    while let Ok(Some(line)) = reader.next_line().await {
+                        if line.contains("sink-input") {
+                            if let Ok(output) = Command::new("pactl").args(["list", "sink-inputs"]).output().await {
+                                let text = String::from_utf8_lossy(&output.stdout);
+                                let mut in_cm = false;
+                                for l in text.lines() {
+                                    if l.contains("NetEase Cloud Music") || l.contains("cloudmusic") {
+                                        in_cm = true;
+                                    }
+                                    if in_cm && l.contains("Corked:") {
+                                        let is_playing = l.contains("no");
+                                        let _ = mpris_audio.update_playback_status(is_playing).await;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
 
     // Install and start KWin script
     cleanup_kwin_script();

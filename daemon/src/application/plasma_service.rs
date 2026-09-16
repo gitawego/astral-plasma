@@ -40,7 +40,7 @@ impl<P: PlasmaControlPort> PlasmaControlUseCase<P> {
 }
 
 pub fn spawn_watchdog(target_pid: u32) {
-    let current_exe = env::current_exe().unwrap_or_else(|_| "caelestia-daemon".into());
+    let current_exe = env::current_exe().unwrap_or_else(|_| "astral-plasma".into());
 
     let mut cmd = Command::new(&current_exe);
     cmd.args(["plasma", "watchdog", &target_pid.to_string()])
