@@ -2,13 +2,15 @@ use std::process::Command;
 use serde_json::Value;
 
 fn get_bin_path() -> String {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let bin_path = format!("{}/../bin/caelestia-daemon", manifest_dir);
-    if std::path::Path::new(&bin_path).exists() {
-        bin_path
-    } else {
-        format!("{}/target/debug/caelestia-daemon", manifest_dir)
+    if let Ok(exe) = std::env::var("CARGO_BIN_EXE_caelestia-daemon") {
+        return exe;
     }
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let target_debug = format!("{}/target/debug/caelestia-daemon", manifest_dir);
+    if std::path::Path::new(&target_debug).exists() {
+        return target_debug;
+    }
+    format!("{}/../bin/caelestia-daemon", manifest_dir)
 }
 
 #[test]
@@ -49,3 +51,22 @@ fn test_daemon_preview_usage() {
     let stderr_str = String::from_utf8_lossy(&out.stderr);
     assert!(stderr_str.contains("Usage:"));
 }
+
+#[test]
+fn test_daemon_config_write() {
+    let bin = get_bin_path();
+    let test_dir = std::env::temp_dir().join("caelestia_test_config");
+    let test_file = test_dir.join("test_settings.json");
+    let content = r#"{"test_key":"test_val"}"#;
+
+    let out = Command::new(&bin)
+        .args(["config", "write", test_file.to_str().unwrap(), content])
+        .output()
+        .expect("Failed to run daemon config write");
+    assert!(out.status.success());
+
+    let written = std::fs::read_to_string(&test_file).expect("Must read written config file");
+    assert_eq!(written, content);
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+

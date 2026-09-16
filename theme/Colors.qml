@@ -8,72 +8,97 @@ import "../config"
 Singleton {
     id: root
 
-    // Dark mode by default to match Caelestia aesthetics and KDE Dark themes
-    property bool isDarkMode: true
+    // Reactive mode binding directly from Config
+    readonly property bool isDarkMode: Config.isDarkMode
+    readonly property bool dynamicColorsEnabled: Config.dynamicColors
+    readonly property string currentPreset: Config.themePreset
 
-    function applyPreset(name) {
-        if (!name) return;
-        switch (name.toLowerCase()) {
-            case "coral":
-                root.accentPrimary = root.isDarkMode ? "#FFB4A8" : "#D85338";
-                root.accentPrimaryContainer = root.isDarkMode ? "#8C1D07" : "#FFE8E0";
-                root.accentOnPrimaryContainer = root.isDarkMode ? "#FFDAD4" : "#3E1208";
-                break;
-            case "ocean":
-                root.accentPrimary = root.isDarkMode ? "#9ECAFF" : "#1B6CA8";
-                root.accentPrimaryContainer = root.isDarkMode ? "#00497D" : "#D4E9F7";
-                root.accentOnPrimaryContainer = root.isDarkMode ? "#D1E4FF" : "#001D33";
-                break;
-            case "emerald":
-                root.accentPrimary = root.isDarkMode ? "#81D99C" : "#2E7D52";
-                root.accentPrimaryContainer = root.isDarkMode ? "#0F522C" : "#D7F2E3";
-                root.accentOnPrimaryContainer = root.isDarkMode ? "#9DF5B6" : "#052111";
-                break;
+    // Dynamic parsed palette cache from matugen (~/.cache/caelestia/colors.json)
+    property var dynamicPalette: null
+
+    function getColor(key, lightFallback, darkFallback) {
+        const fallback = root.isDarkMode ? darkFallback : lightFallback;
+        if (!root.dynamicColorsEnabled || !root.dynamicPalette || !root.dynamicPalette[key]) {
+            return fallback;
+        }
+        const entry = root.dynamicPalette[key];
+        if (root.isDarkMode) {
+            if (entry.dark && entry.dark.color) return entry.dark.color;
+        } else {
+            if (entry.light && entry.light.color) return entry.light.color;
+        }
+        if (entry.default && entry.default.color) return entry.default.color;
+        return fallback;
+    }
+
+    // Presets definitions for Accents
+    readonly property color presetPrimary: {
+        switch (root.currentPreset.toLowerCase()) {
+            case "coral": return root.isDarkMode ? "#FFB4A8" : "#B32810";
+            case "ocean": return root.isDarkMode ? "#9ECAFF" : "#12609A";
+            case "emerald": return root.isDarkMode ? "#81D99C" : "#1E6B42";
             case "iris":
-            default:
-                root.accentPrimary = root.isDarkMode ? "#CFBCFF" : "#6B4FA0";
-                root.accentPrimaryContainer = root.isDarkMode ? "#4F378B" : "#EDE7F6";
-                root.accentOnPrimaryContainer = root.isDarkMode ? "#EADDFF" : "#21005D";
-                break;
+            default: return root.isDarkMode ? "#CFBCFF" : "#6750A4";
         }
     }
 
-    Component.onCompleted: {
-        if (Config.settings && Config.settings.theme && Config.settings.theme.preset) {
-            root.applyPreset(Config.settings.theme.preset);
+    readonly property color presetPrimaryContainer: {
+        switch (root.currentPreset.toLowerCase()) {
+            case "coral": return root.isDarkMode ? "#8C1D07" : "#FFDAD4";
+            case "ocean": return root.isDarkMode ? "#00497D" : "#D1E4FF";
+            case "emerald": return root.isDarkMode ? "#0F522C" : "#9DF5B6";
+            case "iris":
+            default: return root.isDarkMode ? "#4F378B" : "#EDE7F6";
         }
     }
 
-    // Base surface tokens
-    property color bgSurface: root.isDarkMode ? "#121318" : "#FAF8F5"
-    property color bgSurfaceContainer: root.isDarkMode ? "#1A1B21" : "#F2EDE7"
-    property color bgSurfaceContainerHigh: root.isDarkMode ? "#282A30" : "#E8E2DA"
-    property color bgSurfaceContainerLowest: root.isDarkMode ? "#0C0E13" : "#FFFFFF"
-    property color bgSurfaceVariant: root.isDarkMode ? "#44464F" : "#E4DED7"
+    readonly property color presetOnPrimary: root.isDarkMode ? "#002C70" : "#FFFFFF"
 
-    property color outlineColor: root.isDarkMode ? "#8F9099" : "#D6CEC5"
-    property color outlineVariantColor: root.isDarkMode ? "#44464F" : "#E8E2DA"
+    readonly property color presetOnPrimaryContainer: {
+        switch (root.currentPreset.toLowerCase()) {
+            case "coral": return root.isDarkMode ? "#FFDAD4" : "#3E1208";
+            case "ocean": return root.isDarkMode ? "#D1E4FF" : "#001D33";
+            case "emerald": return root.isDarkMode ? "#9DF5B6" : "#052111";
+            case "iris":
+            default: return root.isDarkMode ? "#EADDFF" : "#21005D";
+        }
+    }
 
-    // Modern vibrant celestial accent
-    property color accentPrimary: root.isDarkMode ? "#B1C5FF" : "#6B4FA0"
-    property color accentPrimaryContainer: root.isDarkMode ? "#2A4F9C" : "#EDE7F6"
-    property color accentOnPrimary: root.isDarkMode ? "#002C70" : "#FFFFFF"
-    property color accentOnPrimaryContainer: root.isDarkMode ? "#DAE2FF" : "#21005D"
+    readonly property color presetSecondary: root.isDarkMode ? "#C0C6DC" : "#526070"
+    readonly property color presetSecondaryContainer: root.isDarkMode ? "#404659" : "#D8E4F8"
+    readonly property color presetOnSecondary: root.isDarkMode ? "#2A3042" : "#FFFFFF"
+    readonly property color presetOnSecondaryContainer: root.isDarkMode ? "#DCE2F9" : "#0E1D2A"
 
-    property color accentSecondary: root.isDarkMode ? "#C0C6DC" : "#526070"
-    property color accentOnSecondary: root.isDarkMode ? "#2A3042" : "#FFFFFF"
-    property color accentSecondaryContainer: root.isDarkMode ? "#404659" : "#D8E4F8"
-    property color accentOnSecondaryContainer: root.isDarkMode ? "#DCE2F9" : "#0E1D2A"
+    // Base surface tokens (fully reactive)
+    readonly property color bgSurface: getColor("surface", "#FAF8F5", "#121318")
+    readonly property color bgSurfaceContainer: getColor("surface_container", "#F2EDE7", "#1A1B21")
+    readonly property color bgSurfaceContainerHigh: getColor("surface_container_high", "#E8E2DA", "#282A30")
+    readonly property color bgSurfaceContainerLowest: getColor("surface_container_lowest", "#FFFFFF", "#0C0E13")
+    readonly property color bgSurfaceVariant: getColor("surface_variant", "#E4DED7", "#44464F")
 
-    property color accentError: root.isDarkMode ? "#FFB4AB" : "#BA1A1A"
-    property color accentOnError: root.isDarkMode ? "#690005" : "#FFFFFF"
-    property color accentErrorContainer: root.isDarkMode ? "#93000A" : "#FFDAD6"
-    property color accentOnErrorContainer: root.isDarkMode ? "#FFDAD6" : "#410002"
+    readonly property color outlineColor: getColor("outline", "#D6CEC5", "#8F9099")
+    readonly property color outlineVariantColor: getColor("outline_variant", "#E8E2DA", "#44464F")
 
-    // Refined modern typography
-    property color textMain: root.isDarkMode ? "#E4E2E6" : "#1D1B20"
-    property color textMuted: root.isDarkMode ? "#C7C6CA" : "#49454F"
-    property color textSubtle: root.isDarkMode ? "#8F9099" : "#79747E"
+    // Vibrant celestial accents (dynamic if enabled, otherwise preset)
+    readonly property color accentPrimary: getColor("primary", root.presetPrimary, root.presetPrimary)
+    readonly property color accentPrimaryContainer: getColor("primary_container", root.presetPrimaryContainer, root.presetPrimaryContainer)
+    readonly property color accentOnPrimary: getColor("on_primary", root.presetOnPrimary, root.presetOnPrimary)
+    readonly property color accentOnPrimaryContainer: getColor("on_primary_container", root.presetOnPrimaryContainer, root.presetOnPrimaryContainer)
+
+    readonly property color accentSecondary: getColor("secondary", root.presetSecondary, root.presetSecondary)
+    readonly property color accentSecondaryContainer: getColor("secondary_container", root.presetSecondaryContainer, root.presetSecondaryContainer)
+    readonly property color accentOnSecondary: getColor("on_secondary", root.presetOnSecondary, root.presetOnSecondary)
+    readonly property color accentOnSecondaryContainer: getColor("on_secondary_container", root.presetOnSecondaryContainer, root.presetOnSecondaryContainer)
+
+    readonly property color accentError: getColor("error", "#BA1A1A", "#FFB4AB")
+    readonly property color accentOnError: getColor("on_error", "#FFFFFF", "#690005")
+    readonly property color accentErrorContainer: getColor("error_container", "#FFDAD6", "#93000A")
+    readonly property color accentOnErrorContainer: getColor("on_error_container", "#410002", "#FFDAD6")
+
+    // Modern typography tokens (high contrast, crisp in both light and dark)
+    readonly property color textMain: getColor("on_surface", "#1D1B20", "#E4E2E6")
+    readonly property color textMuted: getColor("on_surface_variant", "#49454F", "#C7C6CA")
+    readonly property color textSubtle: root.isDarkMode ? "#8F9099" : "#79747E"
 
     // Public properties
     readonly property color surface: root.bgSurface
@@ -120,17 +145,17 @@ Singleton {
     readonly property color m3secondary: root.accentSecondary
     readonly property color m3secondaryContainer: root.accentSecondaryContainer
 
-    readonly property color tertiary: root.isDarkMode ? "#E0BBDD" : "#386A20"
-    readonly property color tertiaryContainer: root.isDarkMode ? "#593D59" : "#B7F397"
+    readonly property color tertiary: getColor("tertiary", "#386A20", "#E0BBDD")
+    readonly property color tertiaryContainer: getColor("tertiary_container", "#B7F397", "#593D59")
     readonly property color m3onTertiary: root.isDarkMode ? "#412742" : "#FFFFFF"
     readonly property color m3onTertiaryContainer: root.isDarkMode ? "#FDD7FA" : "#042100"
 
     // Acrylic translucent variants
-    readonly property color surfaceTranslucent: Qt.alpha(root.surface, 0.88)
-    readonly property color containerTranslucent: Qt.alpha(root.surfaceContainer, 0.75)
-    readonly property color cardBackground: Qt.alpha(root.surfaceContainerLowest, 0.65)
-    readonly property color pillHover: Qt.alpha(root.textMain, 0.12)
-    readonly property color pillPress: Qt.alpha(root.textMain, 0.22)
+    readonly property color surfaceTranslucent: Qt.alpha(root.surface, root.isDarkMode ? 0.88 : 0.94)
+    readonly property color containerTranslucent: Qt.alpha(root.surfaceContainer, root.isDarkMode ? 0.75 : 0.85)
+    readonly property color cardBackground: Qt.alpha(root.surfaceContainerLowest, root.isDarkMode ? 0.65 : 0.80)
+    readonly property color pillHover: Qt.alpha(root.textMain, root.isDarkMode ? 0.12 : 0.08)
+    readonly property color pillPress: Qt.alpha(root.textMain, root.isDarkMode ? 0.22 : 0.14)
 
     // Dynamic color loader (reads ~/.cache/caelestia/colors.json if matugen was run)
     FileView {
@@ -143,31 +168,8 @@ Singleton {
                 const text = colorsCache.text();
                 if (text && text.trim().length > 0) {
                     const parsed = JSON.parse(text);
-                    const dark = (parsed.is_dark_mode !== undefined) ? parsed.is_dark_mode : (parsed.mode === "dark");
-                    root.isDarkMode = dark;
-
                     if (parsed.colors) {
-                        const getC = (key) => {
-                            if (parsed.colors[key]) {
-                                if (dark && parsed.colors[key].dark && parsed.colors[key].dark.color) return parsed.colors[key].dark.color;
-                                if (!dark && parsed.colors[key].light && parsed.colors[key].light.color) return parsed.colors[key].light.color;
-                                if (parsed.colors[key].default && parsed.colors[key].default.color) return parsed.colors[key].default.color;
-                            }
-                            return null;
-                        };
-                        const s = getC("surface"); if (s) root.bgSurface = s;
-                        const sc = getC("surface_container"); if (sc) root.bgSurfaceContainer = sc;
-                        const sch = getC("surface_container_high"); if (sch) root.bgSurfaceContainerHigh = sch;
-                        const scl = getC("surface_container_lowest"); if (scl) root.bgSurfaceContainerLowest = scl;
-                        const sv = getC("surface_variant"); if (sv) root.bgSurfaceVariant = sv;
-                        const p = getC("primary"); if (p) root.accentPrimary = p;
-                        const op = getC("on_primary"); if (op) root.accentOnPrimary = op;
-                        const pc = getC("primary_container"); if (pc) root.accentPrimaryContainer = pc;
-                        const opc = getC("on_primary_container"); if (opc) root.accentOnPrimaryContainer = opc;
-                        const os = getC("on_surface"); if (os) root.textMain = os;
-                        const osv = getC("on_surface_variant"); if (osv) root.textMuted = osv;
-                        const sec = getC("secondary"); if (sec) root.accentSecondary = sec;
-                        const out = getC("outline"); if (out) root.outlineColor = out;
+                        root.dynamicPalette = parsed.colors;
                     }
                 }
             } catch (e) {

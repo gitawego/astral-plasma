@@ -113,6 +113,11 @@ pub async fn run_cli() -> DynResult<()> {
                 cmd.args(["-p", pkg_dir.to_str().unwrap()]);
             }
             cmd.args(["call", "settings", action]);
+            if action == "open" {
+                if let Some(page) = args.get(3) {
+                    cmd.arg(page);
+                }
+            }
             let status = cmd.status();
             match status {
                 Ok(s) if s.success() => {
@@ -120,6 +125,62 @@ pub async fn run_cli() -> DynResult<()> {
                 }
                 _ => {
                     eprintln!("Failed to invoke Quickshell settings IPC (is Caelestia running?)");
+                }
+            }
+        }
+        "theme" => {
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("toggle");
+            let pkg_dir = get_default_package_dir();
+            let current_dir = env::current_dir().unwrap_or_default();
+            let mut cmd = Command::new("qs");
+            cmd.arg("ipc");
+            if current_dir.join("shell.qml").exists() {
+                cmd.args(["-p", current_dir.to_str().unwrap()]);
+            } else if pkg_dir.join("shell.qml").exists() {
+                cmd.args(["-p", pkg_dir.to_str().unwrap()]);
+            }
+            match sub {
+                "light" => {
+                    cmd.args(["call", "theme", "setMode", "light"]);
+                }
+                "dark" => {
+                    cmd.args(["call", "theme", "setMode", "dark"]);
+                }
+                "preset" => {
+                    let preset = args.get(3).map(|s| s.as_str()).unwrap_or("iris");
+                    cmd.args(["call", "theme", "setPreset", preset]);
+                }
+                _ => {
+                    cmd.args(["call", "theme", "toggle"]);
+                }
+            }
+            let status = cmd.status();
+            match status {
+                Ok(s) if s.success() => {
+                    println!(r#"{{"success":true,"theme_command":"{}"}}"#, sub);
+                }
+                _ => {
+                    eprintln!("Failed to invoke Quickshell theme IPC (is Caelestia running?)");
+                }
+            }
+        }
+        "config" => {
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("write");
+            match sub {
+                "write" => {
+                    if let (Some(path_str), Some(content)) = (args.get(3), args.get(4)) {
+                        let path = Path::new(path_str);
+                        if let Some(parent) = path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        std::fs::write(path, content)?;
+                        println!(r#"{{"success":true,"path":"{}"}}"#, path_str);
+                    } else {
+                        eprintln!("Usage: caelestia-daemon config write <path> <content>");
+                    }
+                }
+                _ => {
+                    eprintln!("Usage: caelestia-daemon config write <path> <content>");
                 }
             }
         }
@@ -255,6 +316,7 @@ fn print_usage() {
     eprintln!("  plasma <cmd>            - Plasma panels management: disable, restore, status, watchdog");
     eprintln!("  systemd <cmd>           - User-directed systemd service management: status, install, remove");
     eprintln!("  settings [toggle|open|close] - Control Settings GUI window via IPC");
+    eprintln!("  config write <path> <json> - Atomic configuration file persistence");
     eprintln!("  watch                   - Run event-driven background watcher");
     eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
     eprintln!("  workspaces <cmd>        - Virtual desktops: query, switch, ensure");

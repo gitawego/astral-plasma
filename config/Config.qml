@@ -106,6 +106,13 @@ Singleton {
     readonly property string plasmaBackupDir: root.settings.plasma?.backupDir ?? ""
     readonly property bool autoRestorePlasmaOnExit: root.settings.plasma?.autoRestoreOnExit ?? true
 
+    // Theme getters
+    readonly property bool isDarkMode: root.settings.theme ? (root.settings.theme.darkMode ?? (root.settings.theme.mode !== "light")) : true
+    readonly property string themeMode: root.isDarkMode ? "dark" : "light"
+    readonly property bool dynamicColors: root.settings.theme ? (root.settings.theme.dynamicColors ?? (root.settings.theme.mode === "dynamic")) : false
+    readonly property string themePreset: root.settings.theme ? (root.settings.theme.preset ?? "iris") : "iris"
+    readonly property int themeCornerRadius: root.settings.theme ? (root.settings.theme.cornerRadius ?? 20) : 20
+
     // Dynamic script path resolution (config-driven, agnostic, zero hardcoded paths)
     readonly property string scriptsDir: {
         let url = Qt.resolvedUrl("../scripts").toString();
@@ -219,31 +226,146 @@ Singleton {
         root.saveSettings();
     }
 
+    function updateSettings(callback) {
+        let copy = JSON.parse(JSON.stringify(root.settings));
+        callback(copy);
+        root.settings = copy;
+        root.saveSettings();
+    }
+
+    function setDarkMode(dark) {
+        updateSettings(cfg => {
+            if (!cfg.theme) cfg.theme = {};
+            cfg.theme.darkMode = dark;
+            cfg.theme.mode = dark ? "dark" : "light";
+        });
+    }
+
+    function setDynamicColors(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.theme) cfg.theme = {};
+            cfg.theme.dynamicColors = enabled;
+            if (enabled && cfg.theme.mode !== "dark" && cfg.theme.mode !== "light") {
+                cfg.theme.mode = "dynamic";
+            }
+        });
+    }
+
+    function setThemePreset(name) {
+        if (!name) return;
+        updateSettings(cfg => {
+            if (!cfg.theme) cfg.theme = {};
+            cfg.theme.preset = name.toLowerCase();
+        });
+    }
+
+    function setThemeCornerRadius(radius) {
+        if (!radius || radius < 0) return;
+        updateSettings(cfg => {
+            if (!cfg.theme) cfg.theme = {};
+            cfg.theme.cornerRadius = radius;
+        });
+    }
+
+    function setDockEnabled(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            cfg.dock.enabled = enabled;
+        });
+    }
+
+    function setDockExclusiveZone(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            cfg.dock.exclusiveZone = enabled;
+        });
+    }
+
+    function setDockMargin(margin) {
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            cfg.dock.margin = margin;
+        });
+    }
+
+    function setDockTrayEnabled(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            if (!cfg.dock.tray) cfg.dock.tray = {};
+            cfg.dock.tray.enabled = enabled;
+        });
+    }
+
     function setDockIconSize(size) {
         if (!size || size < 16) return;
-        let newSettings = JSON.parse(JSON.stringify(root.settings));
-        if (!newSettings.dock) newSettings.dock = {};
-        newSettings.dock.iconSize = size;
-        root.settings = newSettings;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            cfg.dock.iconSize = size;
+        });
     }
 
     function setDockWidth(width) {
         if (!width || width < 30) return;
-        let newSettings = JSON.parse(JSON.stringify(root.settings));
-        if (!newSettings.dock) newSettings.dock = {};
-        newSettings.dock.width = width;
-        root.settings = newSettings;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            cfg.dock.width = width;
+        });
     }
 
     function setDockStatusIconSize(size) {
         if (!size || size < 16) return;
-        let newSettings = JSON.parse(JSON.stringify(root.settings));
-        if (!newSettings.dock) newSettings.dock = {};
-        newSettings.dock.statusIconSize = size;
-        root.settings = newSettings;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            cfg.dock.statusIconSize = size;
+        });
+    }
+
+    function setTopBarEnabled(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.topBar) cfg.topBar = {};
+            cfg.topBar.enabled = enabled;
+        });
+    }
+
+    function setTopBarHeight(height) {
+        if (!height || height < 20) return;
+        updateSettings(cfg => {
+            if (!cfg.topBar) cfg.topBar = {};
+            cfg.topBar.height = height;
+        });
+    }
+
+    function setDashboardEnabled(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.dashboard) cfg.dashboard = {};
+            cfg.dashboard.enabled = enabled;
+        });
+    }
+
+    function setDashboardTabEnabled(tabId, enabled) {
+        updateSettings(cfg => {
+            if (!cfg.dashboard) cfg.dashboard = {};
+            if (!Array.isArray(cfg.dashboard.tabs)) return;
+            for (let i = 0; i < cfg.dashboard.tabs.length; i++) {
+                if (cfg.dashboard.tabs[i].id === tabId) {
+                    cfg.dashboard.tabs[i].enabled = enabled;
+                    break;
+                }
+            }
+        });
+    }
+
+    function setStatusIconEnabled(iconId, enabled) {
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            if (!Array.isArray(cfg.dock.statusIcons)) return;
+            for (let i = 0; i < cfg.dock.statusIcons.length; i++) {
+                if (cfg.dock.statusIcons[i].id === iconId) {
+                    cfg.dock.statusIcons[i].enabled = enabled;
+                    break;
+                }
+            }
+        });
     }
 
     // Active selected dashboard tab ("dashboard", "media", "performance", "workspaces")
@@ -258,6 +380,7 @@ Singleton {
     // Active state toggles
     property bool dashboardVisible: false
     property bool settingsVisible: false
+    property string activeSettingsPage: "dock"
     property string activePopout: "" // legacy popout tracker
 
     // Fused bottom popout state
@@ -354,7 +477,8 @@ Singleton {
         }
     }
 
-    function openSettings() {
+    function openSettings(page) {
+        if (page) activeSettingsPage = page;
         settingsVisible = true;
         dashboardVisible = false;
         activePopout = "";
@@ -401,12 +525,7 @@ Singleton {
     function saveSettings() {
         try {
             const jsonStr = JSON.stringify(root.settings, null, 2);
-            saveProcess.command = ["sh", "-c",
-                "mkdir -p \"$(dirname \"$1\")\" && printf '%s' \"$2\" > \"$1\"",
-                "_",
-                root.localConfigPath,
-                jsonStr
-            ];
+            saveProcess.command = [root.daemonBin, "config", "write", root.localConfigPath, jsonStr];
             saveProcess.running = true;
         } catch (e) {
             console.error("[Config] Failed to save settings:", e);

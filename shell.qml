@@ -28,8 +28,31 @@ ShellRoot {
     IpcHandler {
         target: "settings"
         function toggle(): void { Config.settingsVisible = !Config.settingsVisible; }
-        function open(): void { Config.settingsVisible = true; }
+        function open(page: string): void {
+            if (page) Config.activeSettingsPage = page;
+            Config.settingsVisible = true;
+        }
         function close(): void { Config.settingsVisible = false; }
+        function setPage(page: string): void {
+            if (page) Config.activeSettingsPage = page;
+        }
+    }
+
+    IpcHandler {
+        target: "theme"
+        function setMode(mode: string): void {
+            if (mode === "light") {
+                Config.setDarkMode(false);
+            } else if (mode === "dark") {
+                Config.setDarkMode(true);
+            }
+        }
+        function toggle(): void {
+            Config.setDarkMode(!Config.isDarkMode);
+        }
+        function setPreset(preset: string): void {
+            Config.setThemePreset(preset);
+        }
     }
 
     IpcHandler {

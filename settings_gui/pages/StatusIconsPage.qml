@@ -35,10 +35,7 @@ ColumnLayout {
             }
             description: "Show " + modelData.id + " icon and interactive popout in the dock"
             checked: modelData.enabled
-            onToggled: val => {
-                modelData.enabled = val;
-                Config.saveSettings();
-            }
+            onToggled: val => Config.setStatusIconEnabled(modelData.id, val)
         }
     }
 }

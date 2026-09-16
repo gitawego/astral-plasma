@@ -21,22 +21,16 @@ ColumnLayout {
         Layout.fillWidth: true
         title: "Enable Left Dock"
         description: "Show the floating vertical dock on the left side of the screen"
-        checked: Config.settings.dock ? Config.settings.dock.enabled : true
-        onToggled: val => {
-            Config.settings.dock.enabled = val;
-            Config.saveSettings();
-        }
+        checked: Config.dockEnabled
+        onToggled: val => Config.setDockEnabled(val)
     }
 
     SettingToggle {
         Layout.fillWidth: true
         title: "Exclusive Screen Zone"
         description: "Reserve screen edge space so maximized/fullscreen windows dock cleanly beside the bar"
-        checked: Config.settings.dock ? Config.settings.dock.exclusiveZone : true
-        onToggled: val => {
-            Config.settings.dock.exclusiveZone = val;
-            Config.saveSettings();
-        }
+        checked: Config.settings.dock ? (Config.settings.dock.exclusiveZone ?? true) : true
+        onToggled: val => Config.setDockExclusiveZone(val)
     }
 
     SettingSlider {
@@ -46,9 +40,7 @@ ColumnLayout {
         max: 56
         suffix: "px"
         value: Config.dockIconSize
-        onValueModified: val => {
-            Config.setDockIconSize(Math.round(val));
-        }
+        onValueModified: val => Config.setDockIconSize(Math.round(val))
     }
 
     SettingSlider {
@@ -58,9 +50,7 @@ ColumnLayout {
         max: 96
         suffix: "px"
         value: Config.dockWidth
-        onValueModified: val => {
-            Config.setDockWidth(Math.round(val));
-        }
+        onValueModified: val => Config.setDockWidth(Math.round(val))
     }
 
     SettingSlider {
@@ -69,35 +59,24 @@ ColumnLayout {
         min: 0
         max: 32
         suffix: "px"
-        value: Config.settings.dock ? Config.settings.dock.margin : 12
-        onValueModified: val => {
-            Config.settings.dock.margin = Math.round(val);
-            Config.saveSettings();
-        }
+        value: Config.settings.dock ? (Config.settings.dock.margin ?? 12) : 12
+        onValueModified: val => Config.setDockMargin(Math.round(val))
     }
 
     SettingToggle {
         Layout.fillWidth: true
         title: "System Tray"
         description: "Display icons for running background apps (Discord, Steam, etc.)"
-        checked: Config.settings.dock && Config.settings.dock.tray ? Config.settings.dock.tray.enabled : true
-        onToggled: val => {
-            if (!Config.settings.dock.tray) Config.settings.dock.tray = {};
-            Config.settings.dock.tray.enabled = val;
-            Config.saveSettings();
-        }
+        checked: Config.settings.dock && Config.settings.dock.tray ? (Config.settings.dock.tray.enabled ?? true) : true
+        onToggled: val => Config.setDockTrayEnabled(val)
     }
 
     SettingToggle {
         Layout.fillWidth: true
         title: "Enable Top Bar"
         description: "Show the integrated bar spanning across the top of the screen"
-        checked: Config.settings.topBar ? Config.settings.topBar.enabled : true
-        onToggled: val => {
-            if (!Config.settings.topBar) Config.settings.topBar = {};
-            Config.settings.topBar.enabled = val;
-            Config.saveSettings();
-        }
+        checked: Config.topBarEnabled
+        onToggled: val => Config.setTopBarEnabled(val)
     }
 
     SettingSlider {
@@ -106,11 +85,7 @@ ColumnLayout {
         min: 28
         max: 56
         suffix: "px"
-        value: Config.settings.topBar ? Config.settings.topBar.height : 38
-        onValueModified: val => {
-            if (!Config.settings.topBar) Config.settings.topBar = {};
-            Config.settings.topBar.height = Math.round(val);
-            Config.saveSettings();
-        }
+        value: Config.topBarHeight
+        onValueModified: val => Config.setTopBarHeight(Math.round(val))
     }
 }

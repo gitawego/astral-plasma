@@ -125,10 +125,11 @@
     "showTabs": true
   },
   "theme": {
-    "mode": "dynamic",
+    "mode": "dark",
     "preset": "iris",
     "blurStrength": 0.85,
-    "cornerRadius": 20
+    "cornerRadius": 20,
+    "darkMode": true
   },
   "border": {
     "thickness": 14,

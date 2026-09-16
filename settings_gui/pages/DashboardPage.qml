@@ -21,11 +21,8 @@ ColumnLayout {
         Layout.fillWidth: true
         title: "Central Popout Dashboard"
         description: "Enable the top-center modal overlay (toggled via dock clock or shortcut)"
-        checked: Config.settings.dashboard ? Config.settings.dashboard.enabled : true
-        onToggled: val => {
-            Config.settings.dashboard.enabled = val;
-            Config.saveSettings();
-        }
+        checked: Config.settings.dashboard ? (Config.settings.dashboard.enabled ?? true) : true
+        onToggled: val => Config.setDashboardEnabled(val)
     }
 
     Repeater {
@@ -36,10 +33,7 @@ ColumnLayout {
             title: modelData.label + " Tab"
             description: "Show " + modelData.label + " tab inside the Central Dashboard"
             checked: modelData.enabled
-            onToggled: val => {
-                modelData.enabled = val;
-                Config.saveSettings();
-            }
+            onToggled: val => Config.setDashboardTabEnabled(modelData.id, val)
         }
     }
 }

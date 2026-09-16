@@ -47,6 +47,33 @@ PanelWindow {
             onClicked: {}
         }
 
+        // Top-right Close Button
+        Rectangle {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: Theme.padMedium
+            width: 32
+            height: 32
+            radius: 16
+            color: closeMouseArea.containsMouse ? Colors.pillHover : "transparent"
+            z: 200
+
+            MaterialIcon {
+                anchors.centerIn: parent
+                text: "close"
+                size: 18
+                color: Colors.m3onSurfaceVariant
+            }
+
+            MouseArea {
+                id: closeMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Config.settingsVisible = false
+            }
+        }
+
         RowLayout {
             anchors.fill: parent
             spacing: 0
@@ -87,48 +114,57 @@ PanelWindow {
                             width: parent.width
                             label: "Dock & Layout"
                             iconText: "dashboard"
-                            active: navState.currentPage === "dock"
-                            onClicked: navState.currentPage = "dock"
+                            active: Config.activeSettingsPage === "dock"
+                            onClicked: Config.activeSettingsPage = "dock"
                         }
                         PillButton {
                             width: parent.width
                             label: "Status Icons"
                             iconText: "wifi"
-                            active: navState.currentPage === "status"
-                            onClicked: navState.currentPage = "status"
+                            active: Config.activeSettingsPage === "status"
+                            onClicked: Config.activeSettingsPage = "status"
                         }
                         PillButton {
                             width: parent.width
                             label: "Appearance"
                             iconText: "weather_clear"
-                            active: navState.currentPage === "theme"
-                            onClicked: navState.currentPage = "theme"
+                            active: Config.activeSettingsPage === "theme"
+                            onClicked: Config.activeSettingsPage = "theme"
                         }
                         PillButton {
                             width: parent.width
                             label: "Dashboard"
                             iconText: "calendar"
-                            active: navState.currentPage === "dashboard"
-                            onClicked: navState.currentPage = "dashboard"
+                            active: Config.activeSettingsPage === "dashboard"
+                            onClicked: Config.activeSettingsPage = "dashboard"
                         }
                         PillButton {
                             width: parent.width
                             label: "System & Services"
                             iconText: "memory"
-                            active: navState.currentPage === "system"
-                            onClicked: navState.currentPage = "system"
+                            active: Config.activeSettingsPage === "system"
+                            onClicked: Config.activeSettingsPage = "system"
                         }
                     }
 
                     Item { Layout.fillHeight: true }
 
+                    Text {
+                        Layout.fillWidth: true
+                        text: "All changes apply live"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurfaceVariant
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
                     // Close button
                     PillButton {
                         Layout.fillWidth: true
-                        label: "Done"
-                        active: true
+                        label: "Close"
+                        iconText: "close"
+                        active: false
                         onClicked: {
-                            Config.saveSettings();
                             Config.settingsVisible = false;
                         }
                     }
@@ -141,8 +177,6 @@ PanelWindow {
                 Layout.fillHeight: true
                 color: "transparent"
 
-                Item { id: navState; property string currentPage: "dock" }
-
                 Flickable {
                     anchors.fill: parent
                     anchors.margins: Theme.padExtraLarge
@@ -154,10 +188,11 @@ PanelWindow {
                         id: contentLoader
                         width: parent.width
                         sourceComponent: {
-                            switch (navState.currentPage) {
+                            switch (Config.activeSettingsPage) {
+                                case "theme":
+                                case "appearance": return themePageComp;
                                 case "dock": return dockPageComp;
                                 case "status": return statusPageComp;
-                                case "theme": return themePageComp;
                                 case "dashboard": return dashPageComp;
                                 case "system": return systemPageComp;
                                 default: return dockPageComp;
