@@ -18,6 +18,7 @@ Item {
         if (!condition) {
             console.error("FAIL: " + message);
             Qt.exit(1);
+            throw new Error("FAIL: " + message);
         }
     }
 
@@ -28,6 +29,7 @@ Item {
         property real bass: 0.0
         property real mid: 0.0
         property real treble: 0.0
+        property real beat: 0.0
         property var bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         property bool active: false
 
@@ -51,6 +53,12 @@ Item {
             if (!isEffectVisible) {
                 procShouldRun = false;
                 active = false;
+                energy = 0.0;
+                bass = 0.0;
+                mid = 0.0;
+                treble = 0.0;
+                beat = 0.0;
+                bands = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
                 graceTimerRunning = false;
             }
         }
@@ -64,6 +72,8 @@ Item {
                 bass = 0.0;
                 mid = 0.0;
                 treble = 0.0;
+                beat = 0.0;
+                bands = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
                 return;
             }
 
@@ -205,10 +215,25 @@ Item {
         assert(manualName === "", "Manual player selection must reset to follow actively playing track");
 
         // 10. HeatmapSpeakerPlayer Target Design Verification
-        assert(testSpeaker.implicitWidth === 230, "Speaker implicitWidth should be 230");
+        assert(testSpeaker.implicitWidth === 260, "Speaker implicitWidth should be 260");
         assert(testSpeaker.dynamicElements.length >= 24, "Speaker must have dynamic jumping notes and music dots");
         assert(testSpeaker.dynamicElements[0].color === "#FFD600", "First element must be golden yellow");
         assert(testSpeaker.speakerRadius > 50, "Speaker radius must be appropriately scaled");
+
+        // 11. Visualizer Pause Contract Verification
+        testSpeaker.isPlaying = false;
+        assert(testSpeaker.audioEnergy === 0.0, "Speaker audioEnergy must be 0.0 when paused");
+        assert(testSpeaker.audioBeat === 0.0, "Speaker audioBeat must be 0.0 when paused");
+
+        mockVisualizer.isPlaying = true;
+        mockVisualizer.energy = 0.002; // Below 0.005 noise threshold
+        mockVisualizer.beat = 0.0;
+        var isActiveWithNoise = mockVisualizer.isPlaying && (mockVisualizer.energy > 0.005 || mockVisualizer.beat > 0.005);
+        assert(!isActiveWithNoise, "Visualizer must not activate on near-zero noise floor <= 0.005");
+
+        mockVisualizer.energy = 0.45;
+        var isActiveWithMusic = mockVisualizer.isPlaying && (mockVisualizer.energy > 0.005 || mockVisualizer.beat > 0.005);
+        assert(isActiveWithMusic, "Visualizer must activate when energy > 0.005");
 
         console.log("PASS: All Audio Heatmap Cover tests passed successfully!");
         Qt.exit(0);

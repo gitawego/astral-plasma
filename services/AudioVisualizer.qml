@@ -56,6 +56,13 @@ Singleton {
             if (!root.isEffectVisible) {
                 root.procShouldRun = false;
                 root.active = false;
+                root.energy = 0.0;
+                root.bass = 0.0;
+                root.mid = 0.0;
+                root.treble = 0.0;
+                root.beat = 0.0;
+                root.bands = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                root.frameUpdated();
             }
         }
     }
@@ -70,6 +77,9 @@ Singleton {
             root.bass = 0.0;
             root.mid = 0.0;
             root.treble = 0.0;
+            root.beat = 0.0;
+            root.bands = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+            root.frameUpdated();
             return;
         }
 
@@ -111,13 +121,14 @@ Singleton {
                     const data = JSON.parse(line);
                     if (!data) return;
 
-                    root.active = true;
                     if (data.e !== undefined) root.energy = data.e;
                     if (data.b !== undefined) root.bass = data.b;
                     if (data.m !== undefined) root.mid = data.m;
                     if (data.t !== undefined) root.treble = data.t;
                     if (data.beat !== undefined) root.beat = data.beat;
                     if (data.bands && Array.isArray(data.bands)) root.bands = data.bands.slice();
+
+                    root.active = root.isPlaying && (root.energy > 0.005 || root.beat > 0.005);
                     root.frameCount++;
                     root.frameUpdated();
                 } catch (e) {
@@ -128,6 +139,13 @@ Singleton {
 
         onExited: (exitCode, exitStatus) => {
             root.active = false;
+            root.energy = 0.0;
+            root.bass = 0.0;
+            root.mid = 0.0;
+            root.treble = 0.0;
+            root.beat = 0.0;
+            root.bands = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+            root.frameUpdated();
         }
     }
 

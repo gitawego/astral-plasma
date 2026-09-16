@@ -50,6 +50,15 @@ impl PlasmaAdapter {
             }
             let _ = fs::remove_file(pid_file);
         }
+
+        if env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" {
+            #[cfg(unix)]
+            {
+                let _ = Command::new("pkill")
+                    .args(["-f", "astral-plasma plasma watchdog"])
+                    .status();
+            }
+        }
     }
 }
 

@@ -40,6 +40,9 @@ impl<P: PlasmaControlPort> PlasmaControlUseCase<P> {
 }
 
 pub fn spawn_watchdog(target_pid: u32) {
+    let adapter = PlasmaAdapter::new();
+    adapter.stop_watchdog();
+
     let current_exe = env::current_exe().unwrap_or_else(|_| "astral-plasma".into());
 
     let mut cmd = Command::new(&current_exe);

@@ -164,6 +164,9 @@ ShellRoot {
     }
 
     Component.onCompleted: {
+        if (Config.debugMode) {
+            console.log("[shell.qml] onCompleted, disablePlasmaPanels:", Config.disablePlasmaPanels, "daemonBin:", Config.daemonBin, "pid:", Quickshell.processId);
+        }
         if (Config.disablePlasmaPanels) {
             const target = (typeof Config.disablePlasmaPanels === "string") ? Config.disablePlasmaPanels : "all";
             Quickshell.execDetached([Config.daemonBin, "plasma", "disable", target, "" + Quickshell.processId]);

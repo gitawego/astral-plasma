@@ -21,10 +21,11 @@ Item {
     readonly property real midRadius: (innerRadius + outerRadius) / 2
     readonly property real ringThickness: Math.max(3, outerRadius - innerRadius)
 
-    readonly property real audioEnergy: (AudioVisualizer.active && root.isTargetVisible) ? AudioVisualizer.energy : 0.0
-    readonly property real audioBass: (AudioVisualizer.active && root.isTargetVisible) ? AudioVisualizer.bass : 0.0
-    readonly property real audioTreble: (AudioVisualizer.active && root.isTargetVisible) ? AudioVisualizer.treble : 0.0
-    readonly property real audioBeat: (AudioVisualizer.active && root.isTargetVisible) ? AudioVisualizer.beat : 0.0
+    readonly property bool isVisualizerActive: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true)
+    readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.energy : 0.0
+    readonly property real audioBass: (isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.bass : 0.0
+    readonly property real audioTreble: (isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.treble : 0.0
+    readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.beat : 0.0
 
     // Gentle orbital phase animation
     property real animPhase: 0.0
@@ -33,13 +34,13 @@ Item {
         to: Math.PI * 2
         duration: 8000
         loops: Animation.Infinite
-        running: root.isTargetVisible && AudioVisualizer.active
+        running: root.isTargetVisible && root.isVisualizerActive
     }
 
     // High-framerate render pulse to guarantee 100% fluid dynamic canvas repainting
     Timer {
         interval: 33 // ~30 FPS
-        running: root.isTargetVisible && AudioVisualizer.active
+        running: root.isTargetVisible && root.isVisualizerActive && root.audioEnergy > 0.005
         repeat: true
         onTriggered: coronaCanvas.requestPaint()
     }
@@ -67,7 +68,7 @@ Item {
 
     Item {
         anchors.fill: parent
-        visible: root.showNotes && root.isTargetVisible && AudioVisualizer.active
+        visible: root.showNotes && root.isTargetVisible && root.isVisualizerActive && (root.audioEnergy > 0.005 || root.audioBeat > 0.005)
 
         Repeater {
             model: root.dynamicElements
@@ -77,7 +78,7 @@ Item {
                 required property int index
 
                 readonly property real rad: (modelData.angle * Math.PI / 180)
-                readonly property real bandAmp: (AudioVisualizer.bands && AudioVisualizer.bands[modelData.bandIdx] !== undefined)
+                readonly property real bandAmp: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.bands && AudioVisualizer.bands[modelData.bandIdx] !== undefined)
                     ? AudioVisualizer.bands[modelData.bandIdx]
                     : 0.0
 
@@ -133,18 +134,28 @@ Item {
         anchors.fill: parent
 
         Connections {
-            target: AudioVisualizer
+            target: (typeof AudioVisualizer !== "undefined") ? AudioVisualizer : null
             function onFrameUpdated() {
-                if (root.isTargetVisible && AudioVisualizer.active) {
+                if (root.isTargetVisible && root.isVisualizerActive) {
                     coronaCanvas.requestPaint();
                 }
             }
             function onBandsChanged() {
-                if (root.isTargetVisible && AudioVisualizer.active) {
+                if (root.isTargetVisible && root.isVisualizerActive) {
                     coronaCanvas.requestPaint();
                 }
             }
             function onActiveChanged() {
+                coronaCanvas.requestPaint();
+            }
+        }
+
+        Connections {
+            target: root
+            function onIsTargetVisibleChanged() {
+                coronaCanvas.requestPaint();
+            }
+            function onIsVisualizerActiveChanged() {
                 coronaCanvas.requestPaint();
             }
         }
@@ -157,7 +168,7 @@ Item {
             var cy = root.centerY;
             var energy = root.audioEnergy;
 
-            if (!AudioVisualizer.active || !root.isTargetVisible) {
+            if (!root.isVisualizerActive || !root.isTargetVisible || energy <= 0.005) {
                 ctx.beginPath();
                 ctx.arc(cx, cy, root.midRadius, 0, Math.PI * 2);
                 ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.08);

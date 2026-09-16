@@ -25,10 +25,11 @@ Item {
     readonly property real innerSpeakerRadius: speakerRadius - (rimThickness / 2) - 2
 
     // Real-time audio reactive variables
-    readonly property real audioEnergy: (AudioVisualizer.active && root.isTargetVisible) ? AudioVisualizer.energy : 0.0
-    readonly property real audioBass: (AudioVisualizer.active && root.isTargetVisible) ? AudioVisualizer.bass : 0.0
-    readonly property real audioTreble: (AudioVisualizer.active && root.isTargetVisible) ? AudioVisualizer.treble : 0.0
-    readonly property real audioBeat: (AudioVisualizer.active && root.isTargetVisible) ? AudioVisualizer.beat : 0.0
+    readonly property bool isVisualizerActive: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true)
+    readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.energy : 0.0
+    readonly property real audioBass: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.bass : 0.0
+    readonly property real audioTreble: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.treble : 0.0
+    readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.beat : 0.0
 
     // Animation timer for gentle orbital float
     property real animPhase: 0.0
@@ -43,7 +44,7 @@ Item {
     // High-framerate render pulse to guarantee 100% fluid dynamic canvas repainting
     Timer {
         interval: 33 // ~30 FPS
-        running: root.isTargetVisible && AudioVisualizer.active
+        running: root.isTargetVisible && root.isVisualizerActive && root.isPlaying
         repeat: true
         onTriggered: coronaCanvas.requestPaint()
     }
@@ -93,6 +94,9 @@ Item {
     Item {
         id: elementsLayer
         anchors.fill: parent
+        visible: root.isPlaying && root.isVisualizerActive && (root.audioEnergy > 0.005 || root.audioBeat > 0.005)
+        opacity: visible ? 1.0 : 0.0
+        Behavior on opacity { NumberAnimation { duration: 150 } }
 
         Repeater {
             model: root.dynamicElements
@@ -103,7 +107,7 @@ Item {
                 required property int index
 
                 readonly property real rad: (modelData.angle * Math.PI / 180)
-                readonly property real bandAmp: (AudioVisualizer.bands && AudioVisualizer.bands[modelData.bandIdx] !== undefined)
+                readonly property real bandAmp: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.bands && AudioVisualizer.bands[modelData.bandIdx] !== undefined)
                     ? AudioVisualizer.bands[modelData.bandIdx]
                     : 0.0
 
@@ -173,18 +177,28 @@ Item {
         anchors.fill: parent
 
         Connections {
-            target: AudioVisualizer
+            target: (typeof AudioVisualizer !== "undefined") ? AudioVisualizer : null
             function onFrameUpdated() {
-                if (root.isTargetVisible && AudioVisualizer.active) {
+                if (root.isTargetVisible && root.isPlaying && root.isVisualizerActive) {
                     coronaCanvas.requestPaint();
                 }
             }
             function onBandsChanged() {
-                if (root.isTargetVisible && AudioVisualizer.active) {
+                if (root.isTargetVisible && root.isPlaying && root.isVisualizerActive) {
                     coronaCanvas.requestPaint();
                 }
             }
             function onActiveChanged() {
+                coronaCanvas.requestPaint();
+            }
+        }
+
+        Connections {
+            target: root
+            function onIsPlayingChanged() {
+                coronaCanvas.requestPaint();
+            }
+            function onIsTargetVisibleChanged() {
                 coronaCanvas.requestPaint();
             }
         }
@@ -198,6 +212,15 @@ Item {
             var r = root.speakerRadius;
             var energy = root.audioEnergy;
             var treble = root.audioTreble;
+
+            if (!root.isPlaying || !root.isVisualizerActive || energy <= 0.005) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.08);
+                ctx.lineWidth = 2.0;
+                ctx.stroke();
+                return;
+            }
 
             // Soft radial thermal ambient glow
             var glowRadius = r * (1.22 + energy * 0.22);

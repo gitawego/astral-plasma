@@ -13,5 +13,13 @@ echo "=========================================================="
 # Generate initial dynamic palette if needed
 bash "$DIR/scripts/generate_palette.sh" || true
 
+# Ensure astral-plasma daemon binary is built
+if [ ! -f "$DIR/bin/astral-plasma" ]; then
+    echo "[*] Building astral-plasma daemon binary..."
+    cargo build --release --manifest-path "$DIR/daemon/Cargo.toml"
+    mkdir -p "$DIR/bin"
+    cp -f "$DIR/daemon/target/release/astral-plasma" "$DIR/bin/astral-plasma"
+fi
+
 # Run quickshell pointing to this isolated directory
 exec quickshell -p "$DIR"

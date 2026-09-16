@@ -110,6 +110,35 @@ impl AudioAnalyzer {
     /// Process a chunk of normalized samples [-1.0 .. 1.0] and return a smoothed frame
     pub fn process_samples(&mut self, samples: &[f32]) -> VisualizerFrame {
         let raw_rms = Self::calculate_rms(samples);
+        if raw_rms < 0.002 {
+            self.envelope_energy *= 0.45;
+            self.envelope_bass *= 0.45;
+            self.envelope_mid *= 0.45;
+            self.envelope_treble *= 0.45;
+            self.envelope_beat = 0.0;
+            self.prev_bass = 0.0;
+            self.prev_energy = 0.0;
+            for b in &mut self.envelope_bands {
+                *b *= 0.45;
+                if *b < 0.005 {
+                    *b = 0.0;
+                }
+            }
+            if self.envelope_energy < 0.005 { self.envelope_energy = 0.0; }
+            if self.envelope_bass < 0.005 { self.envelope_bass = 0.0; }
+            if self.envelope_mid < 0.005 { self.envelope_mid = 0.0; }
+            if self.envelope_treble < 0.005 { self.envelope_treble = 0.0; }
+
+            return VisualizerFrame {
+                energy: round3(self.envelope_energy),
+                bass: round3(self.envelope_bass),
+                mid: round3(self.envelope_mid),
+                treble: round3(self.envelope_treble),
+                beat: 0.0,
+                bands: self.envelope_bands.iter().map(|&b| round3(b)).collect(),
+            };
+        }
+
         let raw_energy = (raw_rms * 2.2).min(1.0);
 
         let mut raw_bands = [0.0f32; NUM_BANDS];
@@ -268,7 +297,8 @@ pub fn run_audio_visualizer(running_flag: Option<Arc<AtomicBool>>) -> DynResult<
     // 256 samples * 2 bytes = 512 bytes per frame
     let chunk_bytes = WINDOW_SIZE * 2;
     let mut buf = vec![0u8; chunk_bytes];
-    let start_time = Instant::now();
+    let mut prev_buf = vec![0u8; chunk_bytes];
+    let mut stall_count: usize = 0;
 
     // Frame interval ~32ms = ~31.25 FPS
     let frame_duration = Duration::from_millis(32);
@@ -282,7 +312,21 @@ pub fn run_audio_visualizer(running_flag: Option<Arc<AtomicBool>>) -> DynResult<
 
                 match reader.read_exact(&mut buf) {
                     Ok(_) => {
-                        let samples = pcm_bytes_to_samples(&buf);
+                        if buf == prev_buf {
+                            stall_count += 1;
+                        } else {
+                            stall_count = 0;
+                            prev_buf.copy_from_slice(&buf);
+                        }
+
+                        // If stalled for >= 2 consecutive frames (e.g. Wine paused without corking),
+                        // feed silence so visualizer envelopes decay smoothly to 0.0
+                        let samples = if stall_count >= 2 {
+                            vec![0.0f32; WINDOW_SIZE]
+                        } else {
+                            pcm_bytes_to_samples(&buf)
+                        };
+
                         let frame = analyzer.process_samples(&samples);
                         if let Ok(json) = serde_json::to_string(&frame) {
                             if writeln!(out_handle, "{}", json).is_err() || out_handle.flush().is_err() {
@@ -305,16 +349,22 @@ pub fn run_audio_visualizer(running_flag: Option<Arc<AtomicBool>>) -> DynResult<
         let _ = proc.kill();
     }
 
-    // Fallback loop if child could not spawn or exited early
+    // Fallback loop if child could not spawn or exited early: stream silent zero-energy frames
+    let silent_frame = VisualizerFrame {
+        energy: 0.0,
+        bass: 0.0,
+        mid: 0.0,
+        treble: 0.0,
+        beat: 0.0,
+        bands: vec![0.0; NUM_BANDS],
+    };
+    let silent_json = serde_json::to_string(&silent_frame).unwrap_or_default();
+
     while running.load(Ordering::Relaxed) {
         let frame_start = Instant::now();
-        let t_secs = start_time.elapsed().as_secs_f32();
-        let frame = AudioAnalyzer::generate_synthetic_frame(t_secs);
 
-        if let Ok(json) = serde_json::to_string(&frame) {
-            if writeln!(out_handle, "{}", json).is_err() || out_handle.flush().is_err() {
-                break;
-            }
+        if writeln!(out_handle, "{}", silent_json).is_err() || out_handle.flush().is_err() {
+            break;
         }
 
         let elapsed = frame_start.elapsed();

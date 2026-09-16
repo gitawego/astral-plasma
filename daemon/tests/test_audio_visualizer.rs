@@ -106,3 +106,33 @@ fn test_json_serialization() {
     let deserialized: VisualizerFrame = serde_json::from_str(&json).expect("Failed to deserialize frame");
     assert_eq!(deserialized, frame);
 }
+
+#[test]
+fn test_analyzer_silence_decay() {
+    let mut analyzer = AudioAnalyzer::new();
+    let silence = vec![0.0f32; WINDOW_SIZE];
+
+    // Initially silent
+    let frame = analyzer.process_samples(&silence);
+    assert_eq!(frame.energy, 0.0);
+    assert_eq!(frame.beat, 0.0);
+    assert!(frame.bands.iter().all(|&b| b == 0.0));
+
+    // Play some audio
+    let mut tone = Vec::with_capacity(WINDOW_SIZE);
+    for i in 0..WINDOW_SIZE {
+        let t = i as f32 / SAMPLE_RATE as f32;
+        tone.push(0.9 * (2.0 * std::f32::consts::PI * 120.0 * t).sin());
+    }
+    let active_frame = analyzer.process_samples(&tone);
+    assert!(active_frame.energy > 0.0);
+
+    // Stop playback (pause / silence) -> should decay cleanly to 0.0 within a few frames
+    let mut final_frame = active_frame;
+    for _ in 0..10 {
+        final_frame = analyzer.process_samples(&silence);
+    }
+    assert_eq!(final_frame.energy, 0.0, "Energy must decay to 0.0 on pause/silence");
+    assert_eq!(final_frame.beat, 0.0, "Beat must be 0.0 on pause/silence");
+    assert!(final_frame.bands.iter().all(|&b| b == 0.0), "All bands must decay to 0.0 on silence");
+}
