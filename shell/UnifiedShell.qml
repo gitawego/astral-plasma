@@ -124,31 +124,8 @@ PanelWindow {
     readonly property color borderColor: Theme.borderSubtle
 
     Component.onCompleted: {
-        if (Quickshell.env("TEST_POPOUT_TARGET_Y")) {
-            Config.popoutTargetY = parseFloat(Quickshell.env("TEST_POPOUT_TARGET_Y"));
-        }
-        const testMode = Quickshell.env("TEST_POPOUT");
-        if (testMode === "default" || testMode === "bluetooth" || testMode === "network" || testMode === "power" || testMode === "clock") {
-            Config.bottomPopoutMode = testMode;
-            Config.bottomPopoutVisible = true;
-        }
-        if (Quickshell.env("TEST_DASHBOARD") === "1") {
-            Config.dashboardVisible = true;
-        }
-        const testTab = Quickshell.env("TEST_DASHBOARD_TAB");
-        if (testTab) {
-            Config.activeDashboardTab = testTab;
-            testTabTimer.start();
-        }
-    }
-
-    Timer {
-        id: testTabTimer
-        interval: 200
-        repeat: false
-        onTriggered: {
-            const testTab = Quickshell.env("TEST_DASHBOARD_TAB");
-            if (testTab) Config.activeDashboardTab = testTab;
+        if (Config.debugMode) {
+            DebugService.log("Shell", "UnifiedShell initialized with Debug Mode active");
         }
     }
 
@@ -178,7 +155,7 @@ PanelWindow {
         interval: 350
         repeat: false
         onTriggered: {
-            if (Quickshell.env("TEST_DASHBOARD") === "1") return;
+            if (Config.debugMode) return;
             if (!root.isDashboardHovered) {
                 Config.dashboardVisible = false;
             }
@@ -397,6 +374,7 @@ PanelWindow {
         appName: NotificationService.currentAppName
         materialIcon: NotificationService.currentIcon
         iconSource: (NotificationService.currentIcon && (NotificationService.currentIcon.indexOf("/") !== -1 || NotificationService.currentIcon.indexOf("file:") !== -1)) ? NotificationService.currentIcon : ""
+        imageSource: (NotificationService.currentImage && NotificationService.currentImage.length > 0) ? NotificationService.currentImage : ((NotificationService.currentIcon && (NotificationService.currentIcon.indexOf("/") !== -1 || NotificationService.currentIcon.indexOf("file:") !== -1)) ? NotificationService.currentIcon : "")
         onClosed: {
             NotificationService.dismiss();
         }

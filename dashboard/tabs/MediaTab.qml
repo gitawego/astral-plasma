@@ -3,80 +3,35 @@ import QtQuick.Layouts
 import "../../theme"
 import "../../components"
 import "../../services"
+import "../../menus"
+import "../../config"
 
 Item {
     id: root
 
     implicitWidth: 680
     implicitHeight: 320
+    clip: true
 
     Item {
         anchors.fill: parent
+        clip: true
 
         RowLayout {
             anchors.fill: parent
             anchors.margins: Theme.padLarge
-            spacing: Theme.spaceMedium
+            spacing: Theme.spaceLarge
 
-            // Left: Circular Vinyl / Radial Visualizer Artwork
-            Item {
-                Layout.preferredWidth: 200
-                Layout.preferredHeight: 200
+            // Left: Dynamic Audio Heatmap Speaker Player (Target Visual Design)
+            HeatmapSpeakerPlayer {
+                Layout.preferredWidth: 260
+                Layout.preferredHeight: 260
                 Layout.alignment: Qt.AlignVCenter
-
-                // Radial visualizer bars ring
-                Repeater {
-                    model: 36
-
-                    delegate: Rectangle {
-                        id: visBar
-                        readonly property real angle: (index / 36.0) * 360.0
-                        readonly property real rad: angle * Math.PI / 180.0
-                        readonly property real centerX: 100
-                        readonly property real centerY: 100
-                        readonly property real ringRadius: 72
-                        readonly property real barHeight: 8 + (Math.sin(index * 1.5 + (MprisMedia.isPlaying ? Date.now() / 300 : 0)) * 6 + 6)
-
-                        width: 3
-                        height: barHeight
-                        radius: 1.5
-                        color: Colors.primary
-
-                        x: centerX + Math.cos(rad) * ringRadius - width / 2
-                        y: centerY + Math.sin(rad) * ringRadius - height / 2
-                        rotation: angle + 90
-                        transformOrigin: Item.Center
-                    }
-                }
-
-                // Center Album Art Circular Disc
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 110
-                    height: 110
-                    radius: 55
-                    color: Colors.surfaceContainerHigh
-                    border.color: Colors.primary
-                    border.width: 2
-                    clip: true
-
-                    Image {
-                        anchors.fill: parent
-                        source: MprisMedia.artUrl || "../../theme/assets/wallpaper.webp"
-                        fillMode: Image.PreserveAspectCrop
-                    }
-
-                    // Center spindle hole
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 18
-                        height: 18
-                        radius: 9
-                        color: Colors.surface
-                        border.color: Theme.borderSubtle
-                        border.width: 1
-                    }
-                }
+                isPlaying: MprisMedia.isPlaying
+                artUrl: MprisMedia.artUrl
+                title: MprisMedia.title
+                artist: MprisMedia.artist
+                isTargetVisible: Config.dashboardVisible && Config.activeDashboardTab === "media"
             }
 
             // Center: Track Details & Controls
@@ -141,7 +96,7 @@ Item {
 
                 Item { height: 4 }
 
-                // Progress Bar with Timestamps
+                // Progress Bar with Timestamps & Interactive Seeking
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
@@ -172,6 +127,16 @@ Item {
                             radius: 3
                             color: Colors.primary
                         }
+
+                        // Interactive seeking
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: mouse => {
+                                let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                                MprisMedia.seekTo(frac);
+                            }
+                        }
                     }
 
                     Text {
@@ -189,24 +154,28 @@ Item {
 
                 Item { height: 2 }
 
-                // Active Player Pill Badge (e.g. ▲ Feishin or NetEase Music)
+                // Active Player Pill Badge (Interactive player switch/dropdown)
                 Rectangle {
+                    id: playerBadge
                     Layout.alignment: Qt.AlignHCenter
-                    height: 24
-                    width: playerRow.implicitWidth + 20
+                    height: 32
+                    width: playerRow.implicitWidth + 56
                     radius: Theme.radiusFull
-                    color: Colors.surfaceContainerHigh
-                    border.color: Theme.borderSubtle
+                    color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primaryContainer : Colors.surfaceContainerHigh
+                    border.color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primary : Theme.borderSubtle
                     border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
 
                     Row {
                         id: playerRow
                         anchors.centerIn: parent
-                        spacing: 4
+                        spacing: 9
 
                         MaterialIcon {
-                            text: "arrow_drop_up"
-                            size: 14
+                            text: (MprisMedia.players && MprisMedia.players.length > 1) ? "swap_horiz" : "music_note"
+                            size: 15
                             color: Colors.primary
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -216,8 +185,36 @@ Item {
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontLabelSmall
                             font.weight: Font.Medium
-                            color: Colors.m3onSurface
+                            color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.onPrimaryContainer : Colors.m3onSurface
                             anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        MaterialIcon {
+                            visible: MprisMedia.players && MprisMedia.players.length > 1
+                            text: "arrow_drop_down"
+                            size: 16
+                            color: Colors.onSurfaceVariant
+                            anchors.verticalCenter: parent.verticalCenter
+                            rotation: playerDropdownOverlay.visible ? 180 : 0
+                            Behavior on rotation { NumberAnimation { duration: 150 } }
+                        }
+                    }
+
+                    MouseArea {
+                        id: playerBadgeMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: (MprisMedia.players && MprisMedia.players.length > 1) ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: {
+                            if (MprisMedia.players && MprisMedia.players.length > 1) {
+                                if (!playerDropdownOverlay.visible) {
+                                    playerDropdownOverlay.open();
+                                } else {
+                                    playerDropdownOverlay.visible = false;
+                                }
+                            } else {
+                                MprisMedia.cyclePlayer();
+                            }
                         }
                     }
                 }
@@ -238,6 +235,59 @@ Item {
                     source: "../../theme/assets/bongocat.gif"
                     playing: true
                     speed: MprisMedia.isPlaying ? 1.0 : 0.4
+                }
+            }
+        }
+
+        // Dropdown Overlay (Floating above RowLayout)
+        Item {
+            id: playerDropdownOverlay
+            anchors.fill: parent
+            z: 999
+            visible: false
+
+            function open() {
+                let pos = playerBadge.mapToItem(playerDropdownOverlay, 0, 0);
+                let count = (MprisMedia.players && MprisMedia.players.length > 0) ? MprisMedia.players.length : 1;
+                let menuH = 52 + count * 42;
+                let targetX = Math.round(pos.x + (playerBadge.width - playerDropdownMenu.width) / 2);
+                let targetY = Math.round(pos.y - menuH - 8);
+                playerDropdownMenu.x = Math.max(8, Math.min(playerDropdownOverlay.width - playerDropdownMenu.width - 8, targetX));
+                playerDropdownMenu.y = Math.max(8, Math.min(playerDropdownOverlay.height - menuH - 8, targetY));
+                playerDropdownOverlay.visible = true;
+            }
+
+            // Backdrop dismiss: clicks outside the menu close it
+            MouseArea {
+                anchors.fill: parent
+                onClicked: playerDropdownOverlay.visible = false
+            }
+
+            MenuCard {
+                id: playerDropdownMenu
+                z: 1000
+                width: 230
+
+                MenuHeader {
+                    title: "Media Sources"
+                    materialIcon: "queue_music"
+                }
+
+                Repeater {
+                    model: MprisMedia.players
+
+                    MenuItem {
+                        required property var modelData
+                        width: parent.width
+                        text: MprisMedia.playerIdentity(modelData)
+                        subtext: modelData.playbackState === 1 ? "Playing" : (modelData.playbackState === 2 ? "Paused" : "Stopped")
+                        materialIcon: modelData.playbackState === 1 ? "play_arrow" : "pause"
+                        checked: MprisMedia.isPlayerActive(modelData)
+                        onClicked: {
+                            MprisMedia.selectPlayer(modelData);
+                            playerDropdownOverlay.visible = false;
+                        }
+                    }
                 }
             }
         }

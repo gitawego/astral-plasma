@@ -230,6 +230,21 @@ Item {
         assert(activeBuf === "A", "Switched back to buffer A seamlessly");
         assert(bufAOpacity === 1.0 && bufBOpacity === 0.0, "Buffer A visible, Buffer B hidden");
 
+        // 8. Live Preview Status and Placeholder Contract Tests
+        console.log("TESTING: Live preview placeholder and visibility contracts");
+        function getPreviewPlaceholderText(loading, running, active, hasImg) {
+            if (hasImg) return ""; // Image displayed, placeholder hidden
+            if (running) {
+                return loading ? "Capturing live preview..." : (active ? "Currently in focus" : "Running in background");
+            }
+            return "Click to start";
+        }
+
+        assert(getPreviewPlaceholderText(false, true, false, false) === "Running in background", "Shows running in background when no image has loaded");
+        assert(getPreviewPlaceholderText(true, true, false, false) === "Capturing live preview...", "Shows capturing live preview when loading");
+        assert(getPreviewPlaceholderText(false, true, false, true) === "", "Placeholder hidden when live preview image is ready");
+        assert(getPreviewPlaceholderText(false, false, false, false) === "Click to start", "Shows click to start for unlaunched apps");
+
         console.log("PASS: App Preview Drawer Lifecycle Tests");
         Qt.exit(0);
     }

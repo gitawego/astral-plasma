@@ -83,6 +83,12 @@ Item {
         assert(notifPopup.autoCloseTimer.running === false, "autoCloseTimer must be stopped after close()");
         assert(notifPopup.fusedPanel.isOpen === false, "fusedPanel must be closed after close()");
 
+        // Test 8: Cover image handling & media notification properties
+        notifPopup.imageSource = "file:///tmp/test-cover.jpg";
+        assert(notifPopup.hasImageCover === true, "hasImageCover must be true when imageSource is set");
+        assert(notifPopup.effectiveCover === "file:///tmp/test-cover.jpg", "effectiveCover must match imageSource");
+        assert(notifPopup.fusedPanel.panelHeight === 78, "Collapsed panelHeight with image cover must be 78");
+
         console.log("PASS: NotificationPopup Tests");
         Qt.exit(0);
     }

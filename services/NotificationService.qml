@@ -12,6 +12,7 @@ Singleton {
     property string currentBody: ""
     property string currentAppName: ""
     property string currentIcon: "info"
+    property string currentImage: ""
     property string currentTime: "now"
     property bool hasNotification: false
     property var currentActions: []
@@ -19,16 +20,38 @@ Singleton {
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
     readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
 
-    signal notificationReceived(string summary, string body, string icon, string appName)
+    signal notificationReceived(string summary, string body, string icon, string appName, string image)
 
-    function show(summary: string, body: string, icon: string, appName: string) {
+    function show(summary: string, body: string, icon: string, appName: string, image: string) {
         currentSummary = summary || "Notification";
         currentBody = body || "";
-        currentIcon = icon || "info";
         currentAppName = appName || "System";
+
+        let appLower = (appName || "").toLowerCase();
+        let isMedia = appLower.includes("strawberry") || 
+                      appLower.includes("elisa") || 
+                      appLower.includes("cloudmusic") || 
+                      appLower.includes("netease") || 
+                      appLower.includes("music") || 
+                      appLower.includes("player") || 
+                      appLower.includes("spotify") ||
+                      (typeof MprisMedia !== "undefined" && MprisMedia.identity && appLower.includes(MprisMedia.identity.toLowerCase()));
+
+        currentIcon = icon && icon !== "info" ? icon : (isMedia ? "music_note" : (icon || "info"));
+
+        let img = image || "";
+        if (!img && typeof MprisMedia !== "undefined" && MprisMedia.artUrl && MprisMedia.artUrl.length > 0) {
+            if (isMedia || 
+                (MprisMedia.title && summary && summary.toLowerCase().includes(MprisMedia.title.toLowerCase())) ||
+                (MprisMedia.artist && body && body.toLowerCase().includes(MprisMedia.artist.toLowerCase()))) {
+                img = MprisMedia.artUrl;
+            }
+        }
+
+        currentImage = img;
         currentTime = "now";
         hasNotification = true;
-        notificationReceived(currentSummary, currentBody, currentIcon, currentAppName);
+        notificationReceived(currentSummary, currentBody, currentIcon, currentAppName, currentImage);
     }
 
     function dismiss() {
@@ -48,7 +71,11 @@ Singleton {
 
         onNotification: notif => {
             notif.tracked = true;
-            root.show(notif.summary, notif.body, notif.appIcon || "info", notif.appName);
+            let img = notif.image || "";
+            if (!img && notif.appIcon && (notif.appIcon.indexOf("/") !== -1 || notif.appIcon.indexOf("file:") !== -1)) {
+                img = notif.appIcon;
+            }
+            root.show(notif.summary, notif.body, notif.appIcon || "info", notif.appName, img);
         }
     }
 
@@ -63,7 +90,7 @@ Singleton {
                     const line = data.trim();
                     if (!line || !line.startsWith("{")) return;
                     const parsed = JSON.parse(line);
-                    root.show(parsed.summary, parsed.body, parsed.icon, parsed.app);
+                    root.show(parsed.summary, parsed.body, parsed.icon, parsed.app, parsed.image || "");
                 } catch (e) {
                     console.warn("NotificationService parse error:", e);
                 }

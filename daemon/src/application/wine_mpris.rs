@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::Mutex;
 use zbus::connection::Builder;
 use zbus::object_server::SignalEmitter;
@@ -8,7 +9,7 @@ use zbus::Connection;
 
 use crate::domain::ports::DynResult;
 use crate::domain::wine_media::WineMediaInfo;
-use crate::infrastructure::x11_input::{send_media_key, MediaKey};
+use crate::infrastructure::x11_input::{send_wine_media_action, WineMediaAction};
 
 pub struct WineMprisRoot;
 
@@ -54,12 +55,29 @@ impl WineMprisRoot {
     async fn quit(&self) {}
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct WineMprisPlayerState {
     pub title: String,
     pub artist: String,
     pub art_url: String,
     pub is_playing: bool,
+    pub duration_micros: i64,
+    pub position_micros: i64,
+    pub last_play_instant: Option<Instant>,
+}
+
+impl Default for WineMprisPlayerState {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            artist: String::new(),
+            art_url: String::new(),
+            is_playing: false,
+            duration_micros: 0,
+            position_micros: 0,
+            last_play_instant: None,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -101,6 +119,11 @@ impl WineMprisPlayer {
                 map.insert("mpris:artUrl".to_string(), val);
             }
         }
+        if st.duration_micros > 0 {
+            if let Ok(val) = Value::from(st.duration_micros).try_into_owned() {
+                map.insert("mpris:length".to_string(), val);
+            }
+        }
         map
     }
 
@@ -115,8 +138,23 @@ impl WineMprisPlayer {
     }
 
     #[zbus(property)]
-    fn position(&self) -> i64 {
-        0
+    async fn position(&self) -> i64 {
+        let st = self.state.lock().await;
+        if st.is_playing {
+            if let Some(instant) = st.last_play_instant {
+                let elapsed = instant.elapsed().as_micros() as i64;
+                let pos = st.position_micros + elapsed;
+                if st.duration_micros > 0 {
+                    pos.min(st.duration_micros)
+                } else {
+                    pos
+                }
+            } else {
+                st.position_micros
+            }
+        } else {
+            st.position_micros
+        }
     }
 
     #[zbus(property)]
@@ -150,33 +188,67 @@ impl WineMprisPlayer {
     }
 
     async fn next(&self) {
-        let _ = send_media_key(MediaKey::Next);
+        let _ = send_wine_media_action(WineMediaAction::Next);
+        let mut st = self.state.lock().await;
+        st.position_micros = 0;
+        st.last_play_instant = if st.is_playing { Some(Instant::now()) } else { None };
     }
 
     async fn previous(&self) {
-        let _ = send_media_key(MediaKey::Previous);
+        let _ = send_wine_media_action(WineMediaAction::Previous);
+        let mut st = self.state.lock().await;
+        st.position_micros = 0;
+        st.last_play_instant = if st.is_playing { Some(Instant::now()) } else { None };
     }
 
-    async fn play_pause(&self) {
-        let _ = send_media_key(MediaKey::PlayPause);
-    }
+    async fn play_pause(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
+        let _ = send_wine_media_action(WineMediaAction::PlayPause);
+        let is_now_playing = {
+            let mut st = self.state.lock().await;
+            st.is_playing = !st.is_playing;
+            if st.is_playing {
+                st.last_play_instant = Some(Instant::now());
+            } else if let Some(instant) = st.last_play_instant.take() {
+                st.position_micros += instant.elapsed().as_micros() as i64;
+            }
+            st.is_playing
+        };
 
-    async fn play(&self) {
-        let st = self.state.lock().await;
-        if !st.is_playing {
-            let _ = send_media_key(MediaKey::PlayPause);
+        let _ = self.playback_status_changed(&emitter).await;
+
+        if is_now_playing {
+            pause_other_mpris_players().await;
         }
     }
 
-    async fn pause(&self) {
-        let st = self.state.lock().await;
-        if st.is_playing {
-            let _ = send_media_key(MediaKey::PlayPause);
+    async fn play(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
+        let is_playing = {
+            let st = self.state.lock().await;
+            st.is_playing
+        };
+        if !is_playing {
+            self.play_pause(emitter).await;
         }
     }
 
-    async fn stop(&self) {
-        let _ = send_media_key(MediaKey::PlayPause);
+    async fn pause(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
+        let is_playing = {
+            let st = self.state.lock().await;
+            st.is_playing
+        };
+        if is_playing {
+            self.play_pause(emitter).await;
+        }
+    }
+
+    async fn stop(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
+        let is_playing = {
+            let st = self.state.lock().await;
+            st.is_playing
+        };
+        if is_playing {
+            self.play_pause(emitter).await;
+        }
     }
 }
 
@@ -208,26 +280,62 @@ impl WineMprisService {
     }
 
     pub async fn update_media(&self, media: &WineMediaInfo) -> DynResult<()> {
-        let changed = {
+        let (status_changed, meta_changed) = {
             let mut st = self.state.lock().await;
-            if st.title != media.title
-                || st.artist != media.artist
-                || st.is_playing != media.is_playing
-                || st.art_url != media.art_url
-            {
+            let title_changed = st.title != media.title;
+            let artist_changed = st.artist != media.artist;
+            let art_changed = st.art_url != media.art_url;
+            let new_duration_micros = (media.duration_ms * 1000) as i64;
+            let duration_changed = st.duration_micros != new_duration_micros;
+
+            if media.title.is_empty() {
+                // Stopped state (empty or "网易云音乐" caption)
+                let had_title = !st.title.is_empty();
+                let was_playing = st.is_playing;
+                st.title.clear();
+                st.artist.clear();
+                st.art_url.clear();
+                st.duration_micros = 0;
+                st.position_micros = 0;
+                st.last_play_instant = None;
+                st.is_playing = false;
+                (was_playing, had_title)
+            } else if title_changed {
                 st.title = media.title.clone();
                 st.artist = media.artist.clone();
                 st.art_url = media.art_url.clone();
-                st.is_playing = media.is_playing;
-                true
+                st.duration_micros = new_duration_micros;
+                st.position_micros = 0;
+
+                let should_play = true;
+                let was_playing = st.is_playing;
+                st.is_playing = should_play;
+                st.last_play_instant = Some(Instant::now());
+                (was_playing != should_play, true)
             } else {
-                false
+                // Same title: update art_url or duration if changed, but NEVER overwrite playback state!
+                let mut meta_c = false;
+                if art_changed {
+                    st.art_url = media.art_url.clone();
+                    meta_c = true;
+                }
+                if duration_changed {
+                    st.duration_micros = new_duration_micros;
+                    meta_c = true;
+                }
+                if artist_changed {
+                    st.artist = media.artist.clone();
+                    meta_c = true;
+                }
+                (false, meta_c)
             }
         };
 
-        if changed {
-            if let Ok(emitter) = SignalEmitter::new(&self.conn, "/org/mpris/MediaPlayer2") {
+        if let Ok(emitter) = SignalEmitter::new(&self.conn, "/org/mpris/MediaPlayer2") {
+            if status_changed {
                 let _ = self.player.playback_status_changed(&emitter).await;
+            }
+            if meta_changed {
                 let _ = self.player.metadata_changed(&emitter).await;
             }
         }
@@ -240,6 +348,11 @@ impl WineMprisService {
             let mut st = self.state.lock().await;
             if st.is_playing != is_playing {
                 st.is_playing = is_playing;
+                if is_playing {
+                    st.last_play_instant = Some(Instant::now());
+                } else if let Some(instant) = st.last_play_instant.take() {
+                    st.position_micros += instant.elapsed().as_micros() as i64;
+                }
                 true
             } else {
                 false
@@ -255,3 +368,82 @@ impl WineMprisService {
         Ok(())
     }
 }
+
+/// Checks if any other MPRIS player on the session bus is currently in the "Playing" state.
+pub async fn is_other_mpris_playing() -> bool {
+    let out = match tokio::process::Command::new("busctl")
+        .args(["--user", "list", "--acquired"])
+        .output()
+        .await
+    {
+        Ok(o) => o,
+        Err(_) => return false,
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(first) = trimmed.split_whitespace().next() {
+            if first.starts_with("org.mpris.MediaPlayer2.") && first != "org.mpris.MediaPlayer2.cloudmusic" {
+                if let Ok(prop) = tokio::process::Command::new("busctl")
+                    .args([
+                        "--user",
+                        "get-property",
+                        first,
+                        "/org/mpris/MediaPlayer2",
+                        "org.mpris.MediaPlayer2.Player",
+                        "PlaybackStatus",
+                    ])
+                    .output()
+                    .await
+                {
+                    let val = String::from_utf8_lossy(&prop.stdout);
+                    if val.contains("Playing") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Pauses any other MPRIS player currently in the Playing state on the session bus.
+pub async fn pause_other_mpris_players() {
+    let out = match tokio::process::Command::new("busctl")
+        .args(["--user", "list", "--acquired"])
+        .output()
+        .await
+    {
+        Ok(o) => o,
+        Err(_) => return,
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(first) = trimmed.split_whitespace().next() {
+            if first.starts_with("org.mpris.MediaPlayer2.") && first != "org.mpris.MediaPlayer2.cloudmusic" {
+                if let Ok(prop) = tokio::process::Command::new("busctl")
+                    .args([
+                        "--user",
+                        "get-property",
+                        first,
+                        "/org/mpris/MediaPlayer2",
+                        "org.mpris.MediaPlayer2.Player",
+                        "PlaybackStatus",
+                    ])
+                    .output()
+                    .await
+                {
+                    let val = String::from_utf8_lossy(&prop.stdout);
+                    if val.contains("Playing") {
+                        let _ = tokio::process::Command::new("qdbus6")
+                            .args([first, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.Pause"])
+                            .output()
+                            .await;
+                    }
+                }
+            }
+        }
+    }
+}
+

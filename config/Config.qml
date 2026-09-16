@@ -68,8 +68,12 @@ Singleton {
             "preset": "caelestia-pastel",
             "blurStrength": 0.85,
             "cornerRadius": 20
-        }
+        },
+        "debugMode": false
     })
+
+    // Single Debug Mode toggle (gates all debug features & freeze)
+    readonly property bool debugMode: root.settings.debugMode ?? false
 
     // Convenient getters
     readonly property bool dockEnabled: root.settings.dock ? (root.settings.dock.enabled ?? true) : true
@@ -365,6 +369,12 @@ Singleton {
                     break;
                 }
             }
+        });
+    }
+
+    function setDebugMode(enabled) {
+        updateSettings(cfg => {
+            cfg.debugMode = enabled;
         });
     }
 

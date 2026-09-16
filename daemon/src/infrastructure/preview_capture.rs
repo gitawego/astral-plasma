@@ -2,8 +2,122 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::os::fd::FromRawFd;
+use std::path::{Path, PathBuf};
 use zbus::zvariant::{OwnedFd, Value};
 use zbus::Connection;
+
+pub fn generate_desktop_entry(exe_path: &Path) -> String {
+    format!(
+        "[Desktop Entry]\nVersion=1.5\nType=Application\nNoDisplay=true\nName=Astral Plasma\nExec={}\nX-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2,org.kde.kwin.Screenshot\nX-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstable_v1\n",
+        exe_path.display()
+    )
+}
+
+pub fn get_default_applications_dir() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".local/share/applications")
+    } else {
+        PathBuf::from("/tmp")
+    }
+}
+
+pub fn install_desktop_entry_with_notification(
+    custom_dir: Option<&Path>,
+    custom_exe: Option<&Path>,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let app_dir = custom_dir
+        .map(Path::to_path_buf)
+        .unwrap_or_else(get_default_applications_dir);
+
+    let exe_path = match custom_exe {
+        Some(p) => p.to_path_buf(),
+        None => std::env::current_exe().unwrap_or_else(|_| PathBuf::from("astral-plasma")),
+    };
+
+    let canonical_exe = exe_path.canonicalize().unwrap_or(exe_path);
+    let desktop_path = app_dir.join("astral-plasma.desktop");
+    let expected_content = generate_desktop_entry(&canonical_exe);
+
+    if desktop_path.exists() {
+        if let Ok(existing) = fs::read_to_string(&desktop_path) {
+            if existing == expected_content {
+                return Ok(false);
+            }
+        }
+    }
+
+    fs::create_dir_all(&app_dir)?;
+    fs::write(&desktop_path, &expected_content)?;
+
+    // Ensure backward-compatible symlink in the binary's directory
+    if let Some(parent) = canonical_exe.parent() {
+        let legacy_symlink = parent.join("caelestia-daemon");
+        if !legacy_symlink.exists() {
+            #[cfg(unix)]
+            let _ = std::os::unix::fs::symlink(&canonical_exe, &legacy_symlink);
+        }
+    }
+
+    eprintln!(
+        "[astral-plasma] Notice: Registered KWin screenshot authorization entry: {}",
+        desktop_path.display()
+    );
+
+    // Notify user via desktop notification
+    let _ = std::process::Command::new("notify-send")
+        .args(&[
+            "-a",
+            "Astral Plasma",
+            "-i",
+            "security-high",
+            "Astral Plasma Authorization",
+            "Registered KWin screenshot authorization for live window previews. It will be removed automatically when Astral Plasma stops.",
+        ])
+        .spawn();
+
+    let _ = std::process::Command::new("kbuildsycoca6").output();
+
+    Ok(true)
+}
+
+pub fn remove_desktop_entry(
+    custom_dir: Option<&Path>,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let app_dir = custom_dir
+        .map(Path::to_path_buf)
+        .unwrap_or_else(get_default_applications_dir);
+
+    let target_astral = app_dir.join("astral-plasma.desktop");
+    let target_legacy = app_dir.join("caelestia-daemon.desktop");
+
+    let mut removed = false;
+
+    if target_astral.exists() {
+        if fs::remove_file(&target_astral).is_ok() {
+            eprintln!(
+                "[astral-plasma] Notice: Removed KWin screenshot authorization entry: {}",
+                target_astral.display()
+            );
+            removed = true;
+        }
+    }
+
+    if target_legacy.exists() {
+        if fs::remove_file(&target_legacy).is_ok() {
+            eprintln!(
+                "[astral-plasma] Notice: Removed legacy authorization entry: {}",
+                target_legacy.display()
+            );
+            removed = true;
+        }
+    }
+
+    if removed {
+        let _ = std::process::Command::new("kbuildsycoca6").output();
+    }
+
+    Ok(removed)
+}
 
 pub fn get_target_path(win_uuid: &str, slot: &str) -> String {
     let clean_uuid = win_uuid.trim_matches(|c| c == '{' || c == '}');
@@ -70,6 +184,31 @@ pub fn process_bgra_to_png(
     Ok(png_bytes)
 }
 
+async fn do_capture(
+    proxy: &zbus::Proxy<'_>,
+    clean_uuid: &str,
+    options: &HashMap<String, Value<'_>>,
+) -> Result<(HashMap<String, zbus::zvariant::OwnedValue>, Vec<u8>), Box<dyn std::error::Error + Send + Sync>> {
+    let mut fds = [0i32; 2];
+    unsafe {
+        if libc::pipe(fds.as_mut_ptr()) != 0 {
+            return Err("Failed to create pipe for screenshot".into());
+        }
+    }
+    let mut read_file = unsafe { fs::File::from_raw_fd(fds[0]) };
+    let write_owned = unsafe { std::os::fd::OwnedFd::from_raw_fd(fds[1]) };
+    let zbus_fd = OwnedFd::from(write_owned);
+
+    let reply: HashMap<String, zbus::zvariant::OwnedValue> = proxy.call(
+        "CaptureWindow",
+        &(clean_uuid, options, zbus_fd),
+    ).await?;
+
+    let mut raw_data = Vec::new();
+    read_file.read_to_end(&mut raw_data)?;
+    Ok((reply, raw_data))
+}
+
 pub async fn capture_window(
     win_uuid: &str,
     target_width: u32,
@@ -81,17 +220,10 @@ pub async fn capture_window(
         _ => get_next_slot(clean_uuid),
     };
 
-    let connection = Connection::session().await?;
+    // Preemptively ensure desktop entry is registered
+    let _ = install_desktop_entry_with_notification(None, None);
 
-    let mut fds = [0i32; 2];
-    unsafe {
-        if libc::pipe(fds.as_mut_ptr()) != 0 {
-            return Err("Failed to create pipe for screenshot".into());
-        }
-    }
-    let mut read_file = unsafe { fs::File::from_raw_fd(fds[0]) };
-    let write_owned = unsafe { std::os::fd::OwnedFd::from_raw_fd(fds[1]) };
-    let zbus_fd = OwnedFd::from(write_owned);
+    let connection = Connection::session().await?;
 
     let options: HashMap<String, Value> = HashMap::new();
 
@@ -102,13 +234,20 @@ pub async fn capture_window(
         "org.kde.KWin.ScreenShot2",
     ).await?;
 
-    let reply: HashMap<String, zbus::zvariant::OwnedValue> = proxy.call(
-        "CaptureWindow",
-        &(clean_uuid, &options, zbus_fd),
-    ).await?;
-
-    let mut raw_data = Vec::new();
-    read_file.read_to_end(&mut raw_data)?;
+    let (reply, raw_data) = match do_capture(&proxy, clean_uuid, &options).await {
+        Ok(res) => res,
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("NoAuthorized") || err_str.contains("not authorized") {
+                // Re-register desktop entry and notify user, then retry once
+                let _ = install_desktop_entry_with_notification(None, None);
+                let _ = std::process::Command::new("kbuildsycoca6").output();
+                do_capture(&proxy, clean_uuid, &options).await?
+            } else {
+                return Err(e);
+            }
+        }
+    };
 
     if raw_data.is_empty() {
         return Err("No pixel data received from KWin".into());

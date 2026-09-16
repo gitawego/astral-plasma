@@ -94,7 +94,10 @@ pub async fn run_cli() -> DynResult<()> {
             }
         }
         "notifs" => {
-            crate::application::notif_monitor::run_notif_monitor();
+            crate::application::notif_monitor::run_notif_monitor().await?;
+        }
+        "visualizer" | "audio-vis" => {
+            crate::application::audio_visualizer::run_audio_visualizer(None)?;
         }
         "settings" => {
             let sub = args.get(2).map(|s| s.as_str()).unwrap_or("toggle");
@@ -274,8 +277,14 @@ pub async fn run_cli() -> DynResult<()> {
                         eprintln!("Usage: astral-plasma tray activate <service> <path>");
                     }
                 }
+                "query" | "list" => {
+                    let tray = crate::infrastructure::tray_adapter::TrayAdapter::new();
+                    let items = tray.query_tray()?;
+                    let json = serde_json::to_string(&items)?;
+                    println!("{}", json);
+                }
                 _ => {
-                    eprintln!("Usage: astral-plasma tray <menu|click|activate> [args...]");
+                    eprintln!("Usage: astral-plasma tray <query|menu|click|activate> [args...]");
                 }
             }
         }
@@ -298,6 +307,22 @@ pub async fn run_cli() -> DynResult<()> {
                 eprintln!("Usage: astral-plasma preview <window_id> [target_width] [slot]");
             }
         }
+        "desktop" => {
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            match sub {
+                "install" => {
+                    let installed = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None)?;
+                    println!(r#"{{"success":true,"installed":{}}}"#, installed);
+                }
+                "cleanup" | "remove" => {
+                    let removed = crate::infrastructure::preview_capture::remove_desktop_entry(None)?;
+                    println!(r#"{{"success":true,"removed":{}}}"#, removed);
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma desktop <install|cleanup>");
+                }
+            }
+        }
         _ => {
             eprintln!("Unknown command: {}", args[1]);
             print_usage();
@@ -318,9 +343,11 @@ fn print_usage() {
     eprintln!("  settings [toggle|open|close] - Control Settings GUI window via IPC");
     eprintln!("  config write <path> <json> - Atomic configuration file persistence");
     eprintln!("  watch                   - Run event-driven background watcher");
+    eprintln!("  visualizer              - Stream real-time audio spectrum & energy JSON");
     eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
     eprintln!("  workspaces <cmd>        - Virtual desktops: query, switch, ensure");
     eprintln!("  preview <window_id>     - Capture live window thumbnail");
+    eprintln!("  desktop <install|cleanup> - Manage KWin authorization desktop entries");
     eprintln!("  tray <cmd>              - System tray operations");
 }
 
@@ -335,6 +362,9 @@ async fn run_self_contained_app() -> DynResult<()> {
     };
 
     println!("[Caelestia] Starting desktop shell using package at: {}", theme_dir.display());
+
+    // Register desktop authorization entry with notification
+    let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
 
     // 2. Start API server in background task
     tokio::spawn(async move {
@@ -354,9 +384,10 @@ async fn run_self_contained_app() -> DynResult<()> {
     // 5. Wait for Quickshell process or signal
     let _ = child.wait();
 
-    // 6. On exit, restore original Plasma panels cleanly
-    println!("[Caelestia] Quickshell stopped. Restoring original KDE Plasma panels...");
+    // 6. On exit, restore original Plasma panels cleanly and clean up authorization entry
+    println!("[Caelestia] Quickshell stopped. Restoring original KDE Plasma panels and cleaning up authorization...");
     let _ = plasma.restore();
+    let _ = crate::infrastructure::preview_capture::remove_desktop_entry(None);
 
     Ok(())
 }

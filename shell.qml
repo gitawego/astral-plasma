@@ -26,6 +26,18 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "media"
+        function cyclePlayer(): void { MprisMedia.cyclePlayer(); }
+        function selectPlayer(busName: string): void {
+            let p = MprisMedia.findMatchingPlayer(busName);
+            if (p) MprisMedia.selectPlayer(p);
+        }
+        function playPause(): void { MprisMedia.playPause(); }
+        function next(): void { MprisMedia.next(); }
+        function previous(): void { MprisMedia.previous(); }
+    }
+
+    IpcHandler {
         target: "settings"
         function toggle(): void { Config.settingsVisible = !Config.settingsVisible; }
         function open(page: string): void {
@@ -91,8 +103,8 @@ ShellRoot {
 
     IpcHandler {
         target: "notification"
-        function show(summary: string, body: string, icon: string, appName: string): void {
-            NotificationService.show(summary, body, icon, appName);
+        function show(summary: string, body: string, icon: string, appName: string, image: string): void {
+            NotificationService.show(summary, body, icon, appName, image);
         }
         function dismiss(): void {
             NotificationService.dismiss();

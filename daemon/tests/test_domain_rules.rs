@@ -343,4 +343,77 @@ fn test_power_session_confirmation_rules() {
     }
 }
 
+#[test]
+fn test_tray_metadata_resolution() {
+    use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
+
+    // Test Strawberry Music Player: should map to music_note and have no spaces in icon name
+    let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("Strawberry Music Player", "Strawberry Music Player", "");
+    assert_eq!(m_icon, "music_note");
+    assert!(!icon.contains(' '), "Icon name must never contain spaces: got '{}'", icon);
+    assert_eq!(title, "Strawberry Music Player");
+
+    // Test with pre-resolved file:// icon
+    let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("Strawberry Music Player", "Strawberry Music Player", "file:///tmp/caelestia_tray/test.png");
+    assert_eq!(m_icon, "music_note");
+    assert_eq!(icon, "file:///tmp/caelestia_tray/test.png");
+    assert_eq!(title, "Strawberry Music Player");
+
+    // Test other generic media players
+    let (_, _, m_icon) = TrayAdapter::resolve_tray_meta("org.mpris.MediaPlayer2.spotify", "Spotify", "");
+    assert_eq!(m_icon, "music_note");
+
+    // Test chat applications
+    let (_, icon, m_icon) = TrayAdapter::resolve_tray_meta("discord", "Discord", "");
+    assert_eq!(m_icon, "chat");
+    assert_eq!(icon, "discord");
+}
+
+#[tokio::test]
+async fn test_other_mpris_playing_query() {
+    use astral_plasma::application::wine_mpris::is_other_mpris_playing;
+    // Querying should execute cleanly without panicking
+    let _ = is_other_mpris_playing().await;
+}
+
+#[tokio::test]
+async fn test_mpris_art_url_inside_tokio_runtime() {
+    use astral_plasma::application::notif_monitor::get_mpris_art_url;
+    if let Ok(conn) = zbus::Connection::session().await {
+        // Querying art URL within a Tokio multithreaded runtime must never panic with nested runtime errors
+        let _ = get_mpris_art_url(&conn, "strawberry").await;
+        let _ = get_mpris_art_url(&conn, "elisa").await;
+        let _ = get_mpris_art_url(&conn, "nonexistent_player").await;
+    }
+}
+
+#[test]
+fn test_wine_media_coords() {
+    use astral_plasma::infrastructure::x11_input::{calculate_wine_media_coords, WineMediaAction};
+
+    // Test with standard 1280x750 window
+    let (cx, cy) = calculate_wine_media_coords(WineMediaAction::PlayPause, 1280, 750);
+    assert_eq!(cx, 640);
+    assert_eq!(cy, 715);
+
+    let (nx, ny) = calculate_wine_media_coords(WineMediaAction::Next, 1280, 750);
+    assert_eq!(nx, 640 + 52);
+    assert_eq!(ny, 715);
+
+    let (px, py) = calculate_wine_media_coords(WineMediaAction::Previous, 1280, 750);
+    assert_eq!(px, 640 - 52);
+    assert_eq!(py, 715);
+
+    // Test with smaller window edge case
+    let (cx2, cy2) = calculate_wine_media_coords(WineMediaAction::PlayPause, 800, 40);
+    assert_eq!(cx2, 400);
+    assert_eq!(cy2, 5);
+}
+
+#[tokio::test]
+async fn test_pause_other_mpris_players() {
+    use astral_plasma::application::wine_mpris::pause_other_mpris_players;
+    // Calling pause_other_mpris_players should execute cleanly without panicking
+    pause_other_mpris_players().await;
+}
 

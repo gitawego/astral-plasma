@@ -11,6 +11,11 @@ ColumnLayout {
     property bool testMode: false
     property bool testInstalled: false
     property string testStatusText: ""
+    property bool testDebugMode: false
+
+    readonly property bool debugModeActive: testMode
+        ? testDebugMode
+        : ((typeof Config !== "undefined" && Config.debugMode !== undefined) ? Config.debugMode : false)
 
     readonly property bool isInstalled: testMode
         ? testInstalled
@@ -137,6 +142,31 @@ ColumnLayout {
                 if (typeof Config !== "undefined" && Config.checkSystemdServiceStatus) {
                     Config.checkSystemdServiceStatus();
                 }
+            }
+        }
+    }
+
+    Item { height: root.spaceMediumVal }
+
+    Text {
+        text: "Developer & Diagnostics"
+        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
+        font.weight: Font.Bold
+        color: root.onSurfaceColor
+    }
+
+    SettingToggle {
+        id: debugSettingToggle
+        Layout.fillWidth: true
+        title: "Debug Mode"
+        description: "Freeze drawer auto-close on mouse exit and enable diagnostic inspection"
+        checked: root.debugModeActive
+        onToggled: val => {
+            if (root.testMode) {
+                root.testDebugMode = val;
+            } else if (typeof Config !== "undefined" && Config.setDebugMode) {
+                Config.setDebugMode(val);
             }
         }
     }

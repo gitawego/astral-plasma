@@ -80,3 +80,63 @@ fn test_downscale_and_convert_bgra_to_png() {
     let p00 = rgba.get_pixel(0, 0);
     assert_eq!(p00.0, [255, 0, 0, 255]);
 }
+
+#[test]
+fn test_desktop_entry_content() {
+    let dummy_exe = std::path::PathBuf::from("/opt/astral/bin/astral-plasma");
+    let content = generate_desktop_entry(&dummy_exe);
+
+    assert!(content.contains("[Desktop Entry]"), "Must have [Desktop Entry] section");
+    assert!(content.contains("Exec=/opt/astral/bin/astral-plasma"), "Must specify exact executable path");
+    assert!(
+        content.contains("X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2,org.kde.kwin.Screenshot"),
+        "Must declare KWin ScreenShot2 authorization"
+    );
+    assert!(
+        content.contains("X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstable_v1"),
+        "Must declare Wayland interfaces"
+    );
+    assert!(content.contains("NoDisplay=true"), "Must be hidden from app launcher menu");
+}
+
+#[test]
+fn test_desktop_entry_install_and_removal_lifecycle() {
+    let temp_dir_holder = tempfile::tempdir().unwrap();
+    let temp_dir = temp_dir_holder.path();
+
+    let dummy_exe = std::path::PathBuf::from("/opt/test/bin/astral-plasma");
+
+    // 1. Initial install: should succeed and report true (newly installed)
+    let res1 = install_desktop_entry_with_notification(Some(temp_dir), Some(&dummy_exe));
+    assert!(res1.is_ok());
+    assert_eq!(res1.unwrap(), true, "First install must return true (action performed)");
+
+    let desktop_file = temp_dir.join("astral-plasma.desktop");
+    assert!(desktop_file.exists(), "Desktop file must exist after install");
+    let saved_content = fs::read_to_string(&desktop_file).unwrap();
+    assert!(saved_content.contains("Exec=/opt/test/bin/astral-plasma"));
+
+    // 2. Idempotent install: should detect unchanged file and return false (no duplicate action or notification)
+    let res2 = install_desktop_entry_with_notification(Some(temp_dir), Some(&dummy_exe));
+    assert!(res2.is_ok());
+    assert_eq!(res2.unwrap(), false, "Second install must return false (already up-to-date)");
+
+    // 3. Update on changed executable path:
+    let new_exe = std::path::PathBuf::from("/opt/test/v2/astral-plasma");
+    let res3 = install_desktop_entry_with_notification(Some(temp_dir), Some(&new_exe));
+    assert!(res3.is_ok());
+    assert_eq!(res3.unwrap(), true, "Install with changed path must return true (updated)");
+    let updated_content = fs::read_to_string(&desktop_file).unwrap();
+    assert!(updated_content.contains("Exec=/opt/test/v2/astral-plasma"));
+
+    // 4. Removal on app stop:
+    let rem1 = remove_desktop_entry(Some(temp_dir));
+    assert!(rem1.is_ok());
+    assert_eq!(rem1.unwrap(), true, "Removal must return true when file was deleted");
+    assert!(!desktop_file.exists(), "Desktop file must be deleted after removal");
+
+    // 5. Secondary removal:
+    let rem2 = remove_desktop_entry(Some(temp_dir));
+    assert!(rem2.is_ok());
+    assert_eq!(rem2.unwrap(), false, "Subsequent removal must return false when file is already gone");
+}

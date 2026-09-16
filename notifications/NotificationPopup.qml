@@ -1,7 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Effects
 import "../components"
 import "../theme"
+import "../services"
 
 Item {
     id: root
@@ -12,9 +14,42 @@ Item {
     property string timeStr: "now"
     property string materialIcon: "info"
     property string iconSource: ""
+    property string imageSource: ""
     property var actions: []
     property bool expanded: false
     property int timeoutMs: 5000
+
+    readonly property bool isMediaNotification: {
+        let app = (root.appName || "").toLowerCase();
+        return app.includes("strawberry") || 
+               app.includes("elisa") || 
+               app.includes("cloudmusic") || 
+               app.includes("netease") || 
+               app.includes("music") || 
+               app.includes("player") || 
+               app.includes("spotify") ||
+               (typeof MprisMedia !== "undefined" && MprisMedia.identity && app.includes(MprisMedia.identity.toLowerCase()));
+    }
+
+    readonly property string effectiveCover: {
+        let src = (root.imageSource && root.imageSource.length > 0) ? root.imageSource : root.iconSource;
+        if (src && src.length > 0) {
+            if (src.startsWith("/")) return "file://" + src;
+            if (src.startsWith("file://") || src.startsWith("http://") || src.startsWith("https://")) return src;
+        }
+        // Fallback: If this is a media player notification or matches active track, use MprisMedia.artUrl
+        if (typeof MprisMedia !== "undefined" && MprisMedia.artUrl && MprisMedia.artUrl.length > 0) {
+            if (isMediaNotification || 
+                (root.summary && MprisMedia.title && root.summary.toLowerCase().includes(MprisMedia.title.toLowerCase())) ||
+                (root.body && MprisMedia.artist && root.body.toLowerCase().includes(MprisMedia.artist.toLowerCase()))) {
+                let art = MprisMedia.artUrl;
+                if (art.startsWith("/")) return "file://" + art;
+                return art;
+            }
+        }
+        return "";
+    }
+    readonly property bool hasImageCover: effectiveCover.length > 0
 
     property real borderThickness: (typeof Config !== "undefined" && Config.borderThickness) ? Config.borderThickness : 14
     property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 24
@@ -71,7 +106,7 @@ Item {
         anchors.fill: parent
         attachEdge: "topRight"
         panelWidth: root.width
-        panelHeight: root.expanded ? (expandedContent.implicitHeight + 36) : 74
+        panelHeight: root.expanded ? (expandedContent.implicitHeight + 36) : (root.hasImageCover ? 78 : 74)
         borderThickness: root.borderThickness
         borderRounding: root.borderRounding
         fillColor: (typeof Colors !== "undefined" && Colors.surface) ? Colors.surface : "#141318"
@@ -97,31 +132,68 @@ Item {
             anchors.topMargin: 14
             anchors.bottomMargin: 14
 
-            // Left Icon Badge
-            Rectangle {
+            // Left Icon Badge / Album Art Cover (Circular like on Dashboard)
+            Item {
                 id: iconBadge
                 anchors.left: parent.left
-                anchors.top: parent.top
-                width: 38
-                height: 38
-                radius: 19
-                color: (typeof Colors !== "undefined" && Colors.surfaceContainerHigh) ? Colors.surfaceContainerHigh : "#2b2930"
+                anchors.top: root.expanded ? parent.top : undefined
+                anchors.topMargin: root.expanded ? 2 : 0
+                anchors.verticalCenter: root.expanded ? undefined : parent.verticalCenter
+                width: root.hasImageCover ? 46 : 38
+                height: width
 
-                Image {
-                    anchors.centerIn: parent
-                    width: 22
-                    height: 22
-                    source: root.iconSource
-                    fillMode: Image.PreserveAspectFit
-                    visible: root.iconSource !== "" && status === Image.Ready
+                // Round mask geometry (strictly circular mask like on dashboard)
+                Rectangle {
+                    id: badgeCircleMask
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: "white"
+                    visible: false
+                    layer.enabled: true
                 }
 
-                MaterialIcon {
-                    anchors.centerIn: parent
-                    text: root.materialIcon
-                    size: 20
-                    color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#d0bcff"
-                    visible: !parent.children[0].visible
+                // Background / fallback circle
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: (typeof Colors !== "undefined" && Colors.surfaceContainerHigh) ? Colors.surfaceContainerHigh : "#2b2930"
+
+                    MaterialIcon {
+                        anchors.centerIn: parent
+                        text: (root.isMediaNotification || root.hasImageCover) ? "music_note" : root.materialIcon
+                        size: root.hasImageCover ? 22 : 20
+                        color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#d0bcff"
+                        visible: !(root.hasImageCover && coverImg.status === Image.Ready)
+                    }
+                }
+
+                // Cover image masked strictly to the circular boundary (like on dashboard)
+                Item {
+                    anchors.fill: parent
+                    visible: root.hasImageCover && coverImg.status === Image.Ready
+
+                    Image {
+                        id: coverImg
+                        anchors.fill: parent
+                        source: root.effectiveCover
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                    }
+
+                    layer.enabled: true
+                    layer.effect: MultiEffect {
+                        maskEnabled: true
+                        maskSource: badgeCircleMask
+                    }
+                }
+
+                // Circular border ring matching dashboard circle definition
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: "transparent"
+                    border.color: root.hasImageCover ? (typeof Colors !== "undefined" ? Colors.outlineVariant : Qt.rgba(1, 1, 1, 0.15)) : Qt.rgba(1, 1, 1, 0.08)
+                    border.width: root.hasImageCover ? 1.5 : 1
                 }
             }
 

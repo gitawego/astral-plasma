@@ -47,6 +47,17 @@ Item {
         sysPage.testStatusText = "Not Installed";
         assert(!sysPage.isInstalled, "isInstalled must reflect user removal");
 
+        // 4. Debug Mode single toggle defaults to false
+        assert(sysPage.debugModeActive === false, "Debug Mode must default to false");
+
+        // 5. Simulate user turning on Debug Mode
+        sysPage.testDebugMode = true;
+        assert(sysPage.debugModeActive === true, "Debug Mode must be active when user toggles it on");
+
+        // 6. Simulate user turning off Debug Mode
+        sysPage.testDebugMode = false;
+        assert(sysPage.debugModeActive === false, "Debug Mode must be inactive when user toggles it off");
+
         console.log("PASS: System Settings & Systemd Service Opt-in Unit Tests");
         Qt.exit(0);
     }

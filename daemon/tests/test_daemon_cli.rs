@@ -65,8 +65,16 @@ fn test_daemon_config_write() {
         .expect("Failed to run daemon config write");
     assert!(out.status.success());
 
-    let written = std::fs::read_to_string(&test_file).expect("Must read written config file");
-    assert_eq!(written, content);
-    let _ = std::fs::remove_dir_all(test_dir);
+    let read_back = std::fs::read_to_string(&test_file).expect("File must be readable");
+    assert_eq!(read_back, content);
+
+    let _ = std::fs::remove_dir_all(&test_dir);
 }
 
+#[test]
+fn test_daemon_desktop_cli() {
+    let bin = get_bin_path();
+    let out = Command::new(&bin).args(["desktop", "unknown"]).output().expect("Failed to run desktop command");
+    let stderr_str = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr_str.contains("Usage: astral-plasma desktop <install|cleanup>"));
+}

@@ -23,16 +23,18 @@ build: release
 
 release:
 	@mkdir -p $(BIN_DIR)
-	@rm -f $(BIN_DIR)/caelestia $(BIN_DIR)/caelestia-daemon
 	$(CARGO) build --release --manifest-path $(DAEMON_DIR)/Cargo.toml
 	install -m 755 $(DAEMON_DIR)/target/release/astral-plasma $(TARGET)
+	ln -sf astral-plasma $(BIN_DIR)/caelestia-daemon
+	ln -sf astral-plasma $(BIN_DIR)/caelestia
 	@echo "Built single self-contained binary: $(TARGET)"
 
 debug:
 	@mkdir -p $(BIN_DIR)
-	@rm -f $(BIN_DIR)/caelestia $(BIN_DIR)/caelestia-daemon
 	$(CARGO) build --manifest-path $(DAEMON_DIR)/Cargo.toml
 	install -m 755 $(DAEMON_DIR)/target/debug/astral-plasma $(TARGET)
+	ln -sf astral-plasma $(BIN_DIR)/caelestia-daemon
+	ln -sf astral-plasma $(BIN_DIR)/caelestia
 	@echo "Built debug: $(TARGET)"
 
 test: test-rust test-qml
@@ -44,15 +46,17 @@ test-qml:
 	bash tests/run_qml_tests.sh
 
 run: build
-	@trap './bin/astral-plasma plasma restore' EXIT INT TERM; \
+	@trap './bin/astral-plasma desktop cleanup 2>/dev/null || true; ./bin/astral-plasma plasma restore' EXIT INT TERM; \
 	./bin/astral-plasma run
 
 stop:
 	@pkill -9 -x quickshell 2>/dev/null || true
 	@pkill -9 -f "astral-plasma" 2>/dev/null || true
+	@./bin/astral-plasma desktop cleanup 2>/dev/null || true
 	@./bin/astral-plasma plasma restore
 
 restore:
+	@./bin/astral-plasma desktop cleanup 2>/dev/null || true
 	@./bin/astral-plasma plasma restore
 
 clean:

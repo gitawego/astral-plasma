@@ -397,33 +397,12 @@ pub async fn run_event_daemon() -> DynResult<()> {
 
     if let Some(mpris_audio) = wine_mpris.clone() {
         tokio::spawn(async move {
-            use tokio::io::AsyncBufReadExt;
-            use tokio::process::Command;
-            let mut cmd = Command::new("pactl");
-            cmd.arg("subscribe");
-            cmd.stdout(std::process::Stdio::piped());
-            cmd.stderr(std::process::Stdio::null());
-            if let Ok(mut child) = cmd.spawn() {
-                if let Some(stdout) = child.stdout.take() {
-                    let mut reader = tokio::io::BufReader::new(stdout).lines();
-                    while let Ok(Some(line)) = reader.next_line().await {
-                        if line.contains("sink-input") {
-                            if let Ok(output) = Command::new("pactl").args(["list", "sink-inputs"]).output().await {
-                                let text = String::from_utf8_lossy(&output.stdout);
-                                let mut in_cm = false;
-                                for l in text.lines() {
-                                    if l.contains("NetEase Cloud Music") || l.contains("cloudmusic") {
-                                        in_cm = true;
-                                    }
-                                    if in_cm && l.contains("Corked:") {
-                                        let is_playing = l.contains("no");
-                                        let _ = mpris_audio.update_playback_status(is_playing).await;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
+            use crate::application::wine_mpris::is_other_mpris_playing;
+            let mut interval = tokio::time::interval(Duration::from_millis(2000));
+            loop {
+                interval.tick().await;
+                if is_other_mpris_playing().await {
+                    let _ = mpris_audio.update_playback_status(false).await;
                 }
             }
         });

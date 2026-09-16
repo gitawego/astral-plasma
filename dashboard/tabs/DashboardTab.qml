@@ -1,8 +1,10 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Effects
 import "../../theme"
 import "../../components"
 import "../../services"
+import "../../config"
 
 Item {
     id: root
@@ -309,20 +311,39 @@ Item {
         // RIGHT SECTION: Card 6 Tall Media Player (Spanning full height ~315px, width ~215px)
         // ========================================================
         Card {
+            id: mediaCard
             Layout.preferredWidth: 215
             Layout.fillHeight: true
             radius: 24
+            clip: true
 
-            Column {
+            ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 14
-                spacing: 6
+                anchors.topMargin: 20
+                anchors.bottomMargin: 16
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 0
+
+                // Top spacer: gently pushes down the circular cover and notes
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 12
+                }
 
                 // Circular album artwork with progress arc
                 Item {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 104
-                    height: 104
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: 120
+                    Layout.preferredHeight: 120
+
+                    // Dynamic Audio Heatmap Wave Ring & Thermal Aura
+                    HeatmapCoverRing {
+                        anchors.centerIn: parent
+                        innerRadius: 44
+                        outerRadius: 53
+                        isTargetVisible: Config.dashboardVisible && Config.activeDashboardTab === "dashboard"
+                    }
 
                     // Progress ring
                     Canvas {
@@ -341,8 +362,8 @@ Item {
                             // Background arc track
                             ctx.beginPath();
                             ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-                            ctx.strokeStyle = Qt.alpha(Colors.outline, 0.25);
-                            ctx.lineWidth = 4;
+                            ctx.strokeStyle = Qt.alpha(Colors.outline, 0.22);
+                            ctx.lineWidth = 3.5;
                             ctx.stroke();
 
                             // Active progress arc
@@ -350,34 +371,106 @@ Item {
                                 ctx.beginPath();
                                 ctx.arc(cx, cy, r, -0.5 * Math.PI, -0.5 * Math.PI + Math.min(1.0, prog) * 2 * Math.PI);
                                 ctx.strokeStyle = Colors.primary;
-                                ctx.lineWidth = 4;
+                                ctx.lineWidth = 3.5;
                                 ctx.lineCap = "round";
                                 ctx.stroke();
                             }
                         }
                     }
 
-                    // Album artwork in center
-                    Rectangle {
+                    // Circular album artwork container in center with audio beat bounce
+                    Item {
+                        id: albumCenterCircle
                         anchors.centerIn: parent
-                        width: 82
-                        height: 82
-                        radius: 41
-                        color: Colors.primaryContainer
-                        clip: true
+                        width: 86
+                        height: 86
+                        scale: (AudioVisualizer.active && Config.dashboardVisible && Config.activeDashboardTab === "dashboard")
+                               ? (1.0 + Math.min(0.12, AudioVisualizer.beat * 0.08 + AudioVisualizer.bass * 0.06))
+                               : 1.0
 
-                        Image {
+                        Behavior on scale {
+                            NumberAnimation { duration: 60; easing.type: Easing.OutQuad }
+                        }
+
+                        // Round mask geometry (always a perfect circle)
+                        Rectangle {
+                            id: dashCircleMask
                             anchors.fill: parent
-                            source: MprisMedia.artUrl || "../../theme/assets/dino.png"
-                            fillMode: Image.PreserveAspectCrop
+                            radius: width / 2
+                            color: "white"
+                            visible: false
+                            layer.enabled: true
+                        }
+
+                        // Circular fallback placeholder (drawn underneath)
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: Colors.primaryContainer
+
+                            MaterialIcon {
+                                anchors.centerIn: parent
+                                text: "music_note"
+                                size: 32
+                                color: Colors.onPrimaryContainer
+                            }
+                        }
+
+                        // Rotating Cover Image masked strictly to the circular boundary (1.45x size prevents corner clipping)
+                        Item {
+                            anchors.fill: parent
+                            visible: MprisMedia.artUrl.length > 0 && dashCoverImg.status === Image.Ready
+
+                            Item {
+                                anchors.centerIn: parent
+                                width: parent.width * 1.45
+                                height: width
+
+                                NumberAnimation on rotation {
+                                    from: 0
+                                    to: 360
+                                    duration: 22000
+                                    loops: Animation.Infinite
+                                    running: true
+                                    paused: !MprisMedia.isPlaying
+                                }
+
+                                Image {
+                                    id: dashCoverImg
+                                    anchors.fill: parent
+                                    source: MprisMedia.artUrl || ""
+                                    fillMode: Image.PreserveAspectCrop
+                                }
+                            }
+
+                            layer.enabled: true
+                            layer.effect: MultiEffect {
+                                maskEnabled: true
+                                maskSource: dashCircleMask
+                            }
+                        }
+
+                        // Inner border for crisp circle definition
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.color: Qt.rgba(1, 1, 1, 0.15)
+                            border.width: 1
                         }
                     }
                 }
 
+                // Spacer between Cover and Title
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 26
+                }
+
                 // Track Title
                 Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: parent.width - 12
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: parent.width - 16
                     text: MprisMedia.title || "No Media Playing"
                     font.family: Theme.fontFamily
                     font.pixelSize: 13
@@ -387,10 +480,12 @@ Item {
                     elide: Text.ElideRight
                 }
 
+                Item { Layout.preferredHeight: 4 }
+
                 // Artist
                 Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: parent.width - 12
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: parent.width - 16
                     text: MprisMedia.artist || "Unknown Artist"
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
@@ -399,42 +494,53 @@ Item {
                     elide: Text.ElideRight
                 }
 
-                // Playback Controls
-                Row {
-                    anchors.horizontalCenter: parent.horizontalCenter
+                // Spacer between Text and Controls
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 12
+                }
+
+                // Playback Controls Row
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter
                     spacing: 8
 
                     PillButton {
                         iconText: "skip_previous"
-                        iconSize: 14
-                        implicitWidth: 32
-                        implicitHeight: 32
+                        iconSize: 15
+                        implicitWidth: 34
+                        implicitHeight: 34
                         onClicked: MprisMedia.previous()
                     }
                     PillButton {
                         iconText: MprisMedia.isPlaying ? "pause" : "play_arrow"
-                        iconSize: 16
+                        iconSize: 18
                         active: true
-                        implicitWidth: 36
-                        implicitHeight: 36
+                        implicitWidth: 40
+                        implicitHeight: 40
                         onClicked: MprisMedia.togglePlay()
                     }
                     PillButton {
                         iconText: "skip_next"
-                        iconSize: 14
-                        implicitWidth: 32
-                        implicitHeight: 32
+                        iconSize: 15
+                        implicitWidth: 34
+                        implicitHeight: 34
                         onClicked: MprisMedia.next()
                     }
                 }
 
-                Item { Layout.fillHeight: true }
+                // Flexible spacer absorbing remaining height
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 8
+                }
 
                 // Animated Bongo Cat
                 AnimatedImage {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 68
-                    height: 38
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: 68
+                    Layout.preferredHeight: 38
                     source: "../../theme/assets/bongocat.gif"
                     playing: MprisMedia.isPlaying
                     fillMode: Image.PreserveAspectFit

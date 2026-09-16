@@ -63,6 +63,8 @@ Item {
         "next": "󰒭",
         "skip_next": "󰒭",
         "arrow_drop_up": "▲",
+        "arrow_drop_down": "▼",
+        "swap_horiz": "󰁯",
         "expand_less": "󰅃",
         "expand_more": "󰅀",
         "info": "󰋽",

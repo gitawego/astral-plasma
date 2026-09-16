@@ -287,12 +287,16 @@ Item {
                     }
                 }
 
+                readonly property bool isAnimating: Math.abs(tabSlider.x - (-tabContentContainer.activeTabIndex * tabContentContainer.width)) > 1
+
                 Item {
                     id: tabPane0
                     x: 0
                     width: tabContentContainer.width
                     height: implicitHeight
                     implicitHeight: dashTab.implicitHeight
+                    clip: true
+                    visible: tabContentContainer.activeTabIndex === 0 || tabSlider.isAnimating
 
                     DashboardTab {
                         id: dashTab
@@ -307,6 +311,8 @@ Item {
                     width: tabContentContainer.width
                     height: implicitHeight
                     implicitHeight: mediaTab.implicitHeight
+                    clip: true
+                    visible: tabContentContainer.activeTabIndex === 1 || tabSlider.isAnimating
 
                     MediaTab {
                         id: mediaTab
@@ -321,6 +327,8 @@ Item {
                     width: tabContentContainer.width
                     height: implicitHeight
                     implicitHeight: perfTab.implicitHeight
+                    clip: true
+                    visible: tabContentContainer.activeTabIndex === 2 || tabSlider.isAnimating
 
                     PerformanceTab {
                         id: perfTab
@@ -335,6 +343,8 @@ Item {
                     width: tabContentContainer.width
                     height: implicitHeight
                     implicitHeight: wsTab.implicitHeight
+                    clip: true
+                    visible: tabContentContainer.activeTabIndex === 3 || tabSlider.isAnimating
 
                     WorkspacesTab {
                         id: wsTab

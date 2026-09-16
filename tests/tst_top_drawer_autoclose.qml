@@ -1,11 +1,14 @@
 import QtQuick
 import "../theme"
 import "../shell"
+import "../config"
 
 Item {
     id: testRoot
     width: 1920
     height: 1080
+
+    property bool debugMode: false
 
     // 1. Real CentralDropdown component
     CentralDropdown {
@@ -43,6 +46,7 @@ Item {
         interval: 350
         repeat: false
         onTriggered: {
+            if (testRoot.debugMode) return;
             if (!testRoot.isDashboardHovered) {
                 dropdownContainer.isOpen = false;
             }
@@ -128,6 +132,24 @@ Item {
         dropdownContainer.isOpen = false;
         closeTimer.stop();
         assert(closeTimer.running === false, "closeTimer must stop immediately when dashboard closed manually");
+
+        // Test 9: Default production state must NOT have debugMode enabled
+        assert(testRoot.debugMode === false, "testRoot.debugMode must default to false in production");
+
+        // Test 10: When debugMode is enabled via Settings toggle, auto-close is frozen for inspection
+        testRoot.debugMode = true;
+        assert(testRoot.debugMode === true, "debugMode is now active");
+        dropdownContainer.isOpen = true;
+        dropdownContainer.hoverOverride = false;
+        // Trigger timer expiration
+        closeTimer.triggered();
+        assert(dropdownContainer.isOpen === true, "When debugMode is ON, dropdown must remain open (frozen) for debugging");
+
+        // Test 11: When debugMode is toggled back to OFF, auto-close resumes immediately
+        testRoot.debugMode = false;
+        assert(testRoot.debugMode === false, "debugMode is now off");
+        closeTimer.triggered();
+        assert(dropdownContainer.isOpen === false, "When debugMode is OFF, dropdown MUST auto-close immediately");
 
         console.log("PASS: Top Drawer Auto-Close Non-Regression Tests");
         Qt.exit(0);

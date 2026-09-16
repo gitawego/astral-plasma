@@ -1,6 +1,7 @@
 use crate::domain::model::{TrayItem, TrayMenuItem};
 use crate::domain::ports::{DynResult, TrayPort};
 use std::process::Command;
+use std::hash::{Hash, Hasher};
 
 fn qdbus_get(svc: &str, path: &str, method: &str) -> String {
     if let Ok(out) = Command::new("qdbus6").args([svc, path, method]).output() {
@@ -95,6 +96,157 @@ fn busctl_get_objpath(svc: &str, path: &str, prop: &str) -> String {
     String::new()
 }
 
+fn sni_get_pixmap(svc: &str, path: &str) -> Option<String> {
+    for iface in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
+        if let Ok(out) = Command::new("busctl")
+            .args(["--user", "--json=short", "get-property", svc, path, iface, "IconPixmap"])
+            .output()
+        {
+            if out.status.success() {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                    if let Some(data) = val.get("data").and_then(|d| d.as_array()) {
+                        let mut best_pixmap: Option<(u32, u32, &[serde_json::Value])> = None;
+                        let mut best_score: i32 = -1;
+
+                        for item in data {
+                            if let Some(arr) = item.as_array() {
+                                if arr.len() >= 3 {
+                                    let w = arr[0].as_i64().unwrap_or(0) as u32;
+                                    let h = arr[1].as_i64().unwrap_or(0) as u32;
+                                    if let Some(bytes) = arr[2].as_array() {
+                                        if w > 0 && h > 0 && bytes.len() == (w * h * 4) as usize {
+                                            let score = if w >= 32 && w <= 64 {
+                                                1000 - (w as i32 - 48).abs()
+                                            } else if w < 32 {
+                                                w as i32
+                                            } else {
+                                                500 - (w as i32 - 64)
+                                            };
+                                            if score > best_score {
+                                                best_score = score;
+                                                best_pixmap = Some((w, h, bytes));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if let Some((w, h, bytes)) = best_pixmap {
+                            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                            let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+
+                            for chunk in bytes.chunks_exact(4) {
+                                let a = chunk[0].as_u64().unwrap_or(0) as u8;
+                                let r = chunk[1].as_u64().unwrap_or(0) as u8;
+                                let g = chunk[2].as_u64().unwrap_or(0) as u8;
+                                let b = chunk[3].as_u64().unwrap_or(0) as u8;
+                                a.hash(&mut hasher);
+                                r.hash(&mut hasher);
+                                g.hash(&mut hasher);
+                                b.hash(&mut hasher);
+                                rgba.push(r);
+                                rgba.push(g);
+                                rgba.push(b);
+                                rgba.push(a);
+                            }
+
+                            let hash = hasher.finish();
+                            let uid = unsafe { libc::getuid() };
+                            let cache_dir = std::env::temp_dir().join(format!("caelestia_tray_{}", uid));
+                            let _ = std::fs::create_dir_all(&cache_dir);
+
+                            let safe_svc = svc.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect::<String>();
+                            let file_name = format!("tray_{}_{:016x}.png", safe_svc, hash);
+                            let file_path = cache_dir.join(file_name);
+
+                            if !file_path.exists() {
+                                if let Some(img) = image::RgbaImage::from_raw(w, h, rgba) {
+                                    let _ = img.save(&file_path);
+                                }
+                            }
+
+                            if file_path.exists() {
+                                return Some(format!("file://{}", file_path.to_string_lossy()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn resolve_desktop_icon(svc: &str, item_id: &str) -> Option<String> {
+    let pid = if let Ok(out) = Command::new("busctl")
+        .args(["--user", "call", "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetConnectionUnixProcessID", "s", svc])
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            s.split_whitespace().nth(1).and_then(|p| p.parse::<u32>().ok())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let mut candidate_names = Vec::new();
+
+    if let Some(p) = pid {
+        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{}/comm", p)) {
+            let trimmed = comm.trim().to_lowercase();
+            if !trimmed.is_empty() {
+                candidate_names.push(trimmed);
+            }
+        }
+    }
+
+    let sanitized_id = item_id
+        .split(|c: char| !c.is_alphanumeric())
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    if !sanitized_id.is_empty() && !candidate_names.contains(&sanitized_id) {
+        candidate_names.push(sanitized_id);
+    }
+
+    for cand in &candidate_names {
+        for dir in ["/usr/share/applications", "/usr/local/share/applications"] {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
+                        let fname_lower = fname.to_lowercase();
+                        if fname_lower.ends_with(".desktop") && fname_lower.contains(cand) {
+                            if let Ok(content) = std::fs::read_to_string(&path) {
+                                for line in content.lines() {
+                                    if let Some(rest) = line.strip_prefix("Icon=") {
+                                        let icon_val = rest.trim();
+                                        if !icon_val.is_empty() {
+                                            return Some(icon_val.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if std::path::Path::new(&format!("/usr/share/icons/hicolor/48x48/apps/{}.png", cand)).exists()
+            || std::path::Path::new(&format!("/usr/share/pixmaps/{}.png", cand)).exists()
+        {
+            return Some(cand.clone());
+        }
+    }
+
+    None
+}
+
 pub struct TrayAdapter;
 
 impl TrayAdapter {
@@ -119,6 +271,12 @@ impl TrayAdapter {
             if title.is_empty() {
                 title = "Antigravity".to_string();
             }
+        } else if id_lower.contains("music") || id_lower.contains("strawberry") || id_lower.contains("spotify") || id_lower.contains("player") || id_lower.contains("audio") {
+            m_icon = "music_note".to_string();
+            if icon.is_empty() {
+                if id_lower.contains("spotify") { icon = "spotify".to_string(); }
+                else if id_lower.contains("strawberry") { icon = "strawberry".to_string(); }
+            }
         } else if id_lower.contains("update") || id_lower.contains("cachy") {
             m_icon = "system_update".to_string();
         } else if id_lower.contains("sunshine") || id_lower.contains("stream") {
@@ -136,9 +294,6 @@ impl TrayAdapter {
         } else if id_lower.contains("code") || id_lower.contains("vscode") {
             m_icon = "code".to_string();
             if icon.is_empty() { icon = "vscode".to_string(); }
-        } else if id_lower.contains("spotify") {
-            m_icon = "music_note".to_string();
-            if icon.is_empty() { icon = "spotify".to_string(); }
         } else if id_lower.contains("steam") {
             m_icon = "sports_esports".to_string();
             if icon.is_empty() { icon = "steam".to_string(); }
@@ -153,10 +308,14 @@ impl TrayAdapter {
             m_icon = "wifi".to_string();
         } else if icon.is_empty() {
             if let Some(prefix) = item_id.split('_').next() {
-                if !prefix.is_empty() && !prefix.chars().all(|c| c.is_ascii_digit()) {
+                if !prefix.is_empty() && !prefix.chars().all(|c| c.is_ascii_digit()) && !prefix.contains(' ') {
                     icon = prefix.to_lowercase();
                 }
             }
+        }
+
+        if !icon.starts_with("file://") && !icon.starts_with('/') && icon.contains(' ') {
+            icon = icon.split_whitespace().next().unwrap_or("").to_lowercase();
         }
 
         (title, icon, m_icon)
@@ -274,6 +433,18 @@ impl TrayPort for TrayAdapter {
             }
             if item_title.starts_with("Error") {
                 item_title.clear();
+            }
+
+            if item_icon.is_empty() {
+                if let Some(pixmap_url) = sni_get_pixmap(svc, path) {
+                    item_icon = pixmap_url;
+                }
+            }
+
+            if item_icon.is_empty() {
+                if let Some(desktop_icon) = resolve_desktop_icon(svc, &item_id) {
+                    item_icon = desktop_icon;
+                }
             }
 
             let (item_title, mut item_icon, mut m_icon) = Self::resolve_tray_meta(&item_id, &item_title, &item_icon);
