@@ -30,273 +30,318 @@ ColumnLayout {
         ? testCornerRadius
         : ((typeof Config !== "undefined" && Config.themeCornerRadius !== undefined) ? Config.themeCornerRadius : 20)
 
-    readonly property color surfaceColor: (typeof Colors !== "undefined" && Colors.surface) ? Colors.surface : (root.isDark ? "#121318" : "#FAF8F5")
-    readonly property color surfaceContainerColor: (typeof Colors !== "undefined" && Colors.surfaceContainer) ? Colors.surfaceContainer : (root.isDark ? "#1A1B21" : "#F2EDE7")
-    readonly property color surfaceContainerHighColor: (typeof Colors !== "undefined" && Colors.surfaceContainerHigh) ? Colors.surfaceContainerHigh : (root.isDark ? "#282A30" : "#E8E2DA")
-    readonly property color primaryColor: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : (root.isDark ? "#CFBCFF" : "#6750A4")
-    readonly property color primaryContainerColor: (typeof Colors !== "undefined" && Colors.primaryContainer) ? Colors.primaryContainer : (root.isDark ? "#4F378B" : "#EDE7F6")
-    readonly property color onPrimaryColor: (typeof Colors !== "undefined" && Colors.onPrimary) ? Colors.onPrimary : "#FFFFFF"
-    readonly property color onPrimaryContainerColor: (typeof Colors !== "undefined" && Colors.m3onPrimaryContainer) ? Colors.m3onPrimaryContainer : (root.isDark ? "#EADDFF" : "#21005D")
-    readonly property color onSurfaceColor: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : (root.isDark ? "#E4E2E6" : "#1D1B20")
-    readonly property color onSurfaceVariantColor: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : (root.isDark ? "#C7C6CA" : "#49454F")
-    readonly property color outlineColor: (typeof Colors !== "undefined" && Colors.outline) ? Colors.outline : (root.isDark ? "#8F9099" : "#D6CEC5")
-    readonly property color borderSubtleColor: (typeof Theme !== "undefined" && Theme.borderSubtle) ? Theme.borderSubtle : Qt.alpha(outlineColor, 0.18)
-
-    readonly property int padLargeVal: (typeof Theme !== "undefined" && Theme.padLarge) ? Theme.padLarge : 16
-    readonly property int padMediumVal: (typeof Theme !== "undefined" && Theme.padMedium) ? Theme.padMedium : 12
-    readonly property int padSmallVal: (typeof Theme !== "undefined" && Theme.padSmall) ? Theme.padSmall : 8
-    readonly property int radiusMediumVal: (typeof Theme !== "undefined" && Theme.radiusMedium) ? Theme.radiusMedium : 16
-    readonly property int radiusFullVal: (typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : 9999
-    readonly property int spaceMediumVal: (typeof Theme !== "undefined" && Theme.spaceMedium) ? Theme.spaceMedium : 12
-    readonly property int spaceSmallVal: (typeof Theme !== "undefined" && Theme.spaceSmall) ? Theme.spaceSmall : 8
-    readonly property string fontFamilyVal: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-    readonly property int fontTitleMediumVal: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
-    readonly property int fontBodyMediumVal: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 15
-    readonly property int fontBodySmallVal: (typeof Theme !== "undefined" && Theme.fontBodySmall) ? Theme.fontBodySmall : 13
-    readonly property int animDurationFastVal: (typeof Theme !== "undefined" && Theme.animDurationFast) ? Theme.animDurationFast : 150
-
-    spacing: root.spaceMediumVal
-
-    Text {
-        text: "Theming & Appearance"
-        font.family: root.fontFamilyVal
-        font.pixelSize: root.fontTitleMediumVal
-        font.weight: Font.Bold
-        color: root.onSurfaceColor
+    function setDarkMode(val) {
+        if (testMode) {
+            testDarkMode = val;
+        } else if (typeof Config !== "undefined" && Config.setDarkMode) {
+            Config.setDarkMode(val);
+        }
     }
 
-    Text {
+    function setDynamicColors(val) {
+        if (testMode) {
+            testDynamicColors = val;
+        } else if (typeof Config !== "undefined" && Config.setDynamicColors) {
+            Config.setDynamicColors(val);
+        }
+    }
+
+    function setThemePreset(val) {
+        if (testMode) {
+            testPreset = val;
+        } else if (typeof Config !== "undefined" && Config.setThemePreset) {
+            Config.setThemePreset(val);
+        }
+    }
+
+    function setThemeCornerRadius(val) {
+        if (testMode) {
+            testCornerRadius = val;
+        } else if (typeof Config !== "undefined" && Config.setThemeCornerRadius) {
+            Config.setThemeCornerRadius(val);
+        }
+    }
+
+    spacing: Theme.spaceMedium
+
+    // Header Title & Description
+    ColumnLayout {
         Layout.fillWidth: true
-        wrapMode: Text.WordWrap
-        text: "Customize desktop aesthetics, switch between Light and Dark mode, and choose dynamic or preset color palettes."
-        font.family: root.fontFamilyVal
-        font.pixelSize: root.fontBodySmallVal
-        color: root.onSurfaceVariantColor
-    }
+        spacing: 4
 
-    // Theme Mode: Dark vs Light
-    Text {
-        text: "Theme Mode"
-        font.family: root.fontFamilyVal
-        font.pixelSize: root.fontBodyMediumVal
-        font.weight: Font.DemiBold
-        color: root.onSurfaceColor
-        Layout.topMargin: root.spaceSmallVal
-    }
+        Text {
+            text: "Theming & Appearance"
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontTitleMedium
+            font.weight: Font.Bold
+            color: Colors.m3onSurface
+        }
 
-    RowLayout {
-        Layout.fillWidth: true
-        spacing: root.spaceMediumVal
-
-        // Dark Mode Card
-        Rectangle {
+        Text {
             Layout.fillWidth: true
-            implicitHeight: 72
-            radius: root.radiusMediumVal
-            color: root.isDark ? root.primaryContainerColor : root.surfaceContainerColor
-            border.color: root.isDark ? root.primaryColor : root.borderSubtleColor
-            border.width: root.isDark ? 2 : 1
+            wrapMode: Text.WordWrap
+            text: "Customize desktop aesthetics, switch between Light and Dark mode, and choose dynamic or preset color palettes."
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontBodySmall
+            color: Colors.m3onSurfaceVariant
+        }
+    }
 
-            Behavior on color { ColorAnimation { duration: root.animDurationFastVal } }
-            Behavior on border.color { ColorAnimation { duration: root.animDurationFastVal } }
+    // Row 1: Theme Style Segmented Pill Card
+    Rectangle {
+        Layout.fillWidth: true
+        implicitHeight: 62
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
 
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (root.testMode) {
-                        root.testDarkMode = true;
-                    } else if (typeof Config !== "undefined" && Config.setDarkMode) {
-                        Config.setDarkMode(true);
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.padLarge
+            anchors.rightMargin: Theme.padLarge
+            spacing: Theme.spaceMedium
+
+            RowLayout {
+                spacing: Theme.spaceMedium
+
+                Rectangle {
+                    width: 38
+                    height: 38
+                    radius: 19
+                    color: Colors.surfaceContainerHigh
+
+                    MaterialIcon {
+                        anchors.centerIn: parent
+                        text: root.isDark ? "dark_mode" : "light_mode"
+                        size: 20
+                        color: Colors.primary
                     }
                 }
 
+                ColumnLayout {
+                    spacing: 2
+
+                    Text {
+                        text: "Theme Style"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBodyMedium
+                        font.weight: Font.DemiBold
+                        color: Colors.m3onSurface
+                    }
+
+                    Text {
+                        text: root.isDark ? "Dark celestial theme active" : "Light paper theme active"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurfaceVariant
+                    }
+                }
+            }
+
+            Item { Layout.fillWidth: true }
+
+            // Material 3 Segmented Pill
+            Rectangle {
+                implicitHeight: 38
+                implicitWidth: 172
+                radius: Theme.radiusFull
+                color: Colors.surfaceContainerHigh
+                border.color: Theme.borderSubtle
+                border.width: 1
+
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: root.padMediumVal
-                    spacing: root.spaceMediumVal
+                    anchors.margins: 2
+                    spacing: 2
 
+                    // Dark Segment
                     Rectangle {
-                        width: 40
-                        height: 40
-                        radius: 20
-                        color: root.isDark ? root.primaryColor : root.surfaceContainerHighColor
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: Theme.radiusFull
+                        color: root.isDark ? Colors.primaryContainer : (darkMouse.containsMouse ? Colors.pillHover : "transparent")
+                        border.color: root.isDark ? Qt.alpha(Colors.primary, 0.4) : "transparent"
+                        border.width: root.isDark ? 1 : 0
 
-                        MaterialIcon {
+                        Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+
+                        Row {
                             anchors.centerIn: parent
-                            text: "dark_mode"
-                            size: 20
-                            color: root.isDark ? root.onPrimaryColor : root.onSurfaceColor
+                            spacing: 6
+
+                            MaterialIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "dark_mode"
+                                size: 16
+                                color: root.isDark ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                            }
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Dark"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontBodySmall
+                                font.weight: root.isDark ? Font.Bold : Font.Normal
+                                color: root.isDark ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                            }
+                        }
+
+                        MouseArea {
+                            id: darkMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setDarkMode(true)
                         }
                     }
 
-                    ColumnLayout {
+                    // Light Segment
+                    Rectangle {
                         Layout.fillWidth: true
-                        spacing: 2
+                        Layout.fillHeight: true
+                        radius: Theme.radiusFull
+                        color: !root.isDark ? Colors.primaryContainer : (lightMouse.containsMouse ? Colors.pillHover : "transparent")
+                        border.color: !root.isDark ? Qt.alpha(Colors.primary, 0.4) : "transparent"
+                        border.width: !root.isDark ? 1 : 0
 
-                        Text {
-                            text: "Dark Mode"
-                            font.family: root.fontFamilyVal
-                            font.pixelSize: root.fontBodyMediumVal
-                            font.weight: Font.Bold
-                            color: root.isDark ? root.onPrimaryContainerColor : root.onSurfaceColor
+                        Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            MaterialIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "light_mode"
+                                size: 16
+                                color: !root.isDark ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                            }
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Light"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontBodySmall
+                                font.weight: !root.isDark ? Font.Bold : Font.Normal
+                                color: !root.isDark ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                            }
                         }
 
-                        Text {
-                            text: "Deep charcoal with vibrant accents"
-                            font.family: root.fontFamilyVal
-                            font.pixelSize: root.fontBodySmallVal
-                            color: root.isDark ? root.onPrimaryContainerColor : root.onSurfaceVariantColor
+                        MouseArea {
+                            id: lightMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setDarkMode(false)
                         }
                     }
                 }
             }
         }
-
-        // Light Mode Card
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 72
-            radius: root.radiusMediumVal
-            color: !root.isDark ? root.primaryContainerColor : root.surfaceContainerColor
-            border.color: !root.isDark ? root.primaryColor : root.borderSubtleColor
-            border.width: !root.isDark ? 2 : 1
-
-            Behavior on color { ColorAnimation { duration: root.animDurationFastVal } }
-            Behavior on border.color { ColorAnimation { duration: root.animDurationFastVal } }
-
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (root.testMode) {
-                        root.testDarkMode = false;
-                    } else if (typeof Config !== "undefined" && Config.setDarkMode) {
-                        Config.setDarkMode(false);
-                    }
-                }
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: root.padMediumVal
-                    spacing: root.spaceMediumVal
-
-                    Rectangle {
-                        width: 40
-                        height: 40
-                        radius: 20
-                        color: !root.isDark ? root.primaryColor : root.surfaceContainerHighColor
-
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            text: "light_mode"
-                            size: 20
-                            color: !root.isDark ? root.onPrimaryColor : root.onSurfaceColor
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        Text {
-                            text: "Light Mode"
-                            font.family: root.fontFamilyVal
-                            font.pixelSize: root.fontBodyMediumVal
-                            font.weight: Font.Bold
-                            color: !root.isDark ? root.onPrimaryContainerColor : root.onSurfaceColor
-                        }
-
-                        Text {
-                            text: "Crisp, airy paper with clean tones"
-                            font.family: root.fontFamilyVal
-                            font.pixelSize: root.fontBodySmallVal
-                            color: !root.isDark ? root.onPrimaryContainerColor : root.onSurfaceVariantColor
-                        }
-                    }
-                }
-            }
-        }
     }
 
-    // Dynamic Colors Toggle
+    // Row 2: Dynamic Wallpaper Colors Toggle
     SettingToggle {
         Layout.fillWidth: true
-        title: "Dynamic Wallpaper Colors"
-        description: "Extract soft harmonic palettes dynamically from your active wallpaper using matugen"
+        title: "Dynamic Wallpaper Colors (Material You)"
+        description: "Extract soft harmonic color palettes dynamically from your active wallpaper"
         checked: root.isDynamic
-        onToggled: val => {
-            if (root.testMode) {
-                root.testDynamicColors = val;
-            } else if (typeof Config !== "undefined" && Config.setDynamicColors) {
-                Config.setDynamicColors(val);
-            }
-        }
+        onToggled: val => root.setDynamicColors(val)
     }
 
-    // Preset Accent Selection
-    Text {
-        text: "Preset Color Palettes"
-        font.family: root.fontFamilyVal
-        font.pixelSize: root.fontBodyMediumVal
-        font.weight: Font.DemiBold
-        color: root.onSurfaceColor
-        Layout.topMargin: root.spaceSmallVal
-    }
-
-    RowLayout {
+    // Row 3: Accent Palette Presets
+    Rectangle {
         Layout.fillWidth: true
-        spacing: root.spaceSmallVal
+        implicitHeight: 64
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
 
-        Repeater {
-            model: [
-                { id: "iris", name: "Iris", color: "#6750A4" },
-                { id: "ocean", name: "Ocean", color: "#12609A" },
-                { id: "emerald", name: "Emerald", color: "#1E6B42" },
-                { id: "coral", name: "Coral", color: "#B32810" }
-            ]
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.padLarge
+            anchors.rightMargin: Theme.padLarge
+            spacing: Theme.spaceMedium
 
-            delegate: Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: 42
-                radius: root.radiusFullVal
-                color: (root.presetName === modelData.id) ? root.primaryContainerColor : root.surfaceContainerColor
-                border.color: (root.presetName === modelData.id) ? root.primaryColor : root.borderSubtleColor
-                border.width: (root.presetName === modelData.id) ? 2 : 1
+            ColumnLayout {
+                spacing: 2
 
-                Behavior on color { ColorAnimation { duration: root.animDurationFastVal } }
+                Text {
+                    text: "Accent Palette Presets"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontBodyMedium
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
 
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (root.testMode) {
-                            root.testPreset = modelData.id;
-                        } else if (typeof Config !== "undefined" && Config.setThemePreset) {
-                            Config.setThemePreset(modelData.id);
-                        }
-                    }
+                Text {
+                    text: "Choose vibrant accent hues for highlights and controls"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontLabelSmall
+                    color: Colors.m3onSurfaceVariant
+                }
+            }
 
-                    RowLayout {
-                        anchors.centerIn: parent
-                        spacing: root.spaceSmallVal
+            Item { Layout.fillWidth: true }
 
+            Row {
+                spacing: 10
+
+                Repeater {
+                    model: [
+                        { id: "iris", name: "Iris", darkColor: "#CFBCFF", lightColor: "#6750A4" },
+                        { id: "ocean", name: "Ocean", darkColor: "#9ECAFF", lightColor: "#12609A" },
+                        { id: "emerald", name: "Emerald", darkColor: "#81D99C", lightColor: "#1E6B42" },
+                        { id: "coral", name: "Coral", darkColor: "#FFB4A8", lightColor: "#B32810" }
+                    ]
+
+                    delegate: Item {
+                        id: swatchItem
+                        readonly property bool isSelected: root.presetName === modelData.id
+                        readonly property color accentHue: root.isDark ? modelData.darkColor : modelData.lightColor
+
+                        width: 36
+                        height: 36
+
+                        // Outer selection ring
                         Rectangle {
-                            width: 14
-                            height: 14
-                            radius: 7
-                            color: modelData.color
+                            anchors.fill: parent
+                            radius: Theme.radiusFull
+                            color: "transparent"
+                            border.color: swatchItem.isSelected ? Colors.primary : "transparent"
+                            border.width: swatchItem.isSelected ? 2 : 0
+
+                            Behavior on border.width { NumberAnimation { duration: Theme.animDurationFast } }
                         }
 
-                        Text {
-                            text: modelData.name
-                            font.family: root.fontFamilyVal
-                            font.pixelSize: root.fontBodyMediumVal
-                            font.weight: (root.presetName === modelData.id) ? Font.Bold : Font.Normal
-                            color: (root.presetName === modelData.id) ? root.onPrimaryContainerColor : root.onSurfaceColor
+                        // Inner colored circle
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: swatchItem.isSelected ? 24 : 28
+                            height: swatchItem.isSelected ? 24 : 28
+                            radius: Theme.radiusFull
+                            color: swatchItem.accentHue
+
+                            Behavior on width { NumberAnimation { duration: Theme.animDurationFast } }
+                            Behavior on height { NumberAnimation { duration: Theme.animDurationFast } }
+
+                            MaterialIcon {
+                                anchors.centerIn: parent
+                                text: "check"
+                                size: 14
+                                color: root.isDark ? "#121318" : "#FFFFFF"
+                                visible: swatchItem.isSelected
+                            }
+                        }
+
+                        MouseArea {
+                            id: swatchMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setThemePreset(modelData.id)
                         }
                     }
                 }
@@ -304,7 +349,7 @@ ColumnLayout {
         }
     }
 
-    // Corner Radius
+    // Row 4: Corner Radius Slider
     SettingSlider {
         Layout.fillWidth: true
         title: "Corner Radius"
@@ -312,46 +357,86 @@ ColumnLayout {
         max: 32
         suffix: "px"
         value: root.cornerRad
-        onValueModified: val => {
-            if (root.testMode) {
-                root.testCornerRadius = Math.round(val);
-            } else if (typeof Config !== "undefined" && Config.setThemeCornerRadius) {
-                Config.setThemeCornerRadius(Math.round(val));
-            }
-        }
+        onValueModified: val => root.setThemeCornerRadius(Math.round(val))
     }
 
-    // Live Palette Preview
+    // Row 5: Live Theme Palette Preview
     Rectangle {
         Layout.fillWidth: true
-        implicitHeight: 64
-        radius: root.radiusMediumVal
-        color: root.surfaceContainerColor
-        border.color: root.borderSubtleColor
+        implicitHeight: 56
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
         border.width: 1
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: root.padMediumVal
-            spacing: root.spaceMediumVal
+            anchors.leftMargin: Theme.padLarge
+            anchors.rightMargin: Theme.padLarge
+            spacing: Theme.spaceMedium
 
-            Text {
-                text: "Active Theme Preview:"
-                font.family: root.fontFamilyVal
-                font.pixelSize: root.fontBodySmallVal
-                font.weight: Font.DemiBold
-                color: root.onSurfaceColor
-                Layout.fillWidth: true
+            ColumnLayout {
+                spacing: 2
+
+                Text {
+                    text: "Active Theme Preview"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontBodyMedium
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+
+                Text {
+                    text: "Surface, Container, Primary, Primary Container, Secondary"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontLabelSmall
+                    color: Colors.m3onSurfaceVariant
+                }
             }
 
-            // Swatches
+            Item { Layout.fillWidth: true }
+
             Row {
                 spacing: 8
-                Rectangle { width: 28; height: 28; radius: 14; color: root.surfaceColor; border.width: 1; border.color: root.outlineColor }
-                Rectangle { width: 28; height: 28; radius: 14; color: root.surfaceContainerColor; border.width: 1; border.color: root.outlineColor }
-                Rectangle { width: 28; height: 28; radius: 14; color: root.primaryColor }
-                Rectangle { width: 28; height: 28; radius: 14; color: root.primaryContainerColor }
-                Rectangle { width: 28; height: 28; radius: 14; color: root.onSurfaceColor }
+
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 12
+                    color: Colors.surface
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+                }
+
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 12
+                    color: Colors.surfaceContainer
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+                }
+
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 12
+                    color: Colors.primary
+                }
+
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 12
+                    color: Colors.primaryContainer
+                }
+
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 12
+                    color: Colors.secondary
+                }
             }
         }
     }

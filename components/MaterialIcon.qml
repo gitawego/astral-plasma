@@ -37,6 +37,13 @@ Item {
         "brightness_5": "󰃠",
         "brightness_7": "󰃠",
         "brightness_medium": "󰃠",
+        "dark_mode": "󰖔",
+        "bedtime": "󰖔",
+        "nightlight": "󰖔",
+        "light_mode": "󰖙",
+        "wb_sunny": "󰖙",
+        "sunny": "󰖙",
+        "contrast": "󰃠",
         "battery": "󰁹",
         "battery_charging": "󰂄",
         "battery_charging_full": "󰂄",
@@ -120,7 +127,9 @@ Item {
         "open_in_new": "󰏌",
         "launch": "󰏌",
         "picture_in_picture": "󰹩",
-        "sync": "󰑓"
+        "sync": "󰑓",
+        "check": "󰄬",
+        "done": "󰄬"
     })
 
     readonly property string displaySymbol: {
