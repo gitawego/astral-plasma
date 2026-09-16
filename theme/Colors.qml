@@ -114,9 +114,7 @@ Singleton {
     readonly property color secondary: root.accentSecondary
     readonly property color secondaryContainer: root.accentSecondaryContainer
     readonly property color error: root.accentError
-    readonly property color onError: root.accentOnError
     readonly property color errorContainer: root.accentErrorContainer
-    readonly property color onErrorContainer: root.accentOnErrorContainer
 
     readonly property color textOnPrimary: root.accentOnPrimary
     readonly property color textOnPrimaryContainer: root.accentOnPrimaryContainer
@@ -124,10 +122,32 @@ Singleton {
     readonly property color textOnSurfaceVariant: root.textMuted
     readonly property color textInverse: root.isDarkMode ? "#1D1B20" : "#FFFFFF"
 
-    readonly property color onPrimary: root.accentOnPrimary
-    readonly property color onPrimaryContainer: root.accentOnPrimaryContainer
-    readonly property color onSurface: root.textMain
-    readonly property color onSurfaceVariant: root.textMuted
+    // Material 3 "on" Tokens Bridge (Resolves QML on<Signal> grammar collision)
+    QtObject {
+        id: tokenBridge
+        readonly property color onSurfaceVal: root.textMain
+        readonly property color onSurfaceVariantVal: root.textMuted
+        readonly property color onPrimaryVal: root.accentOnPrimary
+        readonly property color onPrimaryContainerVal: root.accentOnPrimaryContainer
+        readonly property color onSecondaryVal: root.accentOnSecondary
+        readonly property color onSecondaryContainerVal: root.accentOnSecondaryContainer
+        readonly property color onErrorVal: root.accentError
+        readonly property color onErrorContainerVal: root.accentOnErrorContainer
+        readonly property color onTertiaryVal: root.m3onTertiary
+        readonly property color onTertiaryContainerVal: root.m3onTertiaryContainer
+    }
+
+    readonly property alias onSurface: tokenBridge.onSurfaceVal
+    readonly property alias onSurfaceVariant: tokenBridge.onSurfaceVariantVal
+    readonly property alias onPrimary: tokenBridge.onPrimaryVal
+    readonly property alias onPrimaryContainer: tokenBridge.onPrimaryContainerVal
+    readonly property alias onSecondary: tokenBridge.onSecondaryVal
+    readonly property alias onSecondaryContainer: tokenBridge.onSecondaryContainerVal
+    readonly property alias onError: tokenBridge.onErrorVal
+    readonly property alias onErrorContainer: tokenBridge.onErrorContainerVal
+    readonly property alias onTertiary: tokenBridge.onTertiaryVal
+    readonly property alias onTertiaryContainer: tokenBridge.onTertiaryContainerVal
+
     readonly property color surfaceContainerHighest: root.bgSurfaceContainerHigh
 
     readonly property color m3onSurface: root.textMain

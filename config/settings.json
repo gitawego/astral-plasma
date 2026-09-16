@@ -129,7 +129,8 @@
     "preset": "iris",
     "blurStrength": 0.85,
     "cornerRadius": 20,
-    "darkMode": true
+    "darkMode": true,
+    "dynamicColors": true
   },
   "border": {
     "thickness": 14,
