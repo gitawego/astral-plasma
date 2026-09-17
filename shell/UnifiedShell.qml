@@ -61,12 +61,104 @@ PanelWindow {
             height: root.borderT
         }
 
+        // Screen Inner Fillet: Top-Left
+        Region { x: root.dockW; y: root.borderT; width: 12; height: 2 }
+        Region { x: root.dockW; y: root.borderT + 2; width: 7; height: 3 }
+        Region { x: root.dockW; y: root.borderT + 5; width: 4; height: 4 }
+        Region { x: root.dockW; y: root.borderT + 9; width: 2; height: 5 }
+        Region { x: root.dockW; y: root.borderT + 14; width: 1; height: 6 }
+
+        // Screen Inner Fillet: Top-Right
+        Region { x: root.width - root.borderT - 12; y: root.borderT; width: 12; height: 2 }
+        Region { x: root.width - root.borderT - 7; y: root.borderT + 2; width: 7; height: 3 }
+        Region { x: root.width - root.borderT - 4; y: root.borderT + 5; width: 4; height: 4 }
+        Region { x: root.width - root.borderT - 2; y: root.borderT + 9; width: 2; height: 5 }
+        Region { x: root.width - root.borderT - 1; y: root.borderT + 14; width: 1; height: 6 }
+
+        // Screen Inner Fillet: Bottom-Left
+        Region { x: root.dockW; y: root.height - root.borderT - 2; width: 12; height: 2 }
+        Region { x: root.dockW; y: root.height - root.borderT - 5; width: 7; height: 3 }
+        Region { x: root.dockW; y: root.height - root.borderT - 9; width: 4; height: 4 }
+        Region { x: root.dockW; y: root.height - root.borderT - 14; width: 2; height: 5 }
+        Region { x: root.dockW; y: root.height - root.borderT - 20; width: 1; height: 6 }
+
+        // Screen Inner Fillet: Bottom-Right
+        Region { x: root.width - root.borderT - 12; y: root.height - root.borderT - 2; width: 12; height: 2 }
+        Region { x: root.width - root.borderT - 7; y: root.height - root.borderT - 5; width: 7; height: 3 }
+        Region { x: root.width - root.borderT - 4; y: root.height - root.borderT - 9; width: 4; height: 4 }
+        Region { x: root.width - root.borderT - 2; y: root.height - root.borderT - 14; width: 2; height: 5 }
+        Region { x: root.width - root.borderT - 1; y: root.height - root.borderT - 20; width: 1; height: 6 }
+
         // Central Dropdown Dashboard (when open)
         Region {
             x: dropdownContainer.offsetProgress > 0.001 ? root.dropX : 0
             y: 0
             width: dropdownContainer.offsetProgress > 0.001 ? root.dropW : 0
             height: dropdownContainer.offsetProgress > 0.001 ? root.currentDropH : 0
+        }
+
+        // Central Dropdown Left Shoulder Fillet
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - 12) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? root.borderT : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 12 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(2, Math.max(0, root.currentDropH - root.borderT)) : 0
+        }
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - 7) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + 2) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 7 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(3, Math.max(0, root.currentDropH - root.borderT - 2)) : 0
+        }
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - 4) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + 5) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 4 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(4, Math.max(0, root.currentDropH - root.borderT - 5)) : 0
+        }
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - 2) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + 9) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 2 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(5, Math.max(0, root.currentDropH - root.borderT - 9)) : 0
+        }
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - 1) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + 14) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 1 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(6, Math.max(0, root.currentDropH - root.borderT - 14)) : 0
+        }
+
+        // Central Dropdown Right Shoulder Fillet
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? root.borderT : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 12 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(2, Math.max(0, root.currentDropH - root.borderT)) : 0
+        }
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + 2) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 7 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(3, Math.max(0, root.currentDropH - root.borderT - 2)) : 0
+        }
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + 5) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 4 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(4, Math.max(0, root.currentDropH - root.borderT - 5)) : 0
+        }
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + 9) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 2 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(5, Math.max(0, root.currentDropH - root.borderT - 9)) : 0
+        }
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + 14) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? 1 : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(6, Math.max(0, root.currentDropH - root.borderT - 14)) : 0
         }
 
         // Fused Bottom Popout (when open)

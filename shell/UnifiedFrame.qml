@@ -247,18 +247,20 @@ Item {
         x: root.dropX - root.filletR
         y: 0
         width: root.dropW + root.filletR * 2
-        height: root.currentDropH
+        height: Math.max(root.borderT, root.currentDropH)
         visible: root.dropdownOffsetProgress > 0.001
 
-        readonly property real filletFactor: Math.max(0.0, Math.min(1.0, (root.currentDropH - root.borderT) / Math.max(1, root.filletR)))
+        readonly property real extH: Math.max(0, root.currentDropH - root.borderT)
+        readonly property real maxRadiusSum: root.filletR + root.modalRadius
+        readonly property real k: Math.min(1.0, extH / Math.max(1, maxRadiusSum))
+        readonly property real currentFilletR: root.filletR * k
+        readonly property real currentModalR: root.modalRadius * k
 
+        // 1. Unified Glass Surface Fill Shape (Top bar strip, dropdown body, and both shoulder fillets)
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
-            visible: dashSurfaceWrapper.filletFactor > 0.01
-            opacity: dashSurfaceWrapper.filletFactor
 
-            // 1. Unified Glass Surface Fill (Top bar strip, dropdown body, and both shoulder fillets)
             ShapePath {
                 fillColor: root.glassFill
                 strokeColor: "transparent"
@@ -266,97 +268,141 @@ Item {
 
                 startX: 0; startY: 0
                 PathLine { x: dashSurfaceWrapper.width; y: 0 }
-                PathLine { x: dashSurfaceWrapper.width; y: root.borderT - 1 }
+                PathLine { x: dashSurfaceWrapper.width; y: root.borderT }
+
+                // Right shoulder: from right top border down to dropdown body
+                PathLine {
+                    x: dashSurfaceWrapper.width - (root.filletR - dashSurfaceWrapper.currentFilletR)
+                    y: root.borderT
+                }
                 PathArc {
                     x: dashSurfaceWrapper.width - root.filletR
-                    y: root.borderT - 1 + root.filletR
-                    radiusX: root.filletR
-                    radiusY: root.filletR
+                    y: root.borderT + dashSurfaceWrapper.currentFilletR
+                    radiusX: Math.max(0.1, dashSurfaceWrapper.currentFilletR)
+                    radiusY: Math.max(0.1, dashSurfaceWrapper.currentFilletR)
                     direction: PathArc.Counterclockwise
                 }
+                // Right vertical edge
                 PathLine {
                     x: dashSurfaceWrapper.width - root.filletR
-                    y: Math.max(root.borderT - 1 + root.filletR, root.currentDropH - root.modalRadius)
+                    y: Math.max(root.borderT + dashSurfaceWrapper.currentFilletR, root.currentDropH - dashSurfaceWrapper.currentModalR)
                 }
+                // Bottom-right corner
                 PathArc {
-                    x: dashSurfaceWrapper.width - root.filletR - root.modalRadius
-                    y: root.currentDropH
-                    radiusX: root.modalRadius
-                    radiusY: root.modalRadius
+                    x: dashSurfaceWrapper.width - root.filletR - dashSurfaceWrapper.currentModalR
+                    y: Math.max(root.borderT, root.currentDropH)
+                    radiusX: Math.max(0.1, dashSurfaceWrapper.currentModalR)
+                    radiusY: Math.max(0.1, dashSurfaceWrapper.currentModalR)
                     direction: PathArc.Clockwise
                 }
+                // Bottom edge
                 PathLine {
-                    x: root.filletR + root.modalRadius
-                    y: root.currentDropH
+                    x: root.filletR + dashSurfaceWrapper.currentModalR
+                    y: Math.max(root.borderT, root.currentDropH)
                 }
+                // Bottom-left corner
                 PathArc {
                     x: root.filletR
-                    y: Math.max(root.borderT - 1 + root.filletR, root.currentDropH - root.modalRadius)
-                    radiusX: root.modalRadius
-                    radiusY: root.modalRadius
+                    y: Math.max(root.borderT + dashSurfaceWrapper.currentFilletR, root.currentDropH - dashSurfaceWrapper.currentModalR)
+                    radiusX: Math.max(0.1, dashSurfaceWrapper.currentModalR)
+                    radiusY: Math.max(0.1, dashSurfaceWrapper.currentModalR)
                     direction: PathArc.Clockwise
                 }
+                // Left vertical edge
                 PathLine {
                     x: root.filletR
-                    y: root.borderT - 1 + root.filletR
+                    y: root.borderT + dashSurfaceWrapper.currentFilletR
                 }
+                // Left shoulder
                 PathArc {
-                    x: 0
-                    y: root.borderT - 1
-                    radiusX: root.filletR
-                    radiusY: root.filletR
+                    x: root.filletR - dashSurfaceWrapper.currentFilletR
+                    y: root.borderT
+                    radiusX: Math.max(0.1, dashSurfaceWrapper.currentFilletR)
+                    radiusY: Math.max(0.1, dashSurfaceWrapper.currentFilletR)
                     direction: PathArc.Counterclockwise
                 }
+                PathLine { x: 0; y: root.borderT }
                 PathLine { x: 0; y: 0 }
             }
+        }
 
-            // 2. Continuous 1px Perimeter Stroke (Left shoulder, dropdown edges, bottom corners, right shoulder)
+        // 2a. Flat Horizontal 1px Stroke Shape when drawer is retracted into the top bar (extH < 1)
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            visible: dashSurfaceWrapper.extH < 1
+
             ShapePath {
                 fillColor: "transparent"
                 strokeColor: root.borderColor
                 strokeWidth: 1
                 capStyle: ShapePath.FlatCap
 
-                startX: 0; startY: root.borderT - 1
+                startX: 0; startY: root.borderT - 0.5
+                PathLine { x: dashSurfaceWrapper.width; y: root.borderT - 0.5 }
+            }
+        }
+
+        // 2b. Continuous Inset 1px Perimeter Stroke Shape when drawer is expanding (extH >= 1)
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            visible: dashSurfaceWrapper.extH >= 1
+
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: root.borderColor
+                strokeWidth: 1
+                capStyle: ShapePath.FlatCap
+
+                startX: 0; startY: root.borderT - 0.5
+                PathLine {
+                    x: Math.max(0, root.filletR - dashSurfaceWrapper.currentFilletR)
+                    y: root.borderT - 0.5
+                }
                 PathArc {
-                    x: root.filletR
-                    y: root.borderT - 1 + root.filletR
-                    radiusX: root.filletR
-                    radiusY: root.filletR
+                    x: root.filletR + 0.5
+                    y: root.borderT + dashSurfaceWrapper.currentFilletR
+                    radiusX: Math.max(0.1, dashSurfaceWrapper.currentFilletR + 0.5)
+                    radiusY: Math.max(0.1, dashSurfaceWrapper.currentFilletR + 0.5)
                     direction: PathArc.Clockwise
                 }
                 PathLine {
-                    x: root.filletR
-                    y: Math.max(root.borderT - 1 + root.filletR, root.currentDropH - root.modalRadius)
+                    x: root.filletR + 0.5
+                    y: Math.max(root.borderT + dashSurfaceWrapper.currentFilletR, root.currentDropH - dashSurfaceWrapper.currentModalR)
                 }
                 PathArc {
-                    x: root.filletR + root.modalRadius
-                    y: root.currentDropH
-                    radiusX: root.modalRadius
-                    radiusY: root.modalRadius
+                    x: root.filletR + dashSurfaceWrapper.currentModalR
+                    y: Math.max(root.borderT - 0.5, root.currentDropH - 0.5)
+                    radiusX: Math.max(0.1, dashSurfaceWrapper.currentModalR - 0.5)
+                    radiusY: Math.max(0.1, dashSurfaceWrapper.currentModalR - 0.5)
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(root.filletR + root.modalRadius, dashSurfaceWrapper.width - root.filletR - root.modalRadius)
-                    y: root.currentDropH
+                    x: Math.max(root.filletR + dashSurfaceWrapper.currentModalR, dashSurfaceWrapper.width - root.filletR - dashSurfaceWrapper.currentModalR)
+                    y: Math.max(root.borderT - 0.5, root.currentDropH - 0.5)
                 }
                 PathArc {
-                    x: dashSurfaceWrapper.width - root.filletR
-                    y: Math.max(root.borderT - 1 + root.filletR, root.currentDropH - root.modalRadius)
-                    radiusX: root.modalRadius
-                    radiusY: root.modalRadius
+                    x: dashSurfaceWrapper.width - root.filletR - 0.5
+                    y: Math.max(root.borderT + dashSurfaceWrapper.currentFilletR, root.currentDropH - dashSurfaceWrapper.currentModalR)
+                    radiusX: Math.max(0.1, dashSurfaceWrapper.currentModalR - 0.5)
+                    radiusY: Math.max(0.1, dashSurfaceWrapper.currentModalR - 0.5)
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: dashSurfaceWrapper.width - root.filletR
-                    y: root.borderT - 1 + root.filletR
+                    x: dashSurfaceWrapper.width - root.filletR - 0.5
+                    y: root.borderT + dashSurfaceWrapper.currentFilletR
                 }
                 PathArc {
+                    x: dashSurfaceWrapper.width - (root.filletR - dashSurfaceWrapper.currentFilletR)
+                    y: root.borderT - 0.5
+                    radiusX: Math.max(0.1, dashSurfaceWrapper.currentFilletR + 0.5)
+                    radiusY: Math.max(0.1, dashSurfaceWrapper.currentFilletR + 0.5)
+                    direction: PathArc.Clockwise
+                }
+                PathLine {
                     x: dashSurfaceWrapper.width
-                    y: root.borderT - 1
-                    radiusX: root.filletR
-                    radiusY: root.filletR
-                    direction: PathArc.Clockwise
+                    y: root.borderT - 0.5
                 }
             }
         }
@@ -410,23 +456,23 @@ Item {
                 capStyle: ShapePath.FlatCap
 
                 startX: 0; startY: 0
-                PathLine { x: Math.max(0, parent.width - root.modalRadius); y: 0 }
+                PathLine { x: Math.max(0, bottomPopoutSurface.width - root.modalRadius); y: 0 }
                 PathArc {
-                    x: parent.width
+                    x: bottomPopoutSurface.width
                     y: root.modalRadius
                     radiusX: root.modalRadius
                     radiusY: root.modalRadius
                     direction: PathArc.Clockwise
                 }
-                PathLine { x: parent.width; y: Math.max(root.modalRadius, parent.height - bottomPopoutSurface.effectiveR) }
+                PathLine { x: bottomPopoutSurface.width; y: Math.max(root.modalRadius, bottomPopoutSurface.height - bottomPopoutSurface.effectiveR) }
                 PathArc {
-                    x: Math.max(0, parent.width - bottomPopoutSurface.effectiveR)
-                    y: parent.height
+                    x: Math.max(0, bottomPopoutSurface.width - bottomPopoutSurface.effectiveR)
+                    y: bottomPopoutSurface.height
                     radiusX: bottomPopoutSurface.effectiveR
                     radiusY: bottomPopoutSurface.effectiveR
                     direction: PathArc.Clockwise
                 }
-                PathLine { x: 0; y: parent.height }
+                PathLine { x: 0; y: bottomPopoutSurface.height }
             }
         }
     }
@@ -478,7 +524,7 @@ Item {
                 strokeWidth: 1
                 capStyle: ShapePath.FlatCap
 
-                startX: parent.width; startY: 0
+                startX: rightControlSurface.width; startY: 0
                 PathLine { x: root.modalRadius; y: 0 }
                 PathArc {
                     x: 0
@@ -487,15 +533,15 @@ Item {
                     radiusY: root.modalRadius
                     direction: PathArc.Counterclockwise
                 }
-                PathLine { x: 0; y: Math.max(root.modalRadius, parent.height - root.modalRadius) }
+                PathLine { x: 0; y: Math.max(root.modalRadius, rightControlSurface.height - root.modalRadius) }
                 PathArc {
                     x: root.modalRadius
-                    y: parent.height
+                    y: rightControlSurface.height
                     radiusX: root.modalRadius
                     radiusY: root.modalRadius
                     direction: PathArc.Counterclockwise
                 }
-                PathLine { x: parent.width; y: parent.height }
+                PathLine { x: rightControlSurface.width; y: rightControlSurface.height }
             }
         }
     }

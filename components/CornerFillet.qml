@@ -135,8 +135,8 @@ Item {
             strokeColor: root.strokeColor
             strokeWidth: root.strokeWidth
             capStyle: ShapePath.FlatCap
-            startX: 0; startY: root.height
-            PathArc { x: root.width; y: 0; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
+            startX: -0.5; startY: root.height
+            PathArc { x: root.width; y: -0.5; radiusX: root.width + 0.5; radiusY: root.height + 0.5; direction: PathArc.Clockwise }
         }
     }
 
@@ -149,8 +149,8 @@ Item {
             strokeColor: root.strokeColor
             strokeWidth: root.strokeWidth
             capStyle: ShapePath.FlatCap
-            startX: 0; startY: 0
-            PathArc { x: root.width; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
+            startX: 0; startY: -0.5
+            PathArc { x: root.width + 0.5; y: root.height; radiusX: root.width + 0.5; radiusY: root.height + 0.5; direction: PathArc.Clockwise }
         }
     }
 
@@ -163,8 +163,8 @@ Item {
             strokeColor: root.strokeColor
             strokeWidth: root.strokeWidth
             capStyle: ShapePath.FlatCap
-            startX: 0; startY: 0
-            PathArc { x: root.width; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Counterclockwise }
+            startX: -0.5; startY: 0
+            PathArc { x: root.width; y: root.height + 0.5; radiusX: root.width + 0.5; radiusY: root.height + 0.5; direction: PathArc.Counterclockwise }
         }
     }
 
@@ -177,8 +177,8 @@ Item {
             strokeColor: root.strokeColor
             strokeWidth: root.strokeWidth
             capStyle: ShapePath.FlatCap
-            startX: root.width; startY: 0
-            PathArc { x: 0; y: root.height; radiusX: root.width; radiusY: root.height; direction: PathArc.Clockwise }
+            startX: root.width + 0.5; startY: 0
+            PathArc { x: 0; y: root.height + 0.5; radiusX: root.width + 0.5; radiusY: root.height + 0.5; direction: PathArc.Clockwise }
         }
     }
 
