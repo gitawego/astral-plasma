@@ -134,6 +134,48 @@ Item {
         assert(bottomBorderObj.x === 64, "Bottom border must start at dockW (64), NOT 0");
         assert(bottomBorderObj.width === (1920 - 14 - 64), "Bottom border must span precisely between dockW and width - borderT");
 
+        // ========================================================
+        // 6. Corner Fusion & Perimeter Continuity Tests
+        // ========================================================
+        let fTL = frameTest.innerFilletTLItem;
+        let fTR = frameTest.innerFilletTRItem;
+        let fBL = frameTest.innerFilletBLItem;
+        let fBR = frameTest.innerFilletBRItem;
+
+        // Verify window-clipping corner overlays are disabled
+        assert(fTL.visible === false, "innerFilletTL must be disabled to prevent window clipping");
+        assert(fTR.visible === false, "innerFilletTR must be disabled to prevent window clipping");
+        assert(fBL.visible === false, "innerFilletBL must be disabled to prevent window clipping");
+        assert(fBR.visible === false, "innerFilletBR must be disabled to prevent window clipping");
+
+        // Verify all 4 borders share the exact same liquid glass surface fill
+        assert(frameTest.topBorderLeftItem.color === frameTest.glassFill, "topBorderLeft must match glassFill");
+        assert(frameTest.rightBorderItem.color === frameTest.glassFill, "rightBorder must match glassFill");
+        assert(frameTest.bottomBorderItem.color === frameTest.glassFill, "bottomBorder must match glassFill");
+
+        // Verify specular lines meet flush at corners without gaps
+        assert(frameTest.topBorderRightLimit === (1920 - frameTest.borderT), "When no notification, top border specular line extends flush to rightBorder (width - borderT)");
+        assert(frameTest.rightBorderTopLimit === (frameTest.borderT - 1), "When no notification, right border specular line starts flush at top border (borderT - 1)");
+        assert(frameTest.rightBorderBottomLimit === (1080 - (frameTest.borderT - 1)), "Right border specular line extends flush to bottom border");
+
+        // ========================================================
+        // 7. Notification Liquid Glass Theming Tests
+        // ========================================================
+        assert(notifTest.fusedPanel !== undefined, "NotificationPopup must expose fusedPanel");
+        assert(notifTest.fusedPanel.attachEdge === "topRight", "Notification fusedPanel attachEdge must be topRight");
+        assert(notifTest.borderRounding === 14, "Notification borderRounding must match Config (14)");
+        if (typeof Colors !== "undefined" && Colors.glassSurface) {
+            assert(notifTest.fusedPanel.fillColor === Colors.glassSurface, "Notification fillColor must match Colors.glassSurface");
+            assert(notifTest.fusedPanel.borderColor === Colors.glassBorderSpecular, "Notification borderColor must match Colors.glassBorderSpecular");
+        } else {
+            assert(notifTest.fusedPanel.fillColor.a > 0, "Notification fillColor must have translucent alpha");
+        }
+
+        // Test expansion toggle
+        let initialH = notifTest.height;
+        notifTest.toggleExpanded();
+        assert(notifTest.expanded === true, "toggleExpanded must set expanded to true");
+
         console.log("PASS: Liquid Glass Non-Regression & Geometry Fusion Tests");
         Qt.exit(0);
     }

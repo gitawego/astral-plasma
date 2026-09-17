@@ -9,7 +9,7 @@ Item {
     property real panelWidth: 400
     property real panelHeight: 300
     property real borderThickness: (typeof Config !== "undefined" && Config.borderThickness) ? Config.borderThickness : 14
-    property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 20
+    property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 14
     property color fillColor: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 0.32)
     property color borderColor: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.12)
     property real strokeWidth: 1

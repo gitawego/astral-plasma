@@ -61,6 +61,14 @@ PanelWindow {
             height: root.borderT
         }
 
+        // System Notifications Popup Blur (covers full popup + fused shoulder fillets)
+        Region {
+            x: (notifPopup.visible && !notifPopup.isDismissed) ? Math.max(0, root.width - notifPopup.width - root.filletR) : 0
+            y: 0
+            width: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.width + root.filletR) : 0
+            height: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.height + root.filletR) : 0
+        }
+
         // Left Drawer / Context Menu (when open)
         Region {
             x: (appContextMenu.menuCardVisible || trayContextMenu.menuCardVisible) ? root.dockW : 0
@@ -267,13 +275,6 @@ PanelWindow {
             height: root.borderT
         }
 
-        // Top-left corner fillet
-        Region {
-            x: root.dockW
-            y: root.borderT
-            width: root.filletR
-            height: root.filletR
-        }
 
         // Active Popout (Network, Bluetooth, Audio, etc.)
         Region {

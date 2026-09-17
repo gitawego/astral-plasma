@@ -16,7 +16,7 @@ Scope {
             bottom: true
         }
         exclusiveZone: (Config.settings.dock && Config.settings.dock.enabled && Config.settings.dock.exclusiveZone)
-            ? Config.dockWidth
+            ? (Config.dockWidth + 6)
             : 0
         mask: Region {}
         implicitWidth: 1

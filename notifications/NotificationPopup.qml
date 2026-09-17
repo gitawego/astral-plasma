@@ -53,7 +53,7 @@ Item {
     readonly property bool hasImageCover: effectiveCover.length > 0
 
     property real borderThickness: (typeof Config !== "undefined" && Config.borderThickness) ? Config.borderThickness : 14
-    property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 24
+    property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 14
 
     property bool isDismissed: false
 
@@ -107,7 +107,7 @@ Item {
         anchors.fill: parent
         attachEdge: "topRight"
         panelWidth: root.width
-        panelHeight: root.expanded ? (expandedContent.implicitHeight + 36) : (root.hasImageCover ? 78 : 74)
+        panelHeight: root.expanded ? (expandedContent.implicitHeight + 52) : (root.hasImageCover ? 84 : 78)
         borderThickness: root.borderThickness
         borderRounding: root.borderRounding
         fillColor: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 0.32)
@@ -131,8 +131,8 @@ Item {
             anchors.fill: parent
             anchors.leftMargin: 16
             anchors.rightMargin: 16 + root.borderThickness
-            anchors.topMargin: 14
-            anchors.bottomMargin: 14
+            anchors.topMargin: root.borderThickness + 4
+            anchors.bottomMargin: 10
 
             // Top specular highlight line
             Rectangle {
@@ -140,34 +140,34 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 1
-                color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.3)
-                opacity: 0.5
+                color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.4)
+                opacity: 0.6
             }
 
-            // Left Icon Badge / Album Art Cover (Circular like on Dashboard)
+            // Left Icon Badge / Album Art Cover
             Item {
                 id: iconBadge
                 anchors.left: parent.left
                 anchors.top: root.expanded ? parent.top : undefined
-                anchors.topMargin: root.expanded ? 2 : 0
+                anchors.topMargin: root.expanded ? 4 : 0
                 anchors.verticalCenter: root.expanded ? undefined : parent.verticalCenter
-                width: root.hasImageCover ? 46 : 38
+                width: root.hasImageCover ? 42 : 36
                 height: width
 
-                // Round mask geometry (strictly circular mask like on dashboard)
+                // Round / squircle mask geometry
                 Rectangle {
                     id: badgeCircleMask
                     anchors.fill: parent
-                    radius: width / 2
+                    radius: root.hasImageCover ? (width / 2) : 10
                     color: "white"
                     visible: false
                     layer.enabled: true
                 }
 
-                // Background / fallback circle
+                // Frosted glass icon plate
                 Rectangle {
                     anchors.fill: parent
-                    radius: width / 2
+                    radius: root.hasImageCover ? (width / 2) : 10
                     color: (typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.12)
                     border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.25)
                     border.width: 1
@@ -175,13 +175,13 @@ Item {
                     MaterialIcon {
                         anchors.centerIn: parent
                         text: (root.isMediaNotification || root.hasImageCover) ? "music_note" : root.materialIcon
-                        size: root.hasImageCover ? 22 : 20
+                        size: root.hasImageCover ? 22 : 19
                         color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#d0bcff"
                         visible: !(root.hasImageCover && coverImg.status === Image.Ready)
                     }
                 }
 
-                // Cover image masked strictly to the circular boundary (like on dashboard)
+                // Cover image masked to shape
                 Item {
                     anchors.fill: parent
                     visible: root.hasImageCover && coverImg.status === Image.Ready
@@ -201,10 +201,10 @@ Item {
                     }
                 }
 
-                // Circular border ring matching dashboard circle definition
+                // Specular border ring
                 Rectangle {
                     anchors.fill: parent
-                    radius: width / 2
+                    radius: root.hasImageCover ? (width / 2) : 10
                     color: "transparent"
                     border.color: root.hasImageCover ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.4)) : Qt.rgba(1, 1, 1, 0.2)
                     border.width: root.hasImageCover ? 1.5 : 1
@@ -217,11 +217,12 @@ Item {
                 anchors.leftMargin: 12
                 anchors.right: parent.right
                 anchors.top: parent.top
+                anchors.topMargin: 2
                 anchors.bottom: parent.bottom
 
-                // Row 1: Summary + Time + Controls
+                // Row 1: App Name + Time + Controls
                 Row {
-                    id: headerRow
+                    id: appHeaderRow
                     anchors.left: parent.left
                     anchors.right: headerControls.left
                     anchors.rightMargin: 6
@@ -229,26 +230,28 @@ Item {
                     spacing: 6
 
                     Text {
-                        text: root.summary
+                        text: (root.appName && root.appName.length > 0) ? root.appName : "System"
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                        font.pixelSize: 13
+                        font.pixelSize: 11
                         font.weight: Font.DemiBold
-                        color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF"
+                        renderType: Text.QtRendering
+                        color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
                         elide: Text.ElideRight
-                        width: Math.min(implicitWidth, parent.width - timeText.implicitWidth - 20)
                     }
 
                     Text {
                         text: "•"
-                        font.pixelSize: 11
-                        color: (typeof Colors !== "undefined" && Colors.textMuted) ? Colors.textMuted : "#948f99"
+                        font.pixelSize: 10
+                        renderType: Text.QtRendering
+                        color: (typeof Colors !== "undefined" && Colors.textMuted) ? Colors.textMuted : "#8F9099"
                     }
 
                     Text {
                         id: timeText
                         text: root.timeStr
                         font.pixelSize: 11
-                        color: (typeof Colors !== "undefined" && Colors.textMuted) ? Colors.textMuted : "#948f99"
+                        renderType: Text.QtRendering
+                        color: (typeof Colors !== "undefined" && Colors.textMuted) ? Colors.textMuted : "#8F9099"
                     }
                 }
 
@@ -262,16 +265,16 @@ Item {
                     // Expand Chevron Button
                     Rectangle {
                         id: expandBtn
-                        width: 24
-                        height: 24
-                        radius: 12
-                        color: expandHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.15)) : "transparent"
+                        width: 22
+                        height: 22
+                        radius: 11
+                        color: expandHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.18)) : "transparent"
 
                         MaterialIcon {
                             anchors.centerIn: parent
                             text: "expand_more"
-                            size: 18
-                            color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF"
+                            size: 16
+                            color: (typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#FFFFFF"
                             rotation: root.expanded ? 180 : 0
 
                             Behavior on rotation {
@@ -295,16 +298,16 @@ Item {
                     // Direct Close Button
                     Rectangle {
                         id: headerCloseBtn
-                        width: 24
-                        height: 24
-                        radius: 12
-                        color: closeBtnHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.15)) : "transparent"
+                        width: 22
+                        height: 22
+                        radius: 11
+                        color: closeBtnHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.18)) : "transparent"
 
                         MaterialIcon {
                             anchors.centerIn: parent
                             text: "close"
-                            size: 16
-                            color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF"
+                            size: 15
+                            color: (typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#FFFFFF"
                         }
 
                         MouseArea {
@@ -317,18 +320,36 @@ Item {
                     }
                 }
 
-                // Row 2: Collapsed Body Preview
+                // Row 2: Summary / Title
+                Text {
+                    id: summaryText
+                    anchors.left: parent.left
+                    anchors.right: headerControls.left
+                    anchors.rightMargin: 6
+                    anchors.top: appHeaderRow.bottom
+                    anchors.topMargin: 2
+                    text: root.summary
+                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    renderType: Text.QtRendering
+                    color: (typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#FFFFFF"
+                    elide: Text.ElideRight
+                }
+
+                // Row 3: Collapsed Body Preview
                 Text {
                     id: bodyPreview
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.top: headerRow.bottom
-                    anchors.topMargin: 4
-                    visible: !root.expanded
+                    anchors.top: summaryText.bottom
+                    anchors.topMargin: 2
+                    visible: !root.expanded && root.body.length > 0
                     text: root.body
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                     font.pixelSize: 12
-                    color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#d5cfe0"
+                    renderType: Text.QtRendering
+                    color: (typeof Colors !== "undefined" && Colors.textMuted) ? Colors.textMuted : "#c7c6ca"
                     elide: Text.ElideRight
                     maximumLineCount: 1
                 }
@@ -338,17 +359,18 @@ Item {
                     id: expandedContent
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.top: headerRow.bottom
-                    anchors.topMargin: 6
+                    anchors.top: summaryText.bottom
+                    anchors.topMargin: 4
                     visible: root.expanded
-                    spacing: 10
+                    spacing: 8
 
                     Text {
                         width: parent.width
                         text: root.body
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                         font.pixelSize: 12
-                        color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#d5cfe0"
+                        renderType: Text.QtRendering
+                        color: (typeof Colors !== "undefined" && Colors.textMuted) ? Colors.textMuted : "#c7c6ca"
                         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                     }
 
@@ -357,18 +379,18 @@ Item {
                         spacing: 8
 
                         Rectangle {
-                            height: 28
-                            width: 60
-                            radius: 14
-                            color: closeHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.2)) : ((typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.1))
+                            height: 26
+                            width: 62
+                            radius: 13
+                            color: closeHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.22)) : ((typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.12))
                             border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.3)
                             border.width: 1
 
                             Row {
                                 anchors.centerIn: parent
                                 spacing: 4
-                                MaterialIcon { text: "close"; size: 14; color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF" }
-                                Text { text: "Close"; font.pixelSize: 11; color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF" }
+                                MaterialIcon { text: "close"; size: 13; color: (typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#FFFFFF" }
+                                Text { text: "Close"; font.pixelSize: 11; renderType: Text.QtRendering; color: (typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#FFFFFF" }
                             }
 
                             MouseArea {

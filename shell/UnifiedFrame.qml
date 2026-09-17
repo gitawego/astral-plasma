@@ -43,6 +43,10 @@ Item {
     readonly property alias rightBorderItem: rightBorder
     readonly property alias bottomBorderItem: bottomBorder
     readonly property alias dashSurfaceWrapperItem: dashSurfaceWrapper
+    readonly property alias innerFilletTLItem: innerFilletTL
+    readonly property alias innerFilletTRItem: innerFilletTR
+    readonly property alias innerFilletBLItem: innerFilletBL
+    readonly property alias innerFilletBRItem: innerFilletBR
 
     // Left Dock Surface
     Rectangle {
@@ -56,19 +60,19 @@ Item {
 
         Rectangle {
             x: parent.width - 1
-            y: root.borderT + root.filletR
+            y: root.borderT - 1
             width: 1
-            height: Math.max(0, parent.height - (root.borderT * 2 + root.filletR * 2))
+            height: Math.max(0, parent.height - 2 * (root.borderT - 1))
             color: root.borderColor
         }
     }
 
     property real notifHeight: 74
 
-    readonly property bool hasNotification: (typeof NotificationService !== "undefined" && NotificationService.hasNotification)
+    readonly property bool hasNotification: (typeof NotificationService !== "undefined" && NotificationService && NotificationService.hasNotification) ? true : false
     readonly property real topBorderRightLimit: root.hasNotification
         ? (root.width - 380 - root.filletR)
-        : (root.width - root.borderT - root.filletR)
+        : (root.width - root.borderT)
     readonly property real topBorderRightCap: root.hasNotification
         ? (root.width - 380)
         : (root.width - root.borderT)
@@ -84,12 +88,12 @@ Item {
 
         // Segment left of dropdown
         Rectangle {
-            x: root.filletR
+            x: 0
             y: parent.height - 1
             height: 1
             width: root.dropdownOffsetProgress > 0.001 
-                ? Math.max(0, root.dropX - (root.dockW + root.filletR) - root.filletR)
-                : Math.max(0, root.topBorderRightLimit - (root.dockW + root.filletR))
+                ? Math.max(0, root.dropX - root.dockW - root.filletR)
+                : Math.max(0, root.topBorderRightLimit - root.dockW)
             color: root.borderColor
         }
     }
@@ -105,18 +109,18 @@ Item {
 
         // Segment right of dropdown
         Rectangle {
-            x: root.filletR
+            x: 0
             y: parent.height - 1
             height: 1
-            width: Math.max(0, root.topBorderRightLimit - (parent.x + root.filletR))
+            width: Math.max(0, root.topBorderRightLimit - parent.x)
             color: root.borderColor
         }
     }
 
     readonly property real rightBorderTopLimit: root.hasNotification
         ? (root.notifHeight + root.filletR)
-        : (root.borderT + root.filletR)
-    readonly property real rightBorderBottomLimit: root.height - (root.borderT + root.filletR)
+        : (root.borderT - 1)
+    readonly property real rightBorderBottomLimit: root.height - (root.borderT - 1)
 
     readonly property real rightControlGapTop: root.rightControlY - root.filletR * root.rightControlOffsetProgress
     readonly property real rightControlGapBottom: root.rightControlY + root.rightControlH + root.filletR * root.rightControlOffsetProgress
@@ -164,20 +168,24 @@ Item {
         Rectangle {
             x: (root.popoutOffsetProgress > 0.001
                 ? (root.filletR + root.currentPopW * root.fusedProgress)
-                : root.filletR)
+                : 0)
             y: 0
             height: 1
-            width: Math.max(0, parent.width - x - root.filletR)
+            width: Math.max(0, parent.width - x)
             color: root.borderColor
         }
     }
 
     // Inner Fillet: Top-Left
     CornerFillet {
-        x: root.dockW
-        y: root.borderT
+        id: innerFilletTL
+        visible: false
+        x: root.dockW - 1
+        y: root.borderT - 1
+        width: root.filletR + 1
+        height: root.filletR + 1
         orientation: "topLeft"
-        cornerRadius: root.filletR
+        cornerRadius: root.filletR + 1
         fillColor: root.glassFill
         strokeColor: root.borderColor
         strokeWidth: 1
@@ -185,11 +193,14 @@ Item {
 
     // Inner Fillet: Top-Right
     CornerFillet {
-        visible: !root.hasNotification
+        id: innerFilletTR
+        visible: false
         x: root.width - root.borderT - root.filletR
-        y: root.borderT
+        y: root.borderT - 1
+        width: root.filletR + 1
+        height: root.filletR + 1
         orientation: "topRight"
-        cornerRadius: root.filletR
+        cornerRadius: root.filletR + 1
         fillColor: root.glassFill
         strokeColor: root.borderColor
         strokeWidth: 1
@@ -197,12 +208,15 @@ Item {
 
     // Inner Fillet: Bottom-Left
     CornerFillet {
-        visible: (1.0 - (root.fusedProgress * root.popoutOffsetProgress)) > 0.01
-        opacity: 1.0 - (root.fusedProgress * root.popoutOffsetProgress)
-        x: root.dockW
+        id: innerFilletBL
+        visible: false
+        opacity: 0
+        x: root.dockW - 1
         y: root.height - root.borderT - root.filletR
+        width: root.filletR + 1
+        height: root.filletR + 1
         orientation: "bottomLeft"
-        cornerRadius: root.filletR
+        cornerRadius: root.filletR + 1
         fillColor: root.glassFill
         strokeColor: root.borderColor
         strokeWidth: 1
@@ -210,10 +224,14 @@ Item {
 
     // Inner Fillet: Bottom-Right
     CornerFillet {
+        id: innerFilletBR
+        visible: false
         x: root.width - root.borderT - root.filletR
         y: root.height - root.borderT - root.filletR
+        width: root.filletR + 1
+        height: root.filletR + 1
         orientation: "bottomRight"
-        cornerRadius: root.filletR
+        cornerRadius: root.filletR + 1
         fillColor: root.glassFill
         strokeColor: root.borderColor
         strokeWidth: 1
