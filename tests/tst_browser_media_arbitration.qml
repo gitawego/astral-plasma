@@ -89,19 +89,19 @@ Item {
 
             isPlayerPlaying: function(p, visualizer) {
                 if (!p) return false;
-                if (p.playbackState === 2 || p.playbackState === 0) return false;
                 if (this.isWinePlayer(p)) {
                     if (this.hasOtherNativePlayingPlayer(p)) {
                         return false;
                     }
+                    if (visualizer && visualizer.isStreaming) {
+                        return (visualizer.energy > 0.005 || visualizer.beat > 0.005);
+                    }
                     if (p.isPlaying === true || p.playbackState === 1) {
-                        if (visualizer && visualizer.isStreaming) {
-                            return (visualizer.energy > 0.005 || visualizer.beat > 0.005);
-                        }
                         return true;
                     }
                     return false;
                 }
+                if (p.playbackState === 2 || p.playbackState === 0) return false;
                 if (p.isPlaying === true) return true;
                 if (p.playbackState === 1) return true;
                 return false;
@@ -249,7 +249,37 @@ Item {
         assert(preserved.length === 2, "Preserved list must keep raw Edge instance when PBI absent: got " + preserved.length);
         assert(preserved[1].dbusName === "org.mpris.MediaPlayer2.edge.instance3610", "Raw Edge is preserved");
 
+        // 6. Switching from Browser to Wine: Browser paused, Wine starts playing
+        var pausedEdgePlayer = {
+            dbusName: "org.mpris.MediaPlayer2.plasma-browser-integration",
+            identity: "Microsoft Edge",
+            playbackState: 2, // Paused
+            isPlaying: false
+        };
+        var winePlayerWithStaleState = {
+            dbusName: "org.mpris.MediaPlayer2.cloudmusic",
+            identity: "NetEase Cloud Music (Wine)",
+            playbackState: 2, // Stale DBus state from Wine
+            isPlaying: false
+        };
+        service.players = [winePlayerWithStaleState, pausedEdgePlayer];
+
+        // Edge is paused, so hasOtherNativePlayingPlayer is false.
+        // PipeWire visualizer detects audio energy from Wine -> Wine isPlaying must be true!
+        var activeStreamingVisualizer = { isStreaming: true, energy: 0.85, beat: 0.90 };
+        assert(service.isPlayerPlaying(winePlayerWithStaleState, activeStreamingVisualizer) === true, "Wine with stale DBus state must be playing when audio energy is present and no native player is playing");
+        assert(service.isPlayerPlaying(pausedEdgePlayer, activeStreamingVisualizer) === false, "Paused Edge player must remain false even with audio energy");
+
+        service.updateActivePlayer();
+        assert(service.currentPlayer !== null, "currentPlayer must not be null");
+        assert(service.currentPlayer.identity === "NetEase Cloud Music (Wine)", "Active player must switch/stay on NetEase when NetEase is playing: got " + service.currentPlayer.identity);
+
+        // When Wine is truly paused, audio energy is 0.0 -> isPlayerPlaying must be false
+        var quietVisualizer = { isStreaming: true, energy: 0.0, beat: 0.0 };
+        assert(service.isPlayerPlaying(winePlayerWithStaleState, quietVisualizer) === false, "Wine player must be not playing when visualizer has zero energy");
+
         console.log("PASS: Browser Media Arbitration Tests");
         Qt.exit(0);
     }
 }
+

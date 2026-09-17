@@ -91,31 +91,36 @@ Singleton {
     function isPlayerPlaying(p) {
         if (!p) return false;
 
-        // Ground-truth: An explicitly Paused (2) or Stopped (0) player is never playing
-        if (p.playbackState === 2 || p.playbackState === 0) return false;
-        if (typeof MprisPlaybackState !== "undefined") {
-            if (p.playbackState === MprisPlaybackState.Paused || p.playbackState === MprisPlaybackState.Stopped) return false;
-        }
-
-        // Wine player handling
+        // Wine player handling: Wine emits no native DBus playback signals.
+        // When user plays/pauses inside Wine GUI, DBus playbackState remains stale.
+        // Therefore physical audio energy is the sole ground truth, provided no other native player is playing!
         if (isWinePlayer(p)) {
-            // If another native player is playing, PipeWire audio belongs to that player
+            // 1. If another native player is actively playing (e.g. Edge playing YouTube),
+            // physical audio energy belongs to that player, NOT to Wine!
             if (hasOtherNativePlayingPlayer(p)) {
                 return false;
             }
-            // If Wine player DBus state indicates Playing:
+            // 2. If visualizer is streaming audio from PipeWire, real physical audio energy is the ground truth
+            if (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.isStreaming) {
+                return (AudioVisualizer.energy > 0.005 || AudioVisualizer.beat > 0.005);
+            }
+            // 3. If visualizer is active or has energy:
+            if (typeof AudioVisualizer !== "undefined" && AudioVisualizer && (AudioVisualizer.active === true || AudioVisualizer.energy > 0.005 || AudioVisualizer.beat > 0.005)) {
+                return true;
+            }
+            // 4. Fallback when visualizer is offline or not streaming yet: check DBus state
             if (p.isPlaying === true || p.playbackState === 1 || (typeof MprisPlaybackState !== "undefined" && p.playbackState === MprisPlaybackState.Playing)) {
-                // If visualizer is streaming audio from PipeWire, verify non-silence
-                // (Wine does not cork PipeWire when paused internally, so silence indicates pause)
-                if (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.isStreaming) {
-                    return (AudioVisualizer.energy > 0.005 || AudioVisualizer.beat > 0.005);
-                }
                 return true;
             }
             return false;
         }
 
-        // Native MPRIS players (Edge, Chrome, Firefox, Strawberry, Elisa, etc.)
+        // Native MPRIS players (Edge, Chrome, Firefox, Strawberry, Elisa, etc.):
+        // DBus state is authoritative for native Linux players
+        if (p.playbackState === 2 || p.playbackState === 0) return false;
+        if (typeof MprisPlaybackState !== "undefined") {
+            if (p.playbackState === MprisPlaybackState.Paused || p.playbackState === MprisPlaybackState.Stopped) return false;
+        }
         if (p.isPlaying === true) return true;
         if (p.playbackState === 1) return true;
         if (typeof MprisPlaybackState !== "undefined" && p.playbackState === MprisPlaybackState.Playing) return true;
