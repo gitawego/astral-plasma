@@ -70,4 +70,23 @@ Singleton {
     // Soft drop shadow
     readonly property color shadowColor: Qt.rgba(0, 0, 0, 0.08)
     readonly property color borderSubtle: Qt.alpha(Colors.outline, 0.18)
+
+    // =========================================================================
+    // Apple Liquid Glass Design System Tokens
+    // =========================================================================
+    readonly property int radiusGlassModal: 32
+    readonly property int radiusGlassCard: 20
+    readonly property int radiusGlassItem: 14
+    readonly property int radiusGlassPill: 9999
+
+    readonly property real glassSpecularWidth: 1.2
+    readonly property real glassBorderWidth: 1.0
+    readonly property real glassCausticIntensity: 0.18
+
+    // Interactive scale bounce & liquid compression physics
+    readonly property real glassScaleBounce: 0.975
+    readonly property int animGlassPress: 120
+    readonly property int animGlassRelease: 240
+    readonly property var curveGlassElastic: [0.34, 1.35, 0.30, 1.0, 1.0, 1.0]
 }
+

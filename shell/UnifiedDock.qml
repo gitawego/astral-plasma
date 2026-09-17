@@ -220,9 +220,22 @@ Item {
             implicitWidth: 30
             implicitHeight: (wsBtnSize + wsSpacing) * 4 - wsSpacing + wsPad * 2
             radius: Theme.radiusFull
-            color: Colors.surfaceContainer
-            border.color: Theme.borderSubtle
+            color: Colors.glassCard
+            border.color: Colors.glassBorderSubtle
             border.width: 1
+
+            // Top specular highlight
+            Rectangle {
+                anchors.top: parent.top
+                anchors.topMargin: 0.5
+                anchors.left: parent.left
+                anchors.leftMargin: parent.width * 0.25
+                anchors.right: parent.right
+                anchors.rightMargin: parent.width * 0.25
+                height: 1
+                color: Colors.glassBorderSpecular
+                opacity: 0.8
+            }
 
             readonly property int activeWsIndex: {
                 for (let i = 0; i < Math.min(4, KWinWorkspaces.desktops.length); i++) {
@@ -540,11 +553,24 @@ Item {
             readonly property int maxAppsHeight: Math.max(120, root.height - topSection.implicitHeight - 360)
             implicitHeight: Math.min(appsCol.implicitHeight + 8, maxAppsHeight)
             radius: Math.round((root.iconS + 16) * 0.25)
-            color: Colors.surfaceContainer
-            border.color: Theme.borderSubtle
+            color: Colors.glassCard
+            border.color: Colors.glassBorderSubtle
             border.width: 1
             visible: root.taskbarList.length > 0
             clip: true
+
+            // Top specular highlight
+            Rectangle {
+                anchors.top: parent.top
+                anchors.topMargin: 0.5
+                anchors.left: parent.left
+                anchors.leftMargin: parent.radius * 0.35
+                anchors.right: parent.right
+                anchors.rightMargin: parent.radius * 0.35
+                height: 1
+                color: Colors.glassBorderSpecular
+                opacity: 0.75
+            }
 
             Flickable {
                 id: appsFlickable
@@ -754,10 +780,23 @@ Item {
             implicitWidth: root.iconS + 16
             implicitHeight: trayCol.implicitHeight + 8
             radius: Math.round((root.iconS + 16) * 0.25)
-            color: Colors.surfaceContainer
-            border.color: Theme.borderSubtle
+            color: Colors.glassCard
+            border.color: Colors.glassBorderSubtle
             border.width: 1
             visible: WindowService.tray.length > 0
+
+            // Top specular highlight
+            Rectangle {
+                anchors.top: parent.top
+                anchors.topMargin: 0.5
+                anchors.left: parent.left
+                anchors.leftMargin: parent.radius * 0.35
+                anchors.right: parent.right
+                anchors.rightMargin: parent.radius * 0.35
+                height: 1
+                color: Colors.glassBorderSpecular
+                opacity: 0.75
+            }
 
             Column {
                 id: trayCol

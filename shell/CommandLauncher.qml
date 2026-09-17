@@ -30,7 +30,12 @@ PanelWindow {
         right: true
     }
 
-    color: Qt.rgba(0, 0, 0, 0.4) // Dim background overlay
+    color: Qt.rgba(0, 0, 0, 0.45) // Dim background overlay
+
+    BackgroundEffect.blurRegion: Region {
+        item: modalBox
+        radius: modalBox.radius
+    }
 
     // Themed token fallbacks
     readonly property color colSurface: (typeof Colors !== "undefined" && Colors.surface) ? Colors.surface : "#1a1b26"
@@ -206,47 +211,55 @@ PanelWindow {
         }
     }
 
-    // Modal Box docked flush at bottom with rounded top corners
-    Rectangle {
+    // Floating Liquid Glass Modal Sheet (Elevated 16px with concentric 32px squircle)
+    GlassSurface {
         id: modalBox
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 0
+        anchors.bottomMargin: 16
         anchors.horizontalCenter: parent.horizontalCenter
         width: root.isWallpaperMode ? 1200 : 640
         height: {
-            if (root.isWallpaperMode) return 260;
+            if (root.isWallpaperMode) return 280;
             if (root.isCommandMode && !root.hasActiveCommandPage) {
-                return Math.min(root.filteredSuggestions.length * 56 + 88, 280);
+                return Math.min(root.filteredSuggestions.length * 56 + 104, 310);
             }
-            if (root.isSchemeMode) return 150;
-            if (root.isModeMode) return 140;
-            if (root.isSettingsMode) return 140;
-            return Math.min(root.filteredApps.length * 48 + 88, 480);
+            if (root.isSchemeMode) return 170;
+            if (root.isModeMode) return 160;
+            if (root.isSettingsMode) return 160;
+            return Math.min(root.filteredApps.length * 50 + 104, 500);
         }
-        radius: 28
-        color: root.colSurface
-        border.color: root.colBorderSubtle
-        border.width: 1
+        radius: Theme.radiusGlassModal
+        glassColor: Colors.glassSurface
+        specularColor: Colors.glassBorderSpecular
+        subtleBorderColor: Colors.glassBorderSubtle
+        causticColor: Colors.glassCausticGlow
+        showSpecular: true
+        showCaustic: true
+        showShadow: true
+        enableCursorGlint: true
+        clipContent: false
 
         Behavior on width {
-            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveDefaultSpatial }
         }
         Behavior on height {
-            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveDefaultSpatial }
         }
 
-        // Keep bottom edge flush against screen
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: 28
-            color: parent.color
-        }
-
-        // Catch clicks inside dialog
+        // Catch clicks inside dialog and track pointer for dynamic glass glint
         MouseArea {
             anchors.fill: parent
+            hoverEnabled: true
+            onPositionChanged: (mouse) => {
+                modalBox.cursorX = mouse.x;
+                modalBox.cursorY = mouse.y;
+            }
+            onEntered: modalBox.hovered = true
+            onExited: {
+                modalBox.hovered = false;
+                modalBox.cursorX = -1;
+                modalBox.cursorY = -1;
+            }
             onClicked: {}
         }
 
@@ -254,13 +267,13 @@ PanelWindow {
         Item {
             id: contentArea
             anchors.top: parent.top
-            anchors.topMargin: 16
+            anchors.topMargin: 18
             anchors.bottom: searchBar.top
-            anchors.bottomMargin: 12
+            anchors.bottomMargin: 14
             anchors.left: parent.left
-            anchors.leftMargin: 16
+            anchors.leftMargin: 18
             anchors.right: parent.right
-            anchors.rightMargin: 16
+            anchors.rightMargin: 18
             clip: !root.isWallpaperMode
 
             // 1. Wallpaper Carousel View (Frames 47 & 48)
@@ -293,16 +306,39 @@ PanelWindow {
                 boundsBehavior: Flickable.StopAtBounds
 
                 delegate: Rectangle {
+                    id: suggCard
                     required property var modelData
                     required property int index
 
                     readonly property bool isSelected: root.selectedSuggestionIndex === index
                     width: suggestionsList.width
                     height: 52
-                    radius: 14
-                    color: isSelected ? root.colSurfaceContainerHigh : (suggHover.containsMouse ? root.colSurfaceContainer : "transparent")
-                    border.color: isSelected ? root.colPrimary : "transparent"
-                    border.width: 1
+                    radius: Theme.radiusGlassItem
+                    color: isSelected ? Colors.glassCardActive : (suggHover.containsMouse ? Colors.glassCardHover : "transparent")
+                    border.color: isSelected ? Colors.primary : (suggHover.containsMouse ? Colors.glassBorderSpecular : "transparent")
+                    border.width: isSelected ? 1.5 : 1
+
+                    scale: suggHover.pressed ? Theme.glassScaleBounce : (suggHover.containsMouse ? 1.01 : 1.0)
+                    Behavior on scale {
+                        NumberAnimation { duration: Theme.animGlassPress; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveGlassElastic }
+                    }
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animExpressiveFastEffects }
+                    }
+
+                    // Top specular highlight line
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.topMargin: 0.5
+                        anchors.left: parent.left
+                        anchors.leftMargin: parent.radius * 0.4
+                        anchors.right: parent.right
+                        anchors.rightMargin: parent.radius * 0.4
+                        height: 1
+                        color: Colors.glassBorderSpecular
+                        visible: isSelected || suggHover.containsMouse
+                        opacity: isSelected ? 0.95 : 0.65
+                    }
 
                     RowLayout {
                         anchors.fill: parent
@@ -314,12 +350,14 @@ PanelWindow {
                             width: 34
                             height: 34
                             radius: 10
-                            color: isSelected ? root.colPrimary : root.colSurfaceContainer
+                            color: isSelected ? Colors.primary : Colors.glassPill
+                            border.color: isSelected ? "transparent" : Colors.glassBorderSubtle
+                            border.width: 1
                             MaterialIcon {
                                 anchors.centerIn: parent
                                 text: modelData.icon || "terminal"
                                 size: 18
-                                color: isSelected ? root.colOnPrimary : root.colPrimary
+                                color: isSelected ? Colors.onPrimary : Colors.primary
                             }
                         }
 
@@ -332,7 +370,7 @@ PanelWindow {
                                 text: modelData.name || ""
                                 font.pixelSize: 13
                                 font.weight: Font.DemiBold
-                                color: root.colTextOnSurface
+                                color: isSelected ? "#FFFFFF" : Colors.textMain
                                 elide: Text.ElideRight
                             }
 
@@ -340,16 +378,27 @@ PanelWindow {
                                 Layout.fillWidth: true
                                 text: modelData.description || ""
                                 font.pixelSize: 11
-                                color: root.colTextMuted
+                                color: isSelected ? Qt.alpha("#FFFFFF", 0.75) : Colors.textMuted
                                 elide: Text.ElideRight
                             }
                         }
 
-                        Text {
-                            text: "↵ Select"
-                            font.pixelSize: 11
-                            color: root.colTextMuted
+                        GlassPill {
+                            id: selectPill
+                            isPrimary: true
+                            interactive: false
                             visible: isSelected
+                            implicitWidth: 70
+                            implicitHeight: 28
+                            paddingHorizontal: 8
+                            paddingVertical: 4
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Select ↵"
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                                color: selectPill.textColor
+                            }
                         }
                     }
 
@@ -555,20 +604,50 @@ PanelWindow {
                 highlightMoveDuration: 0
 
                 delegate: Rectangle {
+                    id: appCard
                     required property var modelData
                     required property int index
 
                     readonly property bool isSelected: root.selectedAppIndex === index
                     width: appsList.width
-                    height: 48
-                    radius: 12
-                    color: isSelected ? root.colSurfaceContainerHigh : (appRowHover.containsMouse ? root.colSurfaceContainer : "transparent")
-                    border.color: isSelected ? root.colPrimary : "transparent"
-                    border.width: 1
+                    height: 50
+                    radius: Theme.radiusGlassItem
+                    color: isSelected 
+                        ? Colors.glassCardActive 
+                        : (appRowHover.containsMouse ? Colors.glassCardHover : "transparent")
+                    border.color: isSelected 
+                        ? Colors.primary 
+                        : (appRowHover.containsMouse ? Colors.glassBorderSpecular : "transparent")
+                    border.width: isSelected ? 1.5 : 1
+
+                    scale: appRowHover.pressed ? Theme.glassScaleBounce : (appRowHover.containsMouse ? 1.01 : 1.0)
+                    Behavior on scale {
+                        NumberAnimation { duration: Theme.animGlassPress; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveGlassElastic }
+                    }
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animExpressiveFastEffects }
+                    }
+                    Behavior on border.color {
+                        ColorAnimation { duration: Theme.animExpressiveFastEffects }
+                    }
+
+                    // Top specular rim reflection on hover/active
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.topMargin: 0.5
+                        anchors.left: parent.left
+                        anchors.leftMargin: parent.radius * 0.4
+                        anchors.right: parent.right
+                        anchors.rightMargin: parent.radius * 0.4
+                        height: 1
+                        color: Colors.glassBorderSpecular
+                        visible: isSelected || appRowHover.containsMouse
+                        opacity: isSelected ? 0.95 : 0.65
+                    }
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 12
+                        anchors.leftMargin: 14
                         anchors.rightMargin: 12
                         spacing: 12
 
@@ -601,7 +680,7 @@ PanelWindow {
                                 anchors.centerIn: parent
                                 text: "apps"
                                 size: 22
-                                color: isSelected ? root.colPrimary : root.colTextMuted
+                                color: isSelected ? Colors.primary : Colors.textMuted
                                 visible: !appIcon.visible || appIcon.status !== Image.Ready
                             }
                         }
@@ -615,7 +694,7 @@ PanelWindow {
                                 text: modelData.name || "Application"
                                 font.pixelSize: 13
                                 font.weight: Font.DemiBold
-                                color: root.colTextOnSurface
+                                color: isSelected ? "#FFFFFF" : Colors.textMain
                                 elide: Text.ElideRight
                             }
 
@@ -624,16 +703,29 @@ PanelWindow {
                                 visible: !!modelData.comment
                                 text: modelData.comment || ""
                                 font.pixelSize: 11
-                                color: root.colTextMuted
+                                color: isSelected ? Qt.alpha("#FFFFFF", 0.75) : Colors.textMuted
                                 elide: Text.ElideRight
                             }
                         }
 
-                        Text {
-                            text: "↵ Launch"
-                            font.pixelSize: 10
-                            color: root.colTextMuted
+                        // Grounded High-Contrast Solid CTA Pill for selected item
+                        GlassPill {
+                            id: launchPill
+                            isPrimary: true
+                            interactive: false
                             visible: isSelected
+                            implicitWidth: 70
+                            implicitHeight: 28
+                            paddingHorizontal: 10
+                            paddingVertical: 4
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Launch ↵"
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                                color: launchPill.textColor
+                            }
                         }
                     }
 
@@ -670,19 +762,22 @@ PanelWindow {
         }
 
         // Search Input Pill Row docked at the BOTTOM of the modal
-        Rectangle {
+        GlassPill {
             id: searchBar
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 16
+            anchors.bottomMargin: 18
             anchors.left: parent.left
-            anchors.leftMargin: 16
+            anchors.leftMargin: 18
             anchors.right: parent.right
-            anchors.rightMargin: 16
-            height: 48
-            radius: 24
-            color: root.colSurfaceContainer
-            border.color: searchInput.activeFocus ? root.colPrimary : "transparent"
-            border.width: 1
+            anchors.rightMargin: 18
+            height: 46
+            radius: 23
+            interactive: false
+            active: searchInput.activeFocus
+            baseColor: Colors.glassPill
+            hoverColor: Colors.glassPillHover
+            borderColor: searchInput.activeFocus ? Colors.primary : Colors.glassBorderSubtle
+            borderWidth: searchInput.activeFocus ? 1.5 : 1.0
 
             RowLayout {
                 anchors.fill: parent

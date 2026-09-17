@@ -177,6 +177,34 @@ Singleton {
     readonly property color pillHover: Qt.alpha(root.textMain, root.isDarkMode ? 0.12 : 0.08)
     readonly property color pillPress: Qt.alpha(root.textMain, root.isDarkMode ? 0.22 : 0.14)
 
+    // =========================================================================
+    // Apple Liquid Glass Material Tokens
+    // =========================================================================
+    // Primary glass surface tint (smoked dark vs crisp luminous light)
+    readonly property color glassSurface: root.isDarkMode 
+        ? Qt.rgba(0.06, 0.07, 0.09, 0.72) 
+        : Qt.rgba(0.97, 0.96, 0.98, 0.72)
+
+    // Nested glass card surfaces
+    readonly property color glassCard: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.08 : 0.45)
+    readonly property color glassCardHover: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.14 : 0.65)
+    readonly property color glassCardActive: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.20 : 0.85)
+
+    // Frosted interactive pills
+    readonly property color glassPill: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.10 : 0.50)
+    readonly property color glassPillHover: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.18 : 0.70)
+    readonly property color glassPillActive: root.accentPrimary
+
+    // Directional specular rim highlights (top-left reflection to bottom-right ambient shadow)
+    readonly property color glassBorderSpecular: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.38 : 0.85)
+    readonly property color glassBorderSubtle: root.isDarkMode ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : Qt.rgba(0.0, 0.0, 0.0, 0.08)
+    readonly property color glassInnerRim: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.12 : 0.40)
+
+    // Optical refraction caustic glow
+    readonly property color glassCausticGlow: Qt.alpha(root.accentPrimary, root.isDarkMode ? 0.15 : 0.08)
+    readonly property color glassShadowColor: Qt.rgba(0, 0, 0, root.isDarkMode ? 0.35 : 0.14)
+
+
     // Dynamic color loader (reads ~/.cache/caelestia/colors.json if matugen was run)
     FileView {
         id: colorsCache

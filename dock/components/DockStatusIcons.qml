@@ -13,9 +13,22 @@ Rectangle {
     implicitWidth: Config.dockIconSize + 16
     implicitHeight: layout.implicitHeight + Theme.padSmall * 2
     radius: Math.round((Config.dockIconSize + 16) * 0.25)
-    color: Colors.surfaceContainer
-    border.color: Theme.borderSubtle
+    color: Colors.glassCard
+    border.color: Colors.glassBorderSubtle
     border.width: 1
+
+    // Top specular rim highlight
+    Rectangle {
+        anchors.top: parent.top
+        anchors.topMargin: 0.5
+        anchors.left: parent.left
+        anchors.leftMargin: parent.radius * 0.35
+        anchors.right: parent.right
+        anchors.rightMargin: parent.radius * 0.35
+        height: 1
+        color: Colors.glassBorderSpecular
+        opacity: 0.75
+    }
 
     HoverHandler {
         id: groupHover

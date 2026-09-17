@@ -174,10 +174,10 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: root.cardWidth
                 height: root.cardHeight
-                radius: 14
-                color: root.colSurfaceContainerHighest
-                border.color: isCurrent ? root.colPrimary : (cardHover.containsMouse ? root.colBorderSubtle : "transparent")
-                border.width: isCurrent ? 2 : (cardHover.containsMouse ? 1 : 0)
+                radius: Theme.radiusGlassCard
+                color: Colors.glassCard
+                border.color: isCurrent ? Colors.primary : (cardHover.containsMouse ? Colors.glassBorderSpecular : Colors.glassBorderSubtle)
+                border.width: isCurrent ? 2 : 1
                 clip: true
 
                 Image {
@@ -193,6 +193,20 @@ Item {
                     smooth: true
                 }
 
+                // Top specular glare line
+                Rectangle {
+                    anchors.top: parent.top
+                    anchors.topMargin: 0.5
+                    anchors.left: parent.left
+                    anchors.leftMargin: parent.radius * 0.35
+                    anchors.right: parent.right
+                    anchors.rightMargin: parent.radius * 0.35
+                    height: 1
+                    color: Colors.glassBorderSpecular
+                    opacity: isCurrent ? 0.95 : 0.65
+                    z: 5
+                }
+
                 // Video indicator badge if animated wallpaper
                 Rectangle {
                     visible: !!modelData.is_video
@@ -203,6 +217,7 @@ Item {
                     height: 20
                     radius: 10
                     color: Qt.rgba(0, 0, 0, 0.6)
+                    z: 6
 
                     MaterialIcon {
                         anchors.centerIn: parent
@@ -222,7 +237,7 @@ Item {
                 text: root.formatWallpaperName(modelData.name, modelData.path)
                 font.pixelSize: 12
                 font.weight: isCurrent ? Font.DemiBold : Font.Normal
-                color: isCurrent ? root.colTextOnSurface : root.colTextMuted
+                color: isCurrent ? "#FFFFFF" : Colors.textMuted
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
             }

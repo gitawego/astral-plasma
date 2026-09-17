@@ -157,13 +157,13 @@ Item {
     // =========================================================================
     // THEME PALETTE BINDINGS (Consistent with Iris & Caelestia pastel presets)
     // =========================================================================
-    readonly property color cardColor: (typeof Colors !== "undefined" && Colors.surface)
-        ? Qt.alpha(Colors.surface, 0.60)
-        : Qt.rgba(0.98, 0.97, 0.96, 0.60)
+    readonly property color cardColor: (typeof Colors !== "undefined" && Colors.glassSurface)
+        ? Colors.glassSurface
+        : Qt.rgba(0.06, 0.07, 0.09, 0.72)
 
-    readonly property color cardBorderColor: (typeof Colors !== "undefined" && Colors.outline)
-        ? Qt.alpha(Colors.outline, 0.35)
-        : Qt.rgba(0, 0, 0, 0.12)
+    readonly property color cardBorderColor: (typeof Colors !== "undefined" && Colors.glassBorderSubtle)
+        ? Colors.glassBorderSubtle
+        : Qt.rgba(1, 1, 1, 0.12)
 
     readonly property color fgColor: (typeof Colors !== "undefined" && Colors.textMain)
         ? Colors.textMain
@@ -202,7 +202,20 @@ Item {
             blurMax: 32
             shadowBlur: 0.7
             shadowVerticalOffset: 4
-            shadowColor: Qt.rgba(0, 0, 0, 0.16)
+            shadowColor: (typeof Colors !== "undefined" && Colors.glassShadowColor) ? Colors.glassShadowColor : Qt.rgba(0, 0, 0, 0.25)
+        }
+
+        // Top specular rim glare line
+        Rectangle {
+            anchors.top: parent.top
+            anchors.topMargin: 0.5
+            anchors.left: parent.left
+            anchors.leftMargin: parent.radius * 0.35
+            anchors.right: parent.right
+            anchors.rightMargin: parent.radius * 0.35
+            height: 1.2
+            color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.75)
+            opacity: 0.85
         }
     }
 
