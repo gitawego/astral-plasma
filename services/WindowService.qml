@@ -19,6 +19,18 @@ Singleton {
     property alias appId: root.activeIconName
     property alias materialIcon: root.activeMaterialIcon
 
+    property bool hasMaximizedWindow: false
+    readonly property bool hasActiveMaximized: {
+        if (root.hasMaximizedWindow) return true;
+        for (let i = 0; i < root.windows.length; i++) {
+            const w = root.windows[i];
+            if (w && (w.isMaximized || w.isFullScreen || w.maximized || w.fullScreen)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     readonly property var activeWindow: {
         for (let i = 0; i < root.windows.length; i++) {
             if (root.windows[i].isActive) return root.windows[i];
@@ -282,6 +294,7 @@ Singleton {
                     if (data.activeIconName !== undefined) root.activeIconName = data.activeIconName;
                     if (data.activeAppId !== undefined) root.activeAppId = data.activeAppId;
                     if (data.activeId !== undefined) root.activeId = data.activeId;
+                    if (data.hasMaximizedWindow !== undefined) root.hasMaximizedWindow = Boolean(data.hasMaximizedWindow);
                     if (data.windows) root.windows = data.windows;
                     if (data.tray) root.tray = data.tray;
                 } catch (e) {

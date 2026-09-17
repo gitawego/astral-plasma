@@ -91,9 +91,12 @@ impl WatcherService {
                 app_id: meta.app_id.clone(),
                 desktop_file: meta.desktop_file.clone(),
                 is_active: true,
+                is_maximized: false,
+                is_fullscreen: false,
             });
         }
 
+        let has_max = st.cached_windows.iter().any(|w| w.is_maximized || w.is_fullscreen);
         let payload = ActiveWindowPayload {
             msg_type: "active".to_string(),
             active_title: meta.app_name,
@@ -102,6 +105,7 @@ impl WatcherService {
             active_app_id: meta.app_id,
             active_id: clean_wid.to_string(),
             windows: st.cached_windows.clone(),
+            has_maximized_window: has_max,
         };
 
         if let Ok(serialized) = serde_json::to_string(&payload) {
@@ -149,6 +153,9 @@ impl WatcherService {
                 item["active"].as_bool().unwrap_or(false)
             };
 
+            let is_maximized = item["maximized"].as_bool().unwrap_or(false);
+            let is_fullscreen = item["fullScreen"].as_bool().unwrap_or(false);
+
             enriched.push(Window {
                 id: wid,
                 title: t.to_string(),
@@ -158,11 +165,14 @@ impl WatcherService {
                 app_id: meta.app_id,
                 desktop_file: meta.desktop_file,
                 is_active,
+                is_maximized,
+                is_fullscreen,
             });
         }
 
         st.cached_windows = enriched.clone();
 
+        let has_max = enriched.iter().any(|w| w.is_maximized || w.is_fullscreen);
         let payload = WindowsListPayload {
             msg_type: "windows".to_string(),
             windows: enriched,
@@ -170,6 +180,7 @@ impl WatcherService {
             active_material_icon: st.active_material_icon.clone(),
             active_icon_name: st.active_icon_name.clone(),
             active_app_id: st.active_app_id.clone(),
+            has_maximized_window: has_max,
         };
 
         if let Ok(serialized) = serde_json::to_string(&payload) {
@@ -210,6 +221,7 @@ impl WatcherService {
                 st.active_app_id = act.app_id;
                 st.active_id = act.id;
             }
+            let has_max = windows.iter().any(|w| w.is_active && (w.is_maximized || w.is_fullscreen));
             let payload = WindowsListPayload {
                 msg_type: "windows".to_string(),
                 windows,
@@ -217,6 +229,7 @@ impl WatcherService {
                 active_material_icon: st.active_material_icon.clone(),
                 active_icon_name: st.active_icon_name.clone(),
                 active_app_id: st.active_app_id.clone(),
+                has_maximized_window: has_max,
             };
             if let Ok(serialized) = serde_json::to_string(&payload) {
                 println!("{}", serialized);
@@ -243,18 +256,22 @@ function notifyActive(c) {
 }
 
 function getWindowList() {
+    var cur = workspace.currentDesktop;
     var wins = workspace.windowList();
     var res = [];
     var activeId = workspace.activeWindow ? ("" + workspace.activeWindow.internalId).replace("{","").replace("}","") : "";
     for (var i = 0; i < wins.length; i++) {
         var w = wins[i];
         if (w.normalWindow && w.caption && w.resourceClass !== "quickshell") {
+            var onCurrent = w.desktops ? (w.desktops.indexOf(cur) !== -1 || w.onAllDesktops) : true;
             res.push({
                 id: ("" + w.internalId).replace("{","").replace("}",""),
                 title: "" + (w.caption || ""),
                 cls: "" + (w.resourceClass || ""),
                 app: "" + (w.desktopFileName || ""),
-                active: ("" + w.internalId).replace("{","").replace("}","") === activeId
+                active: ("" + w.internalId).replace("{","").replace("}","") === activeId,
+                maximized: (w.maximizeMode === 3) && !w.minimized && onCurrent,
+                fullScreen: Boolean(w.fullScreen) && !w.minimized && onCurrent
             });
         }
     }
@@ -291,6 +308,10 @@ function connectWindow(c) {
                 notifyMedia(c);
             }
         });
+        c.maximizedChanged.connect(function() { notifyList(); });
+        c.fullScreenChanged.connect(function() { notifyList(); });
+        c.minimizedChanged.connect(function() { notifyList(); });
+        c.desktopsChanged.connect(function() { notifyList(); });
         var cls = "" + (c.resourceClass || "");
         if (cls.indexOf("cloudmusic") !== -1 || cls.indexOf("netease") !== -1) {
             notifyMedia(c);
@@ -309,6 +330,9 @@ workspace.windowAdded.connect(function(c) {
     notifyList();
 });
 workspace.windowRemoved.connect(notifyList);
+try {
+    workspace.currentDesktopChanged.connect(function() { notifyList(); });
+} catch(e) {}
 
 try {
     var wins = workspace.stackingOrder;
@@ -362,6 +386,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
             st.active_id = first.id.clone();
         }
 
+        let has_max = st.cached_windows.iter().any(|w| w.is_maximized || w.is_fullscreen);
         let full_payload = FullStatePayload {
             windows: st.cached_windows.clone(),
             tray: st.cached_tray.clone(),
@@ -369,6 +394,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
             active_material_icon: st.active_material_icon.clone(),
             active_icon_name: st.active_icon_name.clone(),
             active_app_id: st.active_app_id.clone(),
+            has_maximized_window: has_max,
         };
 
         if let Ok(serialized) = serde_json::to_string(&full_payload) {

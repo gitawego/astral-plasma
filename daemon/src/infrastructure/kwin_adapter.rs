@@ -44,18 +44,22 @@ impl Default for KWinAdapter {
 impl WindowManagerPort for KWinAdapter {
     fn query_windows(&self) -> DynResult<(Vec<Window>, Option<Window>)> {
         let script = r#"
+var cur = workspace.currentDesktop;
 var activeId = workspace.activeWindow ? ('' + workspace.activeWindow.internalId).replace('{','').replace('}','') : '';
 var wins = workspace.windowList();
 var res = [];
 for (var i = 0; i < wins.length; i++) {
     var w = wins[i];
     if (w.normalWindow && w.caption && w.resourceClass !== 'quickshell') {
+        var onCurrent = w.desktops ? (w.desktops.indexOf(cur) !== -1 || w.onAllDesktops) : true;
         res.push({
             id: ('' + w.internalId).replace('{','').replace('}',''),
             title: w.caption,
             cls: '' + w.resourceClass,
             app: '' + w.desktopFileName,
-            active: ('' + w.internalId).replace('{','').replace('}','') === activeId
+            active: ('' + w.internalId).replace('{','').replace('}','') === activeId,
+            maximized: (w.maximizeMode === 3) && !w.minimized && onCurrent,
+            fullScreen: Boolean(w.fullScreen) && !w.minimized && onCurrent
         });
     }
 }
@@ -109,6 +113,8 @@ console.warn('CAELESTIA_WINS:' + JSON.stringify(res));
                 let cls = item["cls"].as_str().unwrap_or_default();
                 let app = item["app"].as_str().unwrap_or_default();
                 let is_active = item["active"].as_bool().unwrap_or(false);
+                let is_maximized = item["maximized"].as_bool().unwrap_or(false);
+                let is_fullscreen = item["fullScreen"].as_bool().unwrap_or(false);
 
                 let k_icon = krunner_icons.get(title).map(|s| s.as_str()).unwrap_or("");
                 let meta = resolve_window_meta(title, cls, app, k_icon);
@@ -122,6 +128,8 @@ console.warn('CAELESTIA_WINS:' + JSON.stringify(res));
                     app_id: meta.app_id,
                     desktop_file: meta.desktop_file,
                     is_active,
+                    is_maximized,
+                    is_fullscreen,
                 };
 
                 if is_active {

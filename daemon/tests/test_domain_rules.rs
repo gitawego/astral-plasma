@@ -133,12 +133,15 @@ fn test_json_event_serialization() {
         app_id: "testapp".to_string(),
         desktop_file: "testapp.desktop".to_string(),
         is_active: true,
+        is_maximized: false,
+        is_fullscreen: false,
     };
 
     let serialized = serde_json::to_string(&win).unwrap();
     assert!(serialized.contains(r#""appName":"TestApp""#));
     assert!(serialized.contains(r#""iconName":"test-icon""#));
     assert!(serialized.contains(r#""isActive":true"#));
+    assert!(serialized.contains(r#""isMaximized":false"#));
 }
 
 #[test]

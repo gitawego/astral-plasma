@@ -66,36 +66,36 @@ PanelWindow {
         Region {
             x: root.dockW
             y: root.borderT
-            width: root.filletR
-            height: root.filletR
-            bottomRightRadius: root.filletR
+            width: root.cornerFilletR
+            height: root.cornerFilletR
+            bottomRightRadius: root.cornerFilletR
         }
 
         // Top-Right Corner Fillet: quarter-circle in top-right (bottom-left cut out)
         Region {
-            x: root.width - root.borderT - root.filletR
+            x: root.width - root.borderT - root.cornerFilletR
             y: root.borderT
-            width: root.filletR
-            height: root.filletR
-            bottomLeftRadius: root.filletR
+            width: root.cornerFilletR
+            height: root.cornerFilletR
+            bottomLeftRadius: root.cornerFilletR
         }
 
         // Bottom-Left Corner Fillet: quarter-circle in bottom-left (top-right cut out)
         Region {
             x: root.dockW
-            y: root.height - root.borderT - root.filletR
-            width: root.filletR
-            height: root.filletR
-            topRightRadius: root.filletR
+            y: root.height - root.borderT - root.cornerFilletR
+            width: root.cornerFilletR
+            height: root.cornerFilletR
+            topRightRadius: root.cornerFilletR
         }
 
         // Bottom-Right Corner Fillet: quarter-circle in bottom-right (top-left cut out)
         Region {
-            x: root.width - root.borderT - root.filletR
-            y: root.height - root.borderT - root.filletR
-            width: root.filletR
-            height: root.filletR
-            topLeftRadius: root.filletR
+            x: root.width - root.borderT - root.cornerFilletR
+            y: root.height - root.borderT - root.cornerFilletR
+            width: root.cornerFilletR
+            height: root.cornerFilletR
+            topLeftRadius: root.cornerFilletR
         }
 
         // System Notifications Popup Blur (covers full popup + fused shoulder fillets)
@@ -151,30 +151,6 @@ PanelWindow {
             topRightRadius: Theme.radiusGlassCard
             bottomRightRadius: (root.fusedProgress > 0.5) ? 0 : Theme.radiusGlassCard
         }
-        // Fused Bottom Popout: Top shoulder fillet (curved into dock)
-        Region {
-            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.max(0, fusedBottomPopoutWrapper.y - root.filletR) : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletR : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletR : 0
-            topRightRadius: root.filletR
-        }
-        // Fused Bottom Popout: Bottom shoulder fillet (when floating, curved into dock)
-        Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress < 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress < 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress < 0.5) ? root.filletR : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress < 0.5) ? root.filletR : 0
-            bottomRightRadius: root.filletR
-        }
-        // Fused Bottom Popout: Bottom junction fillet (when bottom-fused, curved into bottom border)
-        Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress >= 0.5) ? (root.dockW + root.currentPopW) : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress >= 0.5) ? (root.height - root.borderT - root.filletR) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress >= 0.5) ? root.filletR : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress >= 0.5) ? root.filletR : 0
-            topRightRadius: root.filletR
-        }
 
         // Right Edge Control: Main Body
         Region {
@@ -185,27 +161,13 @@ PanelWindow {
             topLeftRadius: Theme.radiusGlassCard
             bottomLeftRadius: Theme.radiusGlassCard
         }
-        // Right Edge Control: Top shoulder fillet
-        Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - root.filletR) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.max(0, root.rightControlY - root.filletR) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletR : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletR : 0
-            topLeftRadius: root.filletR
-        }
-        // Right Edge Control: Bottom shoulder fillet
-        Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - root.filletR) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletR : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletR : 0
-            bottomLeftRadius: root.filletR
-        }
     }
 
     // Configuration and Tokens
     readonly property real borderT: Config.borderThickness
     readonly property real filletR: Config.borderRounding
+    readonly property bool hasMaximizedWindow: (typeof WindowService !== "undefined" && WindowService && (WindowService.hasMaximizedWindow || WindowService.hasActiveMaximized)) ? true : false
+    readonly property real cornerFilletR: hasMaximizedWindow ? 0 : root.filletR
     readonly property real dockW: Config.dockWidth + 6
     readonly property real iconS: Config.dockIconSize
 
@@ -392,24 +354,24 @@ PanelWindow {
         // Fused Bottom Popout (when open)
         Region {
             x: root.dockW
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.max(0, fusedBottomPopoutWrapper.y - root.filletR) : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (root.currentPopW + root.filletR) : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.height + root.filletR * 2 + 10) : 0
+            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.y : 0
+            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.currentPopW : 0
+            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.height : 0
         }
 
         // Right Edge Volume/Brightness Control (when open)
         Region {
             x: rightEdgeControlWrapper.offsetProgress > 0.001
-                ? (root.width - root.borderT - root.rightControlW - root.filletR)
+                ? (root.width - root.borderT - root.rightControlW)
                 : 0
             y: rightEdgeControlWrapper.offsetProgress > 0.001
-                ? Math.max(0, root.rightControlY - root.filletR)
+                ? root.rightControlY
                 : 0
             width: rightEdgeControlWrapper.offsetProgress > 0.001
-                ? (root.rightControlW + root.borderT + root.filletR)
+                ? (root.rightControlW + root.borderT)
                 : 0
             height: rightEdgeControlWrapper.offsetProgress > 0.001
-                ? (root.rightControlH + root.filletR * 2)
+                ? root.rightControlH
                 : 0
         }
 

@@ -25,6 +25,10 @@ pub struct Window {
     pub desktop_file: String,
     #[serde(rename = "isActive")]
     pub is_active: bool,
+    #[serde(rename = "isMaximized", default)]
+    pub is_maximized: bool,
+    #[serde(rename = "isFullScreen", default)]
+    pub is_fullscreen: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -90,6 +94,8 @@ pub struct FullStatePayload {
     pub active_icon_name: String,
     #[serde(rename = "activeAppId")]
     pub active_app_id: String,
+    #[serde(rename = "hasMaximizedWindow", default)]
+    pub has_maximized_window: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +113,8 @@ pub struct ActiveWindowPayload {
     #[serde(rename = "activeId")]
     pub active_id: String,
     pub windows: Vec<Window>,
+    #[serde(rename = "hasMaximizedWindow", default)]
+    pub has_maximized_window: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,6 +130,8 @@ pub struct WindowsListPayload {
     pub active_icon_name: String,
     #[serde(rename = "activeAppId")]
     pub active_app_id: String,
+    #[serde(rename = "hasMaximizedWindow", default)]
+    pub has_maximized_window: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
