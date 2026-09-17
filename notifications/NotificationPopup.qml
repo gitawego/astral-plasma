@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Effects
 import "../components"
 import "../theme"
+import "../config"
 import "../services"
 
 Item {
@@ -53,7 +54,7 @@ Item {
     readonly property bool hasImageCover: effectiveCover.length > 0
 
     property real borderThickness: (typeof Config !== "undefined" && Config.borderThickness) ? Config.borderThickness : 14
-    property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 14
+    property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 6
 
     property bool isDismissed: false
 
