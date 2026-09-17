@@ -625,7 +625,7 @@ Item {
                     traySubmenuStack = [];
                     activeLayer = 0;
                     isTransitioning = false;
-                    layerA.items = WindowService.activeTrayMenuItems || [];
+                    layerA.items = WindowService.activeTrayLoading ? [] : (WindowService.activeTrayMenuItems || []);
                     layerA.resetScroll();
                     layerA.x = 0;
                     layerA.opacity = 1.0;
@@ -728,9 +728,13 @@ Item {
                     function onActiveTrayMenuItemsChanged() {
                         if (traySection.traySubmenuStack.length === 0 && !traySection.isTransitioning) {
                             if (traySection.activeLayer === 0) {
-                                traySection.layerA.items = WindowService.activeTrayMenuItems || [];
+                                if (typeof layerA !== "undefined" && layerA) {
+                                    layerA.items = WindowService.activeTrayMenuItems || [];
+                                }
                             } else {
-                                traySection.layerB.items = WindowService.activeTrayMenuItems || [];
+                                if (typeof layerB !== "undefined" && layerB) {
+                                    layerB.items = WindowService.activeTrayMenuItems || [];
+                                }
                             }
                         }
                     }

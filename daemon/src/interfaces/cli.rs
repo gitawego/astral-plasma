@@ -249,7 +249,12 @@ pub async fn run_cli() -> DynResult<()> {
                         let menu_path = &args[4];
                         let tray = crate::infrastructure::tray_adapter::TrayAdapter::new();
                         let items = tray.fetch_menu(svc, menu_path)?;
-                        let json = serde_json::to_string(&items)?;
+                        let response = serde_json::json!({
+                            "service": svc,
+                            "menuPath": menu_path,
+                            "items": items,
+                        });
+                        let json = serde_json::to_string(&response)?;
                         println!("{}", json);
                     } else {
                         eprintln!("Usage: astral-plasma tray menu <service> <menu_path>");

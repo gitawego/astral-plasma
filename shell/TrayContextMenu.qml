@@ -130,9 +130,11 @@ Item {
 
         if (item && item.menuPath) {
             WindowService.fetchTrayMenu(item.service, item.menuPath, (items) => {
-                root.isLoading = false;
-                root.menuItems = items;
-                root.resetToRoot();
+                if (root.targetItem && root.targetItem.service === item.service) {
+                    root.isLoading = false;
+                    root.menuItems = items;
+                    root.resetToRoot();
+                }
             });
         } else {
             root.isLoading = false;

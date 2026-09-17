@@ -70,21 +70,51 @@ Singleton {
     }
 
     property var _trayMenuCallback: null
+    property int _trayMenuReqId: 0
+    property string _trayMenuReqService: ""
 
     Process {
         id: trayMenuProc
         stdout: StdioCollector {
             onStreamFinished: {
-                if (root._trayMenuCallback) {
+                const cb = root._trayMenuCallback;
+                const expectedReqId = root._trayMenuReqId;
+                const expectedService = root._trayMenuReqService;
+                // Invalidate callback immediately so this stream is consumed once only
+                root._trayMenuCallback = null;
+
+                if (cb) {
                     try {
-                        const items = JSON.parse(this.text.trim());
-                        root._trayMenuCallback(Array.isArray(items) ? items : []);
+                        const raw = this.text.trim();
+                        if (!raw) {
+                            cb([], expectedReqId);
+                            return;
+                        }
+                        const parsed = JSON.parse(raw);
+                        let items = [];
+                        let respService = "";
+                        if (Array.isArray(parsed)) {
+                            items = parsed;
+                        } else if (parsed && Array.isArray(parsed.items)) {
+                            items = parsed.items;
+                            respService = parsed.service || "";
+                        }
+                        // Discard if response is stamped with a different service
+                        if (respService && expectedService && respService !== expectedService) {
+                            console.warn("Tray menu service mismatch: expected", expectedService, "got", respService);
+                            return;
+                        }
+                        cb(items, expectedReqId);
                     } catch (e) {
                         console.warn("fetchTrayMenu error:", e, this.text);
-                        root._trayMenuCallback([]);
+                        cb([], expectedReqId);
                     }
-                    root._trayMenuCallback = null;
                 }
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                if (this.text.trim()) console.warn("[WindowService] trayMenuProc stderr:", this.text.trim());
             }
         }
     }
@@ -98,8 +128,24 @@ Singleton {
             if (callback) callback([]);
             return;
         }
-        root._trayMenuCallback = callback;
-        trayMenuProc.running = false;
+
+        // 1. Immediately invalidate any pending callback BEFORE terminating the old process
+        root._trayMenuCallback = null;
+        if (trayMenuProc.running) {
+            trayMenuProc.running = false;
+        }
+
+        // 2. Increment request ID token and track target service
+        const currentReqId = ++root._trayMenuReqId;
+        root._trayMenuReqService = service;
+
+        // 3. Register callback guarded by request ID
+        root._trayMenuCallback = (items, respReqId) => {
+            if (respReqId === undefined || respReqId === root._trayMenuReqId) {
+                if (callback) callback(items);
+            }
+        };
+
         trayMenuProc.command = [root.daemonBin, "tray", "menu", service, menuPath];
         trayMenuProc.running = true;
     }
@@ -107,27 +153,33 @@ Singleton {
     property var activeTrayItem: null
     property var activeTrayMenuItems: []
     property bool activeTrayLoading: false
-    property var _menuCache: ({})
 
     function loadTrayMenu(item) {
-        if (!item) return;
-        root.activeTrayItem = item;
-        const cacheKey = (item.service || "") + ":" + (item.menuPath || "");
-        if (root._menuCache[cacheKey]) {
-            root.activeTrayMenuItems = root._menuCache[cacheKey];
-            root.activeTrayLoading = false;
-        } else {
-            root.activeTrayLoading = true;
+        if (!item) {
+            root.activeTrayItem = null;
             root.activeTrayMenuItems = [];
+            root.activeTrayLoading = false;
+            return;
+        }
+
+        const isDifferentItem = !root.activeTrayItem 
+            || root.activeTrayItem.service !== item.service 
+            || root.activeTrayItem.menuPath !== item.menuPath;
+
+        if (isDifferentItem) {
+            // CRITICAL: Reset items and set loading state BEFORE setting activeTrayItem,
+            // ensuring any synchronous onActiveTrayItemChanged listeners see clean empty items
+            root.activeTrayMenuItems = [];
+            root.activeTrayLoading = true;
+            root.activeTrayItem = item;
         }
 
         if (item.menuPath) {
             root.fetchTrayMenu(item.service, item.menuPath, (items) => {
                 if (root.activeTrayItem && root.activeTrayItem.service === item.service) {
-                    root.activeTrayLoading = false;
                     root.activeTrayMenuItems = items;
+                    root.activeTrayLoading = false;
                 }
-                root._menuCache[cacheKey] = items;
             });
         } else {
             root.activeTrayLoading = false;
