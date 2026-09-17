@@ -274,7 +274,7 @@ PanelWindow {
             anchors.leftMargin: 18
             anchors.right: parent.right
             anchors.rightMargin: 18
-            clip: !root.isWallpaperMode
+            clip: true
 
             // 1. Wallpaper Carousel View (Frames 47 & 48)
             WallpaperCarousel {

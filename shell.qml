@@ -128,6 +128,9 @@ ShellRoot {
         function show(summary: string, body: string, icon: string, appName: string, image: string): void {
             NotificationService.show(summary, body, icon, appName, image);
         }
+        function post(summary: string, body: string): void {
+            NotificationService.show(summary, body, "info", "Astral", "");
+        }
         function dismiss(): void {
             NotificationService.dismiss();
         }

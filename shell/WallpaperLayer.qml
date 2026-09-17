@@ -9,11 +9,12 @@ import "../config"
 PanelWindow {
     id: root
 
-    property ShellScreen targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+    required property ShellScreen targetScreen
     screen: targetScreen
 
     WlrLayershell.layer: WlrLayer.Background
     WlrLayershell.namespace: "caelestia-wallpaper"
+    WlrLayershell.exclusionMode: ExclusionMode.Ignore
 
     anchors {
         top: true
@@ -22,7 +23,7 @@ PanelWindow {
         right: true
     }
 
-    color: "#0a0a0c"
+    color: "transparent"
 
     readonly property string wallpaperSource: (typeof WallpaperEngine !== "undefined") ? WallpaperEngine.effectiveWallpaper : ""
     readonly property bool isVideo: (typeof WallpaperEngine !== "undefined") ? WallpaperEngine.isVideo : false

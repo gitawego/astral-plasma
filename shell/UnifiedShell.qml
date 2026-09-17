@@ -39,9 +39,9 @@ PanelWindow {
 
         // Top Border
         Region {
-            x: 0
+            x: root.dockW
             y: 0
-            width: root.width
+            width: root.width - root.dockW - root.borderT
             height: root.borderT
         }
 
@@ -55,10 +55,19 @@ PanelWindow {
 
         // Bottom Border
         Region {
-            x: 0
+            x: root.dockW
             y: root.height - root.borderT
-            width: root.width
+            width: root.width - root.dockW - root.borderT
             height: root.borderT
+        }
+
+        // Left Drawer / Context Menu (when open)
+        Region {
+            x: (appContextMenu.menuCardVisible || trayContextMenu.menuCardVisible) ? root.dockW : 0
+            y: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardY : (appContextMenu.menuCardVisible ? appContextMenu.menuCardY : 0)
+            width: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardW : (appContextMenu.menuCardVisible ? appContextMenu.menuCardW : 0)
+            height: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardH : (appContextMenu.menuCardVisible ? appContextMenu.menuCardH : 0)
+            radius: Theme.radiusGlassCard
         }
 
         // Central Dropdown Dashboard (when open)
@@ -183,7 +192,7 @@ PanelWindow {
     }
 
     readonly property real fusedProgress: isFusedToBottom ? 1.0 : 0.0
-    readonly property color borderColor: Theme.borderSubtle
+    readonly property color borderColor: Colors.glassBorderSpecular
 
     Component.onCompleted: {
         if (Config.debugMode) {
@@ -308,10 +317,10 @@ PanelWindow {
 
         // System Notifications Popup
         Region {
-            x: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.x - root.filletR) : 0
+            x: (notifPopup.visible && !notifPopup.isDismissed) ? Math.max(0, root.width - notifPopup.width) : 0
             y: 0
-            width: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.width + root.filletR) : 0
-            height: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.height + root.filletR) : 0
+            width: (notifPopup.visible && !notifPopup.isDismissed) ? notifPopup.width : 0
+            height: (notifPopup.visible && !notifPopup.isDismissed) ? notifPopup.height : 0
         }
 
         // App Context Menu or Tray Context Menu (when open)
@@ -330,6 +339,7 @@ PanelWindow {
         borderT: root.borderT
         filletR: root.filletR
         borderColor: root.borderColor
+        notifHeight: (notifPopup.visible && !notifPopup.isDismissed) ? notifPopup.height : 74
 
         dropX: root.dropX
         dropW: root.dropW
@@ -425,10 +435,8 @@ PanelWindow {
     // 5. SYSTEM NOTIFICATIONS POPUP (TOP-RIGHT FUSED)
     NotificationPopup {
         id: notifPopup
-        anchors.right: parent.right
-        anchors.rightMargin: 0
-        anchors.top: parent.top
-        anchors.topMargin: 0
+        x: Math.max(0, root.width - width)
+        y: 0
         z: 1000
         visible: NotificationService.hasNotification
         summary: NotificationService.currentSummary

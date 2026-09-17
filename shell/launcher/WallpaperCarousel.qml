@@ -98,7 +98,7 @@ Item {
         anchors.fill: parent
         orientation: ListView.Horizontal
         spacing: 16
-        clip: false
+        clip: true
         snapMode: ListView.SnapToItem
         highlightRangeMode: ListView.StrictlyEnforceRange
         preferredHighlightBegin: Math.max(0, (width - root.cardWidth) / 2)

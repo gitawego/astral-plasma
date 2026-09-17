@@ -14,6 +14,12 @@ Item {
     property real dockW: Config.dockWidth + 6
     property real screenH: parent.height
 
+    readonly property real menuCardX: menuCard.x
+    readonly property real menuCardY: menuCard.y
+    readonly property real menuCardW: menuCard.width
+    readonly property real menuCardH: menuCard.height
+    readonly property bool menuCardVisible: menuCard.visible
+
     function show(app, globalY) {
         menuCard.targetApp = app;
         menuCard.targetGlobalY = globalY;
@@ -38,7 +44,7 @@ Item {
         property var targetApp: null
         property real targetGlobalY: 0
 
-        x: root.dockW + 10
+        x: root.dockW
         y: Math.max(12, Math.min(root.screenH - height - 12, targetGlobalY - 10))
         width: 220
 

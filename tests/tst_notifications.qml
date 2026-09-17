@@ -65,11 +65,14 @@ Item {
         assert(notifPopup.isDismissed === false, "isDismissed initially false");
         assert(notifPopup.fusedPanel.isOpen === true, "fusedPanel should be open initially");
 
-        // Test 6: Border stroke & color fusion
+        // Test 6: Border stroke & color fusion (Liquid Glass non-regression)
         assert(notifPopup.fusedPanel.strokeWidth === 1, "fusedPanel strokeWidth must be 1 for border fusion");
         assert(notifPopup.fusedPanel.fillet1.strokeWidth === 1, "fillet1 strokeWidth must be 1");
         assert(notifPopup.fusedPanel.fillet2.strokeWidth === 1, "fillet2 strokeWidth must be 1");
         assert(notifPopup.fusedPanel.fillColor !== "transparent", "fusedPanel fillColor must not be transparent");
+        assert(notifPopup.fusedPanel.fillColor.a < 0.99, "fusedPanel fillColor must be translucent liquid glass");
+        assert(notifPopup.fusedPanel.fillet1.overlap === 0, "fillet1 overlap must be 0 for seamless border fusion");
+        assert(notifPopup.fusedPanel.fillet2.overlap === 0, "fillet2 overlap must be 0 for seamless border fusion");
 
         // Test 7: Dismissal via close() method
         var closedSignalFired = false;

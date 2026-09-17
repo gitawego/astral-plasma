@@ -21,14 +21,15 @@ Item {
 
     readonly property bool isMediaNotification: {
         let app = (root.appName || "").toLowerCase();
-        return app.includes("strawberry") || 
-               app.includes("elisa") || 
-               app.includes("cloudmusic") || 
-               app.includes("netease") || 
-               app.includes("music") || 
-               app.includes("player") || 
-               app.includes("spotify") ||
-               (typeof MprisMedia !== "undefined" && MprisMedia.identity && app.includes(MprisMedia.identity.toLowerCase()));
+        let isMprisMatch = (typeof MprisMedia !== "undefined" && Boolean(MprisMedia.identity)) ? app.includes(MprisMedia.identity.toLowerCase()) : false;
+        return Boolean(app.includes("strawberry") || 
+                       app.includes("elisa") || 
+                       app.includes("cloudmusic") || 
+                       app.includes("netease") || 
+                       app.includes("music") || 
+                       app.includes("player") || 
+                       app.includes("spotify") ||
+                       isMprisMatch);
     }
 
     readonly property string effectiveCover: {
@@ -109,7 +110,8 @@ Item {
         panelHeight: root.expanded ? (expandedContent.implicitHeight + 36) : (root.hasImageCover ? 78 : 74)
         borderThickness: root.borderThickness
         borderRounding: root.borderRounding
-        fillColor: (typeof Colors !== "undefined" && Colors.surface) ? Colors.surface : "#141318"
+        fillColor: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 0.32)
+        borderColor: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.12)
         isOpen: root.visible && !root.isDismissed
 
         Behavior on panelHeight {
@@ -131,6 +133,16 @@ Item {
             anchors.rightMargin: 16 + root.borderThickness
             anchors.topMargin: 14
             anchors.bottomMargin: 14
+
+            // Top specular highlight line
+            Rectangle {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 1
+                color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.3)
+                opacity: 0.5
+            }
 
             // Left Icon Badge / Album Art Cover (Circular like on Dashboard)
             Item {
@@ -156,7 +168,9 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
-                    color: (typeof Colors !== "undefined" && Colors.surfaceContainerHigh) ? Colors.surfaceContainerHigh : "#2b2930"
+                    color: (typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.12)
+                    border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.25)
+                    border.width: 1
 
                     MaterialIcon {
                         anchors.centerIn: parent
@@ -192,7 +206,7 @@ Item {
                     anchors.fill: parent
                     radius: width / 2
                     color: "transparent"
-                    border.color: root.hasImageCover ? (typeof Colors !== "undefined" ? Colors.outlineVariant : Qt.rgba(1, 1, 1, 0.15)) : Qt.rgba(1, 1, 1, 0.08)
+                    border.color: root.hasImageCover ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.4)) : Qt.rgba(1, 1, 1, 0.2)
                     border.width: root.hasImageCover ? 1.5 : 1
                 }
             }
@@ -219,7 +233,7 @@ Item {
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                         font.pixelSize: 13
                         font.weight: Font.DemiBold
-                        color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#e6e1e6"
+                        color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF"
                         elide: Text.ElideRight
                         width: Math.min(implicitWidth, parent.width - timeText.implicitWidth - 20)
                     }
@@ -251,13 +265,13 @@ Item {
                         width: 24
                         height: 24
                         radius: 12
-                        color: expandHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.surfaceContainerHighest) ? Colors.surfaceContainerHighest : "#36343b") : "transparent"
+                        color: expandHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.15)) : "transparent"
 
                         MaterialIcon {
                             anchors.centerIn: parent
                             text: "expand_more"
                             size: 18
-                            color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0"
+                            color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF"
                             rotation: root.expanded ? 180 : 0
 
                             Behavior on rotation {
@@ -284,13 +298,13 @@ Item {
                         width: 24
                         height: 24
                         radius: 12
-                        color: closeBtnHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.surfaceContainerHighest) ? Colors.surfaceContainerHighest : "#36343b") : "transparent"
+                        color: closeBtnHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.15)) : "transparent"
 
                         MaterialIcon {
                             anchors.centerIn: parent
                             text: "close"
                             size: 16
-                            color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0"
+                            color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF"
                         }
 
                         MouseArea {
@@ -314,7 +328,7 @@ Item {
                     text: root.body
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                     font.pixelSize: 12
-                    color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0"
+                    color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#d5cfe0"
                     elide: Text.ElideRight
                     maximumLineCount: 1
                 }
@@ -334,7 +348,7 @@ Item {
                         text: root.body
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                         font.pixelSize: 12
-                        color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0"
+                        color: (typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#d5cfe0"
                         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                     }
 
@@ -346,13 +360,15 @@ Item {
                             height: 28
                             width: 60
                             radius: 14
-                            color: closeHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.surfaceContainerHighest) ? Colors.surfaceContainerHighest : "#36343b") : Qt.alpha(Colors.surfaceContainerHigh, 0.6)
+                            color: closeHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.2)) : ((typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.1))
+                            border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.3)
+                            border.width: 1
 
                             Row {
                                 anchors.centerIn: parent
                                 spacing: 4
-                                MaterialIcon { text: "close"; size: 14; color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#e6e1e6" }
-                                Text { text: "Close"; font.pixelSize: 11; color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#e6e1e6" }
+                                MaterialIcon { text: "close"; size: 14; color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF" }
+                                Text { text: "Close"; font.pixelSize: 11; color: (typeof Colors !== "undefined" && Colors.textOnSurface) ? Colors.textOnSurface : "#FFFFFF" }
                             }
 
                             MouseArea {

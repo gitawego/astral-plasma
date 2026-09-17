@@ -26,7 +26,7 @@ Rectangle {
     color: {
         if (!enabled) return "transparent";
         if (hoverArea.containsMouse) {
-            return isDangerous ? Qt.rgba(0.85, 0.2, 0.15, 0.16) : ((typeof Colors !== "undefined" && Colors.surfaceContainerHighest) ? Colors.surfaceContainerHighest : "#36343b");
+            return isDangerous ? Qt.rgba(0.85, 0.2, 0.15, 0.20) : Colors.glassCardHover;
         }
         return "transparent";
     }

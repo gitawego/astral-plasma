@@ -34,24 +34,25 @@ Item {
     property real rightControlY: Math.round((root.height - rightControlH) / 2)
     property real rightControlOffsetProgress: 0.0
 
-    layer.enabled: true
-    layer.effect: MultiEffect {
-        shadowEnabled: true
-        blurMax: 32
-        shadowBlur: 1.0
-        shadowVerticalOffset: 3
-        shadowColor: Qt.rgba(0, 0, 0, 0.28)
-    }
+    readonly property color glassFill: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 0.32)
+    readonly property color glassBorder: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.12)
+    readonly property real modalRadius: (typeof Theme !== "undefined" && Theme.radiusGlassModal) ? Theme.radiusGlassModal : 24
+
+    readonly property alias topBorderLeftItem: topBorderLeft
+    readonly property alias topBorderRightItem: topBorderRight
+    readonly property alias rightBorderItem: rightBorder
+    readonly property alias bottomBorderItem: bottomBorder
+    readonly property alias dashSurfaceWrapperItem: dashSurfaceWrapper
 
     // Left Dock Surface
     Rectangle {
         id: dockBg
-        visible: Config.dockEnabled
+        visible: (typeof Config !== "undefined" && Config.dockEnabled !== undefined) ? Config.dockEnabled : true
         x: 0
         y: 0
         width: root.dockW
         height: root.height
-        color: Colors.glassSurface
+        color: root.glassFill
 
         Rectangle {
             x: parent.width - 1
@@ -62,43 +63,58 @@ Item {
         }
     }
 
-    readonly property real topBorderRightLimit: (typeof NotificationService !== "undefined" && NotificationService.hasNotification)
+    property real notifHeight: 74
+
+    readonly property bool hasNotification: (typeof NotificationService !== "undefined" && NotificationService.hasNotification)
+    readonly property real topBorderRightLimit: root.hasNotification
         ? (root.width - 380 - root.filletR)
         : (root.width - root.borderT - root.filletR)
+    readonly property real topBorderRightCap: root.hasNotification
+        ? (root.width - 380)
+        : (root.width - root.borderT)
 
-    // Thin Top Border
+    // Thin Top Border (Segmented between dockW and width - borderT, avoiding double-translucency overlap)
     Rectangle {
-        id: topBorder
-        x: 0
+        id: topBorderLeft
+        x: root.dockW
         y: 0
-        width: root.width
+        width: Math.max(0, (root.dropdownOffsetProgress > 0.001 ? root.dropX : root.topBorderRightCap) - root.dockW)
         height: root.borderT
-        color: Colors.glassSurface
+        color: root.glassFill
 
         // Segment left of dropdown
         Rectangle {
-            x: root.dockW + root.filletR
+            x: root.filletR
             y: parent.height - 1
             height: 1
             width: root.dropdownOffsetProgress > 0.001 
-                ? Math.max(0, root.dropX - root.filletR - (root.dockW + root.filletR))
+                ? Math.max(0, root.dropX - (root.dockW + root.filletR) - root.filletR)
                 : Math.max(0, root.topBorderRightLimit - (root.dockW + root.filletR))
-            color: root.borderColor
-        }
-
-        // Segment right of dropdown (only when dropdown is open)
-        Rectangle {
-            visible: root.dropdownOffsetProgress > 0.001
-            x: root.dropX + root.dropW + root.filletR
-            y: parent.height - 1
-            height: 1
-            width: Math.max(0, root.topBorderRightLimit - (root.dropX + root.dropW + root.filletR))
             color: root.borderColor
         }
     }
 
-    readonly property real rightBorderTopLimit: (typeof NotificationService !== "undefined" && NotificationService.hasNotification)
-        ? (74 + root.filletR)
+    Rectangle {
+        id: topBorderRight
+        visible: root.dropdownOffsetProgress > 0.001
+        x: root.dropX + root.dropW
+        y: 0
+        width: Math.max(0, root.topBorderRightCap - x)
+        height: root.borderT
+        color: root.glassFill
+
+        // Segment right of dropdown
+        Rectangle {
+            x: root.filletR
+            y: parent.height - 1
+            height: 1
+            width: Math.max(0, root.topBorderRightLimit - (parent.x + root.filletR))
+            color: root.borderColor
+        }
+    }
+
+    readonly property real rightBorderTopLimit: root.hasNotification
+        ? (root.notifHeight + root.filletR)
         : (root.borderT + root.filletR)
     readonly property real rightBorderBottomLimit: root.height - (root.borderT + root.filletR)
 
@@ -109,19 +125,19 @@ Item {
     Rectangle {
         id: rightBorder
         x: root.width - root.borderT
-        y: 0
+        y: root.hasNotification ? root.notifHeight : 0
         width: root.borderT
-        height: root.height
-        color: Colors.glassSurface
+        height: Math.max(0, root.height - y)
+        color: root.glassFill
 
         // Upper segment
         Rectangle {
             x: 0
-            y: root.rightBorderTopLimit
+            y: Math.max(0, root.rightBorderTopLimit - parent.y)
             width: 1
             height: root.rightControlOffsetProgress > 0.001
-                ? Math.max(0, root.rightControlGapTop - y)
-                : Math.max(0, root.rightBorderBottomLimit - y)
+                ? Math.max(0, (root.rightControlGapTop - parent.y) - y)
+                : Math.max(0, (root.rightBorderBottomLimit - parent.y) - y)
             color: root.borderColor
         }
 
@@ -129,29 +145,29 @@ Item {
         Rectangle {
             visible: root.rightControlOffsetProgress > 0.001
             x: 0
-            y: root.rightControlGapBottom
+            y: Math.max(0, root.rightControlGapBottom - parent.y)
             width: 1
-            height: Math.max(0, root.rightBorderBottomLimit - y)
+            height: Math.max(0, (root.rightBorderBottomLimit - parent.y) - y)
             color: root.borderColor
         }
     }
 
-    // Thin Bottom Border
+    // Thin Bottom Border (Partitioned between dockW and width - borderT)
     Rectangle {
         id: bottomBorder
-        x: 0
+        x: root.dockW
         y: root.height - root.borderT
-        width: root.width
+        width: Math.max(0, (root.width - root.borderT) - root.dockW)
         height: root.borderT
-        color: Colors.glassSurface
+        color: root.glassFill
 
         Rectangle {
-            x: root.dockW + (root.popoutOffsetProgress > 0.001
+            x: (root.popoutOffsetProgress > 0.001
                 ? (root.filletR + root.currentPopW * root.fusedProgress)
                 : root.filletR)
             y: 0
             height: 1
-            width: Math.max(0, parent.width - x - (root.borderT + root.filletR))
+            width: Math.max(0, parent.width - x - root.filletR)
             color: root.borderColor
         }
     }
@@ -162,19 +178,19 @@ Item {
         y: root.borderT
         orientation: "topLeft"
         cornerRadius: root.filletR
-        fillColor: Colors.glassSurface
+        fillColor: root.glassFill
         strokeColor: root.borderColor
         strokeWidth: 1
     }
 
     // Inner Fillet: Top-Right
     CornerFillet {
-        visible: !NotificationService.hasNotification
+        visible: !root.hasNotification
         x: root.width - root.borderT - root.filletR
         y: root.borderT
         orientation: "topRight"
         cornerRadius: root.filletR
-        fillColor: Colors.glassSurface
+        fillColor: root.glassFill
         strokeColor: root.borderColor
         strokeWidth: 1
     }
@@ -187,7 +203,7 @@ Item {
         y: root.height - root.borderT - root.filletR
         orientation: "bottomLeft"
         cornerRadius: root.filletR
-        fillColor: Colors.glassSurface
+        fillColor: root.glassFill
         strokeColor: root.borderColor
         strokeWidth: 1
     }
@@ -198,7 +214,7 @@ Item {
         y: root.height - root.borderT - root.filletR
         orientation: "bottomRight"
         cornerRadius: root.filletR
-        fillColor: Colors.glassSurface
+        fillColor: root.glassFill
         strokeColor: root.borderColor
         strokeWidth: 1
     }
@@ -219,8 +235,9 @@ Item {
             y: root.borderT
             orientation: "dropdownLeft"
             cornerRadius: root.filletR
-            fillColor: Colors.glassModalSurface
-            strokeColor: "transparent"
+            fillColor: root.glassFill
+            strokeColor: root.borderColor
+            strokeWidth: 1
             visible: dashSurfaceWrapper.filletFactor > 0.01
             opacity: dashSurfaceWrapper.filletFactor
         }
@@ -230,22 +247,23 @@ Item {
             y: root.borderT
             orientation: "dropdownRight"
             cornerRadius: root.filletR
-            fillColor: Colors.glassModalSurface
-            strokeColor: "transparent"
+            fillColor: root.glassFill
+            strokeColor: root.borderColor
+            strokeWidth: 1
             visible: dashSurfaceWrapper.filletFactor > 0.01
             opacity: dashSurfaceWrapper.filletFactor
         }
 
         Rectangle {
-            x: -2
+            x: 0
             y: 0
-            width: root.dropW + 4
+            width: root.dropW
             height: root.currentDropH
-            color: Colors.glassModalSurface
+            color: root.glassFill
             topLeftRadius: 0
             topRightRadius: 0
-            bottomLeftRadius: Theme.radiusGlassModal
-            bottomRightRadius: Theme.radiusGlassModal
+            bottomLeftRadius: root.modalRadius
+            bottomRightRadius: root.modalRadius
 
             // Subtle 1px top specular catch
             Rectangle {
@@ -253,8 +271,8 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 1
-                color: Colors.glassBorderSpecular
-                opacity: 0.35
+                color: root.glassBorder
+                opacity: 0.45
             }
         }
 
@@ -280,24 +298,24 @@ Item {
                 }
                 PathLine {
                     x: 0
-                    y: Math.max(root.borderT + root.filletR, root.currentDropH - Theme.radiusGlassModal)
+                    y: Math.max(root.borderT + root.filletR, root.currentDropH - root.modalRadius)
                 }
                 PathArc {
-                    x: Theme.radiusGlassModal
+                    x: root.modalRadius
                     y: root.currentDropH
-                    radiusX: Theme.radiusGlassModal
-                    radiusY: Theme.radiusGlassModal
+                    radiusX: root.modalRadius
+                    radiusY: root.modalRadius
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(Theme.radiusGlassModal, root.dropW - Theme.radiusGlassModal)
+                    x: Math.max(root.modalRadius, root.dropW - root.modalRadius)
                     y: root.currentDropH
                 }
                 PathArc {
                     x: root.dropW
-                    y: Math.max(root.borderT + root.filletR, root.currentDropH - Theme.radiusGlassModal)
-                    radiusX: Theme.radiusGlassModal
-                    radiusY: Theme.radiusGlassModal
+                    y: Math.max(root.borderT + root.filletR, root.currentDropH - root.modalRadius)
+                    radiusX: root.modalRadius
+                    radiusY: root.modalRadius
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
@@ -334,7 +352,7 @@ Item {
 
             // 1A. Solid Surface Fill (Floating drawer)
             ShapePath {
-                fillColor: (root.fusedProgress < 0.5) ? Colors.glassSurface : "transparent"
+                fillColor: (root.fusedProgress < 0.5) ? root.glassFill : "transparent"
                 strokeColor: "transparent"
                 strokeWidth: 0
 
@@ -442,7 +460,7 @@ Item {
 
             // 2A. Solid Surface Fill (Bottom-fused drawer)
             ShapePath {
-                fillColor: (root.fusedProgress >= 0.5) ? Colors.glassSurface : "transparent"
+                fillColor: (root.fusedProgress >= 0.5) ? root.glassFill : "transparent"
                 strokeColor: "transparent"
                 strokeWidth: 0
 
@@ -555,7 +573,7 @@ Item {
             opacity: rightControlSurface.filletFactor
 
             ShapePath {
-                fillColor: Colors.glassSurface
+                fillColor: root.glassFill
                 strokeColor: "transparent"
                 strokeWidth: 0
 

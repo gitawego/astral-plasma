@@ -9,9 +9,9 @@ Singleton {
     id: root
 
     // Reactive mode binding directly from Config
-    readonly property bool isDarkMode: Config.isDarkMode
-    readonly property bool dynamicColorsEnabled: Config.dynamicColors
-    readonly property string currentPreset: Config.themePreset
+    readonly property bool isDarkMode: (typeof Config !== "undefined") ? Config.isDarkMode : true
+    readonly property bool dynamicColorsEnabled: (typeof Config !== "undefined") ? Config.dynamicColors : false
+    readonly property string currentPreset: (typeof Config !== "undefined" && Config.themePreset) ? Config.themePreset : "iris"
 
     // Dynamic parsed palette cache from matugen (~/.cache/caelestia/colors.json)
     property var dynamicPalette: null
@@ -180,52 +180,50 @@ Singleton {
     // =========================================================================
     // Apple Liquid Glass Dynamic Themed Material Tokens
     // =========================================================================
-    // Master glass surface tint: translucent frosted glass infused with active theme palette
+    // Master glass surface tint: shared by Top Border, Left Dock, Central Drawer, and Left Drawer
+    // Crystal translucent frosted glass infused with active theme palette
     readonly property color glassSurface: {
-        const base = root.isDarkMode ? Qt.rgba(0.06, 0.07, 0.10, 0.58) : Qt.rgba(0.96, 0.96, 0.98, 0.65);
-        return Qt.tint(base, Qt.alpha(root.surfaceTint, root.isDarkMode ? 0.10 : 0.06));
+        const base = root.isDarkMode ? Qt.rgba(0.06, 0.08, 0.12, 0.32) : Qt.rgba(0.96, 0.97, 1.0, 0.45);
+        return Qt.tint(base, Qt.alpha(root.primary, root.isDarkMode ? 0.22 : 0.16));
     }
 
-    // Modal sheet glass (Command Launcher, Central Dropdown)
-    readonly property color glassModalSurface: {
-        const base = root.isDarkMode ? Qt.rgba(0.07, 0.08, 0.12, 0.60) : Qt.rgba(0.97, 0.97, 1.0, 0.68);
-        return Qt.tint(base, Qt.alpha(root.primary, root.isDarkMode ? 0.12 : 0.07));
-    }
+    // Modal sheet glass (Command Launcher, Central Dropdown) - identical transparency & theme tint
+    readonly property color glassModalSurface: glassSurface
 
-    // Dock capsule glass (Left Dock)
-    readonly property color glassDockSurface: {
-        const base = root.isDarkMode ? Qt.rgba(0.05, 0.06, 0.09, 0.55) : Qt.rgba(0.95, 0.95, 0.98, 0.62);
-        return Qt.tint(base, Qt.alpha(root.surfaceTint, root.isDarkMode ? 0.09 : 0.05));
-    }
+    // Dock capsule glass (Left Dock) - identical transparency & theme tint
+    readonly property color glassDockSurface: glassSurface
 
-    // Distinct glass card surfaces (subtle translucent layering with chromatic depth)
+    // Border frame glass - identical transparency & theme tint
+    readonly property color glassBorderSurface: glassSurface
+
+    // Distinct glass card surfaces (sculpted frosted glass plates with chromatic depth)
     readonly property color glassCard: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.05 : 0.40),
-        Qt.alpha(root.surfaceTint, root.isDarkMode ? 0.07 : 0.05)
+        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.12 : 0.50),
+        Qt.alpha(root.primary, root.isDarkMode ? 0.14 : 0.08)
     )
     readonly property color glassCardHover: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.09 : 0.55),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.12 : 0.08)
+        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.18 : 0.65),
+        Qt.alpha(root.primary, root.isDarkMode ? 0.20 : 0.12)
     )
     readonly property color glassCardActive: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.14 : 0.70),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.16 : 0.10)
+        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.24 : 0.75),
+        Qt.alpha(root.primary, root.isDarkMode ? 0.25 : 0.15)
     )
 
     // Vibrant tinted glass card (e.g. Media Player, Highlighted cards)
     readonly property color glassCardVibrant: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.07 : 0.45),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.18 : 0.12)
+        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.15 : 0.55),
+        Qt.alpha(root.primary, root.isDarkMode ? 0.28 : 0.18)
     )
 
     // Frosted interactive pills
     readonly property color glassPill: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.07 : 0.45),
-        Qt.alpha(root.surfaceTint, root.isDarkMode ? 0.06 : 0.04)
+        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.08 : 0.45),
+        Qt.alpha(root.primary, root.isDarkMode ? 0.08 : 0.05)
     )
     readonly property color glassPillHover: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.12 : 0.60),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.14 : 0.08)
+        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.14 : 0.60),
+        Qt.alpha(root.primary, root.isDarkMode ? 0.16 : 0.10)
     )
     // Active / Prominent Themed Glass Pill (Luminous translucent frosted glass with theme color)
     readonly property color glassPillActive: Qt.tint(
@@ -235,18 +233,18 @@ Singleton {
 
     // Directional specular rim highlights (ultra-fine 1px hairline catch with subtle theme glint)
     readonly property color glassBorderSpecular: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.18 : 0.55),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.10 : 0.08)
+        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.32 : 0.65),
+        Qt.alpha(root.primary, root.isDarkMode ? 0.25 : 0.15)
     )
     readonly property color glassBorderSubtle: Qt.tint(
-        root.isDarkMode ? Qt.rgba(1.0, 1.0, 1.0, 0.09) : Qt.rgba(0.0, 0.0, 0.0, 0.08),
-        Qt.alpha(root.surfaceTint, 0.06)
+        root.isDarkMode ? Qt.rgba(1.0, 1.0, 1.0, 0.12) : Qt.rgba(0.0, 0.0, 0.0, 0.08),
+        Qt.alpha(root.primary, 0.10)
     )
-    readonly property color glassInnerRim: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.06 : 0.25)
+    readonly property color glassInnerRim: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.08 : 0.30)
 
     // Optical refraction caustic glow
-    readonly property color glassCausticGlow: Qt.alpha(root.primary, root.isDarkMode ? 0.08 : 0.05)
-    readonly property color glassShadowColor: Qt.rgba(0, 0, 0, root.isDarkMode ? 0.28 : 0.12)
+    readonly property color glassCausticGlow: Qt.alpha(root.primary, root.isDarkMode ? 0.10 : 0.06)
+    readonly property color glassShadowColor: Qt.rgba(0, 0, 0, root.isDarkMode ? 0.25 : 0.10)
 
 
     // Dynamic color loader (reads ~/.cache/caelestia/colors.json if matugen was run)
