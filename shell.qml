@@ -194,10 +194,4 @@ ShellRoot {
             Quickshell.execDetached([Config.daemonBin, "plasma", "disable", target, "" + Quickshell.processId]);
         }
     }
-
-    Component.onDestruction: {
-        if (Config.disablePlasmaPanels && Config.autoRestorePlasmaOnExit) {
-            Quickshell.execDetached([Config.daemonBin, "plasma", "restore"]);
-        }
-    }
 }
