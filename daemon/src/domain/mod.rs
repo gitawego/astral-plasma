@@ -5,3 +5,6 @@ pub mod ports;
 pub mod plasma;
 pub mod systemd;
 pub mod wine_media;
+pub mod wallpaper;
+pub mod system_settings;
+pub mod shortcuts;

@@ -79,4 +79,90 @@ impl AppLauncherPort for DesktopLauncherAdapter {
 
         Ok(())
     }
+
+    fn list_apps(&self) -> DynResult<Vec<crate::domain::ports::AppInfo>> {
+        use std::collections::HashSet;
+        use std::fs;
+        use std::path::PathBuf;
+
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
+        let app_dirs = [
+            PathBuf::from(&home).join(".local/share/applications"),
+            PathBuf::from("/usr/share/applications"),
+        ];
+
+        let mut seen = HashSet::new();
+        let mut apps = Vec::new();
+
+        for dir in &app_dirs {
+            if !dir.exists() {
+                continue;
+            }
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("desktop") {
+                        let filename = match path.file_name().and_then(|s| s.to_str()) {
+                            Some(n) => n.to_string(),
+                            None => continue,
+                        };
+
+                        if seen.contains(&filename) {
+                            continue;
+                        }
+
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            let mut in_desktop_entry = false;
+                            let mut name = String::new();
+                            let mut icon = String::new();
+                            let mut comment = String::new();
+                            let mut exec = String::new();
+                            let mut no_display = false;
+                            let mut is_app = false;
+
+                            for line in content.lines() {
+                                let trimmed = line.trim();
+                                if trimmed == "[Desktop Entry]" {
+                                    in_desktop_entry = true;
+                                    continue;
+                                } else if trimmed.starts_with('[') {
+                                    in_desktop_entry = false;
+                                }
+
+                                if in_desktop_entry {
+                                    if trimmed == "Type=Application" {
+                                        is_app = true;
+                                    } else if trimmed == "NoDisplay=true" {
+                                        no_display = true;
+                                    } else if trimmed.starts_with("Name=") && name.is_empty() {
+                                        name = trimmed[5..].trim().to_string();
+                                    } else if trimmed.starts_with("Icon=") && icon.is_empty() {
+                                        icon = trimmed[5..].trim().to_string();
+                                    } else if trimmed.starts_with("Comment=") && comment.is_empty() {
+                                        comment = trimmed[8..].trim().to_string();
+                                    } else if trimmed.starts_with("Exec=") && exec.is_empty() {
+                                        exec = trimmed[5..].trim().to_string();
+                                    }
+                                }
+                            }
+
+                            if (is_app || !name.is_empty()) && !no_display {
+                                seen.insert(filename.clone());
+                                apps.push(crate::domain::ports::AppInfo {
+                                    name,
+                                    desktop_file: filename,
+                                    icon,
+                                    comment,
+                                    exec,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        Ok(apps)
+    }
 }

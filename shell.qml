@@ -160,6 +160,32 @@ ShellRoot {
         function cancel(): void { PowerService.cancelAction(); }
     }
 
+    IpcHandler {
+        target: "launcher"
+        function toggle(): void {
+            if (Config.commandLauncherVisible) {
+                commandLauncher.closeLauncher();
+            } else {
+                commandLauncher.openLauncher("apps");
+            }
+        }
+        function open(mode: string): void { commandLauncher.openLauncher(mode); }
+        function close(): void { commandLauncher.closeLauncher(); }
+        function next(): void { commandLauncher.selectNext(); }
+        function prev(): void { commandLauncher.selectPrevious(); }
+        function pageDown(): void { commandLauncher.selectPageDown(6); }
+        function pageUp(): void { commandLauncher.selectPageUp(6); }
+        function select(idx: int): void { commandLauncher.selectIndex(idx); }
+    }
+
+    IpcHandler {
+        target: "wallpaper"
+        function set(path: string): void { WallpaperEngine.setWallpaper(path); }
+        function preview(path: string): void { WallpaperEngine.preview(path); }
+        function stopPreview(): void { WallpaperEngine.stopPreview(); }
+        function reload(): void { WallpaperEngine.reloadWallpapers(); }
+    }
+
     // Unified Desktop Shell (Flush Fused Left Dock + Top Bar with Corner Fillet)
     Variants {
         model: Quickshell.screens
@@ -167,6 +193,11 @@ ShellRoot {
         Scope {
             id: screenScope
             required property ShellScreen modelData
+
+            // Dynamic & Static Background Wallpaper Layer
+            WallpaperLayer {
+                targetScreen: screenScope.modelData
+            }
 
             // Dedicated 1px invisible Exclusion Zones for KWin window tiling
             ExclusionZones {
@@ -178,6 +209,12 @@ ShellRoot {
                 targetScreen: screenScope.modelData
             }
         }
+    }
+
+    // Bottom Command Launcher & Wallpaper Carousel Modal
+    CommandLauncher {
+        id: commandLauncher
+        targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
 
     // Settings GUI Window

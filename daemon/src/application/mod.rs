@@ -8,3 +8,6 @@ pub mod plasma_service;
 pub mod systemd_service;
 pub mod wine_mpris;
 pub mod audio_visualizer;
+pub mod wallpaper_service;
+pub mod settings_service;
+pub mod shortcut_service;

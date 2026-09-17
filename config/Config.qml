@@ -407,8 +407,31 @@ Singleton {
     // Active state toggles
     property bool dashboardVisible: false
     property bool settingsVisible: false
-    property string activeSettingsPage: "dock"
+    property string activeSettingsPage: "wallpaper"
     property string activePopout: "" // legacy popout tracker
+
+    // Command Launcher State
+    property bool commandLauncherVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_LAUNCHER_OPEN") === "1") ? true : false
+    property string commandLauncherMode: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_LAUNCHER_MODE")) ? Quickshell.env("CAELESTIA_LAUNCHER_MODE") : "apps"
+
+    function toggleCommandLauncher(mode) {
+        if (root.commandLauncherVisible) {
+            root.commandLauncherVisible = false;
+        } else {
+            root.openCommandLauncher(mode);
+        }
+    }
+
+    function openCommandLauncher(mode) {
+        root.commandLauncherMode = mode || "apps";
+        root.commandLauncherVisible = true;
+        root.dashboardVisible = false;
+        root.closeBottomPopout();
+    }
+
+    function closeCommandLauncher() {
+        root.commandLauncherVisible = false;
+    }
 
     // Fused bottom popout state
     property bool bottomPopoutVisible: false

@@ -12,4 +12,8 @@ impl<T: AppLauncherPort> LaunchAppUseCase<T> {
     pub fn execute(&self, target: &str) -> DynResult<()> {
         self.port.launch(target)
     }
+
+    pub fn list_apps(&self) -> DynResult<Vec<crate::domain::ports::AppInfo>> {
+        self.port.list_apps()
+    }
 }

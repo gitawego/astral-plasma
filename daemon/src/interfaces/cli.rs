@@ -101,33 +101,143 @@ pub async fn run_cli() -> DynResult<()> {
         }
         "settings" => {
             let sub = args.get(2).map(|s| s.as_str()).unwrap_or("toggle");
-            let action = match sub {
-                "open" => "open",
-                "close" => "close",
-                _ => "toggle",
-            };
-            let pkg_dir = get_default_package_dir();
-            let current_dir = env::current_dir().unwrap_or_default();
-            let mut cmd = Command::new("qs");
-            cmd.arg("ipc");
-            if current_dir.join("shell.qml").exists() {
-                cmd.args(["-p", current_dir.to_str().unwrap()]);
-            } else if pkg_dir.join("shell.qml").exists() {
-                cmd.args(["-p", pkg_dir.to_str().unwrap()]);
-            }
-            cmd.args(["call", "settings", action]);
-            if action == "open" {
-                if let Some(page) = args.get(3) {
-                    cmd.arg(page);
+            match sub {
+                "network" => {
+                    use crate::infrastructure::sys_settings::SystemNetworkAdapter;
+                    use crate::application::settings_service::NetworkControlUseCase;
+                    use std::sync::Arc;
+                    let adapter = Arc::new(SystemNetworkAdapter::new());
+                    let use_case = NetworkControlUseCase::new(adapter);
+                    let op = args.get(3).map(|s| s.as_str()).unwrap_or("status");
+                    match op {
+                        "status" => {
+                            let st = use_case.get_status()?;
+                            println!("{}", serde_json::to_string(&st)?);
+                        }
+                        "scan" => {
+                            let aps = use_case.scan_networks()?;
+                            println!("{}", serde_json::to_string(&aps)?);
+                        }
+                        "toggle" => {
+                            let on = args.get(4).map(|s| s == "on" || s == "true").unwrap_or(true);
+                            use_case.toggle_wifi(on)?;
+                            println!(r#"{{"success":true,"wifi":{}}}"#, on);
+                        }
+                        "connect" => {
+                            if let Some(ssid) = args.get(4) {
+                                let pass = args.get(5).map(|s| s.as_str());
+                                use_case.connect_wifi(ssid, pass)?;
+                                println!(r#"{{"success":true,"connected":"{}"}}"#, ssid);
+                            }
+                        }
+                        _ => eprintln!("Usage: astral-plasma settings network <status|scan|toggle|connect>"),
+                    }
                 }
-            }
-            let status = cmd.status();
-            match status {
-                Ok(s) if s.success() => {
-                    println!(r#"{{"success":true,"action":"{}"}}"#, action);
+                "bluetooth" => {
+                    use crate::infrastructure::sys_settings::SystemBluetoothAdapter;
+                    use crate::application::settings_service::BluetoothControlUseCase;
+                    use std::sync::Arc;
+                    let adapter = Arc::new(SystemBluetoothAdapter::new());
+                    let use_case = BluetoothControlUseCase::new(adapter);
+                    let op = args.get(3).map(|s| s.as_str()).unwrap_or("status");
+                    match op {
+                        "status" => {
+                            let st = use_case.get_status()?;
+                            println!("{}", serde_json::to_string(&st)?);
+                        }
+                        "toggle" => {
+                            let on = args.get(4).map(|s| s == "on" || s == "true").unwrap_or(true);
+                            use_case.toggle_power(on)?;
+                            println!(r#"{{"success":true,"powered":{}}}"#, on);
+                        }
+                        "connect" => {
+                            if let Some(mac) = args.get(4) {
+                                use_case.connect(mac)?;
+                                println!(r#"{{"success":true,"mac":"{}"}}"#, mac);
+                            }
+                        }
+                        "disconnect" => {
+                            if let Some(mac) = args.get(4) {
+                                use_case.disconnect(mac)?;
+                                println!(r#"{{"success":true,"mac":"{}"}}"#, mac);
+                            }
+                        }
+                        _ => eprintln!("Usage: astral-plasma settings bluetooth <status|toggle|connect|disconnect>"),
+                    }
+                }
+                "audio" => {
+                    use crate::infrastructure::sys_settings::SystemAudioAdapter;
+                    use crate::application::settings_service::AudioControlUseCase;
+                    use std::sync::Arc;
+                    let adapter = Arc::new(SystemAudioAdapter::new());
+                    let use_case = AudioControlUseCase::new(adapter);
+                    let op = args.get(3).map(|s| s.as_str()).unwrap_or("status");
+                    match op {
+                        "status" => {
+                            let st = use_case.get_status()?;
+                            println!("{}", serde_json::to_string(&st)?);
+                        }
+                        "volume" => {
+                            if let Some(v_str) = args.get(4) {
+                                if let Ok(vol) = v_str.parse::<f32>() {
+                                    use_case.set_volume(vol)?;
+                                    println!(r#"{{"success":true,"volume":{}}}"#, vol);
+                                }
+                            }
+                        }
+                        "mute" => {
+                            use_case.toggle_mute()?;
+                            println!(r#"{{"success":true,"toggled":true}}"#);
+                        }
+                        "app-volume" => {
+                            if let (Some(id_str), Some(v_str)) = (args.get(4), args.get(5)) {
+                                if let (Ok(id), Ok(vol)) = (id_str.parse::<u32>(), v_str.parse::<f32>()) {
+                                    use_case.set_app_volume(id, vol)?;
+                                    println!(r#"{{"success":true,"app":{},"volume":{}}}"#, id, vol);
+                                }
+                            }
+                        }
+                        "sink" => {
+                            if let Some(id_str) = args.get(4) {
+                                if let Ok(id) = id_str.parse::<u32>() {
+                                    use_case.set_default_sink(id)?;
+                                    println!(r#"{{"success":true,"sink":{}}}"#, id);
+                                }
+                            }
+                        }
+                        _ => eprintln!("Usage: astral-plasma settings audio <status|volume|mute|app-volume|sink>"),
+                    }
                 }
                 _ => {
-                    eprintln!("Failed to invoke Quickshell settings IPC (is Caelestia running?)");
+                    let action = match sub {
+                        "open" => "open",
+                        "close" => "close",
+                        _ => "toggle",
+                    };
+                    let pkg_dir = get_default_package_dir();
+                    let current_dir = env::current_dir().unwrap_or_default();
+                    let mut cmd = Command::new("qs");
+                    cmd.arg("ipc");
+                    if current_dir.join("shell.qml").exists() {
+                        cmd.args(["-p", current_dir.to_str().unwrap()]);
+                    } else if pkg_dir.join("shell.qml").exists() {
+                        cmd.args(["-p", pkg_dir.to_str().unwrap()]);
+                    }
+                    cmd.args(["call", "settings", action]);
+                    if action == "open" {
+                        if let Some(page) = args.get(3) {
+                            cmd.arg(page);
+                        }
+                    }
+                    let status = cmd.status();
+                    match status {
+                        Ok(s) if s.success() => {
+                            println!(r#"{{"success":true,"action":"{}"}}"#, action);
+                        }
+                        _ => {
+                            eprintln!("Failed to invoke Quickshell settings IPC (is Caelestia running?)");
+                        }
+                    }
                 }
             }
         }
@@ -187,6 +297,36 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "shortcuts" => {
+            use crate::application::shortcut_service::ShortcutControlUseCase;
+            use crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter;
+            let adapter = KWinShortcutsAdapter::new();
+            let use_case = ShortcutControlUseCase::new(adapter);
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
+            match sub {
+                "snapshot" => {
+                    let mode = args.get(3).map(|s| s.as_str()).unwrap_or("meta-space");
+                    use_case.snapshot(mode)?;
+                    println!(r#"{{"success":true,"action":"snapshot","mode":"{}"}}"#, mode);
+                }
+                "backup" | "bind" => {
+                    let mode = args.get(3).map(|s| s.as_str()).unwrap_or("meta-space");
+                    use_case.backup_and_bind(mode)?;
+                    println!(r#"{{"success":true,"action":"backup_and_bind","mode":"{}"}}"#, mode);
+                }
+                "restore" => {
+                    let restored = use_case.restore()?;
+                    println!(r#"{{"success":true,"restored":{}}}"#, restored);
+                }
+                "status" => {
+                    let active = use_case.is_active();
+                    println!(r#"{{"active":{}}}"#, active);
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma shortcuts <snapshot|backup|bind|restore|status> [mode]");
+                }
+            }
+        }
         "watch" | "--daemon" => {
             run_event_daemon().await?;
         }
@@ -207,6 +347,11 @@ pub async fn run_cli() -> DynResult<()> {
                 let launcher = LaunchAppUseCase::new(DesktopLauncherAdapter::new());
                 launcher.execute(&args[2])?;
             }
+        }
+        "apps" => {
+            let launcher = LaunchAppUseCase::new(DesktopLauncherAdapter::new());
+            let list = launcher.list_apps()?;
+            println!("{}", serde_json::to_string(&list)?);
         }
         "workspaces" => {
             let ws_ctrl = WorkspaceControlUseCase::new(KWinAdapter::new());
@@ -293,6 +438,61 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "wallpaper" => {
+            use crate::infrastructure::fs_wallpaper::FsWallpaperAdapter;
+            use crate::application::wallpaper_service::{ListWallpapersUseCase, SetWallpaperUseCase, GeneratePaletteUseCase};
+            use crate::domain::wallpaper::{WallpaperFilter, WallpaperPort};
+            use std::sync::Arc;
+
+            let adapter = Arc::new(FsWallpaperAdapter::new());
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("list");
+            match sub {
+                "list" => {
+                    let query = args.get(4).cloned();
+                    let use_case = ListWallpapersUseCase::new(adapter);
+                    let list = match args.get(3).map(|s| s.as_str()) {
+                        Some(dir) if !dir.is_empty() => {
+                            use_case.execute(Path::new(dir), WallpaperFilter { query, ..Default::default() })?
+                        }
+                        _ => {
+                            use_case.execute_library(WallpaperFilter { query, ..Default::default() })?
+                        }
+                    };
+                    println!("{}", serde_json::to_string(&list)?);
+                }
+
+                "get" => {
+                    let active = adapter.get_active_wallpaper()?;
+                    let res = serde_json::json!({
+                        "path": active.map(|p| p.to_string_lossy().to_string()),
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "set" => {
+                    if let Some(target) = args.get(3) {
+                        let path = PathBuf::from(target);
+                        let use_case = SetWallpaperUseCase::new(adapter);
+                        use_case.execute(&path)?;
+                        println!(r#"{{"success":true,"path":"{}"}}"#, target);
+                    } else {
+                        eprintln!("Usage: astral-plasma wallpaper set <path>");
+                    }
+                }
+                "palette" => {
+                    if let Some(target) = args.get(3) {
+                        let path = PathBuf::from(target);
+                        let use_case = GeneratePaletteUseCase::new(adapter);
+                        let palette = use_case.execute(&path)?;
+                        println!("{}", serde_json::to_string(&palette)?);
+                    } else {
+                        eprintln!("Usage: astral-plasma wallpaper palette <path>");
+                    }
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma wallpaper <list|get|set|palette> [args...]");
+                }
+            }
+        }
         "preview" => {
             if args.len() >= 3 {
                 let win_id = &args[2];
@@ -353,6 +553,7 @@ fn print_usage() {
     eprintln!("  workspaces <cmd>        - Virtual desktops: query, switch, ensure");
     eprintln!("  preview <window_id>     - Capture live window thumbnail");
     eprintln!("  desktop <install|cleanup> - Manage KWin authorization desktop entries");
+    eprintln!("  shortcuts <cmd>         - Granular shortcut management: backup, bind, restore, status");
     eprintln!("  tray <cmd>              - System tray operations");
 }
 

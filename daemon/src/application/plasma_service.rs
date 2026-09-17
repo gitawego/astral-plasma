@@ -68,9 +68,13 @@ pub fn run_watchdog_loop(target_pid: u32) -> DynResult<()> {
         thread::sleep(Duration::from_millis(500));
     }
 
-    // Quickshell has exited or was killed; restore original Plasma panels!
+    // Quickshell has exited or was killed; restore original Plasma panels and shortcuts!
     let adapter = PlasmaAdapter::new();
     let _ = adapter.restore_config();
+
+    let shortcut_adapter = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
+    let shortcut_use_case = crate::application::shortcut_service::ShortcutControlUseCase::new(shortcut_adapter);
+    let _ = shortcut_use_case.restore();
 
     let _ = fs::remove_file(pid_file);
     Ok(())

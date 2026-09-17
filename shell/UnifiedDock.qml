@@ -174,9 +174,14 @@ Item {
                 id: launcherHover
                 anchors.fill: parent
                 hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    Config.dashboardVisible = !Config.dashboardVisible;
+                onClicked: (mouse) => {
+                    if (mouse.button === Qt.RightButton) {
+                        Config.dashboardVisible = !Config.dashboardVisible;
+                    } else {
+                        Config.toggleCommandLauncher();
+                    }
                 }
             }
 
@@ -197,7 +202,7 @@ Item {
                 Text {
                     id: launcherTipText
                     anchors.centerIn: parent
-                    text: "App Launcher & Dashboard"
+                    text: "Command Launcher (Right-click: Dashboard)"
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     color: Colors.textOnSurface

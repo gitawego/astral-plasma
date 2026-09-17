@@ -1,0 +1,17 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "dev@caelestia.local",
+                "Name": "Caelestia"
+            }
+        ],
+        "Description": "Global shortcut daemon for Caelestia Launcher and Wallpaper Picker",
+        "Icon": "preferences-system-windows-script-test",
+        "Id": "caelestia-shortcuts",
+        "License": "GPL-3.0+",
+        "Name": "Caelestia Shortcuts"
+    },
+    "X-Plasma-API": "javascript"
+}

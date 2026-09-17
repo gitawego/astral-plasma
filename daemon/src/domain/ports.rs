@@ -1,9 +1,19 @@
 use crate::domain::model::{Desktop, SystemMetrics, TrayItem, Window};
 use crate::domain::plasma::{PlasmaPanelInfo, PlasmaStatus};
 use crate::domain::systemd::ServiceStatus;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 
 pub type DynResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AppInfo {
+    pub name: String,
+    pub desktop_file: String,
+    pub icon: String,
+    pub comment: String,
+    pub exec: String,
+}
 
 pub trait WindowManagerPort: Send + Sync {
     fn query_windows(&self) -> DynResult<(Vec<Window>, Option<Window>)>;
@@ -29,6 +39,7 @@ pub trait MetricsPort: Send + Sync {
 
 pub trait AppLauncherPort: Send + Sync {
     fn launch(&self, target: &str) -> DynResult<()>;
+    fn list_apps(&self) -> DynResult<Vec<AppInfo>>;
 }
 
 pub trait PlasmaControlPort: Send + Sync {
@@ -44,3 +55,11 @@ pub trait SystemdControlPort: Send + Sync {
     fn install_service(&self) -> DynResult<ServiceStatus>;
     fn remove_service(&self) -> DynResult<ServiceStatus>;
 }
+
+pub trait ShortcutControlPort: Send + Sync {
+    fn snapshot_relevant_shortcuts(&self, target_shortcut: &str) -> DynResult<crate::domain::shortcuts::AstralShortcutSessionBackup>;
+    fn restore_relevant_shortcuts(&self) -> DynResult<bool>;
+    fn bind_shortcuts(&self, mode: &str) -> DynResult<()>;
+    fn is_backup_active(&self) -> bool;
+}
+
