@@ -27,6 +27,68 @@ PanelWindow {
     WlrLayershell.keyboardFocus: (PowerService.confirmDialogVisible || dropdownContainer.offsetProgress > 0.001 || Config.bottomPopoutVisible) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     WlrLayershell.exclusionMode: ExclusionMode.Ignore
 
+    // Wayland Native Compositor Backdrop Blur for Liquid Glass
+    BackgroundEffect.blurRegion: Region {
+        // Left Dock
+        Region {
+            x: 0
+            y: 0
+            width: Config.dockEnabled ? root.dockW : 0
+            height: root.height
+        }
+
+        // Top Border
+        Region {
+            x: 0
+            y: 0
+            width: root.width
+            height: root.borderT
+        }
+
+        // Right Border
+        Region {
+            x: root.width - root.borderT
+            y: 0
+            width: root.borderT
+            height: root.height
+        }
+
+        // Bottom Border
+        Region {
+            x: 0
+            y: root.height - root.borderT
+            width: root.width
+            height: root.borderT
+        }
+
+        // Central Dropdown Dashboard (when open)
+        Region {
+            x: root.dropX
+            y: 0
+            width: dropdownContainer.offsetProgress > 0.001 ? root.dropW : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? root.currentDropH : 0
+            radius: Theme.radiusGlassModal
+        }
+
+        // Fused Bottom Popout (when open)
+        Region {
+            x: root.dockW
+            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.y : 0
+            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.currentPopW : 0
+            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.height : 0
+            radius: Theme.radiusGlassCard
+        }
+
+        // Right Edge Control (when open)
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - root.rightControlW) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlY : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlW : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlH : 0
+            radius: Theme.radiusGlassCard
+        }
+    }
+
     // Configuration and Tokens
     readonly property real borderT: Config.borderThickness
     readonly property real filletR: Config.borderRounding

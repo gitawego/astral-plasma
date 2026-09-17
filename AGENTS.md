@@ -122,12 +122,46 @@ Quickshell automatically reloads upon file changes. Monitor the console output o
 - Anchor cycles or undefined binding loops.
 - DBus service warnings.
 
-### 5.3. Visual Verification
-Because Wayland desktop shells cannot be inspected through headless DOM tools, verify all UI changes visually using Spectacle and ImageMagick:
+### 5.3. Visual Verification & Proof of Work
+Because Wayland desktop shells cannot be inspected through headless DOM tools, automated unit tests alone CANNOT verify visual appeal, optical blur, transparency, or styling fidelity.
+You MUST verify all UI changes visually using Spectacle and inspect the resulting images:
 ```bash
-spectacle -b -n -o /tmp/screen.png && magick /tmp/screen.png -crop 120x1600+0+0 /tmp/dock_crop.png
+spectacle -b -n -o /tmp/screen.png
 ```
-Inspect the resulting image using `view_file` to verify alignment, centering, and contrast.
+Inspect the resulting image using `view_file` to verify alignment, centering, contrast, transparency, and corner radii.
+
+---
+
+## 6. Mandatory Visual Proof of Work & First-Round Completeness Policy
+
+> [!CAUTION]
+> ### WHY FIRST ROUNDS FAIL & HOW TO PREVENT IT
+> AI agents frequently fail the first round of visual and UI development due to four specific antipatterns:
+>
+> 1. **Tunnel Vision & Incomplete Surface Audits**:
+>    - Modifying only the immediate component mentioned (e.g., just the launcher) while leaving primary shell surfaces (Central Dropdown, Media Drawer, Popouts, UnifiedFrame) untouched and clashing.
+>    - **RULE**: Before starting, audit ALL shell windows (`UnifiedShell`, `UnifiedFrame`, `CentralDropdown`, `LeftDock`, `CommandLauncher`). If a design language changes, it MUST be comprehensively and consistently applied across ALL surfaces.
+>
+> 2. **Confusing Unit Test Passing with Visual Correctness**:
+>    - Unit tests (`cargo test`, `tst_*.qml`) verify geometry numbers and business logic, NOT optical beauty, translucency, or aesthetic harmony. Passing tests is a prerequisite, NOT proof of visual success.
+>    - **RULE**: Never declare a visual task complete based on test passes alone.
+>
+> 3. **Superficial "Checklist" Styling vs. Authentic Material Physics**:
+>    - Slapping on harsh borders, glowing cyan fills, or shiny 2005-era skeuomorphic chrome lines instead of authentic, restrained, context-aware materials (subtle 1px hairline rims, true compositor blur, concentric curvature).
+>    - **RULE**: Follow optical principles strictly:
+>      - True backdrop blur via `BackgroundEffect.blurRegion` on Wayland.
+>      - Concentric corner geometry: $R_{\text{inner}} = R_{\text{outer}} - \text{padding}$.
+>      - Translucent materials (55–65% alpha), never opaque `#16171a` masquerading as glass.
+>      - Focus states must refine the container (subtle border/ring), NEVER replace frosted glass with solid opaque neon colors.
+>
+> 4. **Failing to Test in Real-World Context**:
+>    - Taking screenshots against an empty black screen where translucency is invisible.
+>    - **RULE**: Always test and capture screenshots with realistic content beneath (browser windows, text, colorful wallpaper) to PROVE transparency, blur, and contrast.
+>
+> ### MANDATORY PROTOCOL BEFORE DECLARING WORK COMPLETE:
+> 1. **Capture Visual Proof**: Use `spectacle` to capture full-resolution screenshots of EVERY affected view and state (Launcher, Dashboard, Media Drawer, Popout).
+> 2. **Self-Inspect the Proof**: Use `view_file` on the captured images to rigorously verify corner radii, transparency, typography, and contrast.
+> 3. **Deliver Proof to User**: Embed the verified screenshots in `walkthrough.md` and present them as concrete evidence of completion.
 
 ---
 
@@ -142,3 +176,4 @@ Inspect the resulting image using `view_file` to verify alignment, centering, an
    - For labels that update reactively (such as the active window title), use alternating double `Text` items (`titleText1` / `titleText2`) with opacity cross-fading rather than instant text jumps.
 4. **Resilient Icon Resolution**:
    - Always chain app icons: check for raw desktop file / URI path -> query `Quickshell.iconPath()` -> fallback to a Material Symbols icon via `MaterialIcon`.
+

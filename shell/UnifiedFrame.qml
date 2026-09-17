@@ -51,7 +51,7 @@ Item {
         y: 0
         width: root.dockW
         height: root.height
-        color: Colors.surface
+        color: Colors.glassSurface
 
         Rectangle {
             x: parent.width - 1
@@ -73,7 +73,7 @@ Item {
         y: 0
         width: root.width
         height: root.borderT
-        color: Colors.surface
+        color: Colors.glassSurface
 
         // Segment left of dropdown
         Rectangle {
@@ -112,7 +112,7 @@ Item {
         y: 0
         width: root.borderT
         height: root.height
-        color: Colors.surface
+        color: Colors.glassSurface
 
         // Upper segment
         Rectangle {
@@ -143,7 +143,7 @@ Item {
         y: root.height - root.borderT
         width: root.width
         height: root.borderT
-        color: Colors.surface
+        color: Colors.glassSurface
 
         Rectangle {
             x: root.dockW + (root.popoutOffsetProgress > 0.001
@@ -162,7 +162,7 @@ Item {
         y: root.borderT
         orientation: "topLeft"
         cornerRadius: root.filletR
-        fillColor: Colors.surface
+        fillColor: Colors.glassSurface
         strokeColor: root.borderColor
         strokeWidth: 1
     }
@@ -174,7 +174,7 @@ Item {
         y: root.borderT
         orientation: "topRight"
         cornerRadius: root.filletR
-        fillColor: Colors.surface
+        fillColor: Colors.glassSurface
         strokeColor: root.borderColor
         strokeWidth: 1
     }
@@ -187,7 +187,7 @@ Item {
         y: root.height - root.borderT - root.filletR
         orientation: "bottomLeft"
         cornerRadius: root.filletR
-        fillColor: Colors.surface
+        fillColor: Colors.glassSurface
         strokeColor: root.borderColor
         strokeWidth: 1
     }
@@ -198,7 +198,7 @@ Item {
         y: root.height - root.borderT - root.filletR
         orientation: "bottomRight"
         cornerRadius: root.filletR
-        fillColor: Colors.surface
+        fillColor: Colors.glassSurface
         strokeColor: root.borderColor
         strokeWidth: 1
     }
@@ -219,7 +219,7 @@ Item {
             y: root.borderT
             orientation: "dropdownLeft"
             cornerRadius: root.filletR
-            fillColor: Colors.surface
+            fillColor: Colors.glassModalSurface
             strokeColor: "transparent"
             visible: dashSurfaceWrapper.filletFactor > 0.01
             opacity: dashSurfaceWrapper.filletFactor
@@ -230,7 +230,7 @@ Item {
             y: root.borderT
             orientation: "dropdownRight"
             cornerRadius: root.filletR
-            fillColor: Colors.surface
+            fillColor: Colors.glassModalSurface
             strokeColor: "transparent"
             visible: dashSurfaceWrapper.filletFactor > 0.01
             opacity: dashSurfaceWrapper.filletFactor
@@ -241,11 +241,21 @@ Item {
             y: 0
             width: root.dropW + 4
             height: root.currentDropH
-            color: Colors.surface
+            color: Colors.glassModalSurface
             topLeftRadius: 0
             topRightRadius: 0
-            bottomLeftRadius: root.filletR
-            bottomRightRadius: root.filletR
+            bottomLeftRadius: Theme.radiusGlassModal
+            bottomRightRadius: Theme.radiusGlassModal
+
+            // Subtle 1px top specular catch
+            Rectangle {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 1
+                color: Colors.glassBorderSpecular
+                opacity: 0.35
+            }
         }
 
         Shape {
@@ -270,24 +280,24 @@ Item {
                 }
                 PathLine {
                     x: 0
-                    y: Math.max(root.borderT + root.filletR, root.currentDropH - root.filletR)
+                    y: Math.max(root.borderT + root.filletR, root.currentDropH - Theme.radiusGlassModal)
                 }
                 PathArc {
-                    x: root.filletR
+                    x: Theme.radiusGlassModal
                     y: root.currentDropH
-                    radiusX: root.filletR
-                    radiusY: root.filletR
+                    radiusX: Theme.radiusGlassModal
+                    radiusY: Theme.radiusGlassModal
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(root.filletR, root.dropW - root.filletR)
+                    x: Math.max(Theme.radiusGlassModal, root.dropW - Theme.radiusGlassModal)
                     y: root.currentDropH
                 }
                 PathArc {
                     x: root.dropW
-                    y: Math.max(root.borderT + root.filletR, root.currentDropH - root.filletR)
-                    radiusX: root.filletR
-                    radiusY: root.filletR
+                    y: Math.max(root.borderT + root.filletR, root.currentDropH - Theme.radiusGlassModal)
+                    radiusX: Theme.radiusGlassModal
+                    radiusY: Theme.radiusGlassModal
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
@@ -324,7 +334,7 @@ Item {
 
             // 1A. Solid Surface Fill (Floating drawer)
             ShapePath {
-                fillColor: (root.fusedProgress < 0.5) ? Colors.surface : "transparent"
+                fillColor: (root.fusedProgress < 0.5) ? Colors.glassSurface : "transparent"
                 strokeColor: "transparent"
                 strokeWidth: 0
 
@@ -432,7 +442,7 @@ Item {
 
             // 2A. Solid Surface Fill (Bottom-fused drawer)
             ShapePath {
-                fillColor: (root.fusedProgress >= 0.5) ? Colors.surface : "transparent"
+                fillColor: (root.fusedProgress >= 0.5) ? Colors.glassSurface : "transparent"
                 strokeColor: "transparent"
                 strokeWidth: 0
 
@@ -545,7 +555,7 @@ Item {
             opacity: rightControlSurface.filletFactor
 
             ShapePath {
-                fillColor: Colors.surface
+                fillColor: Colors.glassSurface
                 strokeColor: "transparent"
                 strokeWidth: 0
 

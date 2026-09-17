@@ -46,7 +46,7 @@ Item {
                 Card {
                     Layout.preferredWidth: 280
                     Layout.fillHeight: true
-                    radius: 20
+                    radius: Theme.radiusGlassCard
 
                     RowLayout {
                         anchors.fill: parent
@@ -68,14 +68,14 @@ Item {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 26
                                 font.weight: Font.DemiBold
-                                color: Colors.primary
+                                color: "#FFFFFF"
                             }
 
                             Text {
                                 text: WeatherService.condition || "Clear"
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontBodyMedium
-                                color: Colors.onSurfaceVariant
+                                color: Qt.alpha("#FFFFFF", 0.70)
                             }
                         }
                     }
@@ -85,7 +85,7 @@ Item {
                 Card {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    radius: 20
+                    radius: Theme.radiusGlassCard
 
                     RowLayout {
                         anchors.fill: parent
@@ -144,7 +144,7 @@ Item {
                 Card {
                     Layout.preferredWidth: 110
                     Layout.fillHeight: true
-                    radius: 20
+                    radius: Theme.radiusGlassCard
 
                     Column {
                         anchors.centerIn: parent
@@ -156,7 +156,7 @@ Item {
                             font.family: Theme.fontFamily
                             font.pixelSize: 26
                             font.weight: Font.DemiBold
-                            color: Colors.primary
+                            color: "#FFFFFF"
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -170,7 +170,7 @@ Item {
                             font.family: Theme.fontFamily
                             font.pixelSize: 26
                             font.weight: Font.DemiBold
-                            color: Colors.primary
+                            color: "#FFFFFF"
                         }
                         Item { width: 1; height: 6 }
                         Text {
@@ -179,7 +179,7 @@ Item {
                             font.family: Theme.fontFamily
                             font.pixelSize: 12
                             font.weight: Font.Medium
-                            color: Colors.onSurfaceVariant
+                            color: Qt.alpha("#FFFFFF", 0.70)
                         }
                     }
                 }
@@ -188,7 +188,7 @@ Item {
                 Card {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    radius: 20
+                    radius: Theme.radiusGlassCard
 
                     Item {
                         id: calWidget
@@ -275,7 +275,7 @@ Item {
                 Card {
                     Layout.preferredWidth: 150
                     Layout.fillHeight: true
-                    radius: 20
+                    radius: Theme.radiusGlassCard
 
                     Row {
                         anchors.centerIn: parent
@@ -314,7 +314,8 @@ Item {
             id: mediaCard
             Layout.preferredWidth: 215
             Layout.fillHeight: true
-            radius: 24
+            radius: Theme.radiusGlassCard
+            color: Colors.glassCardVibrant
             clip: true
 
             ColumnLayout {

@@ -80,11 +80,10 @@ Item {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: Math.min(parent.height * 0.35, 52)
+            height: Math.min(parent.height * 0.20, 32)
             radius: parent.radius
             gradient: Gradient {
                 GradientStop { position: 0.0; color: root.causticColor }
-                GradientStop { position: 0.3; color: Qt.alpha(root.causticColor, 0.4) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
         }
@@ -99,7 +98,7 @@ Item {
             height: Math.min(root.height, 240)
             radius: width / 2
             color: Colors.isDarkMode ? "#FFFFFF" : Colors.accentPrimary
-            opacity: root.hovered ? (Colors.isDarkMode ? 0.08 : 0.14) : 0.0
+            opacity: root.hovered ? (Colors.isDarkMode ? 0.06 : 0.10) : 0.0
 
             Behavior on opacity {
                 NumberAnimation { duration: Theme.animExpressiveFastEffects }
@@ -113,7 +112,7 @@ Item {
             }
         }
 
-        // Directional Top Specular Rim Glare
+        // Directional Top Specular Rim Glare (ultra-fine hairline catch)
         Rectangle {
             id: specularRimTop
             visible: root.showSpecular
@@ -126,7 +125,7 @@ Item {
             height: Theme.glassSpecularWidth
             color: root.specularColor
             radius: 1
-            opacity: root.hovered ? 1.0 : 0.85
+            opacity: root.hovered ? 0.45 : 0.30
 
             Behavior on opacity {
                 NumberAnimation { duration: Theme.animExpressiveFastEffects }

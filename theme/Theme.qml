@@ -74,17 +74,18 @@ Singleton {
     // =========================================================================
     // Apple Liquid Glass Design System Tokens
     // =========================================================================
+    // Concentric corner curvature: R_card = R_modal - padding (32 - 14 = 18)
     readonly property int radiusGlassModal: 32
-    readonly property int radiusGlassCard: 20
-    readonly property int radiusGlassItem: 14
+    readonly property int radiusGlassCard: 18
+    readonly property int radiusGlassItem: 12
     readonly property int radiusGlassPill: 9999
 
-    readonly property real glassSpecularWidth: 1.2
+    readonly property real glassSpecularWidth: 1.0
     readonly property real glassBorderWidth: 1.0
-    readonly property real glassCausticIntensity: 0.18
+    readonly property real glassCausticIntensity: 0.06
 
     // Interactive scale bounce & liquid compression physics
-    readonly property real glassScaleBounce: 0.975
+    readonly property real glassScaleBounce: 0.985
     readonly property int animGlassPress: 120
     readonly property int animGlassRelease: 240
     readonly property var curveGlassElastic: [0.34, 1.35, 0.30, 1.0, 1.0, 1.0]

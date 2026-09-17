@@ -72,18 +72,18 @@ Item {
                 anchors.right: parent.right
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                width: 42
-                height: 42
-                radius: Theme.radiusSmall
-                color: settingsHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : Qt.alpha(Colors.textMain, 0.03)
-                border.color: Theme.borderSubtle
+                width: 38
+                height: 38
+                radius: Theme.radiusGlassItem
+                color: settingsHover.containsMouse ? Colors.glassPillHover : Colors.glassPill
+                border.color: settingsHover.containsMouse ? Colors.glassBorderSpecular : Colors.glassBorderSubtle
                 border.width: 1
 
                 MaterialIcon {
                     anchors.centerIn: parent
                     text: "settings"
-                    size: 20
-                    color: settingsHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant
+                    size: 18
+                    color: settingsHover.containsMouse ? "#FFFFFF" : Qt.alpha("#FFFFFF", 0.70)
                 }
 
                 MouseArea {
@@ -107,8 +107,8 @@ Item {
                     implicitWidth: settingsTip.implicitWidth + 16
                     implicitHeight: settingsTip.implicitHeight + 8
                     radius: 6
-                    color: Colors.surfaceContainerHighest
-                    border.color: Theme.borderSubtle
+                    color: Colors.glassModalSurface
+                    border.color: Colors.glassBorderSubtle
                     border.width: 1
 
                     Text {
@@ -117,7 +117,7 @@ Item {
                         text: "Theme Settings"
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
-                        color: Colors.onSurface
+                        color: "#FFFFFF"
                     }
                 }
             }
@@ -126,7 +126,7 @@ Item {
                 id: tabsRow
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 16
+                spacing: 12
 
                 Repeater {
                     id: tabRepeater
@@ -138,10 +138,16 @@ Item {
                         required property int index
                         readonly property bool isSelected: Config.activeDashboardTab === modelData.id
 
-                        width: 175
-                        height: 50
-                        radius: Theme.radiusSmall
-                        color: tabHover.containsMouse ? Qt.alpha(Colors.textMain, 0.04) : "transparent"
+                        width: 160
+                        height: 42
+                        radius: Theme.radiusGlassItem
+                        color: isSelected 
+                            ? Colors.glassPillActive 
+                            : (tabHover.containsMouse ? Colors.glassPillHover : "transparent")
+                        border.color: isSelected 
+                            ? Colors.glassBorderSpecular 
+                            : (tabHover.containsMouse ? Colors.glassBorderSubtle : "transparent")
+                        border.width: 1
 
                         Behavior on color {
                             ColorAnimation {
@@ -151,27 +157,41 @@ Item {
                             }
                         }
 
-                        Column {
+                        // Subtle top specular gleam on selected tab
+                        Rectangle {
+                            anchors.top: parent.top
+                            anchors.topMargin: 0.5
+                            anchors.left: parent.left
+                            anchors.leftMargin: parent.radius * 0.4
+                            anchors.right: parent.right
+                            anchors.rightMargin: parent.radius * 0.4
+                            height: 1
+                            color: Colors.glassBorderSpecular
+                            visible: isSelected
+                            opacity: 0.8
+                        }
+
+                        Row {
                             anchors.centerIn: parent
-                            spacing: 3
+                            spacing: 8
 
                             MaterialIcon {
-                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.verticalCenter: parent.verticalCenter
                                 text: modelData.icon
-                                size: 20
-                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                                size: 18
+                                color: isSelected ? "#FFFFFF" : (tabHover.containsMouse ? "#FFFFFF" : Qt.alpha("#FFFFFF", 0.65))
                                 Behavior on color {
                                     ColorAnimation { duration: Theme.animExpressiveFastEffects }
                                 }
                             }
 
                             Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.verticalCenter: parent.verticalCenter
                                 text: modelData.label
                                 font.pixelSize: 12
-                                font.weight: Font.DemiBold
+                                font.weight: isSelected ? Font.DemiBold : Font.Normal
                                 font.family: Theme.fontFamily
-                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                                color: isSelected ? "#FFFFFF" : (tabHover.containsMouse ? "#FFFFFF" : Qt.alpha("#FFFFFF", 0.65))
                                 Behavior on color {
                                     ColorAnimation { duration: Theme.animExpressiveFastEffects }
                                 }
@@ -188,55 +208,13 @@ Item {
                     }
                 }
             }
-
-            // Fluid Sliding Underline Indicator
-            Rectangle {
-                id: tabSlidingIndicator
-                anchors.bottom: parent.bottom
-                height: 2
-                radius: 1
-                color: Colors.primary
-
-                readonly property int activeIdx: {
-                    switch (Config.activeDashboardTab) {
-                        case "dashboard": return 0;
-                        case "media": return 1;
-                        case "performance": return 2;
-                        case "workspaces": return 3;
-                        default: return 0;
-                    }
-                }
-
-                readonly property Item activeTabItem: (tabRepeater.count > activeIdx) ? tabRepeater.itemAt(activeIdx) : null
-                readonly property real targetWidth: 60
-                readonly property real targetX: activeTabItem ? (tabsRow.x + activeTabItem.x + (activeTabItem.width - targetWidth) / 2) : 0
-
-                x: targetX
-                width: targetWidth
-
-                Behavior on x {
-                    NumberAnimation {
-                        duration: Theme.animExpressiveDefaultSpatial
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
-                    }
-                }
-
-                Behavior on width {
-                    NumberAnimation {
-                        duration: Theme.animExpressiveDefaultSpatial
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
-                    }
-                }
-            }
         }
 
-        // Header Separator
+        // Header Separator with subtle glass border
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Theme.borderSubtle
+            color: Colors.glassBorderSubtle
         }
 
         // Tab Content Sliding View

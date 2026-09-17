@@ -30,7 +30,7 @@ PanelWindow {
         right: true
     }
 
-    color: Qt.rgba(0, 0, 0, 0.45) // Dim background overlay
+    color: Qt.rgba(0, 0, 0, 0.15) // Subtle background dim allowing desktop content to peek through
 
     BackgroundEffect.blurRegion: Region {
         item: modalBox
@@ -229,7 +229,7 @@ PanelWindow {
             return Math.min(root.filteredApps.length * 50 + 104, 500);
         }
         radius: Theme.radiusGlassModal
-        glassColor: Colors.glassSurface
+        glassColor: Colors.glassModalSurface
         specularColor: Colors.glassBorderSpecular
         subtleBorderColor: Colors.glassBorderSubtle
         causticColor: Colors.glassCausticGlow
@@ -616,11 +616,11 @@ PanelWindow {
                         ? Colors.glassCardActive 
                         : (appRowHover.containsMouse ? Colors.glassCardHover : "transparent")
                     border.color: isSelected 
-                        ? Colors.primary 
-                        : (appRowHover.containsMouse ? Colors.glassBorderSpecular : "transparent")
-                    border.width: isSelected ? 1.5 : 1
+                        ? Colors.glassBorderSpecular 
+                        : (appRowHover.containsMouse ? Colors.glassBorderSubtle : "transparent")
+                    border.width: 1
 
-                    scale: appRowHover.pressed ? Theme.glassScaleBounce : (appRowHover.containsMouse ? 1.01 : 1.0)
+                    scale: appRowHover.pressed ? Theme.glassScaleBounce : (appRowHover.containsMouse ? 1.008 : 1.0)
                     Behavior on scale {
                         NumberAnimation { duration: Theme.animGlassPress; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveGlassElastic }
                     }
@@ -629,20 +629,6 @@ PanelWindow {
                     }
                     Behavior on border.color {
                         ColorAnimation { duration: Theme.animExpressiveFastEffects }
-                    }
-
-                    // Top specular rim reflection on hover/active
-                    Rectangle {
-                        anchors.top: parent.top
-                        anchors.topMargin: 0.5
-                        anchors.left: parent.left
-                        anchors.leftMargin: parent.radius * 0.4
-                        anchors.right: parent.right
-                        anchors.rightMargin: parent.radius * 0.4
-                        height: 1
-                        color: Colors.glassBorderSpecular
-                        visible: isSelected || appRowHover.containsMouse
-                        opacity: isSelected ? 0.95 : 0.65
                     }
 
                     RowLayout {
@@ -776,8 +762,8 @@ PanelWindow {
             active: searchInput.activeFocus
             baseColor: Colors.glassPill
             hoverColor: Colors.glassPillHover
-            borderColor: searchInput.activeFocus ? Colors.primary : Colors.glassBorderSubtle
-            borderWidth: searchInput.activeFocus ? 1.5 : 1.0
+            borderColor: searchInput.activeFocus ? Colors.glassBorderSpecular : Colors.glassBorderSubtle
+            borderWidth: 1.0
 
             RowLayout {
                 anchors.fill: parent
@@ -788,7 +774,7 @@ PanelWindow {
                 MaterialIcon {
                     text: "search"
                     size: 18
-                    color: root.colTextMuted
+                    color: Qt.alpha("#FFFFFF", 0.70)
                 }
 
                 TextInput {
@@ -796,7 +782,7 @@ PanelWindow {
                     Layout.fillWidth: true
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                     font.pixelSize: 15
-                    color: root.colTextOnSurface
+                    color: "#FFFFFF"
                     selectByMouse: true
                     clip: true
                     text: root.queryText
@@ -809,7 +795,7 @@ PanelWindow {
                         visible: !searchInput.text && !searchInput.inputMethodComposing
                         text: "Search apps or type > for commands..."
                         font: searchInput.font
-                        color: root.colTextMuted
+                        color: Qt.alpha("#FFFFFF", 0.45)
                     }
 
                     Keys.onPressed: (event) => {

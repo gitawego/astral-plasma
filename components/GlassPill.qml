@@ -13,28 +13,26 @@ Item {
     signal clicked()
 
     property color baseColor: root.isPrimary
-        ? (Colors.isDarkMode ? "#FFFFFF" : Colors.primary)
+        ? Colors.glassPillActive
         : Colors.glassPill
 
     property color hoverColor: root.isPrimary
-        ? (Colors.isDarkMode ? "#EEEEEE" : Qt.lighter(Colors.primary, 1.1))
+        ? Colors.glassPillHover
         : Colors.glassPillHover
 
-    property color activeColor: Colors.primary
+    property color activeColor: Colors.glassPillActive
 
     property color fillColor: root.active
         ? root.activeColor
         : (root.hovered ? root.hoverColor : root.baseColor)
 
-    property color textColor: root.isPrimary
-        ? (Colors.isDarkMode ? "#121316" : "#FFFFFF")
-        : (root.active ? Colors.onPrimary : Colors.textMain)
+    property color textColor: "#FFFFFF"
 
-    property color borderColor: root.isPrimary
-        ? "transparent"
-        : (root.active ? Colors.primary : (root.hovered ? Colors.glassBorderSpecular : Colors.glassBorderSubtle))
+    property color borderColor: root.active 
+        ? Colors.glassBorderSpecular 
+        : (root.hovered ? Colors.glassBorderSpecular : Colors.glassBorderSubtle)
 
-    property real borderWidth: root.isPrimary ? 0 : 1.0
+    property real borderWidth: root.active ? 1.2 : 1.0
     property int paddingHorizontal: 16
     property int paddingVertical: 8
     property int radius: height / 2

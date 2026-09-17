@@ -30,6 +30,6 @@ Rectangle {
         anchors.rightMargin: parent.radius * 0.4
         height: 1
         color: Colors.glassBorderSpecular
-        opacity: 0.75
+        opacity: 0.35
     }
 }
