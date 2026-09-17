@@ -210,13 +210,6 @@ Item {
             }
         }
 
-        // Header Separator with subtle glass border
-        Rectangle {
-            Layout.fillWidth: true
-            height: 1
-            color: Colors.glassBorderSubtle
-        }
-
         // Tab Content Sliding View
         Item {
             id: tabContentContainer

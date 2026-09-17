@@ -180,20 +180,25 @@ Singleton {
     // =========================================================================
     // Apple Liquid Glass Dynamic Themed Material Tokens
     // =========================================================================
-    // Master glass surface tint: shared by Top Border, Left Dock, Central Drawer, and Left Drawer
-    // Crystal translucent frosted glass infused with active theme palette
+    // Master surface tint: translucent frosted glass infused with active theme palette
     readonly property color glassSurface: {
-        const base = root.isDarkMode ? Qt.rgba(0.06, 0.08, 0.12, 0.32) : Qt.rgba(0.96, 0.97, 1.0, 0.45);
-        return Qt.tint(base, Qt.alpha(root.primary, root.isDarkMode ? 0.22 : 0.16));
+        const base = root.isDarkMode ? Qt.rgba(0.06, 0.08, 0.12, 0.70) : Qt.rgba(0.96, 0.96, 0.98, 0.72);
+        return Qt.tint(base, Qt.alpha(root.primary, root.isDarkMode ? 0.08 : 0.05));
     }
 
-    // Modal sheet glass (Command Launcher, Central Dropdown) - identical transparency & theme tint
-    readonly property color glassModalSurface: glassSurface
+    // Modal sheet surface (Command Launcher, Central Dropdown)
+    readonly property color glassModalSurface: {
+        const base = root.isDarkMode ? Qt.rgba(0.07, 0.09, 0.14, 0.75) : Qt.rgba(0.97, 0.97, 1.0, 0.78);
+        return Qt.tint(base, Qt.alpha(root.primary, root.isDarkMode ? 0.10 : 0.06));
+    }
 
-    // Dock capsule glass (Left Dock) - identical transparency & theme tint
-    readonly property color glassDockSurface: glassSurface
+    // Dock capsule surface (Left Dock)
+    readonly property color glassDockSurface: {
+        const base = root.isDarkMode ? Qt.rgba(0.06, 0.08, 0.12, 0.70) : Qt.rgba(0.95, 0.95, 0.98, 0.72);
+        return Qt.tint(base, Qt.alpha(root.primary, root.isDarkMode ? 0.08 : 0.05));
+    }
 
-    // Border frame glass - identical transparency & theme tint
+    // Border frame surface
     readonly property color glassBorderSurface: glassSurface
 
     // Distinct glass card surfaces (sculpted frosted glass plates with chromatic depth)

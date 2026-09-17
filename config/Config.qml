@@ -88,7 +88,7 @@ Singleton {
         return Math.max(rawW, maxIcon + 24);
     }
     readonly property int borderThickness: root.settings.border ? (root.settings.border.thickness ?? 14) : 14
-    readonly property int borderRounding: root.settings.border ? (root.settings.border.rounding ?? 24) : 24
+    readonly property int borderRounding: root.settings.border ? (root.settings.border.rounding ?? 20) : 20
     readonly property bool topBarEnabled: root.settings.topBar ? (root.settings.topBar.enabled ?? false) : false
     readonly property int topBarHeight: root.settings.topBar ? (root.settings.topBar.height ?? 38) : 38
     readonly property bool topBarExclusiveZone: root.settings.topBar ? (root.settings.topBar.exclusiveZone ?? false) : false
@@ -435,7 +435,7 @@ Singleton {
 
     // Fused bottom popout state
     property bool bottomPopoutVisible: false
-    property string bottomPopoutMode: "default" // "default", "bluetooth", "network", "audio", "power", "clock"
+    property string bottomPopoutMode: "power" // "default", "bluetooth", "network", "audio", "power", "clock"
     property real popoutTargetY: 0
 
     Timer {

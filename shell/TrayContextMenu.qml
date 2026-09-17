@@ -262,6 +262,7 @@ Item {
 
         x: root.dockW
         y: Math.max(12, Math.min(root.screenH - height - 12, targetGlobalY - 10))
+        width: 260
         implicitWidth: 260
 
         Behavior on y {

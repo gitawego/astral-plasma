@@ -61,49 +61,28 @@ PanelWindow {
             height: root.borderT
         }
 
-        // 4 Screen Corner Fillets (curved quarter-circle blur matching CornerFillet geometry)
-        // Top-Left Corner Fillet: quarter-circle in top-left (bottom-right cut out)
+        // Central Dropdown Dashboard (when open)
         Region {
-            x: root.dockW
-            y: root.borderT
-            width: root.cornerFilletR
-            height: root.cornerFilletR
-            bottomRightRadius: root.cornerFilletR
-        }
-
-        // Top-Right Corner Fillet: quarter-circle in top-right (bottom-left cut out)
-        Region {
-            x: root.width - root.borderT - root.cornerFilletR
-            y: root.borderT
-            width: root.cornerFilletR
-            height: root.cornerFilletR
-            bottomLeftRadius: root.cornerFilletR
-        }
-
-        // Bottom-Left Corner Fillet: quarter-circle in bottom-left (top-right cut out)
-        Region {
-            x: root.dockW
-            y: root.height - root.borderT - root.cornerFilletR
-            width: root.cornerFilletR
-            height: root.cornerFilletR
-            topRightRadius: root.cornerFilletR
-        }
-
-        // Bottom-Right Corner Fillet: quarter-circle in bottom-right (top-left cut out)
-        Region {
-            x: root.width - root.borderT - root.cornerFilletR
-            y: root.height - root.borderT - root.cornerFilletR
-            width: root.cornerFilletR
-            height: root.cornerFilletR
-            topLeftRadius: root.cornerFilletR
-        }
-
-        // System Notifications Popup Blur (covers full popup + fused shoulder fillets)
-        Region {
-            x: (notifPopup.visible && !notifPopup.isDismissed) ? Math.max(0, root.width - notifPopup.width - root.filletR) : 0
+            x: dropdownContainer.offsetProgress > 0.001 ? root.dropX : 0
             y: 0
-            width: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.width + root.filletR) : 0
-            height: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.height + root.filletR) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? root.dropW : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? root.currentDropH : 0
+        }
+
+        // Fused Bottom Popout (when open)
+        Region {
+            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
+            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.y : 0
+            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.currentPopW : 0
+            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.height : 0
+        }
+
+        // Right Edge Control (when open)
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - root.rightControlW) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlY : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlW : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlH : 0
         }
 
         // Left Drawer / Context Menu (when open)
@@ -112,62 +91,16 @@ PanelWindow {
             y: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardY : (appContextMenu.menuCardVisible ? appContextMenu.menuCardY : 0)
             width: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardW : (appContextMenu.menuCardVisible ? appContextMenu.menuCardW : 0)
             height: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardH : (appContextMenu.menuCardVisible ? appContextMenu.menuCardH : 0)
-            topRightRadius: Theme.radiusGlassCard
-            bottomRightRadius: Theme.radiusGlassCard
-        }
-
-        // Central Dropdown Dashboard (when open)
-        Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? root.dropX : 0
-            y: 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.dropW : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? root.currentDropH : 0
-            bottomLeftRadius: Theme.radiusGlassModal
-            bottomRightRadius: Theme.radiusGlassModal
-        }
-        // Central Dropdown: Left shoulder fillet
-        Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - root.filletR) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? root.borderT : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletR : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? root.filletR : 0
-            bottomLeftRadius: root.filletR
-        }
-        // Central Dropdown: Right shoulder fillet
-        Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? root.borderT : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletR : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? root.filletR : 0
-            bottomRightRadius: root.filletR
-        }
-
-        // Fused Bottom Popout: Main Card Body
-        Region {
-            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.y : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.currentPopW : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.height : 0
-            topRightRadius: Theme.radiusGlassCard
-            bottomRightRadius: (root.fusedProgress > 0.5) ? 0 : Theme.radiusGlassCard
-        }
-
-        // Right Edge Control: Main Body
-        Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - root.rightControlW) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlY : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlW : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlH : 0
-            topLeftRadius: Theme.radiusGlassCard
-            bottomLeftRadius: Theme.radiusGlassCard
         }
     }
+
+
 
     // Configuration and Tokens
     readonly property real borderT: Config.borderThickness
     readonly property real filletR: Config.borderRounding
     readonly property bool hasMaximizedWindow: (typeof WindowService !== "undefined" && WindowService && (WindowService.hasMaximizedWindow || WindowService.hasActiveMaximized)) ? true : false
-    readonly property real cornerFilletR: hasMaximizedWindow ? 0 : root.filletR
+    readonly property real cornerFilletR: root.filletR
     readonly property real dockW: Config.dockWidth + 6
     readonly property real iconS: Config.dockIconSize
 

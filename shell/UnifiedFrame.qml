@@ -34,11 +34,13 @@ Item {
     property real rightControlY: Math.round((root.height - rightControlH) / 2)
     property real rightControlOffsetProgress: 0.0
 
-    readonly property color glassFill: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 0.32)
+    readonly property color glassFill: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.06, 0.08, 0.12, 0.70)
     readonly property color glassBorder: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.12)
-    readonly property real modalRadius: (typeof Theme !== "undefined" && Theme.radiusGlassModal) ? Theme.radiusGlassModal : 24
+    readonly property real modalRadius: root.filletR
     readonly property bool hasMaximizedWindow: (typeof WindowService !== "undefined" && WindowService && (WindowService.hasMaximizedWindow || WindowService.hasActiveMaximized)) ? true : false
-    readonly property real cornerFilletR: hasMaximizedWindow ? 0 : root.filletR
+    readonly property real cornerFilletR: root.filletR
+
+    // layer.enabled disabled
 
     readonly property alias topBorderLeftItem: topBorderLeft
     readonly property alias topBorderRightItem: topBorderRight
@@ -84,7 +86,7 @@ Item {
         id: topBorderLeft
         x: root.dockW
         y: 0
-        width: Math.max(0, (root.dropdownOffsetProgress > 0.001 ? root.dropX : root.topBorderRightCap) - root.dockW)
+        width: Math.max(0, (root.dropdownOffsetProgress > 0.001 ? (root.dropX - root.filletR) : root.topBorderRightCap) - root.dockW)
         height: root.borderT
         color: root.glassFill
 
@@ -94,7 +96,7 @@ Item {
             y: parent.height - 1
             height: 1
             width: root.dropdownOffsetProgress > 0.001 
-                ? Math.max(0, root.dropX - root.dockW - root.filletR - root.cornerFilletR)
+                ? Math.max(0, parent.width - x)
                 : Math.max(0, root.topBorderRightLimit - root.dockW - root.cornerFilletR)
             color: root.borderColor
         }
@@ -103,7 +105,7 @@ Item {
     Rectangle {
         id: topBorderRight
         visible: root.dropdownOffsetProgress > 0.001
-        x: root.dropX + root.dropW
+        x: root.dropX + root.dropW + root.filletR
         y: 0
         width: Math.max(0, root.topBorderRightCap - x)
         height: root.borderT
@@ -242,59 +244,13 @@ Item {
     // Central Dashboard Fused Solid Surface & Fillets
     Item {
         id: dashSurfaceWrapper
-        x: root.dropX
+        x: root.dropX - root.filletR
         y: 0
-        width: root.dropW
+        width: root.dropW + root.filletR * 2
         height: root.currentDropH
         visible: root.dropdownOffsetProgress > 0.001
 
         readonly property real filletFactor: Math.max(0.0, Math.min(1.0, (root.currentDropH - root.borderT) / Math.max(1, root.filletR)))
-
-        CornerFillet {
-            x: -root.filletR
-            y: root.borderT
-            orientation: "dropdownLeft"
-            cornerRadius: root.filletR
-            fillColor: root.glassFill
-            strokeColor: root.borderColor
-            strokeWidth: 1
-            visible: dashSurfaceWrapper.filletFactor > 0.01
-            opacity: dashSurfaceWrapper.filletFactor
-        }
-
-        CornerFillet {
-            x: root.dropW
-            y: root.borderT
-            orientation: "dropdownRight"
-            cornerRadius: root.filletR
-            fillColor: root.glassFill
-            strokeColor: root.borderColor
-            strokeWidth: 1
-            visible: dashSurfaceWrapper.filletFactor > 0.01
-            opacity: dashSurfaceWrapper.filletFactor
-        }
-
-        Rectangle {
-            x: 0
-            y: 0
-            width: root.dropW
-            height: root.currentDropH
-            color: root.glassFill
-            topLeftRadius: 0
-            topRightRadius: 0
-            bottomLeftRadius: root.modalRadius
-            bottomRightRadius: root.modalRadius
-
-            // Subtle 1px top specular catch
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 1
-                color: root.glassBorder
-                opacity: 0.45
-            }
-        }
 
         Shape {
             anchors.fill: parent
@@ -302,49 +258,102 @@ Item {
             visible: dashSurfaceWrapper.filletFactor > 0.01
             opacity: dashSurfaceWrapper.filletFactor
 
+            // 1. Unified Glass Surface Fill (Top bar strip, dropdown body, and both shoulder fillets)
+            ShapePath {
+                fillColor: root.glassFill
+                strokeColor: "transparent"
+                strokeWidth: 0
+
+                startX: 0; startY: 0
+                PathLine { x: dashSurfaceWrapper.width; y: 0 }
+                PathLine { x: dashSurfaceWrapper.width; y: root.borderT - 1 }
+                PathArc {
+                    x: dashSurfaceWrapper.width - root.filletR
+                    y: root.borderT - 1 + root.filletR
+                    radiusX: root.filletR
+                    radiusY: root.filletR
+                    direction: PathArc.Counterclockwise
+                }
+                PathLine {
+                    x: dashSurfaceWrapper.width - root.filletR
+                    y: Math.max(root.borderT - 1 + root.filletR, root.currentDropH - root.modalRadius)
+                }
+                PathArc {
+                    x: dashSurfaceWrapper.width - root.filletR - root.modalRadius
+                    y: root.currentDropH
+                    radiusX: root.modalRadius
+                    radiusY: root.modalRadius
+                    direction: PathArc.Clockwise
+                }
+                PathLine {
+                    x: root.filletR + root.modalRadius
+                    y: root.currentDropH
+                }
+                PathArc {
+                    x: root.filletR
+                    y: Math.max(root.borderT - 1 + root.filletR, root.currentDropH - root.modalRadius)
+                    radiusX: root.modalRadius
+                    radiusY: root.modalRadius
+                    direction: PathArc.Clockwise
+                }
+                PathLine {
+                    x: root.filletR
+                    y: root.borderT - 1 + root.filletR
+                }
+                PathArc {
+                    x: 0
+                    y: root.borderT - 1
+                    radiusX: root.filletR
+                    radiusY: root.filletR
+                    direction: PathArc.Counterclockwise
+                }
+                PathLine { x: 0; y: 0 }
+            }
+
+            // 2. Continuous 1px Perimeter Stroke (Left shoulder, dropdown edges, bottom corners, right shoulder)
             ShapePath {
                 fillColor: "transparent"
                 strokeColor: root.borderColor
                 strokeWidth: 1
                 capStyle: ShapePath.FlatCap
 
-                startX: -root.filletR; startY: root.borderT
+                startX: 0; startY: root.borderT - 1
                 PathArc {
-                    x: 0
-                    y: root.borderT + root.filletR
+                    x: root.filletR
+                    y: root.borderT - 1 + root.filletR
                     radiusX: root.filletR
                     radiusY: root.filletR
                     direction: PathArc.Clockwise
                 }
                 PathLine {
-                    x: 0
-                    y: Math.max(root.borderT + root.filletR, root.currentDropH - root.modalRadius)
+                    x: root.filletR
+                    y: Math.max(root.borderT - 1 + root.filletR, root.currentDropH - root.modalRadius)
                 }
                 PathArc {
-                    x: root.modalRadius
+                    x: root.filletR + root.modalRadius
                     y: root.currentDropH
                     radiusX: root.modalRadius
                     radiusY: root.modalRadius
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(root.modalRadius, root.dropW - root.modalRadius)
+                    x: Math.max(root.filletR + root.modalRadius, dashSurfaceWrapper.width - root.filletR - root.modalRadius)
                     y: root.currentDropH
                 }
                 PathArc {
-                    x: root.dropW
-                    y: Math.max(root.borderT + root.filletR, root.currentDropH - root.modalRadius)
+                    x: dashSurfaceWrapper.width - root.filletR
+                    y: Math.max(root.borderT - 1 + root.filletR, root.currentDropH - root.modalRadius)
                     radiusX: root.modalRadius
                     radiusY: root.modalRadius
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: root.dropW
-                    y: root.borderT + root.filletR
+                    x: dashSurfaceWrapper.width - root.filletR
+                    y: root.borderT - 1 + root.filletR
                 }
                 PathArc {
-                    x: root.dropW + root.filletR
-                    y: root.borderT
+                    x: dashSurfaceWrapper.width
+                    y: root.borderT - 1
                     radiusX: root.filletR
                     radiusY: root.filletR
                     direction: PathArc.Clockwise

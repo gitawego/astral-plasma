@@ -19,7 +19,7 @@ Rectangle {
     topRightRadius: root.cardRadius
     bottomRightRadius: root.cardRadius
 
-    color: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 0.32)
+    color: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 1.0)
     border.width: 0
 
     // Perimeter stroke for top, right, bottom (left edge seamlessly fused with dock)

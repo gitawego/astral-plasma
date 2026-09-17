@@ -54,7 +54,7 @@ Item {
     readonly property bool hasImageCover: effectiveCover.length > 0
 
     property real borderThickness: (typeof Config !== "undefined" && Config.borderThickness) ? Config.borderThickness : 14
-    property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 24
+    property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 20
 
     property bool isDismissed: false
 
@@ -111,7 +111,7 @@ Item {
         panelHeight: root.expanded ? (expandedContent.implicitHeight + 52) : (root.hasImageCover ? 84 : 78)
         borderThickness: root.borderThickness
         borderRounding: root.borderRounding
-        fillColor: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 0.32)
+        fillColor: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 1.0)
         borderColor: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.12)
         isOpen: root.visible && !root.isDismissed
 

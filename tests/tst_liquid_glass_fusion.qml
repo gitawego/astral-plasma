@@ -16,7 +16,7 @@ Item {
     CornerFillet {
         id: filletTest
         orientation: "topLeft"
-        cornerRadius: 24
+        cornerRadius: 20
     }
 
     MenuCard {
@@ -32,7 +32,7 @@ Item {
         id: frameTest
         dockW: 64
         borderT: 14
-        filletR: 24
+        filletR: 20
         borderColor: Qt.rgba(1, 1, 1, 0.12)
         dropX: 600
         dropW: 720
@@ -74,13 +74,11 @@ Item {
             assert(Colors.glassCard !== undefined, "Colors.glassCard must be defined");
             assert(Colors.glassBorderSpecular !== undefined, "Colors.glassBorderSpecular must be defined");
 
-            // Verify surface tokens share identical base translucency
+            // Verify surface tokens share identical base token
             assert(Colors.glassBorderSurface === Colors.glassSurface, "Border surface must share exact glassSurface token");
             assert(Colors.glassDockSurface === Colors.glassSurface, "Dock surface must share exact glassSurface token");
             assert(Colors.glassModalSurface === Colors.glassSurface, "Modal surface must share exact glassSurface token");
 
-            // Verify glassCard is NOT opaque pitch-black (#141318 or #1e1b24)
-            assert(Colors.glassCard.a < 0.99, "glassCard must be a translucent frosted glass plate");
             assert(filletTest.fillColor === Colors.glassSurface, "CornerFillet default fillColor must equal Colors.glassSurface");
             assert(menuCardTest.color === Colors.glassSurface, "MenuCard color must equal Colors.glassSurface");
             assert(notifTest.fusedPanel.fillColor === Colors.glassSurface, "NotificationPopup fillColor must equal Colors.glassSurface");
@@ -88,10 +86,14 @@ Item {
         }
 
         // ========================================================
-        // 2. CornerFillet Zero-Overlap & Translucency
+        // 2. CornerFillet Zero-Overlap & Seamless Solid Fill
         // ========================================================
         assert(filletTest.overlap === 0, "CornerFillet default overlap must be strictly 0 to prevent dark seams");
-        assert(filletTest.fillColor.a < 0.99, "CornerFillet fillColor must be translucent liquid glass");
+        if (typeof Colors !== "undefined" && Colors.glassSurface) {
+            assert(filletTest.fillColor === Colors.glassSurface, "CornerFillet fillColor must equal Colors.glassSurface");
+        } else {
+            assert(filletTest.fillColor.a >= 0.99, "CornerFillet fillColor must be solid");
+        }
 
         // ========================================================
         // 3. MenuCard Flush Dock Fusion Non-Regression Tests
@@ -99,14 +101,22 @@ Item {
         assert(menuCardTest.topLeftRadius === 0, "MenuCard topLeftRadius must be 0 for flush dock attachment");
         assert(menuCardTest.bottomLeftRadius === 0, "MenuCard bottomLeftRadius must be 0 for flush dock attachment");
         assert(menuCardTest.border.width === 0, "MenuCard border.width must be 0 to prevent double stroke against dock");
-        assert(menuCardTest.color.a < 0.99, "MenuCard must be translucent liquid glass");
+        if (typeof Colors !== "undefined" && Colors.glassSurface) {
+            assert(menuCardTest.color === Colors.glassSurface, "MenuCard color must equal Colors.glassSurface");
+        } else {
+            assert(menuCardTest.color.a >= 0.99, "MenuCard color must be solid");
+        }
 
         // ========================================================
-        // 4. Notification Popup Liquid Glass Non-Regression Tests
+        // 4. Notification Popup Solid Underlayer Background Tests
         // ========================================================
         assert(notifTest.fusedPanel.fillet1.overlap === 0, "Notification fillet1 overlap must be 0");
         assert(notifTest.fusedPanel.fillet2.overlap === 0, "Notification fillet2 overlap must be 0");
-        assert(notifTest.fusedPanel.fillColor.a < 0.99, "Notification panel must be translucent liquid glass");
+        if (typeof Colors !== "undefined" && Colors.glassSurface) {
+            assert(notifTest.fusedPanel.fillColor === Colors.glassSurface, "Notification panel must match Colors.glassSurface");
+        } else {
+            assert(notifTest.fusedPanel.fillColor.a >= 0.99, "Notification panel must be solid");
+        }
 
         // ========================================================
         // 5. Border Geometry Partitioning (Zero Double-Translucency)
@@ -119,15 +129,15 @@ Item {
 
         // Open Dropdown State:
         frameTest.dropdownOffsetProgress = 1.0;
-        assert(topBorderLeftObj.width === (600 - 64), "When open, topBorderLeft must span from dockW to dropX without overlap");
+        assert(topBorderLeftObj.width === (600 - 20 - 64), "When open, topBorderLeft must span from dockW to dropX - filletR without overlap");
         let topBorderRightObj = frameTest.topBorderRightItem;
-        assert(topBorderRightObj.x === (600 + 720), "topBorderRight must start at dropX + dropW");
-        assert(topBorderRightObj.width === (1920 - 14 - (600 + 720)), "topBorderRight must stop at width - borderT");
+        assert(topBorderRightObj.x === (600 + 720 + 20), "topBorderRight must start at dropX + dropW + filletR");
+        assert(topBorderRightObj.width === (1920 - 14 - (600 + 720 + 20)), "topBorderRight must stop at width - borderT");
 
         // Central Dropdown Surface Envelope:
         let dashWrapperObj = frameTest.dashSurfaceWrapperItem;
-        assert(dashWrapperObj.x === 600, "dashSurfaceWrapper must be at dropX (600)");
-        assert(dashWrapperObj.width === 720, "dashSurfaceWrapper must have width dropW (720)");
+        assert(dashWrapperObj.x === (600 - 20), "dashSurfaceWrapper must be at dropX - filletR (580)");
+        assert(dashWrapperObj.width === (720 + 40), "dashSurfaceWrapper must have width dropW + filletR * 2 (760)");
 
         // Bottom Border:
         let bottomBorderObj = frameTest.bottomBorderItem;
@@ -142,33 +152,33 @@ Item {
         let fBL = frameTest.innerFilletBLItem;
         let fBR = frameTest.innerFilletBRItem;
 
-        // Verify 24px corner fillets are enabled with matching radius
-        assert(fTL.visible === true, "innerFilletTL must be enabled with 24px radius");
-        assert(fTR.visible === true, "innerFilletTR must be enabled with 24px radius");
-        assert(fBL.visible === true, "innerFilletBL must be enabled with 24px radius");
-        assert(fBR.visible === true, "innerFilletBR must be enabled with 24px radius");
+        // Verify 20px corner fillets are enabled with matching radius
+        assert(fTL.visible === true, "innerFilletTL must be enabled with 20px radius");
+        assert(fTR.visible === true, "innerFilletTR must be enabled with 20px radius");
+        assert(fBL.visible === true, "innerFilletBL must be enabled with 20px radius");
+        assert(fBR.visible === true, "innerFilletBR must be enabled with 20px radius");
 
-        assert(fTL.cornerRadius === 24, "innerFilletTL cornerRadius must be 24");
-        assert(fTR.cornerRadius === 24, "innerFilletTR cornerRadius must be 24");
-        assert(fBL.cornerRadius === 24, "innerFilletBL cornerRadius must be 24");
-        assert(fBR.cornerRadius === 24, "innerFilletBR cornerRadius must be 24");
+        assert(fTL.cornerRadius === 20, "innerFilletTL cornerRadius must be 20");
+        assert(fTR.cornerRadius === 20, "innerFilletTR cornerRadius must be 20");
+        assert(fBL.cornerRadius === 20, "innerFilletBL cornerRadius must be 20");
+        assert(fBR.cornerRadius === 20, "innerFilletBR cornerRadius must be 20");
 
-        // Verify all 4 borders share the exact same liquid glass surface fill
+        // Verify all 4 borders share the exact same surface fill
         assert(frameTest.topBorderLeftItem.color === frameTest.glassFill, "topBorderLeft must match glassFill");
         assert(frameTest.rightBorderItem.color === frameTest.glassFill, "rightBorder must match glassFill");
         assert(frameTest.bottomBorderItem.color === frameTest.glassFill, "bottomBorder must match glassFill");
 
-        // Verify specular lines meet flush with 24px corner fillets
+        // Verify specular lines meet flush with 20px corner fillets
         assert(frameTest.topBorderRightLimit === (1920 - frameTest.borderT - frameTest.cornerFilletR), "When no notification, top border specular line connects to TR fillet");
         assert(frameTest.rightBorderTopLimit === (frameTest.borderT + frameTest.cornerFilletR - 1), "When no notification, right border specular line starts flush at TR fillet");
         assert(frameTest.rightBorderBottomLimit === (1080 - (frameTest.borderT + frameTest.cornerFilletR - 1)), "Right border specular line connects flush to BR fillet");
 
         // ========================================================
-        // 7. Notification Liquid Glass Theming Tests
+        // 7. Notification Theming Tests
         // ========================================================
         assert(notifTest.fusedPanel !== undefined, "NotificationPopup must expose fusedPanel");
         assert(notifTest.fusedPanel.attachEdge === "topRight", "Notification fusedPanel attachEdge must be topRight");
-        assert(notifTest.borderRounding === 24, "Notification borderRounding must match Config (24)");
+        assert(notifTest.borderRounding === 20, "Notification borderRounding must match Config (20)");
         if (typeof Colors !== "undefined" && Colors.glassSurface) {
             assert(notifTest.fusedPanel.fillColor === Colors.glassSurface, "Notification fillColor must match Colors.glassSurface");
             assert(notifTest.fusedPanel.borderColor === Colors.glassBorderSpecular, "Notification borderColor must match Colors.glassBorderSpecular");

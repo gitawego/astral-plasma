@@ -135,7 +135,7 @@
   },
   "border": {
     "thickness": 14,
-    "rounding": 24
+    "rounding": 20
   },
   "plasma": {
     "disablePanels": "all",
