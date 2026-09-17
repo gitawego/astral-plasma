@@ -79,6 +79,34 @@ Item {
         return 49.5;
     }
 
+    function openTraySubmenu(indexOrTitle) {
+        if (!traySection) return false;
+        let items = traySection.currentTrayItems;
+        for (let i = 0; i < items.length; i++) {
+            let it = items[i];
+            if (it && (it.label.indexOf(indexOrTitle) !== -1 || ("" + i) === indexOrTitle)) {
+                if ((it.hasSubmenu || (it.children && it.children.length > 0)) && it.children && it.children.length > 0) {
+                    let stack = traySection.traySubmenuStack.slice(0);
+                    stack.push({
+                        title: it.label || "Submenu",
+                        items: it.children
+                    });
+                    traySection.traySubmenuStack = stack;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function popTraySubmenu() {
+        if (!traySection || traySection.traySubmenuStack.length === 0) return false;
+        let stack = traySection.traySubmenuStack.slice(0);
+        stack.pop();
+        traySection.traySubmenuStack = stack;
+        return true;
+    }
+
     Item {
         id: popCard
         width: root.popWidth
@@ -593,11 +621,37 @@ Item {
                     }
                 }
 
-                // Header with App Title & Icon
+                property var traySubmenuStack: []
+                readonly property var currentTrayItems: (traySubmenuStack && traySubmenuStack.length > 0) ? (traySubmenuStack[traySubmenuStack.length - 1].items || []) : (WindowService.activeTrayMenuItems || [])
+                readonly property string currentSubmenuTitle: (traySubmenuStack && traySubmenuStack.length > 0) ? (traySubmenuStack[traySubmenuStack.length - 1].title || "") : ""
+
+                Connections {
+                    target: Config
+                    function onBottomPopoutVisibleChanged() {
+                        if (!Config.bottomPopoutVisible) {
+                            traySection.traySubmenuStack = [];
+                        }
+                    }
+                    function onRequestOpenTraySubmenu(indexOrTitle) {
+                        root.openTraySubmenu(indexOrTitle);
+                    }
+                    function onRequestPopTraySubmenu() {
+                        root.popTraySubmenu();
+                    }
+                }
+                Connections {
+                    target: WindowService
+                    function onActiveTrayItemChanged() {
+                        traySection.traySubmenuStack = [];
+                    }
+                }
+
+                // 1. Top-Level App Header (visible when not in a submenu)
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Theme.spaceSmall
                     Layout.bottomMargin: 4
+                    visible: traySection.traySubmenuStack.length === 0
 
                     Item {
                         id: trayHeaderIcon
@@ -652,13 +706,93 @@ Item {
                     }
                 }
 
+                // 2. Submenu Navigation Header (visible when drilled into a submenu)
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+                    Layout.bottomMargin: 4
+                    visible: traySection.traySubmenuStack.length > 0
+
+                    Rectangle {
+                        id: backBtn
+                        Layout.preferredHeight: 28
+                        Layout.preferredWidth: backBtnRow.implicitWidth + 12
+                        radius: Theme.radiusSmall
+                        color: backMouse.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainerHigh
+                        Layout.alignment: Qt.AlignVCenter
+
+                        Row {
+                            id: backBtnRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            MaterialIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "arrow_back"
+                                size: 16
+                                color: Colors.primary
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Back"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSmall
+                                font.weight: Font.Medium
+                                color: Colors.textOnSurface
+                            }
+                        }
+
+                        MouseArea {
+                            id: backMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                let stack = traySection.traySubmenuStack.slice(0);
+                                stack.pop();
+                                traySection.traySubmenuStack = stack;
+                                trayFlickable.contentY = 0;
+                            }
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
+                        text: traySection.currentSubmenuTitle
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMedium
+                        font.weight: Font.DemiBold
+                        color: Colors.textOnSurface
+                        elide: Text.ElideRight
+                    }
+
+                    Rectangle {
+                        Layout.alignment: Qt.AlignVCenter
+                        implicitWidth: countText.implicitWidth + 10
+                        implicitHeight: 20
+                        radius: 10
+                        color: Colors.surfaceContainerHigh
+                        visible: traySection.currentTrayItems.length > 0
+
+                        Text {
+                            id: countText
+                            anchors.centerIn: parent
+                            text: traySection.currentTrayItems.length.toString()
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontLabelSmall
+                            font.weight: Font.Medium
+                            color: Colors.textOnSurfaceVariant
+                        }
+                    }
+                }
+
                 ActionDivider {}
 
                 // Loading State
                 Item {
                     Layout.fillWidth: true
                     implicitHeight: 30
-                    visible: WindowService.activeTrayLoading
+                    visible: WindowService.activeTrayLoading && traySection.traySubmenuStack.length === 0
 
                     Text {
                         anchors.centerIn: parent
@@ -673,7 +807,7 @@ Item {
                 Item {
                     Layout.fillWidth: true
                     implicitHeight: 30
-                    visible: !WindowService.activeTrayLoading && WindowService.activeTrayMenuItems.length === 0
+                    visible: (!WindowService.activeTrayLoading || traySection.traySubmenuStack.length > 0) && traySection.currentTrayItems.length === 0
 
                     Text {
                         anchors.centerIn: parent
@@ -684,34 +818,97 @@ Item {
                     }
                 }
 
-                // Dynamic DBusMenu Actions
-                Repeater {
-                    model: WindowService.activeTrayMenuItems
+                // Scrollable Viewport for Dynamic DBusMenu Actions
+                Item {
+                    id: trayFlickableContainer
+                    Layout.fillWidth: true
+                    implicitHeight: Math.min(480, trayCol.implicitHeight)
+                    visible: traySection.currentTrayItems.length > 0
+                    clip: true
 
-                    Item {
-                        required property var modelData
-                        Layout.fillWidth: true
-                        visible: modelData.isSeparator || (modelData.label !== undefined && modelData.label.trim() !== "")
-                        implicitHeight: visible ? (modelData.isSeparator ? 9 : 30) : 0
+                    Flickable {
+                        id: trayFlickable
+                        anchors.fill: parent
+                        contentWidth: width
+                        contentHeight: trayCol.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        interactive: contentHeight > height
 
-                        ActionDivider {
-                            anchors.centerIn: parent
-                            visible: modelData.isSeparator
+                        ColumnLayout {
+                            id: trayCol
+                            width: parent.width
+                            spacing: 2
+
+                            Repeater {
+                                model: traySection.currentTrayItems
+
+                                Item {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    visible: modelData.isSeparator || (modelData.label !== undefined && modelData.label.trim() !== "")
+                                    implicitHeight: visible ? (modelData.isSeparator ? 9 : 30) : 0
+
+                                    ActionDivider {
+                                        anchors.centerIn: parent
+                                        visible: modelData.isSeparator
+                                    }
+
+                                    ActionItem {
+                                        anchors.fill: parent
+                                        visible: !modelData.isSeparator
+                                        label: modelData.label || ""
+                                        enabled: modelData.enabled !== false
+                                        hasSubmenu: Boolean(modelData.hasSubmenu) || (Boolean(modelData.children) && modelData.children.length > 0)
+                                        toggleType: modelData.toggleType || ""
+                                        toggleState: (modelData.toggleState !== undefined) ? modelData.toggleState : 0
+                                        iconSource: (modelData.icon && modelData.icon !== "") ? Quickshell.iconPath(modelData.icon) : ""
+                                        iconColor: (modelData.label && modelData.label.toLowerCase().includes("quit")) ? "#ffb4ab" : Colors.textOnSurface
+                                        onClicked: {
+                                            if (hasSubmenu && modelData.children && modelData.children.length > 0) {
+                                                let stack = traySection.traySubmenuStack.slice(0);
+                                                stack.push({
+                                                    title: modelData.label || "Submenu",
+                                                    items: modelData.children
+                                                });
+                                                traySection.traySubmenuStack = stack;
+                                                trayFlickable.contentY = 0;
+                                            } else if (modelData.enabled !== false) {
+                                                if (WindowService.activeTrayItem && WindowService.activeTrayItem.menuPath) {
+                                                    WindowService.triggerTrayMenuItem(WindowService.activeTrayItem.service, WindowService.activeTrayItem.menuPath, modelData.id);
+                                                }
+                                                Config.closeBottomPopout();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
-                        ActionItem {
-                            anchors.fill: parent
-                            visible: !modelData.isSeparator
-                            label: modelData.label || ""
-                            enabled: modelData.enabled !== false
-                            iconSource: (modelData.icon && modelData.icon !== "") ? Quickshell.iconPath(modelData.icon) : ""
-                            iconColor: (modelData.label && modelData.label.toLowerCase().includes("quit")) ? "#ffb4ab" : Colors.textOnSurface
-                            onClicked: {
-                                if (WindowService.activeTrayItem && WindowService.activeTrayItem.menuPath) {
-                                    WindowService.triggerTrayMenuItem(WindowService.activeTrayItem.service, WindowService.activeTrayItem.menuPath, modelData.id);
-                                }
-                                Config.closeBottomPopout();
+                        WheelHandler {
+                            target: trayFlickable
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            onWheel: (event) => {
+                                trayFlickable.contentY = Math.max(0, Math.min(trayFlickable.contentHeight - trayFlickable.height, trayFlickable.contentY - event.angleDelta.y));
                             }
+                        }
+                    }
+
+                    // Auto-fading custom scrollbar
+                    Rectangle {
+                        id: trayScrollBar
+                        anchors.right: parent.right
+                        anchors.rightMargin: 1
+                        width: 3
+                        radius: 1.5
+                        color: Colors.primary
+                        opacity: (trayFlickable.moving || trayFlickable.dragging) ? 0.8 : 0.0
+                        visible: trayFlickable.contentHeight > trayFlickable.height
+                        y: trayFlickable.contentHeight > 0 ? ((trayFlickable.contentY / trayFlickable.contentHeight) * trayFlickable.height) : 0
+                        height: trayFlickable.contentHeight > 0 ? Math.max(20, (trayFlickable.height / trayFlickable.contentHeight) * trayFlickable.height) : 0
+
+                        Behavior on opacity {
+                            NumberAnimation { duration: 150 }
                         }
                     }
                 }
@@ -1110,6 +1307,9 @@ Item {
         property string label: ""
         property string detail: ""
         property bool enabled: true
+        property bool hasSubmenu: false
+        property string toggleType: "" // "checkmark", "radio", ""
+        property int toggleState: 0 // 0, 1
         signal clicked()
 
         Layout.fillWidth: true
@@ -1122,6 +1322,24 @@ Item {
             anchors.leftMargin: Theme.padSmall
             anchors.rightMargin: Theme.padSmall
             spacing: Theme.spaceSmall
+
+            // Toggle icon (checkmark or radio) if configured
+            MaterialIcon {
+                Layout.preferredWidth: (actionRoot.toggleType !== "") ? 16 : 0
+                Layout.preferredHeight: 16
+                Layout.alignment: Qt.AlignVCenter
+                visible: actionRoot.toggleType !== ""
+                text: {
+                    if (actionRoot.toggleType === "checkmark") {
+                        return actionRoot.toggleState === 1 ? "check" : "";
+                    } else if (actionRoot.toggleType === "radio") {
+                        return actionRoot.toggleState === 1 ? "radio_button_checked" : "radio_button_unchecked";
+                    }
+                    return "";
+                }
+                color: (actionRoot.toggleState === 1) ? Colors.primary : Colors.textOnSurfaceVariant
+                size: 14
+            }
 
             ThemedIcon {
                 Layout.preferredWidth: (actionRoot.iconSource !== "" || actionRoot.icon !== "") ? 18 : 0
@@ -1149,6 +1367,17 @@ Item {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontLabelSmall
                 color: Colors.textOnSurfaceVariant
+            }
+
+            // Submenu Chevron Indicator
+            MaterialIcon {
+                Layout.preferredWidth: actionRoot.hasSubmenu ? 16 : 0
+                Layout.preferredHeight: 16
+                Layout.alignment: Qt.AlignVCenter
+                visible: actionRoot.hasSubmenu
+                text: "chevron_right"
+                size: 16
+                color: (actionRoot.enabled && actionMouse.containsMouse) ? Colors.primary : Colors.textOnSurfaceVariant
             }
         }
 

@@ -444,6 +444,17 @@ Singleton {
         bottomPopoutVisible = false;
     }
 
+    signal requestOpenTraySubmenu(string indexOrTitle)
+    signal requestPopTraySubmenu()
+
+    function openTraySubmenu(indexOrTitle) {
+        requestOpenTraySubmenu(indexOrTitle);
+    }
+
+    function popTraySubmenu() {
+        requestPopTraySubmenu();
+    }
+
     // Right border edge control (volume & brightness) state
     property bool rightEdgeControlVisible: false
 

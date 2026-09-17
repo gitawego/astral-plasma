@@ -78,6 +78,28 @@ ShellRoot {
         }
         function open(mode: string, targetY: real): void { Config.openBottomPopout(mode || "default", targetY); }
         function close(): void { Config.closeBottomPopout(); }
+        function showTray(idOrService: string, customY: real): void {
+            const trayItems = WindowService.tray || [];
+            let item = null;
+            for (let i = 0; i < trayItems.length; i++) {
+                let t = trayItems[i];
+                if (t && ((t.id && t.id.toLowerCase().indexOf(idOrService.toLowerCase()) !== -1) || (t.service && t.service.toLowerCase().indexOf(idOrService.toLowerCase()) !== -1))) {
+                    item = t;
+                    break;
+                }
+            }
+            if (item) {
+                WindowService.loadTrayMenu(item);
+                const y = (customY !== undefined && customY > 0) ? customY : 650;
+                Config.openBottomPopout("tray", y);
+            }
+        }
+        function openTraySubmenu(indexOrTitle: string): void {
+            Config.openTraySubmenu(indexOrTitle);
+        }
+        function popTraySubmenu(): void {
+            Config.popTraySubmenu();
+        }
         function previewApp(index: int, customY: real): void {
             const wins = WindowService.windows || [];
             if (wins.length > index) {

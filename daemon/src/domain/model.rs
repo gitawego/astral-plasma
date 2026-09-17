@@ -51,6 +51,16 @@ pub struct TrayMenuItem {
     pub is_separator: bool,
     pub enabled: bool,
     pub icon: String,
+    #[serde(rename = "hasSubmenu", default)]
+    pub has_submenu: bool,
+    #[serde(rename = "toggleType", default)]
+    pub toggle_type: String,
+    #[serde(rename = "toggleState", default)]
+    pub toggle_state: i32,
+    #[serde(default)]
+    pub disposition: String,
+    #[serde(default)]
+    pub children: Vec<TrayMenuItem>,
 }
 
 

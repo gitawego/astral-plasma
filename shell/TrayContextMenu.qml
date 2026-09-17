@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import "../theme"
 import "../config"
+import "../components"
 import "../menus"
 import "../services"
 
@@ -15,12 +16,16 @@ Item {
     property real screenH: parent.height
 
     property var menuItems: []
+    property var submenuStack: []
+    readonly property var currentItems: (submenuStack && submenuStack.length > 0) ? (submenuStack[submenuStack.length - 1].items || []) : root.menuItems
+    readonly property string currentSubmenuTitle: (submenuStack && submenuStack.length > 0) ? (submenuStack[submenuStack.length - 1].title || "") : ""
     property var targetItem: null
     property bool isLoading: false
 
     function show(item, globalY) {
         console.log("TrayContextMenu.show() called! item=" + JSON.stringify(item) + " globalY=" + globalY);
         root.targetItem = item;
+        root.submenuStack = [];
         menuCard.targetGlobalY = globalY;
         menuCard.visible = true;
         root.isLoading = true;
@@ -44,6 +49,7 @@ Item {
         menuCard.visible = false;
         root.targetItem = null;
         root.menuItems = [];
+        root.submenuStack = [];
     }
 
     MouseArea {
@@ -61,7 +67,7 @@ Item {
 
         x: root.dockW + 10
         y: Math.max(12, Math.min(root.screenH - height - 12, targetGlobalY - 10))
-        implicitWidth: 240
+        implicitWidth: 260
 
         Behavior on y {
             NumberAnimation {
@@ -71,7 +77,9 @@ Item {
             }
         }
 
+        // Top-Level Header
         MenuHeader {
+            visible: root.submenuStack.length === 0
             title: root.targetItem ? (root.targetItem.title || root.targetItem.id) : ""
             subtitle: (root.targetItem && root.targetItem.service) ? root.targetItem.service : "System Tray"
             iconSource: {
@@ -84,12 +92,77 @@ Item {
             materialIcon: root.targetItem ? (root.targetItem.materialIcon || "widgets") : "widgets"
         }
 
+        // Submenu Header
+        Item {
+            width: parent.width
+            height: 36
+            visible: root.submenuStack.length > 0
+
+            Row {
+                anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                spacing: 8
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: backRow.implicitWidth + 12
+                    height: 28
+                    radius: Theme.radiusSmall
+                    color: backHover.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainerHigh
+
+                    Row {
+                        id: backRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        MaterialIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "arrow_back"
+                            size: 16
+                            color: Colors.primary
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Back"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.Medium
+                            color: Colors.textOnSurface
+                        }
+                    }
+
+                    MouseArea {
+                        id: backHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            let s = root.submenuStack.slice(0);
+                            s.pop();
+                            root.submenuStack = s;
+                        }
+                    }
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - backRow.implicitWidth - 30
+                    text: root.currentSubmenuTitle
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    color: Colors.textOnSurface
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
         MenuDivider {}
 
         Item {
             width: parent ? parent.width : 220
             height: 30
-            visible: root.isLoading
+            visible: root.isLoading && root.submenuStack.length === 0
 
             Text {
                 anchors.centerIn: parent
@@ -103,7 +176,7 @@ Item {
         Item {
             width: parent ? parent.width : 220
             height: 30
-            visible: !root.isLoading && root.menuItems.length === 0
+            visible: (!root.isLoading || root.submenuStack.length > 0) && root.currentItems.length === 0
 
             Text {
                 anchors.centerIn: parent
@@ -114,39 +187,83 @@ Item {
             }
         }
 
-        Repeater {
-            model: root.menuItems
+        Item {
+            width: parent.width
+            implicitHeight: Math.min(460, menuCol.implicitHeight)
+            visible: root.currentItems.length > 0
+            clip: true
 
-            Item {
-                id: delegateItem
-                width: parent ? parent.width : 220
-                visible: modelData.isSeparator || (modelData.label !== undefined && modelData.label.trim() !== "")
-                height: visible ? (modelData.isSeparator ? 9 : 38) : 0
+            Flickable {
+                id: menuFlickable
+                anchors.fill: parent
+                contentWidth: width
+                contentHeight: menuCol.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                clip: true
+                interactive: contentHeight > height
 
-                MenuDivider {
-                    anchors.centerIn: parent
+                Column {
+                    id: menuCol
                     width: parent.width
-                    visible: modelData.isSeparator
+                    spacing: 2
+
+                    Repeater {
+                        model: root.currentItems
+
+                        Item {
+                            id: delegateItem
+                            width: parent ? parent.width : 220
+                            visible: modelData.isSeparator || (modelData.label !== undefined && modelData.label.trim() !== "")
+                            height: visible ? (modelData.isSeparator ? 9 : 36) : 0
+
+                            MenuDivider {
+                                anchors.centerIn: parent
+                                width: parent.width
+                                visible: modelData.isSeparator
+                            }
+
+                            MenuItem {
+                                anchors.fill: parent
+                                visible: !modelData.isSeparator
+                                text: modelData.label || ""
+                                enabled: modelData.enabled !== false
+                                hasSubmenu: Boolean(modelData.hasSubmenu) || (Boolean(modelData.children) && modelData.children.length > 0)
+                                toggleType: modelData.toggleType || ""
+                                toggleState: (modelData.toggleState !== undefined) ? modelData.toggleState : 0
+                                iconSource: {
+                                    if (!modelData.icon) return "";
+                                    if (modelData.icon.indexOf("/") !== -1) {
+                                        return modelData.icon.startsWith("file://") ? modelData.icon : ("file://" + modelData.icon);
+                                    }
+                                    return Quickshell.iconPath(modelData.icon);
+                                }
+                                isDangerous: (modelData.label && modelData.label.toLowerCase().indexOf("quit") !== -1)
+                                onClicked: {
+                                    if (hasSubmenu && modelData.children && modelData.children.length > 0) {
+                                        let s = root.submenuStack.slice(0);
+                                        s.push({
+                                            title: modelData.label || "Submenu",
+                                            items: modelData.children
+                                        });
+                                        root.submenuStack = s;
+                                        menuFlickable.contentY = 0;
+                                    } else if (modelData.enabled !== false) {
+                                        if (root.targetItem && root.targetItem.menuPath) {
+                                            WindowService.triggerTrayMenuItem(root.targetItem.service, root.targetItem.menuPath, modelData.id);
+                                        }
+                                        root.hide();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
-                MenuItem {
-                    anchors.fill: parent
-                    visible: !modelData.isSeparator
-                    text: modelData.label || ""
-                    enabled: modelData.enabled !== false
-                    iconSource: {
-                        if (!modelData.icon) return "";
-                        if (modelData.icon.indexOf("/") !== -1) {
-                            return modelData.icon.startsWith("file://") ? modelData.icon : ("file://" + modelData.icon);
-                        }
-                        return Quickshell.iconPath(modelData.icon);
-                    }
-                    isDangerous: (modelData.label && modelData.label.toLowerCase().indexOf("quit") !== -1)
-                    onClicked: {
-                        if (root.targetItem && root.targetItem.menuPath) {
-                            WindowService.triggerTrayMenuItem(root.targetItem.service, root.targetItem.menuPath, modelData.id);
-                        }
-                        root.hide();
+                WheelHandler {
+                    target: menuFlickable
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: (event) => {
+                        menuFlickable.contentY = Math.max(0, Math.min(menuFlickable.contentHeight - menuFlickable.height, menuFlickable.contentY - event.angleDelta.y));
                     }
                 }
             }

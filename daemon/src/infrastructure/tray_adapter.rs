@@ -321,6 +321,117 @@ impl TrayAdapter {
         (title, icon, m_icon)
     }
 
+    pub fn clean_menu_label(raw: &str) -> String {
+        raw.replace("__", "\u{0000}").replace('_', "").replace("\u{0000}", "_")
+    }
+
+    pub fn parse_dbusmenu_node(val: &serde_json::Value) -> Option<TrayMenuItem> {
+        let node_arr = if let Some(arr) = val.get("data").and_then(|d| d.as_array()) {
+            arr
+        } else if let Some(arr) = val.as_array() {
+            arr
+        } else {
+            return None;
+        };
+
+        if node_arr.len() < 2 {
+            return None;
+        }
+
+        let id = node_arr[0].as_i64().unwrap_or(0) as i32;
+        let props = node_arr[1].as_object();
+
+        let visible = props
+            .and_then(|p| p.get("visible"))
+            .and_then(|v| v.get("data").or(Some(v)))
+            .and_then(|b| b.as_bool())
+            .unwrap_or(true);
+
+        if !visible {
+            return None;
+        }
+
+        let raw_label = props
+            .and_then(|p| p.get("label"))
+            .and_then(|l| l.get("data").or(Some(l)))
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
+        let label = Self::clean_menu_label(raw_label);
+
+        let item_type = props
+            .and_then(|p| p.get("type"))
+            .and_then(|t| t.get("data").or(Some(t)))
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
+
+        let is_separator = item_type == "separator";
+
+        let enabled = props
+            .and_then(|p| p.get("enabled"))
+            .and_then(|e| e.get("data").or(Some(e)))
+            .and_then(|b| b.as_bool())
+            .unwrap_or(true);
+
+        let icon = props
+            .and_then(|p| p.get("icon-name"))
+            .and_then(|i| i.get("data").or(Some(i)))
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let children_display = props
+            .and_then(|p| p.get("children-display"))
+            .and_then(|c| c.get("data").or(Some(c)))
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
+
+        let toggle_type = props
+            .and_then(|p| p.get("toggle-type"))
+            .and_then(|t| t.get("data").or(Some(t)))
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let toggle_state = props
+            .and_then(|p| p.get("toggle-state"))
+            .and_then(|s| s.get("data").or(Some(s)))
+            .and_then(|i| i.as_i64())
+            .unwrap_or(0) as i32;
+
+        let disposition = props
+            .and_then(|p| p.get("disposition"))
+            .and_then(|d| d.get("data").or(Some(d)))
+            .and_then(|s| s.as_str())
+            .unwrap_or("normal")
+            .to_string();
+
+        let mut children = Vec::new();
+        if node_arr.len() >= 3 {
+            if let Some(c_arr) = node_arr[2].as_array() {
+                for c_val in c_arr {
+                    if let Some(child_item) = Self::parse_dbusmenu_node(c_val) {
+                        children.push(child_item);
+                    }
+                }
+            }
+        }
+
+        let has_submenu = !children.is_empty() || children_display == "submenu";
+
+        Some(TrayMenuItem {
+            id,
+            label,
+            is_separator,
+            enabled,
+            icon,
+            has_submenu,
+            toggle_type,
+            toggle_state,
+            disposition,
+            children,
+        })
+    }
+
     pub fn parse_dbusmenu_json(raw: &serde_json::Value) -> DynResult<Vec<TrayMenuItem>> {
         let mut items = Vec::new();
         if let Some(data) = raw.get("data").and_then(|d| d.as_array()) {
@@ -329,47 +440,8 @@ impl TrayAdapter {
                     if root_node.len() >= 3 {
                         if let Some(children) = root_node[2].as_array() {
                             for child in children {
-                                if let Some(cdata) = child.get("data").and_then(|d| d.as_array()) {
-                                    if cdata.len() >= 2 {
-                                        let id = cdata[0].as_i64().unwrap_or(0) as i32;
-                                        let props = cdata[1].as_object();
-
-                                        let label = props
-                                            .and_then(|p| p.get("label"))
-                                            .and_then(|l| l.get("data"))
-                                            .and_then(|s| s.as_str())
-                                            .unwrap_or("")
-                                            .replace('_', "");
-
-                                        let item_type = props
-                                            .and_then(|p| p.get("type"))
-                                            .and_then(|t| t.get("data"))
-                                            .and_then(|s| s.as_str())
-                                            .unwrap_or("");
-
-                                        let is_separator = item_type == "separator";
-
-                                        let enabled = props
-                                            .and_then(|p| p.get("enabled"))
-                                            .and_then(|e| e.get("data"))
-                                            .and_then(|b| b.as_bool())
-                                            .unwrap_or(true);
-
-                                        let icon = props
-                                            .and_then(|p| p.get("icon-name"))
-                                            .and_then(|i| i.get("data"))
-                                            .and_then(|s| s.as_str())
-                                            .unwrap_or("")
-                                            .to_string();
-
-                                        items.push(TrayMenuItem {
-                                            id,
-                                            label,
-                                            is_separator,
-                                            enabled,
-                                            icon,
-                                        });
-                                    }
+                                if let Some(item) = Self::parse_dbusmenu_node(child) {
+                                    items.push(item);
                                 }
                             }
                         }
@@ -503,7 +575,7 @@ impl TrayPort for TrayAdapter {
                 "GetLayout",
                 "iias",
                 "0",
-                "2",
+                "10",
                 "0",
             ])
             .output()?;

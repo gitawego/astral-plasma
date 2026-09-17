@@ -13,6 +13,10 @@ Rectangle {
     property bool isDangerous: false
     property bool enabled: true
 
+    property bool hasSubmenu: false
+    property string toggleType: "" // "checkmark", "radio", ""
+    property int toggleState: 0 // 0, 1
+
     signal clicked()
 
     width: parent ? parent.width : 200
@@ -41,10 +45,28 @@ Rectangle {
         anchors.rightMargin: 10
         spacing: 10
 
+        MaterialIcon {
+            width: (root.toggleType !== "") ? 18 : 0
+            height: 18
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.toggleType !== ""
+            text: {
+                if (root.toggleType === "checkmark") {
+                    return root.toggleState === 1 ? "check" : "";
+                } else if (root.toggleType === "radio") {
+                    return root.toggleState === 1 ? "radio_button_checked" : "radio_button_unchecked";
+                }
+                return "";
+            }
+            color: (root.toggleState === 1) ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#d0bcff") : ((typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0")
+            size: 16
+        }
+
         ThemedIcon {
-            width: 20
+            width: (root.iconSource !== "" || root.materialIcon !== "") ? 20 : 0
             height: 20
             anchors.verticalCenter: parent.verticalCenter
+            visible: root.iconSource !== "" || root.materialIcon !== ""
             source: root.iconSource
             materialIcon: root.materialIcon
             size: 18
@@ -57,7 +79,7 @@ Rectangle {
         }
 
         Column {
-            width: parent.width - 30
+            width: parent.width - (root.toggleType !== "" ? 28 : 0) - ((root.iconSource !== "" || root.materialIcon !== "") ? 30 : 0) - (root.hasSubmenu ? 26 : 0)
             anchors.verticalCenter: parent.verticalCenter
             spacing: 1
 
@@ -85,6 +107,16 @@ Rectangle {
                 elide: Text.ElideRight
                 width: parent.width
             }
+        }
+
+        MaterialIcon {
+            width: root.hasSubmenu ? 18 : 0
+            height: 18
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.hasSubmenu
+            text: "chevron_right"
+            size: 18
+            color: hoverArea.containsMouse ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#d0bcff") : ((typeof Colors !== "undefined" && Colors.textOnSurfaceVariant) ? Colors.textOnSurfaceVariant : "#cac4d0")
         }
     }
 

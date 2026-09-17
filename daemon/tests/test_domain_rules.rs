@@ -319,6 +319,106 @@ fn test_dbusmenu_json_parsing() {
 }
 
 #[test]
+fn test_dbusmenu_nested_submenus_and_toggles() {
+    use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
+
+    let json_str = r#"{
+        "data": [
+            1,
+            [
+                0,
+                { "children-display": { "data": "submenu" } },
+                [
+                    {
+                        "data": [
+                            10,
+                            {
+                                "label": { "data": "_Updates (2)" },
+                                "children-display": { "data": "submenu" }
+                            },
+                            [
+                                {
+                                    "data": [
+                                        11,
+                                        { "label": { "data": "package-a 1.0 -> 2.0" } },
+                                        []
+                                    ]
+                                },
+                                {
+                                    "data": [
+                                        12,
+                                        {
+                                            "label": { "data": "_Nested Sub" },
+                                            "children-display": { "data": "submenu" }
+                                        },
+                                        [
+                                            {
+                                                "data": [
+                                                    13,
+                                                    {
+                                                        "label": { "data": "Deep Option" },
+                                                        "toggle-type": { "data": "checkmark" },
+                                                        "toggle-state": { "data": 1 }
+                                                    },
+                                                    []
+                                                ]
+                                            }
+                                        ]
+                                    ]
+                                }
+                            ]
+                        ]
+                    },
+                    {
+                        "data": [
+                            20,
+                            {
+                                "label": { "data": "Radio Option" },
+                                "toggle-type": { "data": "radio" },
+                                "toggle-state": { "data": 0 }
+                            },
+                            []
+                        ]
+                    }
+                ]
+            ]
+        ]
+    }"#;
+
+    let val: serde_json::Value = serde_json::from_str(json_str).unwrap();
+    let items = TrayAdapter::parse_dbusmenu_json(&val).unwrap();
+
+    assert_eq!(items.len(), 2);
+    // Item 10: Updates (2)
+    assert_eq!(items[0].id, 10);
+    assert_eq!(items[0].label, "Updates (2)");
+    assert!(items[0].has_submenu);
+    assert_eq!(items[0].children.len(), 2);
+
+    // Child 11: package-a
+    assert_eq!(items[0].children[0].id, 11);
+    assert_eq!(items[0].children[0].label, "package-a 1.0 -> 2.0");
+    assert!(!items[0].children[0].has_submenu);
+
+    // Child 12: Nested Sub
+    assert_eq!(items[0].children[1].id, 12);
+    assert_eq!(items[0].children[1].label, "Nested Sub");
+    assert!(items[0].children[1].has_submenu);
+    assert_eq!(items[0].children[1].children.len(), 1);
+
+    // Grandchild 13: Deep Option (Checkmark on)
+    assert_eq!(items[0].children[1].children[0].id, 13);
+    assert_eq!(items[0].children[1].children[0].label, "Deep Option");
+    assert_eq!(items[0].children[1].children[0].toggle_type, "checkmark");
+    assert_eq!(items[0].children[1].children[0].toggle_state, 1);
+
+    // Item 20: Radio Option (off)
+    assert_eq!(items[1].id, 20);
+    assert_eq!(items[1].toggle_type, "radio");
+    assert_eq!(items[1].toggle_state, 0);
+}
+
+#[test]
 fn test_power_session_confirmation_rules() {
     // Domain rule: all destructive session actions (logout, restart, shutdown)
     // must be guarded behind confirmation and map to canonical system/dbus commands.

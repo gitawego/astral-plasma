@@ -133,7 +133,17 @@ Item {
         "picture_in_picture": "󰹩",
         "sync": "󰑓",
         "check": "󰄬",
-        "done": "󰄬"
+        "done": "󰄬",
+        "chevron_right": "󰅂",
+        "navigate_next": "󰅂",
+        "chevron_left": "󰅁",
+        "navigate_before": "󰅁",
+        "arrow_back": "󰁍",
+        "arrow_forward": "󰁔",
+        "radio_button_checked": "󰗌",
+        "radio_button_unchecked": "󰄰",
+        "check_box": "󰄲",
+        "check_box_outline_blank": "󰄱"
     })
 
     readonly property string displaySymbol: {

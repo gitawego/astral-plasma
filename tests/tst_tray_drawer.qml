@@ -119,6 +119,35 @@ Item {
         closeBottomPopout();
         assert(!testRoot.bottomPopoutVisible, "Drawer closes immediately upon item click");
 
+        // 7. Submenu Drill-down and Navigation Stack Tests
+        var mockSubmenuModel = [
+            { id: 220, label: "41 updates available", isSeparator: false, enabled: false, icon: "", hasSubmenu: false, children: [] },
+            { id: 221, label: "All (41)", isSeparator: false, enabled: true, icon: "", hasSubmenu: true, children: [
+                { id: 222, label: "at-spi2-core 2.60.6-1.1 -> 2.60.7-1.1", isSeparator: false, enabled: true, icon: "", hasSubmenu: false, children: [] },
+                { id: 223, label: "linux-cachyos 7.2.4-3 -> 7.2.5-1", isSeparator: false, enabled: true, icon: "", hasSubmenu: false, children: [] }
+            ]},
+            { id: 313, label: "Exit", isSeparator: false, enabled: true, icon: "", hasSubmenu: false, children: [] }
+        ];
+
+        var submenuStack = [];
+        var currentItems = (submenuStack.length > 0) ? submenuStack[submenuStack.length - 1].items : mockSubmenuModel;
+        assert(currentItems.length === 3, "Root menu has 3 items");
+        assert(currentItems[1].hasSubmenu === true, "Item 221 is detected as having a submenu");
+
+        // Drill down into All (41)
+        submenuStack.push({ title: currentItems[1].label, items: currentItems[1].children });
+        currentItems = submenuStack[submenuStack.length - 1].items;
+        assert(submenuStack.length === 1, "Submenu stack has 1 level");
+        assert(submenuStack[0].title === "All (41)", "Submenu title matches All (41)");
+        assert(currentItems.length === 2, "Drilled-down menu displays 2 package updates");
+        assert(currentItems[0].label === "at-spi2-core 2.60.6-1.1 -> 2.60.7-1.1", "First package update matches");
+
+        // Back navigation
+        submenuStack.pop();
+        currentItems = (submenuStack.length > 0) ? submenuStack[submenuStack.length - 1].items : mockSubmenuModel;
+        assert(submenuStack.length === 0, "Submenu stack is empty after back");
+        assert(currentItems.length === 3, "Returned to root menu with 3 items");
+
         console.log("PASS: Tray Drawer Lifecycle Tests");
         Qt.exit(0);
     }
