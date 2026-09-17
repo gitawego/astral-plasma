@@ -21,11 +21,12 @@ Item {
     readonly property real midRadius: (innerRadius + outerRadius) / 2
     readonly property real ringThickness: Math.max(3, outerRadius - innerRadius)
 
+    readonly property bool isPlaying: (typeof MprisMedia !== "undefined" && MprisMedia) ? MprisMedia.isPlaying : false
     readonly property bool isVisualizerActive: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true)
-    readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.energy : 0.0
-    readonly property real audioBass: (isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.bass : 0.0
-    readonly property real audioTreble: (isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.treble : 0.0
-    readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.beat : 0.0
+    readonly property real audioEnergy: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.energy : 0.0
+    readonly property real audioBass: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.bass : 0.0
+    readonly property real audioTreble: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.treble : 0.0
+    readonly property real audioBeat: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.beat : 0.0
 
     // Gentle orbital phase animation
     property real animPhase: 0.0
@@ -34,13 +35,13 @@ Item {
         to: Math.PI * 2
         duration: 8000
         loops: Animation.Infinite
-        running: root.isTargetVisible && root.isVisualizerActive
+        running: root.isPlaying && root.isTargetVisible && root.isVisualizerActive && root.audioEnergy > 0.005
     }
 
     // High-framerate render pulse to guarantee 100% fluid dynamic canvas repainting
     Timer {
         interval: 33 // ~30 FPS
-        running: root.isTargetVisible && root.isVisualizerActive && root.audioEnergy > 0.005
+        running: root.isPlaying && root.isTargetVisible && root.isVisualizerActive && root.audioEnergy > 0.005
         repeat: true
         onTriggered: coronaCanvas.requestPaint()
     }
@@ -68,7 +69,7 @@ Item {
 
     Item {
         anchors.fill: parent
-        visible: root.showNotes && root.isTargetVisible && root.isVisualizerActive && (root.audioEnergy > 0.005 || root.audioBeat > 0.005)
+        visible: root.isPlaying && root.showNotes && root.isTargetVisible && root.isVisualizerActive && (root.audioEnergy > 0.005 || root.audioBeat > 0.005)
 
         Repeater {
             model: root.dynamicElements
@@ -152,6 +153,9 @@ Item {
 
         Connections {
             target: root
+            function onIsPlayingChanged() {
+                coronaCanvas.requestPaint();
+            }
             function onIsTargetVisibleChanged() {
                 coronaCanvas.requestPaint();
             }
@@ -168,7 +172,7 @@ Item {
             var cy = root.centerY;
             var energy = root.audioEnergy;
 
-            if (!root.isVisualizerActive || !root.isTargetVisible || energy <= 0.005) {
+            if (!root.isPlaying || !root.isVisualizerActive || !root.isTargetVisible || energy <= 0.005) {
                 ctx.beginPath();
                 ctx.arc(cx, cy, root.midRadius, 0, Math.PI * 2);
                 ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.08);

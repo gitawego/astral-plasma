@@ -47,7 +47,23 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 
 ---
 
-## 4. Repository Map
+## 4. Absolute Architectural Integrity: Data-Driven, Built-In, No Content Fabrication
+
+> [!IMPORTANT]
+> **MANDATORY CORE PRINCIPLES**:
+> 1. **Generic, Edge-Case Resilient & Purely Data/Config-Driven**:
+>    - All solutions must be architectural, generic, and driven entirely by dynamic system state, audio data, and configuration.
+>    - Avoid ad-hoc monkey patches, hardcoded player identities, brittle boolean flipping, or arbitrary pixel offsets.
+> 2. **High-Performance & Built-In Primitives**:
+>    - Audio visualizers, canvas renders, and animations must be exceptionally performant.
+>    - Use built-in Qt Quick primitives, GPU-accelerated items (`Canvas`, `ShaderEffect`, `PropertyAnimation`), and native system facilities rather than CPU-heavy polling loops or uncoordinated subprocesses.
+> 3. **NEVER Fabricate or Hard-Code Content**:
+>    - You must NEVER fabricate, fake, or synthesize content (e.g. generating synthetic beats with hardcoded 124 BPM math, generating fake audio frequency bands, or guessing playback state with isolated booleans).
+>    - Every visualizer frame, beat pulse, and playback status must reflect physical ground-truth (actual PCM audio streaming through PipeWire, DSP spectral flux, and live MPRIS signals). When audio is silent, energy and beats must be purely and cleanly 0.0.
+
+---
+
+## 5. Repository Map
 
 ```
 caelestia-kde/
@@ -88,9 +104,9 @@ caelestia-kde/
 
 ---
 
-## 5. Development & Verification Workflow
+## 6. Development & Verification Workflow
 
-### 5.1. Commands (Use Makefile)
+### 6.1. Commands (Use Makefile)
 Always use `make` commands:
 ```bash
 make test         # MANDATORY: Runs both Rust unit tests and all QML test suites
@@ -115,7 +131,7 @@ Inspect the resulting image using `view_file` to verify alignment, centering, an
 
 ---
 
-## 6. QML Coding Standards & Best Practices
+## 7. QML Coding Standards & Best Practices
 
 1. **Explicit Sizing & No Circular Anchors**:
    - Never combine `anchors.fill: parent` with an item whose parent's `implicitHeight` depends on its children.

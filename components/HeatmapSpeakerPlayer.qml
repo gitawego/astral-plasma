@@ -38,13 +38,13 @@ Item {
         to: Math.PI * 2
         duration: 8000
         loops: Animation.Infinite
-        running: root.isPlaying && root.isTargetVisible
+        running: root.isPlaying && root.isTargetVisible && root.audioEnergy > 0.005
     }
 
     // High-framerate render pulse to guarantee 100% fluid dynamic canvas repainting
     Timer {
         interval: 33 // ~30 FPS
-        running: root.isTargetVisible && root.isVisualizerActive && root.isPlaying
+        running: root.isTargetVisible && root.isVisualizerActive && root.isPlaying && root.audioEnergy > 0.005
         repeat: true
         onTriggered: coronaCanvas.requestPaint()
     }

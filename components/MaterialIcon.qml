@@ -88,6 +88,8 @@ Item {
         "visibility": "󰈈",
         "chat": "󰭹",
         "music_note": "󰝚",
+        "graphic_eq": "󰎇",
+        "equalizer": "󰎇",
         "energy_savings_leaf": "󰌪",
         "eco": "󰌪",
         "balance": "󱡊",

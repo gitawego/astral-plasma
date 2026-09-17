@@ -158,9 +158,11 @@ Item {
                 Rectangle {
                     id: playerBadge
                     Layout.alignment: Qt.AlignHCenter
-                    height: 32
-                    width: playerRow.implicitWidth + 56
-                    radius: Theme.radiusFull
+                    implicitWidth: playerRow.implicitWidth + 28
+                    implicitHeight: 28
+                    Layout.preferredWidth: implicitWidth
+                    Layout.preferredHeight: implicitHeight
+                    radius: height / 2
                     color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primaryContainer : Colors.surfaceContainerHigh
                     border.color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primary : Theme.borderSubtle
                     border.width: 1
@@ -168,16 +170,16 @@ Item {
                     Behavior on color { ColorAnimation { duration: 150 } }
                     Behavior on border.color { ColorAnimation { duration: 150 } }
 
-                    Row {
+                    RowLayout {
                         id: playerRow
                         anchors.centerIn: parent
-                        spacing: 9
+                        spacing: 6
 
                         MaterialIcon {
-                            text: (MprisMedia.players && MprisMedia.players.length > 1) ? "swap_horiz" : "music_note"
-                            size: 15
+                            text: (MprisMedia.players && MprisMedia.players.length > 1) ? "graphic_eq" : "music_note"
+                            size: 14
                             color: Colors.primary
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
                         Text {
@@ -186,15 +188,15 @@ Item {
                             font.pixelSize: Theme.fontLabelSmall
                             font.weight: Font.Medium
                             color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.onPrimaryContainer : Colors.m3onSurface
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
                         MaterialIcon {
                             visible: MprisMedia.players && MprisMedia.players.length > 1
-                            text: "arrow_drop_down"
-                            size: 16
+                            text: "expand_more"
+                            size: 15
                             color: Colors.onSurfaceVariant
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
                             rotation: playerDropdownOverlay.visible ? 180 : 0
                             Behavior on rotation { NumberAnimation { duration: 150 } }
                         }
@@ -220,21 +222,17 @@ Item {
                 }
             }
 
-            // Right: Animated Boba Cat Tapping to the Beat
+            // Right: Media Avatar (Supports gif, svg, png, jpg, and video; defaults to boba cat)
             Item {
-                Layout.preferredWidth: 160
-                Layout.preferredHeight: 160
+                Layout.preferredWidth: 220
+                Layout.preferredHeight: 240
                 Layout.alignment: Qt.AlignVCenter
 
-                AnimatedImage {
-                    id: bobaCat
-                    anchors.centerIn: parent
-                    width: 140
-                    height: 140
-                    fillMode: Image.PreserveAspectFit
-                    source: "../../theme/assets/bongocat.gif"
-                    playing: true
-                    speed: MprisMedia.isPlaying ? 1.0 : 0.4
+                MediaAvatar {
+                    id: mediaAvatar
+                    anchors.fill: parent
+                    source: Config.mediaAvatar
+                    isPlaying: MprisMedia.isPlaying
                 }
             }
         }

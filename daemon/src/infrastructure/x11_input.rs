@@ -35,9 +35,23 @@ pub struct XButtonEvent {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+pub struct XClientMessageEvent {
+    pub type_: libc::c_int,
+    pub serial: libc::c_ulong,
+    pub send_event: libc::c_int,
+    pub display: *mut libc::c_void,
+    pub window: libc::c_ulong,
+    pub message_type: libc::c_ulong,
+    pub format: libc::c_int,
+    pub data: [libc::c_long; 5],
+}
+
+#[repr(C)]
 pub union XEvent {
     pub type_: libc::c_int,
     pub xbutton: XButtonEvent,
+    pub xclient: XClientMessageEvent,
     pub pad: [libc::c_long; 24],
 }
 
@@ -86,22 +100,56 @@ extern "C" {
         event_mask: libc::c_long,
         event_send: *mut XEvent,
     ) -> libc::c_int;
+    fn XTranslateCoordinates(
+        display: *mut libc::c_void,
+        src_w: libc::c_ulong,
+        dest_w: libc::c_ulong,
+        src_x: libc::c_int,
+        src_y: libc::c_int,
+        dest_x_return: *mut libc::c_int,
+        dest_y_return: *mut libc::c_int,
+        child_return: *mut libc::c_ulong,
+    ) -> libc::c_int;
     fn XTestFakeKeyEvent(
         display: *mut libc::c_void,
         keycode: libc::c_uint,
         is_press: libc::c_int,
         delay: libc::c_ulong,
     ) -> libc::c_int;
+    fn XTestFakeMotionEvent(
+        display: *mut libc::c_void,
+        screen_number: libc::c_int,
+        x: libc::c_int,
+        y: libc::c_int,
+        delay: libc::c_ulong,
+    ) -> libc::c_int;
+    fn XTestFakeButtonEvent(
+        display: *mut libc::c_void,
+        button: libc::c_uint,
+        is_press: libc::c_int,
+        delay: libc::c_ulong,
+    ) -> libc::c_int;
+    fn XQueryPointer(
+        display: *mut libc::c_void,
+        w: libc::c_ulong,
+        root_return: *mut libc::c_ulong,
+        child_return: *mut libc::c_ulong,
+        root_x_return: *mut libc::c_int,
+        root_y_return: *mut libc::c_int,
+        win_x_return: *mut libc::c_int,
+        win_y_return: *mut libc::c_int,
+        mask_return: *mut libc::c_uint,
+    ) -> libc::c_int;
 }
 
 /// Computes target click coordinates on the bottom playback bar of a Wine media player window.
 pub fn calculate_wine_media_coords(action: WineMediaAction, width: u32, height: u32) -> (i32, i32) {
     let cx = (width / 2) as i32;
-    let cy = (height.saturating_sub(35)) as i32;
+    let cy = (height.saturating_sub(50)) as i32;
     let x = match action {
         WineMediaAction::PlayPause => cx,
-        WineMediaAction::Next => cx + 52,
-        WineMediaAction::Previous => cx - 52,
+        WineMediaAction::Next => cx + 51,
+        WineMediaAction::Previous => cx - 51,
     };
     (x, cy)
 }
@@ -210,8 +258,72 @@ pub unsafe fn find_wine_media_window(dpy: *mut libc::c_void, target_class: &str)
     found
 }
 
+/// Queries the currently active window ID via `_NET_ACTIVE_WINDOW` on the root window.
+pub unsafe fn get_active_window(dpy: *mut libc::c_void) -> libc::c_ulong {
+    let root = XDefaultRootWindow(dpy);
+    let net_active_window = XInternAtom(dpy, b"_NET_ACTIVE_WINDOW\0".as_ptr() as *const libc::c_char, 0);
+
+    let mut actual_type = 0;
+    let mut actual_format = 0;
+    let mut nitems = 0;
+    let mut bytes_after = 0;
+    let mut prop: *mut libc::c_uchar = ptr::null_mut();
+
+    let ret = XGetWindowProperty(
+        dpy,
+        root,
+        net_active_window,
+        0,
+        1,
+        0,
+        0,
+        &mut actual_type,
+        &mut actual_format,
+        &mut nitems,
+        &mut bytes_after,
+        &mut prop,
+    );
+
+    if ret == 0 && !prop.is_null() && nitems > 0 {
+        let win = *(prop as *const libc::c_ulong);
+        XFree(prop as *mut libc::c_void);
+        win
+    } else {
+        if !prop.is_null() {
+            XFree(prop as *mut libc::c_void);
+        }
+        0
+    }
+}
+
+/// Restores focus to the specified active window via an EWMH `_NET_ACTIVE_WINDOW` client message.
+pub unsafe fn restore_active_window(dpy: *mut libc::c_void, win: libc::c_ulong) {
+    if win == 0 {
+        return;
+    }
+    let root = XDefaultRootWindow(dpy);
+    let net_active_window = XInternAtom(dpy, b"_NET_ACTIVE_WINDOW\0".as_ptr() as *const libc::c_char, 0);
+
+    let mut ev = XEvent {
+        xclient: XClientMessageEvent {
+            type_: 33, // ClientMessage
+            serial: 0,
+            send_event: 1,
+            display: dpy,
+            window: win,
+            message_type: net_active_window,
+            format: 32,
+            data: [2, 0, 0, 0, 0], // 2 = pager / user client
+        },
+    };
+
+    let mask = (1 << 19) | (1 << 20); // SubstructureNotifyMask | SubstructureRedirectMask
+    XSendEvent(dpy, root, 0, mask, &mut ev);
+    XFlush(dpy);
+}
+
 /// Sends a direct targeted click event (`XSendEvent`) to the Wine media window controls.
-/// This avoids generating global X11 media keys that KDE plasma/kglobalaccel intercepts and routes to other players.
+/// Preserves the currently active window so Wine does not steal focus and pop to the foreground.
 pub fn send_wine_media_action(action: WineMediaAction) -> Result<(), String> {
     unsafe {
         let dpy = XOpenDisplay(ptr::null());
@@ -227,6 +339,8 @@ pub fn send_wine_media_action(action: WineMediaAction) -> Result<(), String> {
                 return Err("No NetEase Cloud Music window found".to_string());
             }
         };
+
+        let prev_active = get_active_window(dpy);
 
         let mut root = 0;
         let mut x = 0;
@@ -253,30 +367,67 @@ pub fn send_wine_media_action(action: WineMediaAction) -> Result<(), String> {
 
         let (target_x, target_y) = calculate_wine_media_coords(action, width, height);
 
-        let mut ev = XEvent {
-            xbutton: XButtonEvent {
-                type_: 4, // ButtonPress
-                serial: 0,
-                send_event: 1,
-                display: dpy,
-                window: win,
-                root: 0,
-                subwindow: 0,
-                time: 0,
-                x: target_x,
-                y: target_y,
-                x_root: target_x,
-                y_root: target_y,
-                state: 0,
-                button: 1, // Left click
-                same_screen: 1,
-            },
-        };
+        let mut rx = 0;
+        let mut ry = 0;
+        let mut child = 0;
+        XTranslateCoordinates(dpy, win, root, 0, 0, &mut rx, &mut ry, &mut child);
+        let root_x = rx + target_x;
+        let root_y = ry + target_y;
 
-        XSendEvent(dpy, win, 1, 4, &mut ev); // ButtonPressMask = 4
-        ev.xbutton.type_ = 5; // ButtonRelease
-        XSendEvent(dpy, win, 1, 8, &mut ev); // ButtonReleaseMask = 8
+        let mut pointer_root = 0;
+        let mut pointer_child = 0;
+        let mut orig_pointer_x = 0;
+        let mut orig_pointer_y = 0;
+        let mut win_x = 0;
+        let mut win_y = 0;
+        let mut mask = 0;
+        let has_pointer = XQueryPointer(
+            dpy,
+            root,
+            &mut pointer_root,
+            &mut pointer_child,
+            &mut orig_pointer_x,
+            &mut orig_pointer_y,
+            &mut win_x,
+            &mut win_y,
+            &mut mask,
+        );
+
+        // Hardware-level input injection via XTest (bypasses Chromium/CEF synthetic event rejection):
+        XTestFakeMotionEvent(dpy, -1, root_x, root_y, 0);
         XFlush(dpy);
+        std::thread::sleep(std::time::Duration::from_millis(30));
+
+        XTestFakeButtonEvent(dpy, 1, 1, 0); // ButtonPress
+        XFlush(dpy);
+        std::thread::sleep(std::time::Duration::from_millis(40));
+
+        XTestFakeButtonEvent(dpy, 1, 0, 0); // ButtonRelease
+        XFlush(dpy);
+        std::thread::sleep(std::time::Duration::from_millis(30));
+
+        // Restore pointer location
+        if has_pointer != 0 {
+            XTestFakeMotionEvent(dpy, -1, orig_pointer_x, orig_pointer_y, 0);
+            XFlush(dpy);
+        }
+
+        if prev_active != 0 && prev_active != win {
+            restore_active_window(dpy, prev_active);
+            std::thread::spawn(move || {
+                // Background watchdog: if Wine asynchronously requests activation ~50ms later, restore focus
+                std::thread::sleep(std::time::Duration::from_millis(60));
+                let d = XOpenDisplay(ptr::null());
+                if !d.is_null() {
+                    let cur = get_active_window(d);
+                    if cur == win {
+                        restore_active_window(d, prev_active);
+                    }
+                    XCloseDisplay(d);
+                }
+            });
+        }
+
         XCloseDisplay(dpy);
     }
     Ok(())
@@ -314,14 +465,14 @@ mod tests {
     fn test_wine_media_action_coords() {
         let (cx, cy) = calculate_wine_media_coords(WineMediaAction::PlayPause, 1000, 600);
         assert_eq!(cx, 500);
-        assert_eq!(cy, 565);
+        assert_eq!(cy, 550);
 
         let (nx, ny) = calculate_wine_media_coords(WineMediaAction::Next, 1000, 600);
-        assert_eq!(nx, 552);
-        assert_eq!(ny, 565);
+        assert_eq!(nx, 551);
+        assert_eq!(ny, 550);
 
         let (px, py) = calculate_wine_media_coords(WineMediaAction::Previous, 1000, 600);
-        assert_eq!(px, 448);
-        assert_eq!(py, 565);
+        assert_eq!(px, 449);
+        assert_eq!(py, 550);
     }
 }

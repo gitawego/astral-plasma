@@ -19,6 +19,7 @@ Singleton {
     property real beat: 0.0
     property var bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     property bool active: false
+    readonly property bool isStreaming: visualizerProc.running
     property int frameCount: 0
 
     signal frameUpdated()
@@ -47,10 +48,10 @@ Singleton {
     // Subprocess execution gate
     property bool procShouldRun: false
 
-    // Grace timer: 5000ms delay after visibility is lost before stopping
+    // Grace timer: 2000ms delay after visibility is lost before stopping
     Timer {
         id: graceTimer
-        interval: 5000
+        interval: 2000
         repeat: false
         onTriggered: {
             if (!root.isEffectVisible) {
@@ -68,35 +69,18 @@ Singleton {
     }
 
     function updateLifecycle() {
-        if (!root.isPlaying) {
-            // Rule 1: Music paused or stopped -> Stop immediately
-            graceTimer.stop();
-            root.procShouldRun = false;
-            root.active = false;
-            root.energy = 0.0;
-            root.bass = 0.0;
-            root.mid = 0.0;
-            root.treble = 0.0;
-            root.beat = 0.0;
-            root.bands = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-            root.frameUpdated();
-            return;
-        }
-
-        // Music is playing:
         if (root.isEffectVisible) {
-            // Rule 2: Visible and playing -> Immediately active, cancel grace countdown
+            // Dashboard / Media tab is visible: run visualizer process to sample real audio
             graceTimer.stop();
             root.procShouldRun = true;
         } else {
-            // Rule 3: Hidden while playing -> Start 5-second grace countdown
+            // Hidden: start 5-second grace countdown before shutting down to save CPU
             if (root.procShouldRun && !graceTimer.running) {
                 graceTimer.start();
             }
         }
     }
 
-    onIsPlayingChanged: updateLifecycle()
     onIsEffectVisibleChanged: updateLifecycle()
 
     Component.onCompleted: updateLifecycle()
@@ -128,7 +112,7 @@ Singleton {
                     if (data.beat !== undefined) root.beat = data.beat;
                     if (data.bands && Array.isArray(data.bands)) root.bands = data.bands.slice();
 
-                    root.active = root.isPlaying && (root.energy > 0.005 || root.beat > 0.005);
+                    root.active = (root.energy > 0.005 || root.beat > 0.005);
                     root.frameCount++;
                     root.frameUpdated();
                 } catch (e) {

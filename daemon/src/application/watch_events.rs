@@ -109,6 +109,13 @@ impl WatcherService {
         }
     }
 
+    #[zbus(name = "UpdateWinePlaybackStatus")]
+    async fn update_wine_playback_status(&self, is_playing: bool) {
+        if let Some(mpris) = &self.wine_mpris {
+            let _ = mpris.update_playback_status(is_playing).await;
+        }
+    }
+
     #[zbus(name = "UpdateWindowList")]
     async fn update_window_list(&self, json_str: &str) {
         let Ok(raw) = serde_json::from_str::<Value>(json_str) else {
@@ -369,7 +376,13 @@ pub async fn run_event_daemon() -> DynResult<()> {
         }
     }
 
-    let wine_mpris = WineMprisService::new().await.ok().map(Arc::new);
+    let wine_mpris = match WineMprisService::new().await {
+        Ok(s) => Some(Arc::new(s)),
+        Err(e) => {
+            eprintln!("[astral-plasma] Failed to start WineMprisService: {}", e);
+            None
+        }
+    };
 
     if let Some(mpris) = &wine_mpris {
         for w in &initial_wins {

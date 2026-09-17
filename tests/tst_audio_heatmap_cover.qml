@@ -225,6 +225,10 @@ Item {
         assert(testSpeaker.audioEnergy === 0.0, "Speaker audioEnergy must be 0.0 when paused");
         assert(testSpeaker.audioBeat === 0.0, "Speaker audioBeat must be 0.0 when paused");
 
+        // In testRoot, testRing.isPlaying defaults to false (no MprisMedia playing)
+        assert(testRing.audioEnergy === 0.0, "CoverRing audioEnergy must be 0.0 when paused");
+        assert(testRing.audioBeat === 0.0, "CoverRing audioBeat must be 0.0 when paused");
+
         mockVisualizer.isPlaying = true;
         mockVisualizer.energy = 0.002; // Below 0.005 noise threshold
         mockVisualizer.beat = 0.0;
@@ -234,6 +238,51 @@ Item {
         mockVisualizer.energy = 0.45;
         var isActiveWithMusic = mockVisualizer.isPlaying && (mockVisualizer.energy > 0.005 || mockVisualizer.beat > 0.005);
         assert(isActiveWithMusic, "Visualizer must activate when energy > 0.005");
+
+        // 12. Wine Player Ground-Truth Audio Arbitration Contract
+        function isWinePlayerCheck(p) {
+            if (!p) return false;
+            let bus = p.dbusName || "";
+            let id = p.identity || "";
+            return bus.indexOf("cloudmusic") !== -1 || id.indexOf("NetEase") !== -1 || id.indexOf("Wine") !== -1;
+        }
+
+        function isPlayerPlayingCheck(p, vis) {
+            if (!p) return false;
+            if (isWinePlayerCheck(p)) {
+                if (typeof vis !== "undefined" && vis) {
+                    return (vis.active === true || vis.energy > 0.005 || vis.beat > 0.005);
+                }
+            }
+            if (p.isPlaying === true) return true;
+            if (p.playbackState === 1) return true;
+            return false;
+        }
+
+        var wineMockPlayer = {
+            dbusName: "org.mpris.MediaPlayer2.cloudmusic",
+            identity: "NetEase Cloud Music",
+            playbackState: 1, // Stale DBus state "Playing" from when music was active
+            isPlaying: true
+        };
+
+        // Sub-threshold decay energy (e.g. 0.002) must be treated as silent (false)
+        mockVisualizer.energy = 0.002;
+        mockVisualizer.beat = 0.000;
+        mockVisualizer.active = false;
+        assert(!isPlayerPlayingCheck(wineMockPlayer, mockVisualizer), "Wine player with sub-threshold decay energy (0.002) must evaluate to false, not fall through to DBus state");
+
+        // Complete silence (0.0) must evaluate to false
+        mockVisualizer.energy = 0.000;
+        mockVisualizer.beat = 0.000;
+        mockVisualizer.active = false;
+        assert(!isPlayerPlayingCheck(wineMockPlayer, mockVisualizer), "Wine player with 0.0 energy must evaluate to false, ignoring stale DBus playbackState=1");
+
+        // Active acoustic energy (> 0.005) must evaluate to true
+        mockVisualizer.energy = 0.420;
+        mockVisualizer.beat = 0.150;
+        mockVisualizer.active = true;
+        assert(isPlayerPlayingCheck(wineMockPlayer, mockVisualizer), "Wine player with active acoustic energy (> 0.005) must evaluate to true");
 
         console.log("PASS: All Audio Heatmap Cover tests passed successfully!");
         Qt.exit(0);

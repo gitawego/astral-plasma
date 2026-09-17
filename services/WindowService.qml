@@ -64,6 +64,11 @@ Singleton {
         activateProc.running = true;
     }
 
+    function updateWinePlaybackStatus(isPlaying) {
+        activateProc.command = ["qdbus6", "org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher.UpdateWinePlaybackStatus", isPlaying ? "true" : "false"];
+        activateProc.running = true;
+    }
+
     property var _trayMenuCallback: null
 
     Process {

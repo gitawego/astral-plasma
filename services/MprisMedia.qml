@@ -8,7 +8,31 @@ import "../config"
 Singleton {
     id: root
 
-    readonly property var players: Mpris.players.values
+    readonly property var rawPlayers: Mpris.players.values
+    readonly property var players: {
+        let list = rawPlayers || [];
+        if (!list || list.length <= 1) return list;
+        let hasPbi = false;
+        for (let i = 0; i < list.length; i++) {
+            let p = list[i];
+            if (p && p.dbusName && p.dbusName.indexOf("plasma-browser-integration") !== -1) {
+                hasPbi = true;
+                break;
+            }
+        }
+        if (!hasPbi) return list;
+        let res = [];
+        for (let i = 0; i < list.length; i++) {
+            let p = list[i];
+            if (!p) continue;
+            // When plasma-browser-integration is active, deduplicate raw Chromium instance bus names
+            if (p.dbusName && p.dbusName.indexOf(".instance") !== -1) {
+                continue;
+            }
+            res.push(p);
+        }
+        return res;
+    }
     property var manualPlayer: null
     property string manualPlayerBusName: ""
     property var currentPlayer: null
@@ -44,8 +68,54 @@ Singleton {
         return false;
     }
 
+    function isWinePlayer(p) {
+        if (!p) return false;
+        let bus = p.dbusName || "";
+        let id = p.identity || "";
+        return bus.indexOf("cloudmusic") !== -1 || id.indexOf("NetEase") !== -1 || id.indexOf("Wine") !== -1;
+    }
+
+    function hasOtherNativePlayingPlayer(excludePlayer) {
+        if (!players || players.length === 0) return false;
+        for (let i = 0; i < players.length; i++) {
+            let other = players[i];
+            if (!other || other === excludePlayer) continue;
+            if (isWinePlayer(other)) continue;
+            if (other.isPlaying === true || other.playbackState === 1 || (typeof MprisPlaybackState !== "undefined" && other.playbackState === MprisPlaybackState.Playing)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function isPlayerPlaying(p) {
         if (!p) return false;
+
+        // Ground-truth: An explicitly Paused (2) or Stopped (0) player is never playing
+        if (p.playbackState === 2 || p.playbackState === 0) return false;
+        if (typeof MprisPlaybackState !== "undefined") {
+            if (p.playbackState === MprisPlaybackState.Paused || p.playbackState === MprisPlaybackState.Stopped) return false;
+        }
+
+        // Wine player handling
+        if (isWinePlayer(p)) {
+            // If another native player is playing, PipeWire audio belongs to that player
+            if (hasOtherNativePlayingPlayer(p)) {
+                return false;
+            }
+            // If Wine player DBus state indicates Playing:
+            if (p.isPlaying === true || p.playbackState === 1 || (typeof MprisPlaybackState !== "undefined" && p.playbackState === MprisPlaybackState.Playing)) {
+                // If visualizer is streaming audio from PipeWire, verify non-silence
+                // (Wine does not cork PipeWire when paused internally, so silence indicates pause)
+                if (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.isStreaming) {
+                    return (AudioVisualizer.energy > 0.005 || AudioVisualizer.beat > 0.005);
+                }
+                return true;
+            }
+            return false;
+        }
+
+        // Native MPRIS players (Edge, Chrome, Firefox, Strawberry, Elisa, etc.)
         if (p.isPlaying === true) return true;
         if (p.playbackState === 1) return true;
         if (typeof MprisPlaybackState !== "undefined" && p.playbackState === MprisPlaybackState.Playing) return true;
@@ -53,6 +123,7 @@ Singleton {
     }
 
     readonly property bool isAnyPlayerPlaying: {
+        let fc = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.frameCount : 0;
         if (!players || players.length === 0) return false;
         for (let i = 0; i < players.length; i++) {
             if (isPlayerPlaying(players[i])) return true;
@@ -62,7 +133,19 @@ Singleton {
 
     function syncToPlayingPlayer() {
         if (!players || players.length === 0) return;
-        // Prioritize any actively playing player
+        // Prioritize any actively playing native player first (e.g. Edge, Chrome, Firefox)
+        for (let i = 0; i < players.length; i++) {
+            let p = players[i];
+            if (!isWinePlayer(p) && isPlayerPlaying(p)) {
+                manualPlayer = null;
+                manualPlayerBusName = "";
+                if (currentPlayer !== p) {
+                    currentPlayer = p;
+                }
+                return;
+            }
+        }
+        // Then any other playing player (e.g. Wine)
         for (let i = 0; i < players.length; i++) {
             let p = players[i];
             if (isPlayerPlaying(p)) {
@@ -107,9 +190,18 @@ Singleton {
             target: modelData
             ignoreUnknownSignals: true
             function onPlaybackStateChanged() {
+                if (modelData && root.isPlayerPlaying(modelData) && root.currentPlayer !== modelData) {
+                    // Auto-sync when a player transitions to Playing
+                    root.manualPlayer = null;
+                    root.manualPlayerBusName = "";
+                }
                 root.updateActivePlayer();
             }
             function onIsPlayingChanged() {
+                if (modelData && root.isPlayerPlaying(modelData) && root.currentPlayer !== modelData) {
+                    root.manualPlayer = null;
+                    root.manualPlayerBusName = "";
+                }
                 root.updateActivePlayer();
             }
         }
@@ -138,11 +230,22 @@ Singleton {
         }
 
         // 2. Check if any player is actively Playing
+        // Prioritize native playing players first, then wine
         let playingPlayer = null;
         for (let i = 0; i < players.length; i++) {
-            if (isPlayerPlaying(players[i])) {
-                playingPlayer = players[i];
+            let p = players[i];
+            if (!isWinePlayer(p) && isPlayerPlaying(p)) {
+                playingPlayer = p;
                 break;
+            }
+        }
+        if (!playingPlayer) {
+            for (let i = 0; i < players.length; i++) {
+                let p = players[i];
+                if (isPlayerPlaying(p)) {
+                    playingPlayer = p;
+                    break;
+                }
             }
         }
 
@@ -197,11 +300,69 @@ Singleton {
         return "Media Player";
     }
 
+    function cleanTitle(rawTitle, rawArtist) {
+        if (!rawTitle || rawTitle.length === 0) return "No Media Playing";
+        let t = rawTitle.trim();
+        // 1. Remove leading notification counts like "(4) " or "(99+) "
+        t = t.replace(/^\(\d+\+?\)\s*/, "");
+        // 2. Remove trailing site identifiers like " - YouTube"
+        t = t.replace(/\s*-\s*(YouTube|Bilibili|SoundCloud|Spotify)\s*$/i, "");
+
+        // 3. If rawArtist is given and title starts with "Artist - ", remove redundant artist from title
+        if (rawArtist && rawArtist.length > 0 && rawArtist !== "Unknown Artist") {
+            let prefix = rawArtist.trim() + " - ";
+            if (t.toLowerCase().indexOf(prefix.toLowerCase()) === 0) {
+                t = t.slice(prefix.length).trim();
+            }
+        } else {
+            // If rawArtist is empty/unknown, and title has "Artist - Title" or "Artist | Title", extract title
+            let sepIdx = t.indexOf(" - ");
+            if (sepIdx === -1) sepIdx = t.indexOf(" | ");
+            if (sepIdx !== -1) {
+                let candidate = t.slice(sepIdx + 3).trim();
+                if (candidate.length > 0) t = candidate;
+            }
+        }
+        return t.length > 0 ? t : rawTitle;
+    }
+
+    function cleanArtist(rawTitle, rawArtist, fallbackIdentity) {
+        let a = (rawArtist && rawArtist.length > 0) ? rawArtist.trim() : "";
+        if (a && a !== "Unknown Artist") {
+            return a;
+        }
+        // If rawArtist is missing, attempt to extract from title
+        if (rawTitle) {
+            let t = rawTitle.trim().replace(/^\(\d+\+?\)\s*/, "").replace(/\s*-\s*(YouTube|Bilibili|SoundCloud|Spotify)\s*$/i, "");
+            let sepIdx = t.indexOf(" - ");
+            if (sepIdx === -1) sepIdx = t.indexOf(" | ");
+            if (sepIdx !== -1) {
+                let extractedArtist = t.slice(0, sepIdx).trim();
+                if (extractedArtist.length > 0) {
+                    return extractedArtist;
+                }
+            }
+        }
+        if (fallbackIdentity && fallbackIdentity !== "No Player" && fallbackIdentity !== "Media Player") {
+            return fallbackIdentity;
+        }
+        return "Unknown Artist";
+    }
+
     readonly property bool hasMedia: activePlayer !== null
-    readonly property string title: activePlayer && activePlayer.trackTitle ? activePlayer.trackTitle : "No Media Playing"
-    readonly property string artist: activePlayer ? (activePlayer.trackArtist || (activePlayer.trackArtists && activePlayer.trackArtists.length > 0 ? activePlayer.trackArtists.join(", ") : "") || "Unknown Artist") : "Unknown Artist"
+    readonly property string rawTrackTitle: activePlayer && activePlayer.trackTitle ? activePlayer.trackTitle : ""
+    readonly property string rawTrackArtist: activePlayer ? (activePlayer.trackArtist || (activePlayer.trackArtists && activePlayer.trackArtists.length > 0 ? activePlayer.trackArtists.join(", ") : "") || "") : ""
+    readonly property string title: hasMedia ? cleanTitle(rawTrackTitle, rawTrackArtist) : "No Media Playing"
+    readonly property string artist: hasMedia ? cleanArtist(rawTrackTitle, rawTrackArtist, identity) : "Unknown Artist"
     readonly property string artUrl: activePlayer ? (activePlayer.trackArtUrl || activePlayer.artUrl || "") : ""
-    readonly property bool isPlaying: root.isPlayerPlaying(activePlayer)
+    readonly property bool isPlaying: {
+        let e = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.energy : 0;
+        let a = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.active : false;
+        let b = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.beat : 0;
+        let fc = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.frameCount : 0;
+        let s = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.isStreaming : false;
+        return root.isPlayerPlaying(activePlayer);
+    }
 
     property real currentPosition: 0
 
@@ -272,6 +433,9 @@ Singleton {
     onIsPlayingChanged: {
         if (isPlaying) {
             checkTrackNotification(false);
+        }
+        if (activePlayer && isWinePlayer(activePlayer)) {
+            WindowService.updateWinePlaybackStatus(isPlaying);
         }
     }
 
@@ -351,8 +515,15 @@ Singleton {
     }
 
     function togglePlay() {
-        if (activePlayer) {
+        if (!activePlayer) return;
+        if (activePlayer.canTogglePlaying) {
             activePlayer.togglePlaying();
+        } else if (isPlaying) {
+            if (activePlayer.canPause) activePlayer.pause();
+            else activePlayer.togglePlaying();
+        } else {
+            if (activePlayer.canPlay) activePlayer.play();
+            else activePlayer.togglePlaying();
         }
     }
 

@@ -394,21 +394,22 @@ fn test_wine_media_coords() {
     // Test with standard 1280x750 window
     let (cx, cy) = calculate_wine_media_coords(WineMediaAction::PlayPause, 1280, 750);
     assert_eq!(cx, 640);
-    assert_eq!(cy, 715);
+    assert_eq!(cy, 700);
 
     let (nx, ny) = calculate_wine_media_coords(WineMediaAction::Next, 1280, 750);
-    assert_eq!(nx, 640 + 52);
-    assert_eq!(ny, 715);
+    assert_eq!(nx, 640 + 51);
+    assert_eq!(ny, 700);
 
     let (px, py) = calculate_wine_media_coords(WineMediaAction::Previous, 1280, 750);
-    assert_eq!(px, 640 - 52);
-    assert_eq!(py, 715);
+    assert_eq!(px, 640 - 51);
+    assert_eq!(py, 700);
 
     // Test with smaller window edge case
     let (cx2, cy2) = calculate_wine_media_coords(WineMediaAction::PlayPause, 800, 40);
     assert_eq!(cx2, 400);
-    assert_eq!(cy2, 5);
+    assert_eq!(cy2, 0);
 }
+
 
 #[tokio::test]
 async fn test_pause_other_mpris_players() {

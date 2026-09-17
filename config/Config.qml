@@ -45,6 +45,7 @@ Singleton {
         "dashboard": {
             "enabled": true,
             "defaultTab": "dashboard",
+            "mediaAvatar": "",
             "tabs": [
                 { "id": "dashboard", "label": "Dashboard", "enabled": true },
                 { "id": "media", "label": "Media", "enabled": true },
@@ -96,6 +97,15 @@ Singleton {
     readonly property bool topBarShowWeather: true
     readonly property bool dashboardShowOnHover: root.settings.dashboard ? (root.settings.dashboard.showOnHover ?? true) : true
     readonly property int dashboardWidth: root.settings.dashboard ? (root.settings.dashboard.width ?? 980) : 980
+    readonly property string mediaAvatar: {
+        if (root.settings.dashboard && root.settings.dashboard.mediaAvatar !== undefined && root.settings.dashboard.mediaAvatar !== "") {
+            return root.settings.dashboard.mediaAvatar;
+        }
+        if (root.settings.media && root.settings.media.avatar !== undefined && root.settings.media.avatar !== "") {
+            return root.settings.media.avatar;
+        }
+        return "";
+    }
     readonly property var disablePlasmaPanels: {
         if (!root.settings.plasma) return "all";
         if (root.settings.plasma.disablePanels !== undefined) return root.settings.plasma.disablePanels;
@@ -356,6 +366,13 @@ Singleton {
                     break;
                 }
             }
+        });
+    }
+
+    function setMediaAvatar(path) {
+        updateSettings(cfg => {
+            if (!cfg.dashboard) cfg.dashboard = {};
+            cfg.dashboard.mediaAvatar = path;
         });
     }
 

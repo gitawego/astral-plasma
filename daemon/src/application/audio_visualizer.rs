@@ -1,6 +1,6 @@
 use crate::domain::ports::DynResult;
 use serde::{Deserialize, Serialize};
-use std::io::{self, BufReader, Read, Write};
+use std::io::{self, Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -71,13 +71,82 @@ impl AudioAnalyzer {
         }
     }
 
-    /// Calculate RMS energy from normalized audio samples [-1.0 .. 1.0]
+    /// Calculate RMS energy from normalized audio samples [-1.0 .. 1.0].
+    /// Computes true AC RMS by removing any constant DC offset / bias.
+    /// Also enforces a peak-to-peak amplitude gate: if max - min < 0.005,
+    /// the signal is a frozen DC flatline or silence, returning 0.0.
     pub fn calculate_rms(samples: &[f32]) -> f32 {
         if samples.is_empty() {
             return 0.0;
         }
-        let sum_sq: f32 = samples.iter().map(|&s| s * s).sum();
-        (sum_sq / samples.len() as f32).sqrt().min(1.0)
+
+        let mut min_val = f32::MAX;
+        let mut max_val = f32::MIN;
+        let mut sum: f32 = 0.0;
+        let mut rail_clamped: usize = 0;
+        let mut flat_samples: usize = 0;
+        let mut zero_crossings: usize = 0;
+        let mut prev_sample = samples[0];
+
+        for (i, &s) in samples.iter().enumerate() {
+            if s < min_val {
+                min_val = s;
+            }
+            if s > max_val {
+                max_val = s;
+            }
+            sum += s;
+
+            if s <= -0.96 || s >= 0.96 {
+                rail_clamped += 1;
+            }
+
+            if i > 0 {
+                if (s - prev_sample).abs() < 0.0005 {
+                    flat_samples += 1;
+                }
+                if (prev_sample < 0.0 && s >= 0.0) || (prev_sample > 0.0 && s <= 0.0) {
+                    zero_crossings += 1;
+                }
+            }
+            prev_sample = s;
+        }
+
+        // Flatline DC check: if the signal has negligible dynamic variation,
+        // it is silent (e.g. Wine holding DAC buffer to constant -32768)
+        let peak_to_peak = max_val - min_val;
+        if peak_to_peak < 0.005 {
+            return 0.0;
+        }
+
+        let mean = sum / samples.len() as f32;
+        // Severe DC bias / rail saturation check:
+        // Audible music is AC-coupled around 0.0 (mean within [-0.15, +0.15]). If the DC offset exceeds 0.35,
+        // the signal is an idling DAC rail, hardware sleep state, or buffer underrun artifact (e.g. Wine paused at -1.0).
+        if mean.abs() > 0.35 {
+            return 0.0;
+        }
+
+        // Piece-wise flatline check:
+        // In natural audio, waveforms continuously fluctuate. If > 65% of consecutive samples are frozen flat,
+        // this is a stepped DC buffer underrun or paused DAC latch artifact.
+        if flat_samples > (samples.len() * 65) / 100 {
+            return 0.0;
+        }
+
+        // Rail saturation underrun check:
+        // If >= 10% of the window is pinned to the rail and zero-crossings are fewer than 3,
+        // this is a hardware rail clamp / underrun glitch rather than genuine acoustic audio.
+        if rail_clamped >= samples.len() / 10 && zero_crossings < 3 {
+            return 0.0;
+        }
+
+        let sum_ac_sq: f32 = samples.iter().map(|&s| {
+            let diff = s - mean;
+            diff * diff
+        }).sum();
+
+        (sum_ac_sq / samples.len() as f32).sqrt().min(1.0)
     }
 
     /// Goertzel algorithm to compute magnitude at a specific frequency
@@ -111,15 +180,16 @@ impl AudioAnalyzer {
     pub fn process_samples(&mut self, samples: &[f32]) -> VisualizerFrame {
         let raw_rms = Self::calculate_rms(samples);
         if raw_rms < 0.002 {
-            self.envelope_energy *= 0.45;
-            self.envelope_bass *= 0.45;
-            self.envelope_mid *= 0.45;
-            self.envelope_treble *= 0.45;
+            let decay_factor = if raw_rms == 0.0 { 0.20 } else { 0.45 };
+            self.envelope_energy *= decay_factor;
+            self.envelope_bass *= decay_factor;
+            self.envelope_mid *= decay_factor;
+            self.envelope_treble *= decay_factor;
             self.envelope_beat = 0.0;
             self.prev_bass = 0.0;
             self.prev_energy = 0.0;
             for b in &mut self.envelope_bands {
-                *b *= 0.45;
+                *b *= decay_factor;
                 if *b < 0.005 {
                     *b = 0.0;
                 }
@@ -171,17 +241,17 @@ impl AudioAnalyzer {
         let flux_threshold = 0.05f32.max(self.rolling_bass_avg * 0.07);
 
         if onset_flux > flux_threshold {
-            let transient = ((onset_flux - flux_threshold) * 4.0).min(1.0);
+            let transient = ((onset_flux - flux_threshold) / (flux_threshold * 1.5 + 0.05)).min(1.0);
             if transient > self.envelope_beat {
-                self.envelope_beat = transient.max(0.70); // Strong, punchy kick on beat onset
+                self.envelope_beat = transient; // Genuine transient strength derived from acoustic spectral flux
             } else {
-                self.envelope_beat *= 0.70;
+                self.envelope_beat *= 0.65;
             }
         } else {
-            self.envelope_beat *= 0.70;
+            self.envelope_beat *= 0.65;
         }
 
-        if self.envelope_beat < 0.05 {
+        if self.envelope_beat < 0.02 {
             self.envelope_beat = 0.0;
         }
 
@@ -215,42 +285,6 @@ impl AudioAnalyzer {
             *current = 0.0;
         }
     }
-
-    /// Generate synthetic rhythmic frame when audio capture is offline or silent
-    pub fn generate_synthetic_frame(t_secs: f32) -> VisualizerFrame {
-        // 124 BPM rhythm base = ~2.067 Hz (period = ~0.484s)
-        let beat_period = 60.0 / 124.0;
-        let phase = (t_secs % beat_period) / beat_period;
-
-        // Clean beat impulse: peaks at 1.0 at start of beat, decays cleanly to 0 by 30% of beat
-        let beat = if phase < 0.30 {
-            let p = phase / 0.30;
-            ((1.0 - p).powi(2)).max(0.0)
-        } else {
-            0.0
-        };
-
-        let bass = ((phase * std::f32::consts::PI * 2.0).cos().max(0.0) * 0.6 + beat * 0.4).min(1.0);
-        let mid = ((t_secs * 3.7).sin().abs() * 0.5 + 0.15).min(1.0);
-        let treble = ((t_secs * 7.1).cos().abs() * 0.4 + 0.1).min(1.0);
-        let energy = (bass * 0.5 + mid * 0.3 + treble * 0.2).min(1.0);
-
-        let mut bands = Vec::with_capacity(NUM_BANDS);
-        for i in 0..NUM_BANDS {
-            let offset = i as f32 * 0.35;
-            let val = ((t_secs * 4.0 + offset).sin() * 0.4 + 0.4) * (0.3 + (NUM_BANDS - i) as f32 / NUM_BANDS as f32 * 0.5) * energy + beat * 0.2;
-            bands.push(round3(val.min(1.0)));
-        }
-
-        VisualizerFrame {
-            energy: round3(energy),
-            bass: round3(bass),
-            mid: round3(mid),
-            treble: round3(treble),
-            beat: round3(beat),
-            bands,
-        }
-    }
 }
 
 fn round3(val: f32) -> f32 {
@@ -268,27 +302,91 @@ pub fn pcm_bytes_to_samples(bytes: &[u8]) -> Vec<f32> {
     samples
 }
 
+/// Builds the command line arguments for pw-record to capture audio directly
+/// from the default audio sink monitor port (speakers/headphones) as raw PCM bytes.
+/// - `--raw`: Disables AU/WAV container headers so stdout receives pure PCM frames.
+/// - `-P {"stream.capture.sink": true}`: Instructs PipeWire to link to the sink monitor rather than microphone.
+/// - `--target @DEFAULT_AUDIO_SINK@`: Links to the default audio output device.
+/// - `--latency 32ms`: Enforces low latency period matching 256 samples @ 8000Hz.
+pub fn build_pw_record_args() -> Vec<String> {
+    vec![
+        "--raw".to_string(),
+        "-P".to_string(),
+        "{\"stream.capture.sink\": true}".to_string(),
+        "--target".to_string(),
+        "@DEFAULT_AUDIO_SINK@".to_string(),
+        "--latency".to_string(),
+        "32ms".to_string(),
+        "--rate".to_string(),
+        SAMPLE_RATE.to_string(),
+        "--channels".to_string(),
+        "1".to_string(),
+        "--format".to_string(),
+        "s16".to_string(),
+        "-".to_string(),
+    ]
+}
+
+/// Spawns pw-record with unbuffered stdout (via `stdbuf -o0` if available)
+/// so that samples are delivered to the pipe without libc 4096-byte burst delays.
+pub fn spawn_pw_record(args: &[String]) -> io::Result<Child> {
+    if let Ok(child) = Command::new("stdbuf")
+        .arg("-o0")
+        .arg("pw-record")
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        return Ok(child);
+    }
+
+    Command::new("pw-record")
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+}
+
+/// Discards stale accumulated bytes from the reader when the backlog exceeds 2 chunks,
+/// ensuring the visualizer processes only the latest audio at the live edge.
+/// Returns the number of bytes discarded.
+pub fn drain_pipe_backlog<R: Read>(reader: &mut R, backlog_bytes: usize, chunk_size: usize) -> io::Result<usize> {
+    if backlog_bytes >= chunk_size * 2 {
+        let to_skip = (backlog_bytes / chunk_size - 1) * chunk_size;
+        if to_skip > 0 {
+            let mut discard_buf = vec![0u8; to_skip.min(4096)];
+            let mut remaining = to_skip;
+            while remaining > 0 {
+                let to_read = remaining.min(discard_buf.len());
+                reader.read_exact(&mut discard_buf[..to_read])?;
+                remaining -= to_read;
+            }
+            return Ok(to_skip);
+        }
+    }
+    Ok(0)
+}
+
+#[cfg(unix)]
+fn get_pipe_backlog(fd: std::os::raw::c_int) -> usize {
+    let mut count: libc::c_int = 0;
+    unsafe {
+        if libc::ioctl(fd, libc::FIONREAD, &mut count) == 0 && count > 0 {
+            count as usize
+        } else {
+            0
+        }
+    }
+}
+
 /// Run the audio visualizer process loop streaming to stdout
 pub fn run_audio_visualizer(running_flag: Option<Arc<AtomicBool>>) -> DynResult<()> {
     let running = running_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(true)));
 
-    // Try starting pw-record targeting the default sink monitor
-    let mut child: Option<Child> = Command::new("pw-record")
-        .args([
-            "--target",
-            "@DEFAULT_AUDIO_SINK@.monitor",
-            "--rate",
-            &SAMPLE_RATE.to_string(),
-            "--channels",
-            "1",
-            "--format",
-            "s16",
-            "-",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok();
+    // Try starting pw-record targeting the default sink monitor directly with raw unbuffered PCM streaming
+    let args = build_pw_record_args();
+    let mut child: Option<Child> = spawn_pw_record(&args).ok();
 
     let mut analyzer = AudioAnalyzer::new();
     let stdout = io::stdout();
@@ -304,13 +402,20 @@ pub fn run_audio_visualizer(running_flag: Option<Arc<AtomicBool>>) -> DynResult<
     let frame_duration = Duration::from_millis(32);
 
     if let Some(ref mut proc) = child {
-        if let Some(pipe_stdout) = proc.stdout.take() {
-            let mut reader = BufReader::new(pipe_stdout);
+        if let Some(mut pipe_stdout) = proc.stdout.take() {
+            #[cfg(unix)]
+            use std::os::unix::io::AsRawFd;
+            #[cfg(unix)]
+            let fd = pipe_stdout.as_raw_fd();
 
             while running.load(Ordering::Relaxed) {
-                let frame_start = Instant::now();
+                #[cfg(unix)]
+                {
+                    let avail = get_pipe_backlog(fd);
+                    let _ = drain_pipe_backlog(&mut pipe_stdout, avail, chunk_bytes);
+                }
 
-                match reader.read_exact(&mut buf) {
+                match pipe_stdout.read_exact(&mut buf) {
                     Ok(_) => {
                         if buf == prev_buf {
                             stall_count += 1;
@@ -338,11 +443,6 @@ pub fn run_audio_visualizer(running_flag: Option<Arc<AtomicBool>>) -> DynResult<
                         // Stream broke or ended; break to fallback
                         break;
                     }
-                }
-
-                let elapsed = frame_start.elapsed();
-                if elapsed < frame_duration {
-                    thread::sleep(frame_duration - elapsed);
                 }
             }
         }
