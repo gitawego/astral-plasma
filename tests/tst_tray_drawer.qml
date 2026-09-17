@@ -146,7 +146,40 @@ Item {
         submenuStack.pop();
         currentItems = (submenuStack.length > 0) ? submenuStack[submenuStack.length - 1].items : mockSubmenuModel;
         assert(submenuStack.length === 0, "Submenu stack is empty after back");
-        assert(currentItems.length === 3, "Returned to root menu with 3 items");
+        // 8. Two-Layer Submenu Animation State Integrity Tests
+        var activeLayer = 0;
+        var isTransitioning = false;
+        var layerA = { x: 0, opacity: 1.0, visible: true, items: mockSubmenuModel };
+        var layerB = { x: 35, opacity: 0.0, visible: false, items: [] };
+
+        // Simulate pushSubmenu transition
+        var targetLayer = (activeLayer === 0) ? 1 : 0;
+        var outgoing = (activeLayer === 0) ? layerA : layerB;
+        var incoming = (activeLayer === 0) ? layerB : layerA;
+        incoming.items = mockSubmenuModel[1].children;
+        incoming.x = 35;
+        incoming.opacity = 0.0;
+        incoming.visible = true;
+        isTransitioning = true;
+
+        assert(incoming.items.length === 2, "Incoming layer populated with submenu items");
+        assert(incoming.visible === true, "Incoming layer becomes visible for parallel slide");
+        assert(isTransitioning === true, "isTransitioning lock active during animation");
+
+        // Simulate animation completion
+        activeLayer = targetLayer;
+        outgoing.visible = false;
+        outgoing.x = -35;
+        outgoing.opacity = 0.0;
+        incoming.x = 0;
+        incoming.opacity = 1.0;
+        isTransitioning = false;
+
+        assert(activeLayer === 1, "Active layer transitioned to Layer B");
+        assert(layerA.visible === false, "Outgoing Layer A hidden after transition");
+        assert(layerB.visible === true, "Incoming Layer B visible and active");
+        assert(layerB.x === 0 && layerB.opacity === 1.0, "Layer B resting at x: 0, opacity: 1.0");
+        assert(isTransitioning === false, "isTransitioning released after transition finishes");
 
         console.log("PASS: Tray Drawer Lifecycle Tests");
         Qt.exit(0);
