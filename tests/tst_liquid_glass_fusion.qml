@@ -135,30 +135,30 @@ Item {
         assert(bottomBorderObj.width === (1920 - 14 - 64), "Bottom border must span precisely between dockW and width - borderT");
 
         // ========================================================
-        // 6. Corner Fusion & Perimeter Continuity Tests (6px Border Radius)
+        // 6. Corner Fusion & Perimeter Continuity Tests (20px Border Radius)
         // ========================================================
         let fTL = frameTest.innerFilletTLItem;
         let fTR = frameTest.innerFilletTRItem;
         let fBL = frameTest.innerFilletBLItem;
         let fBR = frameTest.innerFilletBRItem;
 
-        // Verify 6px corner fillets are enabled with matching radius
-        assert(fTL.visible === true, "innerFilletTL must be enabled with 6px radius");
-        assert(fTR.visible === true, "innerFilletTR must be enabled with 6px radius");
-        assert(fBL.visible === true, "innerFilletBL must be enabled with 6px radius");
-        assert(fBR.visible === true, "innerFilletBR must be enabled with 6px radius");
+        // Verify 20px corner fillets are enabled with matching radius
+        assert(fTL.visible === true, "innerFilletTL must be enabled with 20px radius");
+        assert(fTR.visible === true, "innerFilletTR must be enabled with 20px radius");
+        assert(fBL.visible === true, "innerFilletBL must be enabled with 20px radius");
+        assert(fBR.visible === true, "innerFilletBR must be enabled with 20px radius");
 
-        assert(fTL.cornerRadius === 6, "innerFilletTL cornerRadius must be 6");
-        assert(fTR.cornerRadius === 6, "innerFilletTR cornerRadius must be 6");
-        assert(fBL.cornerRadius === 6, "innerFilletBL cornerRadius must be 6");
-        assert(fBR.cornerRadius === 6, "innerFilletBR cornerRadius must be 6");
+        assert(fTL.cornerRadius === 20, "innerFilletTL cornerRadius must be 20");
+        assert(fTR.cornerRadius === 20, "innerFilletTR cornerRadius must be 20");
+        assert(fBL.cornerRadius === 20, "innerFilletBL cornerRadius must be 20");
+        assert(fBR.cornerRadius === 20, "innerFilletBR cornerRadius must be 20");
 
         // Verify all 4 borders share the exact same liquid glass surface fill
         assert(frameTest.topBorderLeftItem.color === frameTest.glassFill, "topBorderLeft must match glassFill");
         assert(frameTest.rightBorderItem.color === frameTest.glassFill, "rightBorder must match glassFill");
         assert(frameTest.bottomBorderItem.color === frameTest.glassFill, "bottomBorder must match glassFill");
 
-        // Verify specular lines meet flush with 6px corner fillets
+        // Verify specular lines meet flush with 20px corner fillets
         assert(frameTest.topBorderRightLimit === (1920 - frameTest.borderT - frameTest.cornerFilletR), "When no notification, top border specular line connects to TR fillet");
         assert(frameTest.rightBorderTopLimit === (frameTest.borderT + frameTest.cornerFilletR - 1), "When no notification, right border specular line starts flush at TR fillet");
         assert(frameTest.rightBorderBottomLimit === (1080 - (frameTest.borderT + frameTest.cornerFilletR - 1)), "Right border specular line connects flush to BR fillet");
@@ -168,7 +168,7 @@ Item {
         // ========================================================
         assert(notifTest.fusedPanel !== undefined, "NotificationPopup must expose fusedPanel");
         assert(notifTest.fusedPanel.attachEdge === "topRight", "Notification fusedPanel attachEdge must be topRight");
-        assert(notifTest.borderRounding === 6, "Notification borderRounding must match Config (6)");
+        assert(notifTest.borderRounding === 20, "Notification borderRounding must match Config (20)");
         if (typeof Colors !== "undefined" && Colors.glassSurface) {
             assert(notifTest.fusedPanel.fillColor === Colors.glassSurface, "Notification fillColor must match Colors.glassSurface");
             assert(notifTest.fusedPanel.borderColor === Colors.glassBorderSpecular, "Notification borderColor must match Colors.glassBorderSpecular");
