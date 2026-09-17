@@ -37,7 +37,7 @@ Item {
     readonly property color glassFill: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 0.32)
     readonly property color glassBorder: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.12)
     readonly property real modalRadius: (typeof Theme !== "undefined" && Theme.radiusGlassModal) ? Theme.radiusGlassModal : 24
-    readonly property real cornerFilletR: (typeof Config !== "undefined" && Config.borderRounding !== undefined) ? Config.borderRounding : 20
+    readonly property real cornerFilletR: (typeof Config !== "undefined" && Config.borderRounding !== undefined) ? Config.borderRounding : 24
 
     readonly property alias topBorderLeftItem: topBorderLeft
     readonly property alias topBorderRightItem: topBorderRight

@@ -61,6 +61,43 @@ PanelWindow {
             height: root.borderT
         }
 
+        // 4 Screen Corner Fillets (curved quarter-circle blur matching CornerFillet geometry)
+        // Top-Left Corner Fillet: quarter-circle in top-left (bottom-right cut out)
+        Region {
+            x: root.dockW
+            y: root.borderT
+            width: root.filletR
+            height: root.filletR
+            bottomRightRadius: root.filletR
+        }
+
+        // Top-Right Corner Fillet: quarter-circle in top-right (bottom-left cut out)
+        Region {
+            x: root.width - root.borderT - root.filletR
+            y: root.borderT
+            width: root.filletR
+            height: root.filletR
+            bottomLeftRadius: root.filletR
+        }
+
+        // Bottom-Left Corner Fillet: quarter-circle in bottom-left (top-right cut out)
+        Region {
+            x: root.dockW
+            y: root.height - root.borderT - root.filletR
+            width: root.filletR
+            height: root.filletR
+            topRightRadius: root.filletR
+        }
+
+        // Bottom-Right Corner Fillet: quarter-circle in bottom-right (top-left cut out)
+        Region {
+            x: root.width - root.borderT - root.filletR
+            y: root.height - root.borderT - root.filletR
+            width: root.filletR
+            height: root.filletR
+            topLeftRadius: root.filletR
+        }
+
         // System Notifications Popup Blur (covers full popup + fused shoulder fillets)
         Region {
             x: (notifPopup.visible && !notifPopup.isDismissed) ? Math.max(0, root.width - notifPopup.width - root.filletR) : 0
@@ -75,34 +112,94 @@ PanelWindow {
             y: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardY : (appContextMenu.menuCardVisible ? appContextMenu.menuCardY : 0)
             width: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardW : (appContextMenu.menuCardVisible ? appContextMenu.menuCardW : 0)
             height: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardH : (appContextMenu.menuCardVisible ? appContextMenu.menuCardH : 0)
-            radius: Theme.radiusGlassCard
+            topRightRadius: Theme.radiusGlassCard
+            bottomRightRadius: Theme.radiusGlassCard
         }
 
         // Central Dropdown Dashboard (when open)
         Region {
-            x: root.dropX
+            x: dropdownContainer.offsetProgress > 0.001 ? root.dropX : 0
             y: 0
             width: dropdownContainer.offsetProgress > 0.001 ? root.dropW : 0
             height: dropdownContainer.offsetProgress > 0.001 ? root.currentDropH : 0
-            radius: Theme.radiusGlassModal
+            bottomLeftRadius: Theme.radiusGlassModal
+            bottomRightRadius: Theme.radiusGlassModal
+        }
+        // Central Dropdown: Left shoulder fillet
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - root.filletR) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? root.borderT : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? root.filletR : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? root.filletR : 0
+            bottomLeftRadius: root.filletR
+        }
+        // Central Dropdown: Right shoulder fillet
+        Region {
+            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
+            y: dropdownContainer.offsetProgress > 0.001 ? root.borderT : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? root.filletR : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? root.filletR : 0
+            bottomRightRadius: root.filletR
         }
 
-        // Fused Bottom Popout (when open)
+        // Fused Bottom Popout: Main Card Body
         Region {
-            x: root.dockW
+            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
             y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.y : 0
             width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.currentPopW : 0
             height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.height : 0
-            radius: Theme.radiusGlassCard
+            topRightRadius: Theme.radiusGlassCard
+            bottomRightRadius: (root.fusedProgress > 0.5) ? 0 : Theme.radiusGlassCard
+        }
+        // Fused Bottom Popout: Top shoulder fillet (curved into dock)
+        Region {
+            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
+            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.max(0, fusedBottomPopoutWrapper.y - root.filletR) : 0
+            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletR : 0
+            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletR : 0
+            topRightRadius: root.filletR
+        }
+        // Fused Bottom Popout: Bottom shoulder fillet (when floating, curved into dock)
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress < 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress < 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress < 0.5) ? root.filletR : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress < 0.5) ? root.filletR : 0
+            bottomRightRadius: root.filletR
+        }
+        // Fused Bottom Popout: Bottom junction fillet (when bottom-fused, curved into bottom border)
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress >= 0.5) ? (root.dockW + root.currentPopW) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress >= 0.5) ? (root.height - root.borderT - root.filletR) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress >= 0.5) ? root.filletR : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress >= 0.5) ? root.filletR : 0
+            topRightRadius: root.filletR
         }
 
-        // Right Edge Control (when open)
+        // Right Edge Control: Main Body
         Region {
             x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - root.rightControlW) : 0
             y: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlY : 0
             width: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlW : 0
             height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlH : 0
-            radius: Theme.radiusGlassCard
+            topLeftRadius: Theme.radiusGlassCard
+            bottomLeftRadius: Theme.radiusGlassCard
+        }
+        // Right Edge Control: Top shoulder fillet
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - root.filletR) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.max(0, root.rightControlY - root.filletR) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletR : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletR : 0
+            topLeftRadius: root.filletR
+        }
+        // Right Edge Control: Bottom shoulder fillet
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - root.filletR) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletR : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletR : 0
+            bottomLeftRadius: root.filletR
         }
     }
 
