@@ -51,6 +51,13 @@
         "iconName": "preferences-system",
         "materialIcon": "window",
         "desktopFile": "systemsettings"
+      },
+      {
+        "appId": "org.kde.dolphin",
+        "appName": "Files",
+        "iconName": "org.kde.dolphin",
+        "materialIcon": "folder",
+        "desktopFile": "org.kde.dolphin"
       }
     ],
     "tray": {
@@ -133,6 +140,7 @@
     "darkMode": true,
     "dynamicColors": true
   },
+  "debugMode": false,
   "border": {
     "thickness": 14,
     "rounding": 20
@@ -141,7 +149,9 @@
     "disablePanels": "all",
     "disableNotifications": true
   },
-  "debugMode": false,
   "dashboardVisible": true,
-  "activeDashboardTab": "media"
+  "activeDashboardTab": "media",
+  "media": {
+    "visualizerStyle": "speaker"
+  }
 }

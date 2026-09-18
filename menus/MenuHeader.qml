@@ -11,7 +11,7 @@ Item {
     property string materialIcon: "apps"
 
     width: parent ? parent.width : 200
-    implicitHeight: 36
+    implicitHeight: root.subtitle !== "" ? 44 : 36
 
     Row {
         anchors.fill: parent

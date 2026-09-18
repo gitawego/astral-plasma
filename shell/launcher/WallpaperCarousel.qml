@@ -193,19 +193,7 @@ Item {
                     smooth: true
                 }
 
-                // Top specular glare line
-                Rectangle {
-                    anchors.top: parent.top
-                    anchors.topMargin: 0.5
-                    anchors.left: parent.left
-                    anchors.leftMargin: parent.radius * 0.35
-                    anchors.right: parent.right
-                    anchors.rightMargin: parent.radius * 0.35
-                    height: 1
-                    color: Colors.glassBorderSpecular
-                    opacity: isCurrent ? 0.95 : 0.65
-                    z: 5
-                }
+
 
                 // Video indicator badge if animated wallpaper
                 Rectangle {

@@ -27,7 +27,7 @@ Item {
         : (root.hovered ? root.specularColor : root.subtleBorderColor)
 
     property real borderWidth: root.selected ? 1.5 : 1.0
-    property bool showTopSpecular: true
+    property bool showTopSpecular: false
 
     default property alias content: contentContainer.data
     readonly property alias cardRectangle: baseRect
@@ -68,24 +68,7 @@ Item {
             NumberAnimation { duration: Theme.animExpressiveFastEffects }
         }
 
-        // Top Specular Highlight
-        Rectangle {
-            id: topSpecular
-            visible: root.showTopSpecular && !root.selected
-            anchors.top: parent.top
-            anchors.topMargin: 0.5
-            anchors.left: parent.left
-            anchors.leftMargin: parent.radius * 0.4
-            anchors.right: parent.right
-            anchors.rightMargin: parent.radius * 0.4
-            height: 1
-            color: root.specularColor
-            opacity: root.hovered ? 0.95 : 0.65
 
-            Behavior on opacity {
-                NumberAnimation { duration: Theme.animExpressiveFastEffects }
-            }
-        }
 
         Item {
             id: contentContainer

@@ -379,6 +379,12 @@ Singleton {
     readonly property real position: currentPosition
     readonly property real progress: length > 0 ? Math.min(1.0, Math.max(0.0, currentPosition / length)) : 0
 
+    readonly property string album: activePlayer ? (activePlayer.trackAlbum || "") : ""
+    readonly property bool shuffle: activePlayer ? (activePlayer.shuffle ?? false) : false
+    readonly property bool shuffleSupported: activePlayer ? (activePlayer.shuffleSupported ?? false) : false
+    readonly property int loopState: activePlayer ? (activePlayer.loopState ?? 0) : 0
+    readonly property bool loopSupported: activePlayer ? (activePlayer.loopSupported ?? false) : false
+
     readonly property bool canPlay: activePlayer ? activePlayer.canPlay : false
     readonly property bool canPause: activePlayer ? activePlayer.canPause : false
     readonly property bool canGoNext: activePlayer ? activePlayer.canGoNext : false
@@ -545,6 +551,23 @@ Singleton {
     function previous() {
         if (activePlayer && activePlayer.canGoPrevious) {
             activePlayer.previous();
+        }
+    }
+
+    function toggleShuffle() {
+        if (activePlayer && activePlayer.shuffleSupported) {
+            try {
+                activePlayer.shuffle = !activePlayer.shuffle;
+            } catch (e) {}
+        }
+    }
+
+    function cycleLoop() {
+        if (activePlayer && activePlayer.loopSupported) {
+            try {
+                let next = (activePlayer.loopState + 1) % 3;
+                activePlayer.loopState = next;
+            } catch (e) {}
         }
     }
 }

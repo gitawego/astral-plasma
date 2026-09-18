@@ -11,7 +11,7 @@ Item {
     property color subtleBorderColor: Colors.glassBorderSubtle
     property color causticColor: Colors.glassCausticGlow
 
-    property bool showSpecular: true
+    property bool showSpecular: false
     property bool showCaustic: true
     property bool showShadow: true
     property bool enableCursorGlint: true
@@ -112,25 +112,7 @@ Item {
             }
         }
 
-        // Directional Top Specular Rim Glare (ultra-fine hairline catch)
-        Rectangle {
-            id: specularRimTop
-            visible: root.showSpecular
-            anchors.top: parent.top
-            anchors.topMargin: 0.5
-            anchors.left: parent.left
-            anchors.leftMargin: parent.radius * 0.35
-            anchors.right: parent.right
-            anchors.rightMargin: parent.radius * 0.35
-            height: Theme.glassSpecularWidth
-            color: root.specularColor
-            radius: 1
-            opacity: root.hovered ? 0.45 : 0.30
 
-            Behavior on opacity {
-                NumberAnimation { duration: Theme.animExpressiveFastEffects }
-            }
-        }
 
         // Content Area
         Item {

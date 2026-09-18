@@ -148,3 +148,47 @@ fn test_plasma_layout_fallback_and_stop_watchdog() {
     assert!(!backup_dir.join("session_active").exists(), "session_active flag must be cleared upon restore");
 }
 
+#[tokio::test]
+async fn test_stop_watchdog_does_not_kill_self() {
+    let _lock = TEST_MUTEX.lock().unwrap();
+    let my_pid = std::process::id();
+    let pid_file = std::path::Path::new("/tmp/caelestia-plasma-watchdog.pid");
+    let _ = fs::write(pid_file, my_pid.to_string());
+
+    let adapter = PlasmaAdapter::new();
+    // Must NOT kill my_pid!
+    adapter.stop_watchdog();
+    assert!(unsafe { libc::kill(my_pid as i32, 0) == 0 });
+    let _ = fs::remove_file(pid_file);
+}
+
+#[tokio::test]
+async fn test_watchdog_loop_on_target_exit() {
+    let _lock = TEST_MUTEX.lock().unwrap();
+    let tmpdir = tempfile::tempdir().expect("Failed to create tempdir");
+    let mock_config = tmpdir.path().join("config");
+    let mock_data = tmpdir.path().join("data");
+    fs::create_dir_all(&mock_config).unwrap();
+    fs::create_dir_all(&mock_data).unwrap();
+
+    let backup_dir = mock_data.join("caelestia").join("plasma-backup");
+    fs::create_dir_all(&backup_dir).unwrap();
+    fs::write(backup_dir.join("layout.js"), "// test layout").unwrap();
+    fs::write(backup_dir.join("session_active"), "").unwrap();
+
+    std::env::set_var("XDG_CONFIG_HOME", &mock_config);
+    std::env::set_var("XDG_DATA_HOME", &mock_data);
+    std::env::set_var("CAELESTIA_PLASMA_BACKUP_DIR", &backup_dir);
+    std::env::set_var("CAELESTIA_TEST_MODE", "1");
+
+    // Spawn a quick short-lived process
+    let mut child = std::process::Command::new("true").spawn().unwrap();
+    let child_pid = child.id();
+    let _ = child.wait();
+
+    // Run watchdog loop with exited target process
+    let res = astral_plasma::application::plasma_service::run_watchdog_loop(child_pid).await;
+    assert!(res.is_ok());
+    assert!(!backup_dir.join("session_active").exists(), "Watchdog must restore and clear session_active flag");
+}
+

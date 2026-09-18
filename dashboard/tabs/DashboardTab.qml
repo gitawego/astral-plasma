@@ -318,6 +318,46 @@ Item {
             color: Colors.glassCardVibrant
             clip: true
 
+            readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
+                (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
+
+            // Visualizer Switcher Pill Button (Top-Right of Media Card)
+            Rectangle {
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.topMargin: 8
+                anchors.rightMargin: 8
+                z: 50
+                width: 24
+                height: 24
+                radius: 12
+                color: dashVizHover.containsMouse ? Qt.alpha(Colors.primary, 0.28) : Qt.alpha(Colors.surfaceContainerHigh, 0.85)
+                border.color: dashVizHover.containsMouse ? Colors.primary : Qt.alpha(Colors.outlineVariant, 0.4)
+                border.width: 1
+
+                Behavior on color { ColorAnimation { duration: 150 } }
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: mediaCard.isSpeakerStyle ? "album" : "speaker"
+                    size: 14
+                    color: dashVizHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                }
+
+                MouseArea {
+                    id: dashVizHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
+                            Config.setMediaVisualizerStyle(mediaCard.isSpeakerStyle ? "radial" : "speaker");
+                        }
+                    }
+                }
+            }
+
             ColumnLayout {
                 anchors.fill: parent
                 anchors.topMargin: 20
@@ -338,12 +378,21 @@ Item {
                     Layout.preferredWidth: 120
                     Layout.preferredHeight: 120
 
-                    // Dynamic Audio Heatmap Wave Ring & Thermal Aura
+                    // 1. Dynamic Audio Heatmap Wave Ring & Thermal Aura (Speaker / Heatmap Style)
                     HeatmapCoverRing {
                         anchors.centerIn: parent
                         innerRadius: 44
                         outerRadius: 53
-                        isTargetVisible: Config.dashboardVisible && Config.activeDashboardTab === "dashboard"
+                        visible: mediaCard.isSpeakerStyle
+                        isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "dashboard" && visible) : false
+                    }
+
+                    // 2. Radial Audio Spectrum Halo Ring (Radial Style)
+                    RadialCoverRing {
+                        anchors.centerIn: parent
+                        innerRadius: 58
+                        visible: !mediaCard.isSpeakerStyle
+                        isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "dashboard" && visible) : false
                     }
 
                     // Progress ring

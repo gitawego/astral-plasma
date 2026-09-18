@@ -202,24 +202,32 @@ Singleton {
     readonly property color glassBorderSurface: glassSurface
 
     // Distinct glass card surfaces (sculpted frosted glass plates with chromatic depth)
-    readonly property color glassCard: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.12 : 0.50),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.14 : 0.08)
-    )
-    readonly property color glassCardHover: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.18 : 0.65),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.20 : 0.12)
-    )
-    readonly property color glassCardActive: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.24 : 0.75),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.25 : 0.15)
-    )
+    readonly property color glassCard: root.isDarkMode
+        ? Qt.tint(Qt.rgba(0.04, 0.05, 0.08, 0.30), Qt.alpha(root.primary, 0.05))
+        : Qt.tint(
+            Qt.rgba(1.0, 1.0, 1.0, 0.50),
+            Qt.alpha(root.primary, 0.08)
+        )
+    readonly property color glassCardHover: root.isDarkMode
+        ? Qt.tint(Qt.rgba(0.08, 0.10, 0.14, 0.45), Qt.alpha(root.primary, 0.10))
+        : Qt.tint(
+            Qt.rgba(1.0, 1.0, 1.0, 0.65),
+            Qt.alpha(root.primary, 0.12)
+        )
+    readonly property color glassCardActive: root.isDarkMode
+        ? Qt.tint(Qt.rgba(0.12, 0.15, 0.20, 0.55), Qt.alpha(root.primary, 0.15))
+        : Qt.tint(
+            Qt.rgba(1.0, 1.0, 1.0, 0.80),
+            Qt.alpha(root.primary, 0.18)
+        )
 
     // Vibrant tinted glass card (e.g. Media Player, Highlighted cards)
-    readonly property color glassCardVibrant: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.15 : 0.55),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.28 : 0.18)
-    )
+    readonly property color glassCardVibrant: root.isDarkMode
+        ? Qt.tint(Qt.rgba(0.04, 0.05, 0.08, 0.30), Qt.alpha(root.primary, 0.12))
+        : Qt.tint(
+            Qt.rgba(1.0, 1.0, 1.0, 0.55),
+            Qt.alpha(root.primary, 0.18)
+        )
 
     // Frosted interactive pills
     readonly property color glassPill: Qt.tint(

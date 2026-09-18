@@ -173,6 +173,158 @@ ColumnLayout {
         }
     }
 
+    // Media Visualizer Style Card
+    Rectangle {
+        Layout.fillWidth: true
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+        implicitHeight: vizAudioCol.implicitHeight + Theme.padLarge * 2
+
+        ColumnLayout {
+            id: vizAudioCol
+            anchors.fill: parent
+            anchors.margins: Theme.padLarge
+            spacing: 8
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceMedium
+
+                Column {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        text: "Media Visualizer Style"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBodyMedium
+                        font.weight: Font.DemiBold
+                        color: Colors.m3onSurface
+                    }
+
+                    Text {
+                        text: "Applies to both Dashboard and Media tabs"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurfaceVariant
+                    }
+                }
+
+                // Material 3 Segmented Pill
+                Rectangle {
+                    id: audioVizPill
+                    implicitHeight: 38
+                    implicitWidth: 260
+                    radius: Theme.radiusFull
+                    color: Colors.surfaceContainerHigh
+                    border.color: Theme.borderSubtle
+                    border.width: 1
+
+                    readonly property bool isSpeaker: (typeof Config !== "undefined") &&
+                        (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 2
+                        spacing: 2
+
+                        // Radial Halo Segment
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: Theme.radiusFull
+                            color: !audioVizPill.isSpeaker ? Colors.primaryContainer : (radialAudioHover.containsMouse ? Colors.pillHover : "transparent")
+                            border.color: !audioVizPill.isSpeaker ? Qt.alpha(Colors.primary, 0.4) : "transparent"
+                            border.width: !audioVizPill.isSpeaker ? 1 : 0
+
+                            Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                MaterialIcon {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "album"
+                                    size: 16
+                                    color: !audioVizPill.isSpeaker ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "Radial Halo"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontBodySmall
+                                    font.weight: !audioVizPill.isSpeaker ? Font.Bold : Font.Normal
+                                    color: !audioVizPill.isSpeaker ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                                }
+                            }
+
+                            MouseArea {
+                                id: radialAudioHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
+                                        Config.setMediaVisualizerStyle("radial");
+                                    }
+                                }
+                            }
+                        }
+
+                        // Speaker Segment
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: Theme.radiusFull
+                            color: audioVizPill.isSpeaker ? Colors.primaryContainer : (speakerAudioHover.containsMouse ? Colors.pillHover : "transparent")
+                            border.color: audioVizPill.isSpeaker ? Qt.alpha(Colors.primary, 0.4) : "transparent"
+                            border.width: audioVizPill.isSpeaker ? 1 : 0
+
+                            Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                MaterialIcon {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "speaker"
+                                    size: 16
+                                    color: audioVizPill.isSpeaker ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "Speaker"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontBodySmall
+                                    font.weight: audioVizPill.isSpeaker ? Font.Bold : Font.Normal
+                                    color: audioVizPill.isSpeaker ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                                }
+                            }
+
+                            MouseArea {
+                                id: speakerAudioHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
+                                        Config.setMediaVisualizerStyle("speaker");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Per-Application Audio Streams
     ColumnLayout {
         Layout.fillWidth: true

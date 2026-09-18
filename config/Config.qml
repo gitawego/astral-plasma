@@ -146,6 +146,31 @@ Singleton {
         return url;
     }
 
+    // Centralized, robust icon URL resolution
+    // 1. Direct file paths are formatted as file://
+    // 2. Existing theme icons are resolved via Quickshell.iconPath
+    // 3. Fallback to extensionless name if .png/.svg was passed
+    // 4. Returns "" if icon does not exist, preventing Quickshell from rendering magenta/black checkerboards
+    function iconUrl(iconName) {
+        if (!iconName) return "";
+        let s = ("" + iconName).trim();
+        if (s === "" || s.startsWith("Error")) return "";
+        if (s.indexOf("/") !== -1) {
+            return s.startsWith("file://") ? s : ("file://" + s);
+        }
+        if (Quickshell.hasThemeIcon(s)) {
+            return Quickshell.iconPath(s);
+        }
+        const dotIdx = s.lastIndexOf(".");
+        if (dotIdx > 0) {
+            const noExt = s.substring(0, dotIdx);
+            if (Quickshell.hasThemeIcon(noExt)) {
+                return Quickshell.iconPath(noExt);
+            }
+        }
+        return "";
+    }
+
     // Systemd Service Management (Strictly Opt-in by User in Settings)
     property bool systemdServiceInstalled: false
     property bool systemdServiceActive: false
@@ -478,12 +503,25 @@ Singleton {
         requestPopTraySubmenu();
     }
 
+    // Media Visualizer Style selection ("radial" vs "speaker")
+    property string mediaVisualizerStyle: (root.settings && root.settings.media && root.settings.media.visualizerStyle)
+        ? root.settings.media.visualizerStyle
+        : "radial"
+
+    function setMediaVisualizerStyle(style) {
+        if (!root.settings) root.settings = {};
+        if (!root.settings.media) root.settings.media = {};
+        root.settings.media.visualizerStyle = style;
+        root.mediaVisualizerStyle = style;
+        root.saveSettings();
+    }
+
     // Right border edge control (volume & brightness) state
     property bool rightEdgeControlVisible: false
 
     Timer {
         id: rightEdgeCloseTimer
-        interval: 450
+        interval: 850
         repeat: false
         onTriggered: root.rightEdgeControlVisible = false
     }

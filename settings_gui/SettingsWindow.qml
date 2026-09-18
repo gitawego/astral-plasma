@@ -14,6 +14,14 @@ PanelWindow {
 
     visible: Config.settingsVisible
 
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: Config.settingsVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
+    mask: Region {
+        width: Config.settingsVisible ? root.width : 0
+        height: Config.settingsVisible ? root.height : 0
+    }
+
     anchors {
         top: true
         bottom: true
@@ -40,6 +48,9 @@ PanelWindow {
         border.color: Theme.borderSubtle
         border.width: 1
         clip: true
+
+        focus: true
+        Keys.onEscapePressed: Config.settingsVisible = false
 
         // Consume clicks inside dialog
         MouseArea {

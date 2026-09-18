@@ -59,7 +59,7 @@ pub async fn run_cli() -> DynResult<()> {
                 "watchdog" => {
                     if let Some(pid_str) = args.get(3) {
                         if let Ok(pid) = pid_str.parse::<u32>() {
-                            run_watchdog_loop(pid)?;
+                            run_watchdog_loop(pid).await?;
                         }
                     }
                 }
@@ -420,11 +420,48 @@ pub async fn run_cli() -> DynResult<()> {
                     if args.len() >= 5 {
                         let svc = &args[3];
                         let path = &args[4];
-                        let _ = std::process::Command::new("qdbus6")
-                            .args([svc, path, "org.kde.StatusNotifierItem.Activate", "0", "0"])
-                            .output();
+                        let x = if args.len() >= 6 { args[5].as_str() } else { "0" };
+                        let y = if args.len() >= 7 { args[6].as_str() } else { "0" };
+                        let mut ok = false;
+                        if let Ok(out) = std::process::Command::new("qdbus6")
+                            .args([svc, path, "org.kde.StatusNotifierItem.Activate", x, y])
+                            .output()
+                        {
+                            if out.status.success() && !String::from_utf8_lossy(&out.stderr).contains("Error") {
+                                ok = true;
+                            }
+                        }
+                        if !ok {
+                            let _ = std::process::Command::new("busctl")
+                                .args(["--user", "call", svc, path, "org.kde.StatusNotifierItem", "Activate", "ii", x, y])
+                                .output();
+                        }
                     } else {
-                        eprintln!("Usage: astral-plasma tray activate <service> <path>");
+                        eprintln!("Usage: astral-plasma tray activate <service> <path> [x] [y]");
+                    }
+                }
+                "context-menu" => {
+                    if args.len() >= 5 {
+                        let svc = &args[3];
+                        let path = &args[4];
+                        let x = if args.len() >= 6 { args[5].as_str() } else { "0" };
+                        let y = if args.len() >= 7 { args[6].as_str() } else { "0" };
+                        let mut ok = false;
+                        if let Ok(out) = std::process::Command::new("qdbus6")
+                            .args([svc, path, "org.kde.StatusNotifierItem.ContextMenu", x, y])
+                            .output()
+                        {
+                            if out.status.success() && !String::from_utf8_lossy(&out.stderr).contains("Error") {
+                                ok = true;
+                            }
+                        }
+                        if !ok {
+                            let _ = std::process::Command::new("busctl")
+                                .args(["--user", "call", svc, path, "org.kde.StatusNotifierItem", "ContextMenu", "ii", x, y])
+                                .output();
+                        }
+                    } else {
+                        eprintln!("Usage: astral-plasma tray context-menu <service> <path> [x] [y]");
                     }
                 }
                 "query" | "list" => {
@@ -588,7 +625,37 @@ async fn run_self_contained_app() -> DynResult<()> {
         .spawn()?;
 
     // 5. Wait for Quickshell process or signal
-    let _ = child.wait();
+    #[cfg(unix)]
+    {
+        use std::time::Duration;
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm = signal(SignalKind::terminate())?;
+        let mut sigint = signal(SignalKind::interrupt())?;
+
+        loop {
+            tokio::select! {
+                _ = sigterm.recv() => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                _ = sigint.recv() => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                _ = tokio::time::sleep(Duration::from_millis(200)) => {
+                    if let Ok(Some(_)) = child.try_wait() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.wait();
+    }
 
     // 6. On exit, restore original Plasma panels cleanly and clean up authorization entry
     println!("[Caelestia] Quickshell stopped. Restoring original KDE Plasma panels and cleaning up authorization...");

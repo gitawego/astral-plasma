@@ -326,19 +326,6 @@ PanelWindow {
                         ColorAnimation { duration: Theme.animExpressiveFastEffects }
                     }
 
-                    // Top specular highlight line
-                    Rectangle {
-                        anchors.top: parent.top
-                        anchors.topMargin: 0.5
-                        anchors.left: parent.left
-                        anchors.leftMargin: parent.radius * 0.4
-                        anchors.right: parent.right
-                        anchors.rightMargin: parent.radius * 0.4
-                        height: 1
-                        color: Colors.glassBorderSpecular
-                        visible: isSelected || suggHover.containsMouse
-                        opacity: isSelected ? 0.95 : 0.65
-                    }
 
                     RowLayout {
                         anchors.fill: parent
@@ -645,13 +632,7 @@ PanelWindow {
                             Image {
                                 id: appIcon
                                 anchors.fill: parent
-                                source: {
-                                    if (!modelData.icon) return "";
-                                    if (modelData.icon.indexOf("/") !== -1) {
-                                        return modelData.icon.startsWith("file://") ? modelData.icon : ("file://" + modelData.icon);
-                                    }
-                                    return Quickshell.iconPath(modelData.icon);
-                                }
+                                source: Config.iconUrl(modelData.icon)
                                 fillMode: Image.PreserveAspectFit
                                 smooth: true
                                 mipmap: true

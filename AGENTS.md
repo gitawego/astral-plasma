@@ -12,12 +12,18 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 
 ---
 
-## 2. Design System Authority
+## 2. Design System Authority & Custom Theme Architecture
 
 > [!IMPORTANT]
-> **[DESIGN.md](DESIGN.md) is the authoritative source of truth for all visual and motion design.**
-> Before modifying or creating any UI components, animations, popouts, or layouts, consult [DESIGN.md](DESIGN.md).
+> **[DESIGN.md](DESIGN.md) and [docs/LESSONS.md](docs/LESSONS.md) are the authoritative sources of truth for visual design, motion physics, and custom theme engineering.**
+> Before modifying or creating any UI components, animations, popouts, or layouts, consult [DESIGN.md](DESIGN.md) and [docs/LESSONS.md](docs/LESSONS.md).
 >
+> - **Liquid Glass & Geometry Fusion Guide**: Review **[`docs/LESSONS.md`](docs/LESSONS.md)** for the essential rules on:
+>   - **Zero-Overlap Partitioning**: Preventing 1px dark seams caused by double-translucent fills.
+>   - **Concave Shoulder Fillets**: Correct $C^1$-continuous inverted corner radii and coordinate math in Qt Quick Shapes.
+>   - **Compositor Blur Approximation**: 7-slice depth-tapered KWin `BackgroundEffect.blurRegion` coverage.
+>   - **In-Flight State Latching**: Preventing premature geometry morphing during transit animations.
+>   - **Clean Glass Materials**: Avoiding fake 1px top highlight bars and boxy button clutter.
 > - **Motion Tokens**: All animations MUST use the Material 3 Expressive bezier curves and durations defined in [`DESIGN.md`](DESIGN.md) and [`theme/Theme.qml`](theme/Theme.qml). Hardcoded durations, linear easing, or generic quadratic transitions are forbidden for spatial UI changes.
 > - **Centering & Proportions**: Icons and text badges must be strictly centered within their parent bounding boxes (`anchors.centerIn: parent`).
 > - **Asymmetric Liquid Physics**: Multi-state indicator transitions (such as workspace pills) must decouple leading and trailing edge durations (500ms / 750ms) as specified in `DESIGN.md`.
@@ -71,6 +77,8 @@ caelestia-kde/
 ├── AGENTS.md                 # Agent instructions & development conventions (this file)
 ├── DESIGN.md                 # Design system specification, motion tokens & layout rules
 ├── README.md                 # Public documentation and setup guide
+├── docs/                     # Architectural documentation & technical deep dives
+│   └── LESSONS.md            # Lessons learned: liquid glass, concave fillets & zero-overlap partitioning
 ├── daemon/                   # High-performance native Rust daemon (DDD architecture)
 │   ├── src/                  # Domain, Infrastructure, Application, Interfaces
 │   └── tests/                # Rust unit tests (make test-rust)

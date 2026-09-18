@@ -10,10 +10,31 @@ Item {
 
     property real dropX: (parent.width - dropW) / 2
     property real dropW: (typeof Config !== "undefined" && Config.dashboardWidth) ? Config.dashboardWidth : 980
-    property real dropH: 520
-    property bool isOpen: (typeof Config !== "undefined") ? Config.dashboardVisible : false
+    readonly property real targetDropH: cardLayout.implicitHeight > 0
+        ? (cardLayout.implicitHeight + Theme.padLarge * 2)
+        : 440
+    property real dropH: targetDropH
+
+    Behavior on dropH {
+        NumberAnimation {
+            duration: Theme.animExpressiveDefaultSpatial
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+        }
+    }
+
+    property bool isOpen: (typeof Config !== "undefined" && Config.dashboardVisible !== undefined) ? Config.dashboardVisible : false
     readonly property real currentDropH: dropH * offsetProgress
     property real offsetProgress: isOpen ? 1.0 : 0.0
+
+    Connections {
+        target: (typeof Config !== "undefined" && Config.dashboardVisible !== undefined) ? Config : null
+        function onDashboardVisibleChanged() {
+            if (typeof Config !== "undefined" && Config.dashboardVisible !== undefined) {
+                root.isOpen = Config.dashboardVisible;
+            }
+        }
+    }
 
     property bool hoverOverrideActive: false
     property bool hoverOverride: false
@@ -36,8 +57,11 @@ Item {
 
     focus: true
     Keys.onEscapePressed: {
-        root.isOpen = false;
-        if (typeof Config !== "undefined") Config.dashboardVisible = false;
+        if (typeof Config !== "undefined") {
+            Config.dashboardVisible = false;
+        } else {
+            root.isOpen = false;
+        }
     }
 
     HoverHandler {
@@ -45,10 +69,10 @@ Item {
     }
 
     readonly property var tabs: [
-        { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+        { id: "dashboard", label: "Dashboard", icon: "grid_view" },
         { id: "media", label: "Media", icon: "queue_music" },
         { id: "performance", label: "Performance", icon: "speed" },
-        { id: "workspaces", label: "Workspaces", icon: "grid_view" }
+        { id: "workspaces", label: "Workspaces", icon: "workspaces" }
     ]
 
     ColumnLayout {
@@ -74,16 +98,16 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 38
                 height: 38
-                radius: Theme.radiusGlassItem
-                color: settingsHover.containsMouse ? Colors.glassPillHover : Colors.glassPill
-                border.color: settingsHover.containsMouse ? Colors.glassBorderSpecular : Colors.glassBorderSubtle
+                radius: Theme.radiusSmall
+                color: settingsHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : "transparent"
+                border.color: settingsHover.containsMouse ? (typeof Colors !== "undefined" ? Colors.glassBorderSubtle : Theme.borderSubtle) : "transparent"
                 border.width: 1
 
                 MaterialIcon {
                     anchors.centerIn: parent
                     text: "settings"
                     size: 18
-                    color: settingsHover.containsMouse ? "#FFFFFF" : Qt.alpha("#FFFFFF", 0.70)
+                    color: settingsHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant
                 }
 
                 MouseArea {
@@ -126,7 +150,7 @@ Item {
                 id: tabsRow
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 12
+                spacing: 16
 
                 Repeater {
                     id: tabRepeater
@@ -138,60 +162,32 @@ Item {
                         required property int index
                         readonly property bool isSelected: Config.activeDashboardTab === modelData.id
 
-                        width: 160
-                        height: 42
-                        radius: Theme.radiusGlassItem
-                        color: isSelected 
-                            ? Colors.glassPillActive 
-                            : (tabHover.containsMouse ? Colors.glassPillHover : "transparent")
-                        border.color: isSelected 
-                            ? Colors.glassBorderSpecular 
-                            : (tabHover.containsMouse ? Colors.glassBorderSubtle : "transparent")
-                        border.width: 1
+                        width: 175
+                        height: 50
+                        radius: Theme.radiusSmall
+                        color: tabHover.containsMouse ? Qt.alpha(Colors.textMain, 0.04) : "transparent"
 
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: Theme.animExpressiveFastEffects
-                                easing.type: Easing.BezierSpline
-                                easing.bezierCurve: Theme.curveExpressiveFastEffects
-                            }
-                        }
-
-                        // Subtle top specular gleam on selected tab
-                        Rectangle {
-                            anchors.top: parent.top
-                            anchors.topMargin: 0.5
-                            anchors.left: parent.left
-                            anchors.leftMargin: parent.radius * 0.4
-                            anchors.right: parent.right
-                            anchors.rightMargin: parent.radius * 0.4
-                            height: 1
-                            color: Colors.glassBorderSpecular
-                            visible: isSelected
-                            opacity: 0.8
-                        }
-
-                        Row {
+                        Column {
                             anchors.centerIn: parent
-                            spacing: 8
+                            spacing: 3
 
                             MaterialIcon {
-                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.icon
-                                size: 18
-                                color: isSelected ? "#FFFFFF" : (tabHover.containsMouse ? "#FFFFFF" : Qt.alpha("#FFFFFF", 0.65))
+                                size: 20
+                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
                                 Behavior on color {
                                     ColorAnimation { duration: Theme.animExpressiveFastEffects }
                                 }
                             }
 
                             Text {
-                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.label
                                 font.pixelSize: 12
-                                font.weight: isSelected ? Font.DemiBold : Font.Normal
+                                font.weight: Font.DemiBold
                                 font.family: Theme.fontFamily
-                                color: isSelected ? "#FFFFFF" : (tabHover.containsMouse ? "#FFFFFF" : Qt.alpha("#FFFFFF", 0.65))
+                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
                                 Behavior on color {
                                     ColorAnimation { duration: Theme.animExpressiveFastEffects }
                                 }
@@ -208,6 +204,56 @@ Item {
                     }
                 }
             }
+
+            // Fluid Sliding Underline Indicator
+            Rectangle {
+                id: tabSlidingIndicator
+                anchors.bottom: parent.bottom
+                height: 3
+                radius: 1.5
+                color: Colors.primary
+
+                readonly property int activeIdx: {
+                    switch (Config.activeDashboardTab) {
+                        case "dashboard": return 0;
+                        case "media": return 1;
+                        case "performance": return 2;
+                        case "workspaces": return 3;
+                        default: return 0;
+                    }
+                }
+
+                readonly property Item activeTabItem: (tabRepeater.count > activeIdx) ? tabRepeater.itemAt(activeIdx) : null
+                readonly property real targetWidth: activeTabItem ? activeTabItem.width : 0
+                readonly property real targetX: activeTabItem ? (tabsRow.x + activeTabItem.x) : 0
+
+                x: targetX
+                width: targetWidth
+
+                Behavior on x {
+                    NumberAnimation {
+                        duration: Theme.animExpressiveDefaultSpatial
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                    }
+                }
+
+                Behavior on width {
+                    NumberAnimation {
+                        duration: Theme.animExpressiveDefaultSpatial
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                    }
+                }
+            }
+        }
+
+        // Header Separator
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            height: 1
+            color: (typeof Colors !== "undefined" && Colors.glassBorderSubtle) ? Colors.glassBorderSubtle : Theme.borderSubtle
         }
 
         // Tab Content Sliding View

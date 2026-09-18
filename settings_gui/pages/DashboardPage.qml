@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import "../controls"
 import "../../config"
 import "../../theme"
+import "../../components"
 
 ColumnLayout {
     id: root
@@ -34,6 +35,147 @@ ColumnLayout {
             description: "Show " + modelData.label + " tab inside the Central Dashboard"
             checked: modelData.enabled
             onToggled: val => Config.setDashboardTabEnabled(modelData.id, val)
+        }
+    }
+
+    // Media Visualizer Style setting card
+    Rectangle {
+        Layout.fillWidth: true
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        implicitHeight: vizCol.implicitHeight + Theme.padLarge * 2
+
+        ColumnLayout {
+            id: vizCol
+            anchors.fill: parent
+            anchors.margins: Theme.padLarge
+            spacing: 8
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceMedium
+
+                Column {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        text: "Media Visualizer Style"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBodyMedium
+                        font.weight: Font.DemiBold
+                        color: Colors.m3onSurface
+                    }
+
+                    Text {
+                        text: "Select audio visualizer style in the Media tab"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurfaceVariant
+                    }
+                }
+
+                // Material 3 Segmented Pill
+                Rectangle {
+                    id: pillWrapper
+                    implicitHeight: 38
+                    implicitWidth: 260
+                    radius: Theme.radiusFull
+                    color: Colors.surfaceContainerHigh
+                    border.color: Theme.borderSubtle
+                    border.width: 1
+
+                    readonly property bool isSpeaker: (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 2
+                        spacing: 2
+
+                        // Radial Halo Segment
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: Theme.radiusFull
+                            color: !pillWrapper.isSpeaker ? Colors.primaryContainer : (radialHover.containsMouse ? Colors.pillHover : "transparent")
+                            border.color: !pillWrapper.isSpeaker ? Qt.alpha(Colors.primary, 0.4) : "transparent"
+                            border.width: !pillWrapper.isSpeaker ? 1 : 0
+
+                            Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                MaterialIcon {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "album"
+                                    size: 16
+                                    color: !pillWrapper.isSpeaker ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "Radial Halo"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontBodySmall
+                                    font.weight: !pillWrapper.isSpeaker ? Font.Bold : Font.Normal
+                                    color: !pillWrapper.isSpeaker ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                                }
+                            }
+
+                            MouseArea {
+                                id: radialHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Config.setMediaVisualizerStyle("radial")
+                            }
+                        }
+
+                        // Speaker Segment
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: Theme.radiusFull
+                            color: pillWrapper.isSpeaker ? Colors.primaryContainer : (speakerHover.containsMouse ? Colors.pillHover : "transparent")
+                            border.color: pillWrapper.isSpeaker ? Qt.alpha(Colors.primary, 0.4) : "transparent"
+                            border.width: pillWrapper.isSpeaker ? 1 : 0
+
+                            Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                MaterialIcon {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "speaker"
+                                    size: 16
+                                    color: pillWrapper.isSpeaker ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "Speaker"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontBodySmall
+                                    font.weight: pillWrapper.isSpeaker ? Font.Bold : Font.Normal
+                                    color: pillWrapper.isSpeaker ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
+                                }
+                            }
+
+                            MouseArea {
+                                id: speakerHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Config.setMediaVisualizerStyle("speaker")
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -48,15 +48,35 @@ impl PlasmaAdapter {
                     }
                 }
             }
-            let _ = fs::remove_file(pid_file);
+            if let Ok(content) = fs::read_to_string(pid_file) {
+                if let Ok(pid) = content.trim().parse::<i32>() {
+                    if pid != my_pid {
+                        let _ = fs::remove_file(pid_file);
+                    }
+                } else {
+                    let _ = fs::remove_file(pid_file);
+                }
+            }
         }
 
         if env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" {
             #[cfg(unix)]
             {
-                let _ = Command::new("pkill")
+                if let Ok(output) = Command::new("pgrep")
                     .args(["-f", "astral-plasma plasma watchdog"])
-                    .status();
+                    .output()
+                {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        if let Ok(pid) = line.trim().parse::<i32>() {
+                            if pid != my_pid {
+                                unsafe {
+                                    libc::kill(pid, libc::SIGTERM);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -206,9 +226,26 @@ impl PlasmaControlPort for PlasmaAdapter {
     }
 
     fn restore_config(&self) -> DynResult<bool> {
+        let backup_dir = self.resolve_backup_dir();
+        let restoring_lock = backup_dir.join(".restoring");
+
+        // Prevent concurrent execution of restore_config
+        if restoring_lock.exists() {
+            if let Ok(metadata) = fs::metadata(&restoring_lock) {
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(elapsed) = modified.elapsed() {
+                        if elapsed.as_secs() < 10 {
+                            eprintln!("[astral-plasma] Restore already in progress by another process; skipping duplicate execution.");
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+        let _ = fs::write(&restoring_lock, std::process::id().to_string());
+
         self.stop_watchdog();
 
-        let backup_dir = self.resolve_backup_dir();
         let backed_appletsrc = backup_dir.join("plasma-org.kde.plasma.desktop-appletsrc");
         let backed_shellrc = backup_dir.join("plasmashellrc");
         let backed_layout = backup_dir.join("layout.js");
@@ -217,6 +254,7 @@ impl PlasmaControlPort for PlasmaAdapter {
         let has_backup = backed_appletsrc.exists() || backed_layout.exists();
         if !has_backup {
             let _ = fs::remove_file(&session_flag);
+            let _ = fs::remove_file(&restoring_lock);
             return Ok(false);
         }
 
@@ -306,6 +344,7 @@ impl PlasmaControlPort for PlasmaAdapter {
         }
 
         let _ = fs::remove_file(&session_flag);
+        let _ = fs::remove_file(&restoring_lock);
         Ok(true)
     }
 

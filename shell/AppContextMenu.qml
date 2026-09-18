@@ -64,13 +64,7 @@ Item {
                 if (menuCard.targetApp.isPinned) return "Pinned";
                 return "Running (Unpinned)";
             }
-            iconSource: {
-                if (!menuCard.targetApp || !menuCard.targetApp.iconName) return "";
-                if (menuCard.targetApp.iconName.indexOf("/") !== -1) {
-                    return menuCard.targetApp.iconName.startsWith("file://") ? menuCard.targetApp.iconName : ("file://" + menuCard.targetApp.iconName);
-                }
-                return Quickshell.iconPath(menuCard.targetApp.iconName);
-            }
+            iconSource: Config.iconUrl(menuCard.targetApp ? menuCard.targetApp.iconName : "")
             materialIcon: menuCard.targetApp ? (menuCard.targetApp.materialIcon || "apps") : "apps"
         }
 

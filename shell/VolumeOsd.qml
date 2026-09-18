@@ -205,18 +205,6 @@ Item {
             shadowColor: (typeof Colors !== "undefined" && Colors.glassShadowColor) ? Colors.glassShadowColor : Qt.rgba(0, 0, 0, 0.25)
         }
 
-        // Top specular rim glare line
-        Rectangle {
-            anchors.top: parent.top
-            anchors.topMargin: 0.5
-            anchors.left: parent.left
-            anchors.leftMargin: parent.radius * 0.35
-            anchors.right: parent.right
-            anchors.rightMargin: parent.radius * 0.35
-            height: 1.2
-            color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.75)
-            opacity: 0.85
-        }
     }
 
     // ==========================================

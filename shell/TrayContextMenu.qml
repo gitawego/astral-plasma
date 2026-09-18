@@ -284,7 +284,7 @@ Item {
         // Animated Header Container
         Item {
             width: parent.width
-            implicitHeight: 36
+            implicitHeight: 46
             clip: true
 
             // Top-Level Header
@@ -295,13 +295,7 @@ Item {
                 visible: opacity > 0.01
                 title: root.targetItem ? (root.targetItem.title || root.targetItem.id) : ""
                 subtitle: (root.targetItem && root.targetItem.service) ? root.targetItem.service : "System Tray"
-                iconSource: {
-                    if (!root.targetItem || !root.targetItem.rawIcon) return "";
-                    if (root.targetItem.rawIcon.indexOf("/") !== -1) {
-                        return root.targetItem.rawIcon.startsWith("file://") ? root.targetItem.rawIcon : ("file://" + root.targetItem.rawIcon);
-                    }
-                    return Quickshell.iconPath(root.targetItem.rawIcon);
-                }
+                iconSource: Config.iconUrl(root.targetItem ? root.targetItem.rawIcon : "")
                 materialIcon: root.targetItem ? (root.targetItem.materialIcon || "widgets") : "widgets"
 
                 Behavior on opacity {
@@ -500,13 +494,7 @@ Item {
                             hasSubmenu: Boolean(modelData.hasSubmenu) || (Boolean(modelData.children) && modelData.children.length > 0)
                             toggleType: modelData.toggleType || ""
                             toggleState: (modelData.toggleState !== undefined) ? modelData.toggleState : 0
-                            iconSource: {
-                                if (!modelData.icon) return "";
-                                if (modelData.icon.indexOf("/") !== -1) {
-                                    return modelData.icon.startsWith("file://") ? modelData.icon : ("file://" + modelData.icon);
-                                }
-                                return Quickshell.iconPath(modelData.icon);
-                            }
+                            iconSource: Config.iconUrl(modelData.icon)
                             isDangerous: (modelData.label && modelData.label.toLowerCase().indexOf("quit") !== -1)
                             onClicked: pageRoot.itemClicked(modelData)
                         }

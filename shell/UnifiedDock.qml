@@ -211,34 +211,21 @@ Item {
         }
 
         // 2. Workspaces Vertical Pill
-        Rectangle {
+        LiquidGlassCard {
             id: wsContainer
             anchors.horizontalCenter: parent.horizontalCenter
             readonly property int wsBtnSize: 24
             readonly property int wsSpacing: 8
             readonly property int wsPad: 6
+            readonly property int desktopCount: (KWinWorkspaces.desktops && KWinWorkspaces.desktops.length > 0)
+                ? Math.min(6, Math.max(1, KWinWorkspaces.desktops.length))
+                : 4
             implicitWidth: 30
-            implicitHeight: (wsBtnSize + wsSpacing) * 4 - wsSpacing + wsPad * 2
+            implicitHeight: (wsBtnSize + wsSpacing) * desktopCount - wsSpacing + wsPad * 2
             radius: Theme.radiusFull
-            color: Colors.glassCard
-            border.color: Colors.glassBorderSubtle
-            border.width: 1
-
-            // Top specular highlight
-            Rectangle {
-                anchors.top: parent.top
-                anchors.topMargin: 0.5
-                anchors.left: parent.left
-                anchors.leftMargin: parent.width * 0.25
-                anchors.right: parent.right
-                anchors.rightMargin: parent.width * 0.25
-                height: 1
-                color: Colors.glassBorderSpecular
-                opacity: 0.8
-            }
 
             readonly property int activeWsIndex: {
-                for (let i = 0; i < Math.min(4, KWinWorkspaces.desktops.length); i++) {
+                for (let i = 0; i < Math.min(desktopCount, KWinWorkspaces.desktops.length); i++) {
                     if (KWinWorkspaces.desktops[i].active) return i;
                 }
                 return 0;
@@ -303,12 +290,17 @@ Item {
                 z: 1
 
                 Repeater {
-                    model: [
-                        { index: 0, name: "Desktop 1" },
-                        { index: 1, name: "Desktop 2" },
-                        { index: 2, name: "Desktop 3" },
-                        { index: 3, name: "Desktop 4" }
-                    ]
+                    model: {
+                        if (KWinWorkspaces.desktops && KWinWorkspaces.desktops.length > 0) {
+                            return KWinWorkspaces.desktops.slice(0, wsContainer.desktopCount);
+                        }
+                        return [
+                            { index: 0, name: "Desktop 1" },
+                            { index: 1, name: "Desktop 2" },
+                            { index: 2, name: "Desktop 3" },
+                            { index: 3, name: "Desktop 4" }
+                        ];
+                    }
 
                     delegate: Item {
                         id: wsDelegate
@@ -321,15 +313,15 @@ Item {
                         implicitWidth: itemSize
                         implicitHeight: itemSize
 
-                        // Inactive State: Gray Dot Icon
+                        // Inactive State: High-contrast Desktop Dot
                         Rectangle {
                             anchors.centerIn: parent
-                            width: 6
-                            height: 6
-                            radius: 3
+                            width: wsHover.containsMouse ? 8 : 7
+                            height: wsHover.containsMouse ? 8 : 7
+                            radius: width / 2
                             visible: !wsDelegate.isActive
-                            color: wsHover.containsMouse ? Colors.primary : Colors.outline
-                            scale: wsHover.containsMouse ? 1.3 : 1.0
+                            color: wsHover.containsMouse ? Colors.primary : Qt.alpha(Colors.textOnSurface, 0.70)
+                            scale: wsHover.containsMouse ? 1.25 : 1.0
 
                             Behavior on color {
                                 ColorAnimation { duration: Theme.animDurationFast }
@@ -353,7 +345,9 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (KWinWorkspaces.desktops && KWinWorkspaces.desktops.length > modelData.index && KWinWorkspaces.desktops[modelData.index]) {
+                                if (modelData.id) {
+                                    KWinWorkspaces.switchToDesktop(modelData.id);
+                                } else if (KWinWorkspaces.desktops && KWinWorkspaces.desktops.length > modelData.index && KWinWorkspaces.desktops[modelData.index]) {
                                     KWinWorkspaces.switchToDesktop(KWinWorkspaces.desktops[modelData.index].id);
                                 } else {
                                     KWinWorkspaces.switchToWorkspace(modelData.index);
@@ -378,9 +372,7 @@ Item {
                             Text {
                                 id: wsTipText
                                 anchors.centerIn: parent
-                                text: (KWinWorkspaces.desktops.length > modelData.index && KWinWorkspaces.desktops[modelData.index].name)
-                                    ? KWinWorkspaces.desktops[modelData.index].name
-                                    : modelData.name
+                                text: modelData.name || ("Desktop " + (modelData.index + 1))
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 12
                                 color: Colors.textOnSurface
@@ -415,13 +407,7 @@ Item {
                 anchors.centerIn: parent
                 width: root.iconS
                 height: root.iconS
-                source: {
-                    if (!WindowService.activeIconName) return "";
-                    if (WindowService.activeIconName.indexOf("/") !== -1) {
-                        return WindowService.activeIconName.startsWith("file://") ? WindowService.activeIconName : ("file://" + WindowService.activeIconName);
-                    }
-                    return Quickshell.iconPath(WindowService.activeIconName);
-                }
+                source: Config.iconUrl(WindowService.activeIconName)
                 fillMode: Image.PreserveAspectFit
                 visible: status === Image.Ready
             }
@@ -546,37 +532,22 @@ Item {
         anchors.bottomMargin: 8
 
         // 1. APPS CONTAINER (Taskbar)
-        Rectangle {
+        LiquidGlassCard {
             id: appsContainer
             anchors.horizontalCenter: parent.horizontalCenter
             implicitWidth: root.iconS + 16
             readonly property int maxAppsHeight: Math.max(120, root.height - topSection.implicitHeight - 360)
-            implicitHeight: Math.min(appsCol.implicitHeight + 8, maxAppsHeight)
-            radius: Math.round((root.iconS + 16) * 0.25)
-            color: Colors.glassCard
-            border.color: Colors.glassBorderSubtle
-            border.width: 1
+            readonly property int vPad: 10
+            implicitHeight: Math.min(appsCol.implicitHeight + vPad * 2, maxAppsHeight)
+            radius: Math.round((root.iconS + 16) * 0.5)
             visible: root.taskbarList.length > 0
             clip: true
-
-            // Top specular highlight
-            Rectangle {
-                anchors.top: parent.top
-                anchors.topMargin: 0.5
-                anchors.left: parent.left
-                anchors.leftMargin: parent.radius * 0.35
-                anchors.right: parent.right
-                anchors.rightMargin: parent.radius * 0.35
-                height: 1
-                color: Colors.glassBorderSpecular
-                opacity: 0.75
-            }
 
             Flickable {
                 id: appsFlickable
                 anchors.fill: parent
-                anchors.topMargin: 4
-                anchors.bottomMargin: 4
+                anchors.topMargin: appsContainer.vPad
+                anchors.bottomMargin: appsContainer.vPad
                 contentWidth: width
                 contentHeight: appsCol.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
@@ -596,19 +567,19 @@ Item {
                             id: appDelegate
                             required property var modelData
 
-                            readonly property int itemSize: root.iconS + 10
+                            readonly property int itemSize: root.iconS + 8
 
                             width: itemSize
                             height: itemSize
                             implicitWidth: itemSize
                             implicitHeight: itemSize
-                            radius: Math.max(6, Math.round(itemSize * 0.22))
+                            radius: Math.max(8, Math.round(itemSize * 0.28))
                             color: modelData.isActive ? Colors.primaryContainer : (appHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
 
                             // Active left pill indicator
                             Rectangle {
                                 anchors.left: parent.left
-                                anchors.leftMargin: 1
+                                anchors.leftMargin: 2
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 3
                                 height: modelData.isActive ? Math.round(root.iconS * 0.65) : 0
@@ -624,7 +595,7 @@ Item {
                             // Running dot indicator
                             Rectangle {
                                 anchors.left: parent.left
-                                anchors.leftMargin: 1
+                                anchors.leftMargin: 2
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 3
                                 height: 3
@@ -640,13 +611,7 @@ Item {
                                 width: root.iconS
                                 height: root.iconS
                                 opacity: modelData.isRunning ? 1.0 : 0.65
-                                source: {
-                                    if (!modelData.iconName) return "";
-                                    if (modelData.iconName.indexOf("/") !== -1) {
-                                        return modelData.iconName.startsWith("file://") ? modelData.iconName : ("file://" + modelData.iconName);
-                                    }
-                                    return Quickshell.iconPath(modelData.iconName);
-                                }
+                                source: Config.iconUrl(modelData.iconName)
                                 fillMode: Image.PreserveAspectFit
                                 visible: status === Image.Ready
                             }
@@ -774,29 +739,14 @@ Item {
         }
 
         // 2. SYSTEM TRAY ICONS CONTAINER
-        Rectangle {
+        LiquidGlassCard {
             id: trayContainer
             anchors.horizontalCenter: parent.horizontalCenter
             implicitWidth: root.iconS + 16
-            implicitHeight: trayCol.implicitHeight + 8
-            radius: Math.round((root.iconS + 16) * 0.25)
-            color: Colors.glassCard
-            border.color: Colors.glassBorderSubtle
-            border.width: 1
+            readonly property int vPad: 8
+            implicitHeight: trayCol.implicitHeight + vPad * 2
+            radius: Math.round((root.iconS + 16) * 0.5)
             visible: WindowService.tray.length > 0
-
-            // Top specular highlight
-            Rectangle {
-                anchors.top: parent.top
-                anchors.topMargin: 0.5
-                anchors.left: parent.left
-                anchors.leftMargin: parent.radius * 0.35
-                anchors.right: parent.right
-                anchors.rightMargin: parent.radius * 0.35
-                height: 1
-                color: Colors.glassBorderSpecular
-                opacity: 0.75
-            }
 
             Column {
                 id: trayCol
@@ -823,7 +773,7 @@ Item {
                         height: itemSize
                         implicitWidth: itemSize
                         implicitHeight: itemSize
-                        radius: Math.max(6, Math.round(itemSize * 0.22))
+                        radius: Math.max(8, Math.round(itemSize * 0.32))
                         color: trayHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
 
                         Text {
@@ -844,13 +794,7 @@ Item {
                             anchors.centerIn: parent
                             width: root.iconS
                             height: root.iconS
-                            source: {
-                                if (!modelData.rawIcon || modelData.rawIcon.startsWith("Error")) return "";
-                                if (modelData.rawIcon.indexOf("/") !== -1) {
-                                    return modelData.rawIcon.startsWith("file://") ? modelData.rawIcon : ("file://" + modelData.rawIcon);
-                                }
-                                return Quickshell.iconPath(modelData.rawIcon);
-                            }
+                            source: Config.iconUrl(modelData.rawIcon)
                             fillMode: Image.PreserveAspectFit
                             visible: !imBadgeText.visible && status === Image.Ready
                         }
@@ -889,10 +833,11 @@ Item {
                                         WindowService.contextMenuTray(modelData.service, modelData.path);
                                     }
                                 } else {
-                                    if (modelData.menuPath && modelData.menuPath.length > 0) {
+                                    if (modelData.itemIsMenu && modelData.menuPath && modelData.menuPath.length > 0) {
                                         WindowService.loadTrayMenu(modelData);
                                         Config.openBottomPopout("tray", targetCenterY);
                                     } else {
+                                        Config.closeBottomPopout();
                                         WindowService.activateTray(modelData.service, modelData.path);
                                     }
                                 }

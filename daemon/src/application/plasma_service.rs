@@ -5,7 +5,6 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::thread;
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -60,15 +59,45 @@ pub fn spawn_watchdog(target_pid: u32) {
     let _ = cmd.spawn();
 }
 
-pub fn run_watchdog_loop(target_pid: u32) -> DynResult<()> {
+pub async fn run_watchdog_loop(target_pid: u32) -> DynResult<()> {
     let pid_file = Path::new(DEFAULT_WATCHDOG_PID_FILE);
-    fs::write(pid_file, std::process::id().to_string())?;
+    let _ = fs::write(pid_file, std::process::id().to_string());
 
-    while unsafe { libc::kill(target_pid as i32, 0) == 0 } {
-        thread::sleep(Duration::from_millis(500));
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm = signal(SignalKind::terminate())?;
+        let mut sigint = signal(SignalKind::interrupt())?;
+
+        loop {
+            tokio::select! {
+                _ = sigterm.recv() => {
+                    eprintln!("[astral-plasma watchdog] Received SIGTERM signal, restoring original Plasma state...");
+                    break;
+                }
+                _ = sigint.recv() => {
+                    eprintln!("[astral-plasma watchdog] Received SIGINT signal, restoring original Plasma state...");
+                    break;
+                }
+                _ = tokio::time::sleep(Duration::from_millis(500)) => {
+                    let alive = unsafe { libc::kill(target_pid as i32, 0) == 0 };
+                    if !alive {
+                        eprintln!("[astral-plasma watchdog] Monitored PID {} has terminated, restoring original Plasma state...", target_pid);
+                        break;
+                    }
+                }
+            }
+        }
     }
 
-    // Quickshell has exited or was killed; restore original Plasma panels and shortcuts!
+    #[cfg(not(unix))]
+    {
+        while unsafe { libc::kill(target_pid as i32, 0) == 0 } {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }
+
+    // Quickshell has exited or watchdog was terminated; restore original Plasma panels and shortcuts!
     let adapter = PlasmaAdapter::new();
     let _ = adapter.restore_config();
 

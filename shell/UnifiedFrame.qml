@@ -145,10 +145,10 @@ Item {
         : (root.borderT + root.cornerFilletR - 1)
     readonly property real rightBorderBottomLimit: root.height - (root.borderT + root.cornerFilletR - 1)
 
-    readonly property real rightControlGapTop: root.rightControlY - root.filletR * root.rightControlOffsetProgress
-    readonly property real rightControlGapBottom: root.rightControlY + root.rightControlH + root.filletR * root.rightControlOffsetProgress
+    readonly property real rightControlGapTop: root.rightControlY - rightControlSurface.topR
+    readonly property real rightControlGapBottom: root.rightControlY + root.rightControlH + rightControlSurface.botR
 
-    // Thin Right Border
+    // Thin Right Border (Continuous glassFill background; 1px stroke splits when drawer is open)
     Rectangle {
         id: rightBorder
         x: root.width - root.borderT
@@ -157,7 +157,7 @@ Item {
         height: Math.max(0, root.height - y)
         color: root.glassFill
 
-        // Upper segment
+        // Upper specular stroke segment
         Rectangle {
             x: 0
             y: Math.max(0, root.rightBorderTopLimit - parent.y)
@@ -168,7 +168,7 @@ Item {
             color: root.borderColor
         }
 
-        // Lower segment (active when right edge control is open)
+        // Lower specular stroke segment (active when right edge control is open)
         Rectangle {
             visible: root.rightControlOffsetProgress > 0.001
             x: 0
@@ -189,8 +189,8 @@ Item {
         color: root.glassFill
 
         Rectangle {
-            x: (root.popoutOffsetProgress > 0.001
-                ? (root.currentPopW * root.fusedProgress)
+            x: ((root.popoutOffsetProgress > 0.001 && root.fusedProgress > 0.5)
+                ? (root.currentPopW + root.popoutFilletR)
                 : root.cornerFilletR)
             y: 0
             height: 1
@@ -436,10 +436,12 @@ Item {
         readonly property real topR: currentFilletR
         readonly property real botR: (root.fusedProgress > 0.5) ? 0 : currentFilletR
         readonly property real effectiveR: (root.fusedProgress > 0.5) ? 0 : currentModalR
+        readonly property real bodyW: root.currentPopW + 1
+        readonly property real fusedBottomFilletR: (root.fusedProgress > 0.5) ? currentFilletR : 0
 
         x: root.dockW - 1
         y: root.popoutY - topR
-        width: root.currentPopW + 1
+        width: bodyW + fusedBottomFilletR
         height: root.popoutHeight + topR + botR
         visible: root.popoutOffsetProgress > 0.001
 
@@ -455,7 +457,7 @@ Item {
                 strokeColor: "transparent"
                 strokeWidth: 0
 
-                startX: -2
+                startX: 0
                 startY: 0
 
                 PathLine { x: 0; y: 0 }
@@ -467,22 +469,22 @@ Item {
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR
                 }
                 PathArc {
-                    x: bottomPopoutSurface.width
+                    x: bottomPopoutSurface.bodyW
                     y: bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR
                     radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     direction: PathArc.Clockwise
                 }
                 PathLine {
-                    x: bottomPopoutSurface.width
+                    x: bottomPopoutSurface.bodyW
                     y: Math.max(bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR, bottomPopoutSurface.topR + root.popoutHeight - bottomPopoutSurface.currentModalR)
                 }
                 PathArc {
-                    x: Math.max(bottomPopoutSurface.botR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.botR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR + root.popoutHeight
                     radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
@@ -500,11 +502,15 @@ Item {
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: -2
-                    y: bottomPopoutSurface.height
+                    x: 1
+                    y: bottomPopoutSurface.height - bottomPopoutSurface.botR
                 }
                 PathLine {
-                    x: -2
+                    x: 1
+                    y: bottomPopoutSurface.topR
+                }
+                PathLine {
+                    x: 0
                     y: 0
                 }
             }
@@ -522,7 +528,7 @@ Item {
                 strokeColor: "transparent"
                 strokeWidth: 0
 
-                startX: -2
+                startX: 0
                 startY: 0
 
                 PathLine { x: 0; y: 0 }
@@ -534,26 +540,37 @@ Item {
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR
                 }
                 PathArc {
-                    x: bottomPopoutSurface.width
+                    x: bottomPopoutSurface.bodyW
                     y: bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR
                     radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     direction: PathArc.Clockwise
                 }
                 PathLine {
-                    x: bottomPopoutSurface.width
+                    x: bottomPopoutSurface.bodyW
+                    y: bottomPopoutSurface.height - bottomPopoutSurface.fusedBottomFilletR
+                }
+                PathArc {
+                    x: bottomPopoutSurface.bodyW + bottomPopoutSurface.fusedBottomFilletR
+                    y: bottomPopoutSurface.height
+                    radiusX: Math.max(0.1, bottomPopoutSurface.fusedBottomFilletR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.fusedBottomFilletR)
+                    direction: PathArc.Counterclockwise
+                }
+                PathLine {
+                    x: 1
                     y: bottomPopoutSurface.height
                 }
                 PathLine {
-                    x: -2
-                    y: bottomPopoutSurface.height
+                    x: 1
+                    y: bottomPopoutSurface.topR
                 }
                 PathLine {
-                    x: -2
+                    x: 0
                     y: 0
                 }
             }
@@ -583,22 +600,22 @@ Item {
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR
                 }
                 PathArc {
-                    x: bottomPopoutSurface.width
+                    x: bottomPopoutSurface.bodyW
                     y: bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR
                     radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     direction: PathArc.Clockwise
                 }
                 PathLine {
-                    x: bottomPopoutSurface.width
+                    x: bottomPopoutSurface.bodyW
                     y: Math.max(bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR, bottomPopoutSurface.topR + root.popoutHeight - bottomPopoutSurface.currentModalR)
                 }
                 PathArc {
-                    x: Math.max(bottomPopoutSurface.botR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.botR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR + root.popoutHeight
                     radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
@@ -618,7 +635,7 @@ Item {
             }
         }
 
-        // 2B. Bottom-Fused Continuous 1px Perimeter Stroke (Top shoulder fillet + top-right corner, straight into bottom border)
+        // 2B. Bottom-Fused Continuous 1px Perimeter Stroke (Top shoulder fillet + top-right corner + bottom-right concave fillet)
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
@@ -642,82 +659,132 @@ Item {
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR
                 }
                 PathArc {
-                    x: bottomPopoutSurface.width
+                    x: bottomPopoutSurface.bodyW
                     y: bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR
                     radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     direction: PathArc.Clockwise
                 }
                 PathLine {
-                    x: bottomPopoutSurface.width
-                    y: bottomPopoutSurface.height
+                    x: bottomPopoutSurface.bodyW
+                    y: bottomPopoutSurface.height - bottomPopoutSurface.fusedBottomFilletR
                 }
-                PathLine {
-                    x: 0
+                PathArc {
+                    x: bottomPopoutSurface.bodyW + bottomPopoutSurface.fusedBottomFilletR
                     y: bottomPopoutSurface.height
+                    radiusX: Math.max(0.1, bottomPopoutSurface.fusedBottomFilletR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.fusedBottomFilletR)
+                    direction: PathArc.Counterclockwise
                 }
             }
         }
 
-        // Top specular highlight line
-        Rectangle {
-            anchors.top: parent.top
-            anchors.topMargin: bottomPopoutSurface.topR
-            anchors.left: parent.left
-            anchors.leftMargin: bottomPopoutSurface.topR
-            anchors.right: parent.right
-            anchors.rightMargin: bottomPopoutSurface.currentModalR * 0.4
-            height: 1
-            color: root.glassBorder
-            opacity: 0.45
-            visible: bottomPopoutSurface.filletFactor > 0.01
-        }
     }
 
-    // Right Border Edge Volume/Brightness Control Surface
+    // Right Border Edge Volume/Brightness Control Fused Solid Surface & Fillets
     Item {
         id: rightControlSurface
-        x: root.width - root.borderT - currentW
-        y: root.rightControlY
-        width: currentW + 1
-        height: root.rightControlH
+        readonly property real currentRightW: root.rightControlW * root.rightControlOffsetProgress
+        readonly property real filletFactor: Math.max(0.0, Math.min(1.0, currentRightW / Math.max(1, root.filletR)))
+        readonly property real currentFilletR: root.filletR * filletFactor
+        readonly property real currentModalR: root.modalRadius * filletFactor
+        readonly property real topR: currentFilletR
+        readonly property real botR: currentFilletR
+        readonly property real bodyW: currentRightW + 1
+        readonly property real cornerStartX: Math.max(0.0, Math.min(bodyW - topR, currentModalR))
+        readonly property real effectiveModalR: Math.min(currentModalR, cornerStartX)
+
+        x: root.width - root.borderT - currentRightW
+        y: root.rightControlY - topR
+        width: bodyW + 1
+        height: root.rightControlH + topR + botR
         visible: root.rightControlOffsetProgress > 0.001
 
-        readonly property real currentW: root.rightControlW * root.rightControlOffsetProgress
-        readonly property real filletFactor: Math.max(0.0, Math.min(1.0, currentW / Math.max(1, root.filletR)))
-
-        // 1. Solid Glass Surface Fill
-        Rectangle {
-            anchors.fill: parent
-            color: root.glassFill
-            opacity: rightControlSurface.filletFactor
-            topRightRadius: 0
-            bottomRightRadius: 0
-            topLeftRadius: root.modalRadius
-            bottomLeftRadius: root.modalRadius
-
-            // Subtle top specular highlight catch
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: parent.topLeftRadius * 0.4
-                height: 1
-                color: root.glassBorder
-                opacity: 0.45
-            }
-        }
-
-        // 2. Continuous 1px Border Outline (Top, Left, Bottom; Right edge is fused to right border)
+        // 1. Solid Liquid Glass Surface Fill (Covers drawer body and shoulder fillets; zero border overlap)
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
-            visible: rightControlSurface.filletFactor > 0.01
-            opacity: rightControlSurface.filletFactor
+            visible: rightControlSurface.currentRightW > 0.01
+
+            ShapePath {
+                fillColor: root.glassFill
+                strokeColor: "transparent"
+                strokeWidth: 0
+
+                startX: rightControlSurface.bodyW
+                startY: 0
+
+                // Top shoulder concave fillet: from right border down-left into drawer top line
+                PathArc {
+                    x: rightControlSurface.bodyW - rightControlSurface.topR
+                    y: rightControlSurface.topR
+                    radiusX: Math.max(0.1, rightControlSurface.topR)
+                    radiusY: Math.max(0.1, rightControlSurface.topR)
+                    direction: PathArc.Clockwise
+                }
+
+                // Top horizontal edge leftwards towards outer corner (zero length when narrow, never backwards)
+                PathLine {
+                    x: rightControlSurface.cornerStartX
+                    y: rightControlSurface.topR
+                }
+
+                // Top-left outer convex corner: from top line down-left to outer vertical edge
+                PathArc {
+                    x: 0
+                    y: rightControlSurface.topR + rightControlSurface.effectiveModalR
+                    radiusX: Math.max(0.1, rightControlSurface.effectiveModalR)
+                    radiusY: Math.max(0.1, rightControlSurface.effectiveModalR)
+                    direction: PathArc.Counterclockwise
+                }
+
+                // Outer vertical edge down to bottom corner
+                PathLine {
+                    x: 0
+                    y: Math.max(rightControlSurface.topR + rightControlSurface.effectiveModalR, rightControlSurface.topR + root.rightControlH - rightControlSurface.effectiveModalR)
+                }
+
+                // Bottom-left outer convex corner: from vertical edge down-right to bottom horizontal line
+                PathArc {
+                    x: rightControlSurface.cornerStartX
+                    y: rightControlSurface.topR + root.rightControlH
+                    radiusX: Math.max(0.1, rightControlSurface.effectiveModalR)
+                    radiusY: Math.max(0.1, rightControlSurface.effectiveModalR)
+                    direction: PathArc.Counterclockwise
+                }
+
+                // Bottom horizontal edge rightwards towards right shoulder (zero length when narrow, never backwards)
+                PathLine {
+                    x: rightControlSurface.bodyW - rightControlSurface.botR
+                    y: rightControlSurface.topR + root.rightControlH
+                }
+
+                // Bottom shoulder concave fillet: from drawer bottom line down-right into right border
+                PathArc {
+                    x: rightControlSurface.bodyW
+                    y: rightControlSurface.height
+                    radiusX: Math.max(0.1, rightControlSurface.botR)
+                    radiusY: Math.max(0.1, rightControlSurface.botR)
+                    direction: PathArc.Clockwise
+                }
+
+                // Close along right border seam (zero overlap with rightBorder)
+                PathLine {
+                    x: rightControlSurface.bodyW
+                    y: 0
+                }
+            }
+        }
+
+        // 2. Continuous 1px Border Outline Stroke
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            visible: rightControlSurface.currentRightW > 0.01
 
             ShapePath {
                 fillColor: "transparent"
@@ -725,24 +792,62 @@ Item {
                 strokeWidth: 1
                 capStyle: ShapePath.FlatCap
 
-                startX: rightControlSurface.width; startY: 0
-                PathLine { x: root.modalRadius; y: 0 }
+                startX: rightControlSurface.bodyW
+                startY: 0
+
+                // Top shoulder concave fillet
+                PathArc {
+                    x: rightControlSurface.bodyW - rightControlSurface.topR
+                    y: rightControlSurface.topR
+                    radiusX: Math.max(0.1, rightControlSurface.topR)
+                    radiusY: Math.max(0.1, rightControlSurface.topR)
+                    direction: PathArc.Clockwise
+                }
+
+                // Top horizontal edge (zero length when narrow, never backwards)
+                PathLine {
+                    x: rightControlSurface.cornerStartX
+                    y: rightControlSurface.topR
+                }
+
+                // Top-left outer convex corner
                 PathArc {
                     x: 0
-                    y: root.modalRadius
-                    radiusX: root.modalRadius
-                    radiusY: root.modalRadius
+                    y: rightControlSurface.topR + rightControlSurface.effectiveModalR
+                    radiusX: Math.max(0.1, rightControlSurface.effectiveModalR)
+                    radiusY: Math.max(0.1, rightControlSurface.effectiveModalR)
                     direction: PathArc.Counterclockwise
                 }
-                PathLine { x: 0; y: Math.max(root.modalRadius, rightControlSurface.height - root.modalRadius) }
+
+                // Outer vertical edge
+                PathLine {
+                    x: 0
+                    y: Math.max(rightControlSurface.topR + rightControlSurface.effectiveModalR, rightControlSurface.topR + root.rightControlH - rightControlSurface.effectiveModalR)
+                }
+
+                // Bottom-left outer convex corner
                 PathArc {
-                    x: root.modalRadius
-                    y: rightControlSurface.height
-                    radiusX: root.modalRadius
-                    radiusY: root.modalRadius
+                    x: rightControlSurface.cornerStartX
+                    y: rightControlSurface.topR + root.rightControlH
+                    radiusX: Math.max(0.1, rightControlSurface.effectiveModalR)
+                    radiusY: Math.max(0.1, rightControlSurface.effectiveModalR)
                     direction: PathArc.Counterclockwise
                 }
-                PathLine { x: rightControlSurface.width; y: rightControlSurface.height }
+
+                // Bottom horizontal edge (zero length when narrow, never backwards)
+                PathLine {
+                    x: rightControlSurface.bodyW - rightControlSurface.botR
+                    y: rightControlSurface.topR + root.rightControlH
+                }
+
+                // Bottom shoulder concave fillet
+                PathArc {
+                    x: rightControlSurface.bodyW
+                    y: rightControlSurface.height
+                    radiusX: Math.max(0.1, rightControlSurface.botR)
+                    radiusY: Math.max(0.1, rightControlSurface.botR)
+                    direction: PathArc.Clockwise
+                }
             }
         }
     }

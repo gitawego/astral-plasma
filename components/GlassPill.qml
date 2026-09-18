@@ -72,24 +72,6 @@ Item {
             ColorAnimation { duration: Theme.animExpressiveFastEffects }
         }
 
-        // Top specular gleam
-        Rectangle {
-            id: specularLine
-            visible: !root.isPrimary && !root.active
-            anchors.top: parent.top
-            anchors.topMargin: 0.5
-            anchors.left: parent.left
-            anchors.leftMargin: parent.height / 2
-            anchors.right: parent.right
-            anchors.rightMargin: parent.height / 2
-            height: 1
-            color: Colors.glassBorderSpecular
-            opacity: root.hovered ? 0.9 : 0.6
-
-            Behavior on opacity {
-                NumberAnimation { duration: Theme.animExpressiveFastEffects }
-            }
-        }
 
         Item {
             id: contentContainer

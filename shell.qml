@@ -35,6 +35,11 @@ ShellRoot {
         function playPause(): void { MprisMedia.playPause(); }
         function next(): void { MprisMedia.next(); }
         function previous(): void { MprisMedia.previous(); }
+        function setVisualizer(style: string): void { Config.setMediaVisualizerStyle(style); }
+        function toggleVisualizer(): void {
+            let next = (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap") ? "radial" : "speaker";
+            Config.setMediaVisualizerStyle(next);
+        }
     }
 
     IpcHandler {
@@ -232,6 +237,15 @@ ShellRoot {
         if (Config.disablePlasmaPanels) {
             const target = (typeof Config.disablePlasmaPanels === "string") ? Config.disablePlasmaPanels : "all";
             Quickshell.execDetached([Config.daemonBin, "plasma", "disable", target, "" + Quickshell.processId]);
+        }
+    }
+
+    Component.onDestruction: {
+        if (Config.debugMode) {
+            console.log("[shell.qml] onDestruction, autoRestorePlasmaOnExit:", Config.autoRestorePlasmaOnExit);
+        }
+        if (Config.autoRestorePlasmaOnExit) {
+            Quickshell.execDetached([Config.daemonBin, "plasma", "restore"]);
         }
     }
 }

@@ -42,11 +42,22 @@ fi
 # Ensure shortcuts are bound and original state is snapshotted
 bash "$DIR/scripts/bind_shortcuts.sh" meta-space || true
 
-# Cleanup trap to restore original shortcuts when Astral shell exits
+# Cleanup trap to restore original shortcuts and Plasma panels when Astral shell exits
 cleanup() {
+    trap - EXIT INT TERM
     echo ""
-    echo "[*] Astral closed - cleanly restoring original shortcuts..."
+    echo "[*] Astral closed - cleanly restoring original shortcuts and Plasma panels..."
+    if [ -n "${QS_PID:-}" ] && kill -0 "$QS_PID" 2>/dev/null; then
+        kill -TERM "$QS_PID" 2>/dev/null || true
+        sleep 0.3
+        if kill -0 "$QS_PID" 2>/dev/null; then
+            kill -9 "$QS_PID" 2>/dev/null || true
+        fi
+    fi
     bash "$DIR/scripts/restore_shortcuts.sh" || true
+    if [ -x "$DIR/bin/astral-plasma" ]; then
+        "$DIR/bin/astral-plasma" plasma restore || true
+    fi
 }
 trap cleanup EXIT INT TERM
 
@@ -54,9 +65,9 @@ trap cleanup EXIT INT TERM
 quickshell -p "$DIR" &
 QS_PID=$!
 
-# Spawn watchdog to ensure original shortcuts and panels are restored even if killed abruptly
+# Disable Plasma panels and launch watchdog monitoring Quickshell
 if [ -x "$DIR/bin/astral-plasma" ]; then
-    "$DIR/bin/astral-plasma" plasma watchdog "$QS_PID" >/dev/null 2>&1 &
+    "$DIR/bin/astral-plasma" plasma disable all "$QS_PID" >/dev/null 2>&1 || true
 fi
 
 # Wait for quickshell to exit

@@ -4,31 +4,16 @@ import "../../components"
 import "../../services"
 import "../../config"
 
-Rectangle {
+LiquidGlassCard {
     id: root
 
     readonly property int btnSize: Config.dockIconSize + 2
     readonly property int iconSize: Math.round(Config.dockIconSize * 0.62)
 
+    readonly property int vPad: 8
     implicitWidth: Config.dockIconSize + 16
-    implicitHeight: layout.implicitHeight + Theme.padSmall * 2
-    radius: Math.round((Config.dockIconSize + 16) * 0.25)
-    color: Colors.glassCard
-    border.color: Colors.glassBorderSubtle
-    border.width: 1
-
-    // Top specular rim highlight
-    Rectangle {
-        anchors.top: parent.top
-        anchors.topMargin: 0.5
-        anchors.left: parent.left
-        anchors.leftMargin: parent.radius * 0.35
-        anchors.right: parent.right
-        anchors.rightMargin: parent.radius * 0.35
-        height: 1
-        color: Colors.glassBorderSpecular
-        opacity: 0.75
-    }
+    implicitHeight: layout.implicitHeight + vPad * 2
+    radius: Math.round((Config.dockIconSize + 16) * 0.5)
 
     HoverHandler {
         id: groupHover

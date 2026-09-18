@@ -1,5 +1,6 @@
 import QtQuick
 import "../theme"
+import "../config"
 
 Item {
     id: root
@@ -62,6 +63,9 @@ Item {
         "skip_previous": "󰒮",
         "next": "󰒭",
         "skip_next": "󰒭",
+        "shuffle": "󰒝",
+        "repeat": "󰑖",
+        "repeat_one": "󰑗",
         "arrow_drop_up": "▲",
         "arrow_drop_down": "▼",
         "swap_horiz": "󰁯",
@@ -90,6 +94,8 @@ Item {
         "music_note": "󰝚",
         "graphic_eq": "󰎇",
         "equalizer": "󰎇",
+        "album": "󰀥",
+        "disc": "󰀥",
         "energy_savings_leaf": "󰌪",
         "eco": "󰌪",
         "balance": "󱡊",
@@ -152,13 +158,13 @@ Item {
         return text ? text.charAt(0).toUpperCase() : "";
     }
 
+    readonly property string resolvedIconUrl: root.iconName !== "" ? Config.iconUrl(root.iconName) : ""
+
     Loader {
         anchors.fill: parent
-        active: root.iconName !== ""
+        active: root.resolvedIconUrl !== ""
         sourceComponent: Image {
-            source: root.iconName.startsWith("/") || root.iconName.startsWith("file:") 
-                ? root.iconName 
-                : "image://icon/" + root.iconName
+            source: root.resolvedIconUrl
             sourceSize.width: root.size
             sourceSize.height: root.size
             fillMode: Image.PreserveAspectFit
@@ -170,7 +176,7 @@ Item {
         anchors.centerIn: parent
         width: root.size
         height: root.size
-        visible: root.iconName === ""
+        visible: root.resolvedIconUrl === ""
         text: root.displaySymbol
         color: root.color
         font.pixelSize: root.size

@@ -10,7 +10,7 @@ Item {
     id: root
 
     implicitWidth: 680
-    implicitHeight: 320
+    implicitHeight: 260
     clip: true
 
     Item {
@@ -19,87 +19,286 @@ Item {
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: Theme.padLarge
+            anchors.leftMargin: Theme.padLarge
+            anchors.rightMargin: Theme.padLarge
+            anchors.topMargin: Theme.padSmall
+            anchors.bottomMargin: Theme.padSmall
             spacing: Theme.spaceLarge
 
-            // Left: Dynamic Audio Heatmap Speaker Player (Target Visual Design)
-            HeatmapSpeakerPlayer {
-                Layout.preferredWidth: 260
-                Layout.preferredHeight: 260
+            // Left: Audio Spectrum Visualizer (User-selectable: Radial Caelestia Halo vs Heatmap Speaker)
+            Item {
+                id: visualizerSlot
+                Layout.preferredWidth: 240
+                Layout.preferredHeight: 240
                 Layout.alignment: Qt.AlignVCenter
-                isPlaying: MprisMedia.isPlaying
-                artUrl: MprisMedia.artUrl
-                title: MprisMedia.title
-                artist: MprisMedia.artist
-                isTargetVisible: Config.dashboardVisible && Config.activeDashboardTab === "media"
+
+                readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
+                    (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
+
+                // Caelestia Radial Visualizer (Spectrum halo around circular album art)
+                RadialCoverVisualiser {
+                    id: radialViz
+                    anchors.centerIn: parent
+                    width: 240
+                    height: 240
+                    visible: !visualizerSlot.isSpeakerStyle
+                    isPlaying: MprisMedia.isPlaying
+                    artUrl: MprisMedia.artUrl
+                    title: MprisMedia.title
+                    artist: MprisMedia.artist
+                    isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "media" && visible) : false
+                }
+
+                // Original Heatmap Speaker Player (Pulsing speaker cone with orbiting rainbow notes & beads)
+                HeatmapSpeakerPlayer {
+                    id: speakerViz
+                    anchors.centerIn: parent
+                    width: 240
+                    height: 240
+                    visible: visualizerSlot.isSpeakerStyle
+                    isPlaying: MprisMedia.isPlaying
+                    artUrl: MprisMedia.artUrl
+                    title: MprisMedia.title
+                    artist: MprisMedia.artist
+                    isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "media" && visible) : false
+                }
+
+                // Visualizer Switcher Pill Button (Floating subtle toggle)
+                Rectangle {
+                    anchors.top: parent.top
+                    anchors.right: parent.right
+                    anchors.topMargin: 4
+                    anchors.rightMargin: 4
+                    z: 50
+                    width: 28
+                    height: 28
+                    radius: 14
+                    color: vizSwitchHover.containsMouse ? Qt.alpha(Colors.primary, 0.28) : Qt.alpha(Colors.surfaceContainerHigh, 0.85)
+                    border.color: vizSwitchHover.containsMouse ? Colors.primary : Qt.alpha(Colors.outlineVariant, 0.4)
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                    MaterialIcon {
+                        anchors.centerIn: parent
+                        text: visualizerSlot.isSpeakerStyle ? "album" : "speaker"
+                        size: 16
+                        color: vizSwitchHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                    }
+
+                    MouseArea {
+                        id: vizSwitchHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
+                                Config.setMediaVisualizerStyle(visualizerSlot.isSpeakerStyle ? "radial" : "speaker");
+                            }
+                        }
+                    }
+                }
             }
 
-            // Center: Track Details & Controls
+            // Center: Track Details & Controls (Caelestia layout)
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
-                spacing: Theme.spaceSmall
+                spacing: 2
 
+                // Track Title
                 Text {
                     text: MprisMedia.title || "No Media Playing"
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontTitleMedium
-                    font.weight: Font.Bold
+                    font.pixelSize: Theme.fontTitleLarge
+                    font.weight: Font.DemiBold
                     color: Colors.m3onSurface
                     horizontalAlignment: Text.AlignHCenter
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }
 
+                // Track Album (if present)
+                Text {
+                    text: MprisMedia.album || ""
+                    visible: text.length > 0
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontBodySmall
+                    color: Colors.primary
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+
+                // Track Artist
                 Text {
                     text: MprisMedia.artist || "Unknown Artist"
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontBodySmall
+                    font.pixelSize: Theme.fontBodyMedium
                     color: Colors.m3onSurfaceVariant
                     horizontalAlignment: Text.AlignHCenter
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }
 
-                Item { height: 4 }
+                Item { Layout.preferredHeight: 4; Layout.fillWidth: true }
 
                 // Playback Controls Row (|<<  [ > ]  >>|)
                 Row {
                     Layout.alignment: Qt.AlignHCenter
                     spacing: Theme.spaceMedium
 
-                    PillButton {
-                        iconText: "skip_previous"
-                        iconSize: 20
-                        implicitWidth: 38
-                        implicitHeight: 38
-                        onClicked: MprisMedia.previous()
+                    // Skip Previous
+                    Rectangle {
+                        width: 38
+                        height: 38
+                        radius: 19
+                        color: prevHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : Colors.surfaceContainerHigh
+                        border.color: prevHover.containsMouse ? Theme.borderSubtle : "transparent"
+                        border.width: 1
+                        scale: prevHover.pressed ? 0.92 : 1.0
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on scale { NumberAnimation { duration: 100 } }
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "skip_previous"
+                            size: 20
+                            color: MprisMedia.canGoPrevious ? Colors.m3onSurface : Colors.onSurfaceVariant
+                        }
+
+                        MouseArea {
+                            id: prevHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: MprisMedia.canGoPrevious ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: MprisMedia.previous()
+                        }
                     }
 
-                    PillButton {
-                        iconText: MprisMedia.isPlaying ? "pause" : "play_arrow"
-                        iconSize: 22
-                        active: true
-                        implicitWidth: 48
-                        implicitHeight: 48
-                        onClicked: MprisMedia.playPause()
+                    // Play / Pause (Prominent Circular Primary Filled)
+                    Rectangle {
+                        width: 48
+                        height: 48
+                        radius: 24
+                        color: playHover.containsMouse ? Qt.lighter(Colors.primary, 1.1) : Colors.primary
+                        scale: playHover.pressed ? 0.93 : (playHover.containsMouse ? 1.04 : 1.0)
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: MprisMedia.isPlaying ? "pause" : "play_arrow"
+                            size: 26
+                            color: Colors.m3onPrimary
+                        }
+
+                        MouseArea {
+                            id: playHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: MprisMedia.playPause()
+                        }
                     }
 
-                    PillButton {
-                        iconText: "skip_next"
-                        iconSize: 20
-                        implicitWidth: 38
-                        implicitHeight: 38
-                        onClicked: MprisMedia.next()
+                    // Skip Next
+                    Rectangle {
+                        width: 38
+                        height: 38
+                        radius: 19
+                        color: nextHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : Colors.surfaceContainerHigh
+                        border.color: nextHover.containsMouse ? Theme.borderSubtle : "transparent"
+                        border.width: 1
+                        scale: nextHover.pressed ? 0.92 : 1.0
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on scale { NumberAnimation { duration: 100 } }
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "skip_next"
+                            size: 20
+                            color: MprisMedia.canGoNext ? Colors.m3onSurface : Colors.onSurfaceVariant
+                        }
+
+                        MouseArea {
+                            id: nextHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: MprisMedia.canGoNext ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: MprisMedia.next()
+                        }
                     }
                 }
 
-                Item { height: 4 }
+                Item { Layout.preferredHeight: 4; Layout.fillWidth: true }
 
-                // Progress Bar with Timestamps & Interactive Seeking
+                // Progress Bar with Vertical Pill Thumb & Interactive Seeking
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 16
+
+                    Rectangle {
+                        id: sliderTrack
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 5
+                        radius: 2.5
+                        color: Colors.surfaceContainerHigh
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: parent.width * Math.min(1.0, Math.max(0.0, MprisMedia.progress))
+                            radius: 2.5
+                            color: Colors.primary
+                        }
+
+                        // Bespoke Caelestia Vertical Pill Thumb
+                        Rectangle {
+                            id: sliderThumb
+                            width: 5
+                            height: 15
+                            radius: 2.5
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: Math.max(0, Math.min(parent.width - width, parent.width * Math.min(1.0, Math.max(0.0, MprisMedia.progress)) - width / 2))
+                            color: Colors.primary
+                            visible: MprisMedia.length > 0
+
+                            scale: sliderMouse.pressed ? 1.25 : (sliderMouse.containsMouse ? 1.12 : 1.0)
+                            Behavior on scale { NumberAnimation { duration: 100 } }
+                        }
+                    }
+
+                    // Interactive seeking MouseArea
+                    MouseArea {
+                        id: sliderMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: MprisMedia.canSeek ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: mouse => {
+                            let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                            MprisMedia.seekTo(frac);
+                        }
+                        onPositionChanged: mouse => {
+                            if (pressed && MprisMedia.canSeek) {
+                                let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                                MprisMedia.seekTo(frac);
+                            }
+                        }
+                    }
+                }
+
+                // Timestamps Row below progress slider
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    Layout.topMargin: -2
 
                     Text {
                         text: {
@@ -113,31 +312,7 @@ Item {
                         color: Colors.m3onSurfaceVariant
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 6
-                        radius: 3
-                        color: Colors.surfaceContainerHigh
-
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            width: parent.width * Math.min(1.0, Math.max(0.0, MprisMedia.progress))
-                            radius: 3
-                            color: Colors.primary
-                        }
-
-                        // Interactive seeking
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: mouse => {
-                                let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                MprisMedia.seekTo(frac);
-                            }
-                        }
-                    }
+                    Item { Layout.fillWidth: true }
 
                     Text {
                         text: {
@@ -152,80 +327,141 @@ Item {
                     }
                 }
 
-                Item { height: 2 }
+                Item { Layout.preferredHeight: 4; Layout.fillWidth: true }
 
-                // Active Player Pill Badge (Interactive player switch/dropdown)
-                Rectangle {
-                    id: playerBadge
+                // Bottom Utility Row (Shuffle + Active Player Pill Badge + Loop)
+                RowLayout {
                     Layout.alignment: Qt.AlignHCenter
-                    implicitWidth: playerRow.implicitWidth + 28
-                    implicitHeight: 28
-                    Layout.preferredWidth: implicitWidth
-                    Layout.preferredHeight: implicitHeight
-                    radius: height / 2
-                    color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primaryContainer : Colors.surfaceContainerHigh
-                    border.color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primary : Theme.borderSubtle
-                    border.width: 1
+                    spacing: 12
 
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                    Behavior on border.color { ColorAnimation { duration: 150 } }
+                    // Shuffle Button
+                    Rectangle {
+                        width: 30
+                        height: 30
+                        radius: 15
+                        color: MprisMedia.shuffle ? Qt.alpha(Colors.primary, 0.22) : (shufHover.containsMouse ? Qt.alpha(Colors.textMain, 0.12) : Colors.surfaceContainerHigh)
+                        border.color: MprisMedia.shuffle ? Colors.primary : Theme.borderSubtle
+                        border.width: 1
 
-                    RowLayout {
-                        id: playerRow
-                        anchors.centerIn: parent
-                        spacing: 6
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
 
                         MaterialIcon {
-                            text: (MprisMedia.players && MprisMedia.players.length > 1) ? "graphic_eq" : "music_note"
-                            size: 14
-                            color: Colors.primary
-                            Layout.alignment: Qt.AlignVCenter
+                            anchors.centerIn: parent
+                            text: "shuffle"
+                            size: 16
+                            color: MprisMedia.shuffle ? Colors.primary : Colors.m3onSurfaceVariant
                         }
 
-                        Text {
-                            text: MprisMedia.identity || "Media Player"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontLabelSmall
-                            font.weight: Font.Medium
-                            color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.onPrimaryContainer : Colors.m3onSurface
-                            Layout.alignment: Qt.AlignVCenter
-                        }
-
-                        MaterialIcon {
-                            visible: MprisMedia.players && MprisMedia.players.length > 1
-                            text: "expand_more"
-                            size: 15
-                            color: Colors.onSurfaceVariant
-                            Layout.alignment: Qt.AlignVCenter
-                            rotation: playerDropdownOverlay.visible ? 180 : 0
-                            Behavior on rotation { NumberAnimation { duration: 150 } }
+                        MouseArea {
+                            id: shufHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: MprisMedia.toggleShuffle()
                         }
                     }
 
-                    MouseArea {
-                        id: playerBadgeMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: (MprisMedia.players && MprisMedia.players.length > 1) ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: {
-                            if (MprisMedia.players && MprisMedia.players.length > 1) {
-                                if (!playerDropdownOverlay.visible) {
-                                    playerDropdownOverlay.open();
-                                } else {
-                                    playerDropdownOverlay.visible = false;
-                                }
-                            } else {
-                                MprisMedia.cyclePlayer();
+                    // Active Player Pill Badge (Interactive player switch/dropdown)
+                    Rectangle {
+                        id: playerBadge
+                        implicitWidth: playerRow.implicitWidth + 28
+                        implicitHeight: 28
+                        Layout.preferredWidth: implicitWidth
+                        Layout.preferredHeight: implicitHeight
+                        radius: 14
+                        color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primaryContainer : Colors.surfaceContainerHigh
+                        border.color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primary : Theme.borderSubtle
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                        RowLayout {
+                            id: playerRow
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            MaterialIcon {
+                                text: (MprisMedia.players && MprisMedia.players.length > 1) ? "graphic_eq" : "music_note"
+                                size: 14
+                                color: Colors.primary
+                                Layout.alignment: Qt.AlignVCenter
                             }
+
+                            Text {
+                                text: MprisMedia.identity || "Media Player"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontLabelSmall
+                                font.weight: Font.Medium
+                                color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.onPrimaryContainer : Colors.m3onSurface
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+
+                            MaterialIcon {
+                                visible: MprisMedia.players && MprisMedia.players.length > 1
+                                text: "expand_more"
+                                size: 15
+                                color: Colors.onSurfaceVariant
+                                Layout.alignment: Qt.AlignVCenter
+                                rotation: playerDropdownOverlay.visible ? 180 : 0
+                                Behavior on rotation { NumberAnimation { duration: 150 } }
+                            }
+                        }
+
+                        MouseArea {
+                            id: playerBadgeMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: (MprisMedia.players && MprisMedia.players.length > 1) ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                                if (MprisMedia.players && MprisMedia.players.length > 1) {
+                                    if (!playerDropdownOverlay.visible) {
+                                        playerDropdownOverlay.open();
+                                    } else {
+                                        playerDropdownOverlay.visible = false;
+                                    }
+                                } else {
+                                    MprisMedia.cyclePlayer();
+                                }
+                            }
+                        }
+                    }
+
+                    // Loop Mode Button
+                    Rectangle {
+                        width: 30
+                        height: 30
+                        radius: 15
+                        color: MprisMedia.loopState !== 0 ? Qt.alpha(Colors.primary, 0.22) : (loopHover.containsMouse ? Qt.alpha(Colors.textMain, 0.12) : Colors.surfaceContainerHigh)
+                        border.color: MprisMedia.loopState !== 0 ? Colors.primary : Theme.borderSubtle
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: MprisMedia.loopState === 1 ? "repeat_one" : "repeat"
+                            size: 16
+                            color: MprisMedia.loopState !== 0 ? Colors.primary : Colors.m3onSurfaceVariant
+                        }
+
+                        MouseArea {
+                            id: loopHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: MprisMedia.cycleLoop()
                         }
                     }
                 }
             }
 
-            // Right: Media Avatar (Supports gif, svg, png, jpg, and video; defaults to boba cat)
+            // Right: Media Avatar (Supports gif, svg, png, jpg, and video; defaults to bongo cat)
             Item {
-                Layout.preferredWidth: 220
-                Layout.preferredHeight: 240
+                Layout.preferredWidth: 200
+                Layout.preferredHeight: 200
                 Layout.alignment: Qt.AlignVCenter
 
                 MediaAvatar {

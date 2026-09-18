@@ -45,6 +45,8 @@ pub struct TrayItem {
     pub im_badge: String,
     #[serde(rename = "menuPath")]
     pub menu_path: String,
+    #[serde(rename = "itemIsMenu", default)]
+    pub item_is_menu: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

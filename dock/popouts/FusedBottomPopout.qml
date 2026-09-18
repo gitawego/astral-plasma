@@ -837,14 +837,17 @@ Item {
                 // Animated Header Container (cross-fades top-level app header & submenu navigation header)
                 Item {
                     Layout.fillWidth: true
-                    implicitHeight: 34
+                    implicitHeight: 46
                     clip: true
 
                     // 1. Top-Level App Header
-                    RowLayout {
+                    Rectangle {
                         id: appHeaderRow
                         anchors.fill: parent
-                        spacing: Theme.spaceSmall
+                        anchors.leftMargin: 2
+                        anchors.rightMargin: 2
+                        radius: Theme.radiusSmall
+                        color: headerMouse.containsMouse ? Colors.surfaceContainerHigh : "transparent"
                         opacity: traySection.traySubmenuStack.length === 0 ? 1.0 : 0.0
                         x: traySection.traySubmenuStack.length === 0 ? 0 : -25
                         visible: opacity > 0.01
@@ -864,55 +867,72 @@ Item {
                             }
                         }
 
-                        Item {
-                            id: trayHeaderIcon
-                            Layout.preferredWidth: 24
-                            Layout.preferredHeight: 24
-                            Layout.alignment: Qt.AlignVCenter
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 4
+                            anchors.rightMargin: 4
+                            spacing: Theme.spaceSmall
 
-                            Image {
-                                anchors.fill: parent
-                                source: {
-                                    if (!WindowService.activeTrayItem || !WindowService.activeTrayItem.rawIcon) return "";
-                                    if (WindowService.activeTrayItem.rawIcon.startsWith("Error")) return "";
-                                    return Quickshell.iconPath(WindowService.activeTrayItem.rawIcon);
+                            Item {
+                                id: trayHeaderIcon
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                Layout.alignment: Qt.AlignVCenter
+
+                                Image {
+                                    anchors.fill: parent
+                                    source: Config.iconUrl(WindowService.activeTrayItem ? WindowService.activeTrayItem.rawIcon : "")
+                                    fillMode: Image.PreserveAspectFit
+                                    visible: status === Image.Ready
                                 }
-                                fillMode: Image.PreserveAspectFit
-                                visible: status === Image.Ready
+
+                                MaterialIcon {
+                                    anchors.centerIn: parent
+                                    text: (WindowService.activeTrayItem && WindowService.activeTrayItem.materialIcon) ? WindowService.activeTrayItem.materialIcon : "widgets"
+                                    size: 22
+                                    color: Colors.primary
+                                    visible: !parent.children[0].visible
+                                }
                             }
 
-                            MaterialIcon {
-                                anchors.centerIn: parent
-                                text: (WindowService.activeTrayItem && WindowService.activeTrayItem.materialIcon) ? WindowService.activeTrayItem.materialIcon : "widgets"
-                                size: 20
-                                color: Colors.primary
-                                visible: !parent.children[0].visible
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 2
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: (WindowService.activeTrayItem && WindowService.activeTrayItem.title && !WindowService.activeTrayItem.title.startsWith("Error")) 
+                                        ? WindowService.activeTrayItem.title 
+                                        : ((WindowService.activeTrayItem && WindowService.activeTrayItem.id) ? WindowService.activeTrayItem.id : "Application")
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontMedium
+                                    font.weight: Font.DemiBold
+                                    color: Colors.textOnSurface
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: (WindowService.activeTrayItem && WindowService.activeTrayItem.service) ? WindowService.activeTrayItem.service : "System Tray"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontLabelSmall
+                                    color: Colors.textOnSurfaceVariant
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 1
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: (WindowService.activeTrayItem && WindowService.activeTrayItem.title && !WindowService.activeTrayItem.title.startsWith("Error")) 
-                                    ? WindowService.activeTrayItem.title 
-                                    : ((WindowService.activeTrayItem && WindowService.activeTrayItem.id) ? WindowService.activeTrayItem.id : "Application")
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontMedium
-                                font.weight: Font.DemiBold
-                                color: Colors.textOnSurface
-                                elide: Text.ElideRight
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: (WindowService.activeTrayItem && WindowService.activeTrayItem.service) ? WindowService.activeTrayItem.service : "System Tray"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontLabelSmall
-                                color: Colors.textOnSurfaceVariant
-                                elide: Text.ElideRight
+                        MouseArea {
+                            id: headerMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (WindowService.activeTrayItem) {
+                                    Config.closeBottomPopout();
+                                    WindowService.activateTray(WindowService.activeTrayItem.service, WindowService.activeTrayItem.path);
+                                }
                             }
                         }
                     }
@@ -1139,14 +1159,7 @@ Item {
 
                         Image {
                             anchors.fill: parent
-                            source: {
-                                const app = appSection.currentApp;
-                                if (!app || !app.iconName) return "";
-                                if (app.iconName.indexOf("/") !== -1) {
-                                    return app.iconName.startsWith("file://") ? app.iconName : ("file://" + app.iconName);
-                                }
-                                return Quickshell.iconPath(app.iconName);
-                            }
+                            source: Config.iconUrl(appSection.currentApp ? appSection.currentApp.iconName : "")
                             fillMode: Image.PreserveAspectFit
                             visible: status === Image.Ready
                         }
@@ -1624,7 +1637,7 @@ Item {
                             hasSubmenu: Boolean(modelData.hasSubmenu) || (Boolean(modelData.children) && modelData.children.length > 0)
                             toggleType: modelData.toggleType || ""
                             toggleState: (modelData.toggleState !== undefined) ? modelData.toggleState : 0
-                            iconSource: (modelData.icon && modelData.icon !== "") ? Quickshell.iconPath(modelData.icon) : ""
+                            iconSource: Config.iconUrl(modelData.icon)
                             iconColor: (modelData.label && modelData.label.toLowerCase().includes("quit")) ? "#ffb4ab" : Colors.textOnSurface
                             onClicked: pageRoot.itemClicked(modelData)
                         }

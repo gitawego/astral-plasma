@@ -13,7 +13,9 @@ Item {
     implicitHeight: 280
 
     readonly property color activePrimary: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#6B4FA0"
-    readonly property color activeContainer: (typeof Colors !== "undefined" && Colors.primaryContainer) ? Colors.primaryContainer : "#EDE7F6"
+    readonly property color onPrimary: (typeof Colors !== "undefined" && Colors.onPrimary) ? Colors.onPrimary : "#FFFFFF"
+    readonly property color trackBg: (typeof Colors !== "undefined" && Colors.surfaceContainerHighest) ? Qt.alpha(Colors.surfaceContainerHighest, 0.72) : Qt.rgba(1, 1, 1, 0.12)
+    readonly property color trackBorder: (typeof Colors !== "undefined" && Colors.outlineVariant) ? Qt.alpha(Colors.outlineVariant, 0.3) : Qt.rgba(1, 1, 1, 0.08)
 
     readonly property real currentVolume: (typeof PipewireAudio !== "undefined" && PipewireAudio) ? (PipewireAudio.volume ?? 0.5) : 0.5
     readonly property bool isMuted: (typeof PipewireAudio !== "undefined" && PipewireAudio) ? (PipewireAudio.muted ?? false) : false
@@ -36,24 +38,38 @@ Item {
         }
     }
 
+    WheelHandler {
+        target: root
+        orientation: Qt.Vertical
+        onWheel: event => {
+            if (typeof Config !== "undefined") Config.keepRightEdgeControl();
+            const step = event.angleDelta.y > 0 ? 0.05 : -0.05;
+            if (typeof PipewireAudio !== "undefined" && typeof PipewireAudio.setVolume === "function") {
+                PipewireAudio.setVolume(Math.max(0.0, Math.min(1.0, root.currentVolume + step)));
+            }
+        }
+    }
+
     Column {
         anchors.centerIn: parent
-        spacing: 20
+        spacing: 16
 
         // ==========================================
         // 1. VOLUME VERTICAL CAPSULE SLIDER
         // ==========================================
         Item {
             id: volumeSlider
-            width: 22
-            height: 114
+            width: 32
+            height: 112
 
             // Track background capsule
             Rectangle {
                 id: volumeTrack
                 anchors.fill: parent
                 radius: width / 2
-                color: root.activeContainer
+                color: root.trackBg
+                border.width: 1
+                border.color: root.trackBorder
                 clip: true
 
                 // Filled portion from bottom up to knob center
@@ -62,48 +78,45 @@ Item {
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
                     height: Math.max(0, volumeSlider.height - (volumeKnob.y + volumeKnob.height / 2))
-                    bottomLeftRadius: volumeSlider.width / 2
-                    bottomRightRadius: volumeSlider.width / 2
-                    topLeftRadius: 0
-                    topRightRadius: 0
-                    color: root.activePrimary
+                    radius: volumeSlider.width / 2
+                    color: root.isMuted ? Colors.outline : root.activePrimary
                 }
             }
 
             // Circular knob handle with icon
             Rectangle {
                 id: volumeKnob
-                width: 26
-                height: 26
-                radius: 13
+                width: 32
+                height: 32
+                radius: 16
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: {
                     const v = Math.min(1.0, Math.max(0.0, root.currentVolume));
                     return (1.0 - v) * (volumeSlider.height - height);
                 }
-                color: root.activePrimary
+                color: root.isMuted ? Colors.surfaceContainerHigh : root.activePrimary
 
                 layer.enabled: true
                 layer.effect: MultiEffect {
                     shadowEnabled: true
                     shadowBlur: 0.35
                     shadowVerticalOffset: 1
-                    shadowColor: Qt.rgba(0, 0, 0, 0.25)
+                    shadowColor: Qt.rgba(0, 0, 0, 0.3)
                 }
 
                 MaterialIcon {
                     anchors.centerIn: parent
                     text: root.volumeIcon
-                    size: 15
-                    color: "#FFFFFF"
+                    size: 18
+                    color: root.isMuted ? Colors.m3onSurfaceVariant : root.onPrimary
                 }
             }
 
             // Interactive MouseArea
             MouseArea {
                 anchors.fill: parent
-                anchors.leftMargin: -14
-                anchors.rightMargin: -14
+                anchors.leftMargin: -12
+                anchors.rightMargin: -12
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
 
@@ -172,15 +185,17 @@ Item {
         // ==========================================
         Item {
             id: brightnessSlider
-            width: 22
-            height: 114
+            width: 32
+            height: 112
 
             // Track background capsule
             Rectangle {
                 id: brightnessTrack
                 anchors.fill: parent
                 radius: width / 2
-                color: root.activeContainer
+                color: root.trackBg
+                border.width: 1
+                border.color: root.trackBorder
                 clip: true
 
                 // Filled portion from bottom up to knob center
@@ -189,10 +204,7 @@ Item {
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
                     height: Math.max(0, brightnessSlider.height - (brightnessKnob.y + brightnessKnob.height / 2))
-                    bottomLeftRadius: brightnessSlider.width / 2
-                    bottomRightRadius: brightnessSlider.width / 2
-                    topLeftRadius: 0
-                    topRightRadius: 0
+                    radius: brightnessSlider.width / 2
                     color: root.activePrimary
                 }
             }
@@ -200,9 +212,9 @@ Item {
             // Circular knob handle with icon
             Rectangle {
                 id: brightnessKnob
-                width: 26
-                height: 26
-                radius: 13
+                width: 32
+                height: 32
+                radius: 16
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: {
                     const b = Math.min(1.0, Math.max(0.0, root.currentBrightness));
@@ -215,22 +227,22 @@ Item {
                     shadowEnabled: true
                     shadowBlur: 0.35
                     shadowVerticalOffset: 1
-                    shadowColor: Qt.rgba(0, 0, 0, 0.25)
+                    shadowColor: Qt.rgba(0, 0, 0, 0.3)
                 }
 
                 MaterialIcon {
                     anchors.centerIn: parent
                     text: "brightness"
-                    size: 15
-                    color: "#FFFFFF"
+                    size: 18
+                    color: root.onPrimary
                 }
             }
 
             // Interactive MouseArea
             MouseArea {
                 anchors.fill: parent
-                anchors.leftMargin: -14
-                anchors.rightMargin: -14
+                anchors.leftMargin: -12
+                anchors.rightMargin: -12
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
 

@@ -42,16 +42,7 @@ Rectangle {
         }
     }
 
-    // Top specular highlight line
-    Rectangle {
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.rightMargin: root.topRightRadius * 0.4
-        height: 1
-        color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.12)
-        opacity: 0.45
-    }
+
 
     Column {
         id: contentLayout

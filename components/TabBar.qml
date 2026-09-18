@@ -52,7 +52,7 @@ Rectangle {
                 Rectangle {
                     anchors.bottom: parent.bottom
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: tabItem.isSelected ? contentRow.implicitWidth + Theme.spaceMedium : 0
+                    width: tabItem.isSelected ? parent.width : 0
                     height: 3
                     radius: Theme.radiusFull
                     color: Colors.primary

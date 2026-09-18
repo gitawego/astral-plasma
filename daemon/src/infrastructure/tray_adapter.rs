@@ -96,6 +96,23 @@ fn busctl_get_objpath(svc: &str, path: &str, prop: &str) -> String {
     String::new()
 }
 
+fn sni_get_bool(svc: &str, path: &str, prop: &str) -> bool {
+    for iface in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
+        if let Ok(out) = Command::new("busctl")
+            .args(["--user", "get-property", svc, path, iface, prop])
+            .output()
+        {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if s.starts_with("b true") || s == "true" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 fn sni_get_pixmap(svc: &str, path: &str) -> Option<String> {
     for iface in ["org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"] {
         if let Ok(out) = Command::new("busctl")
@@ -547,11 +564,13 @@ impl TrayPort for TrayAdapter {
             }
 
             let menu_path = busctl_get_objpath(svc, path, "Menu");
+            let item_is_menu = sni_get_bool(svc, path, "ItemIsMenu");
 
             tray_items.push(TrayItem {
                 service: svc.to_string(),
                 path: path.to_string(),
                 menu_path,
+                item_is_menu,
                 id: item_id,
                 title: item_title,
                 material_icon: m_icon,

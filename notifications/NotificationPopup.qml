@@ -135,15 +135,7 @@ Item {
             anchors.topMargin: root.borderThickness + 4
             anchors.bottomMargin: 10
 
-            // Top specular highlight line
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 1
-                color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.4)
-                opacity: 0.6
-            }
+
 
             // Left Icon Badge / Album Art Cover
             Item {

@@ -64,16 +64,22 @@ Singleton {
         activateProc.running = true;
     }
 
+    Process {
+        id: trayActivateProc
+    }
+
     function activateTray(service, path) {
         if (!service || !path) return;
-        activateProc.command = ["qdbus6", service, path, "org.kde.StatusNotifierItem.Activate", "0", "0"];
-        activateProc.running = true;
+        trayActivateProc.running = false;
+        trayActivateProc.command = [root.daemonBin, "tray", "activate", service, path];
+        trayActivateProc.running = true;
     }
 
     function contextMenuTray(service, path) {
         if (!service || !path) return;
-        activateProc.command = ["qdbus6", service, path, "org.kde.StatusNotifierItem.ContextMenu", "0", "0"];
-        activateProc.running = true;
+        trayActivateProc.running = false;
+        trayActivateProc.command = [root.daemonBin, "tray", "context-menu", service, path];
+        trayActivateProc.running = true;
     }
 
     function updateWinePlaybackStatus(isPlaying) {
