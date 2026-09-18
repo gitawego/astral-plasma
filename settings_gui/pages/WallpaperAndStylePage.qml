@@ -192,17 +192,20 @@ ColumnLayout {
         Row {
             spacing: 10
             readonly property var presets: [
-                { name: "Iris", key: "iris", col: "#cba6f7" },
-                { name: "Ocean", key: "ocean", col: "#89b4fa" },
-                { name: "Coral", key: "coral", col: "#fab387" },
-                { name: "Emerald", key: "emerald", col: "#a6e3a1" }
+                { name: "Dynamic", key: "dynamic", isDynamic: true, col: Colors.primary },
+                { name: "Iris", key: "iris", isDynamic: false, col: "#cba6f7" },
+                { name: "Ocean", key: "ocean", isDynamic: false, col: "#89b4fa" },
+                { name: "Coral", key: "coral", isDynamic: false, col: "#fab387" },
+                { name: "Emerald", key: "emerald", isDynamic: false, col: "#a6e3a1" }
             ]
 
             Repeater {
                 model: parent.presets
                 delegate: Rectangle {
                     required property var modelData
-                    readonly property bool isActive: (typeof Config !== "undefined" && Config.themePreset === modelData.key)
+                    readonly property bool isActive: modelData.isDynamic
+                        ? ((typeof Config !== "undefined") ? Config.dynamicColors : false)
+                        : ((typeof Config !== "undefined") && !Config.dynamicColors && Config.themePreset === modelData.key)
                     height: 36
                     implicitWidth: pRow.implicitWidth + 24
                     radius: 18
@@ -214,10 +217,30 @@ ColumnLayout {
                         id: pRow
                         anchors.centerIn: parent
                         spacing: 8
-                        Rectangle {
-                            width: 14; height: 14; radius: 7
-                            color: modelData.col
+                        Item {
+                            width: 14; height: 14
                             anchors.verticalCenter: parent.verticalCenter
+
+                            // Dynamic Wallpaper gradient circle
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 7
+                                visible: modelData.isDynamic
+                                gradient: Gradient {
+                                    orientation: Gradient.Horizontal
+                                    GradientStop { position: 0.0; color: "#f38ba8" }
+                                    GradientStop { position: 0.5; color: "#89b4fa" }
+                                    GradientStop { position: 1.0; color: "#a6e3a1" }
+                                }
+                            }
+
+                            // Preset solid color circle
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 7
+                                visible: !modelData.isDynamic
+                                color: modelData.col
+                            }
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
@@ -236,7 +259,11 @@ ColumnLayout {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             if (typeof Config !== "undefined") {
-                                Config.setThemePreset(modelData.key);
+                                if (modelData.isDynamic) {
+                                    Config.setDynamicColors(true);
+                                } else {
+                                    Config.setThemePreset(modelData.key);
+                                }
                             }
                         }
                     }

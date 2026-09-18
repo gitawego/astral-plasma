@@ -88,7 +88,7 @@ Item {
         Rectangle {
             Layout.preferredWidth: 220
             Layout.fillHeight: true
-            color: Colors.surfaceContainer
+            color: Colors.glassCard
             radius: Theme.radiusMedium
 
             ColumnLayout {

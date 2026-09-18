@@ -24,10 +24,10 @@ Rectangle {
         ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
         : (hovered ? specularColor : ((typeof Colors !== "undefined" && Colors.glassBorderSubtle) ? Colors.glassBorderSubtle : Qt.rgba(1, 1, 1, 0.12)))
 
-    // Base liquid glass substrate tint (deep dark smoked glass in dark mode, crisp luminous in light mode)
+    // Base liquid glass substrate tint (crystalline translucent glass plate allowing background content to shine through)
     color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-        ? Qt.tint(Qt.rgba(0.04, 0.05, 0.08, 0.30), Qt.alpha(root.accentGlint, 0.05))
-        : Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.50), Qt.alpha(root.accentGlint, 0.08))
+        ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.14 : (root.hovered ? 0.10 : 0.06)), Qt.alpha(root.accentGlint, root.selected ? 0.18 : (root.hovered ? 0.12 : 0.08)))
+        : Qt.tint(Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.55 : (root.hovered ? 0.45 : 0.35)), Qt.alpha(root.accentGlint, root.selected ? 0.14 : (root.hovered ? 0.10 : 0.06)))
 
     Behavior on color { ColorAnimation { duration: (typeof Theme !== "undefined") ? Theme.animExpressiveFastEffects : 150 } }
     Behavior on border.color { ColorAnimation { duration: (typeof Theme !== "undefined") ? Theme.animExpressiveFastEffects : 150 } }
@@ -44,20 +44,22 @@ Rectangle {
             GradientStop {
                 position: 0.0
                 color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.08), Qt.alpha(root.accentGlint, 0.06))
-                    : Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.55), Qt.alpha(root.accentGlint, 0.06))
+                    ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.10), Qt.alpha(root.accentGlint, 0.08))
+                    : Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.40), Qt.alpha(root.accentGlint, 0.06))
             }
             GradientStop {
-                position: 0.40
-                color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.02), Qt.alpha(root.accentGlint, 0.02))
-                    : Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.30), Qt.alpha(root.accentGlint, 0.04))
+                position: 0.35
+                color: "transparent"
+            }
+            GradientStop {
+                position: 0.85
+                color: "transparent"
             }
             GradientStop {
                 position: 1.0
                 color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.rgba(0.0, 0.0, 0.0, 0.15)
-                    : Qt.rgba(1.0, 1.0, 1.0, 0.20)
+                    ? Qt.rgba(0.0, 0.0, 0.0, 0.08)
+                    : Qt.rgba(1.0, 1.0, 1.0, 0.12)
             }
         }
     }
@@ -70,7 +72,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: 1
-        height: Math.min(parent.height * 0.35, 28)
+        height: Math.min(parent.height * 0.38, 32)
         radius: Math.max(0, parent.radius - 1)
         color: "transparent"
 
@@ -78,8 +80,8 @@ Rectangle {
             GradientStop {
                 position: 0.0
                 color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.alpha(root.accentGlint, 0.14)
-                    : Qt.alpha(root.accentGlint, 0.09)
+                    ? Qt.alpha(root.accentGlint, root.hovered ? 0.24 : 0.18)
+                    : Qt.alpha(root.accentGlint, root.hovered ? 0.16 : 0.12)
             }
             GradientStop {
                 position: 1.0
@@ -88,7 +90,7 @@ Rectangle {
         }
     }
 
-    // 3. Top Specular Hairline Glare (Horizontal light catch along the top curved bevel)
+    // 3. Dual-Layer Top Specular Hairline Glare (Horizontal light catch along top curved bevel)
     Rectangle {
         id: topGlare
         visible: root.showSpecular && parent.width > 24
@@ -99,14 +101,14 @@ Rectangle {
         anchors.leftMargin: Math.max(8, Math.min(parent.radius * 0.45, 28))
         anchors.rightMargin: Math.max(8, Math.min(parent.radius * 0.45, 28))
         height: 1
-        opacity: root.hovered ? 1.0 : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.70 : 0.85)
+        opacity: root.hovered ? 1.0 : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.78 : 0.90)
 
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: "transparent" }
             GradientStop {
                 position: 0.15
-                color: Qt.alpha(root.specularColor, 0.45)
+                color: Qt.alpha(root.specularColor, 0.50)
             }
             GradientStop {
                 position: 0.50
@@ -114,8 +116,29 @@ Rectangle {
             }
             GradientStop {
                 position: 0.85
-                color: Qt.alpha(root.specularColor, 0.45)
+                color: Qt.alpha(root.specularColor, 0.50)
             }
+            GradientStop { position: 1.0; color: "transparent" }
+        }
+    }
+
+    // 3b. Secondary Inner Refraction Hairline (Simulates physical glass edge thickness)
+    Rectangle {
+        id: subGlare
+        visible: root.showSpecular && parent.width > 36
+        anchors.top: parent.top
+        anchors.topMargin: 1.5
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Math.max(12, Math.min(parent.radius * 0.60, 36))
+        anchors.rightMargin: Math.max(12, Math.min(parent.radius * 0.60, 36))
+        height: 0.5
+        opacity: root.hovered ? 0.65 : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.35 : 0.50)
+
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: "transparent" }
+            GradientStop { position: 0.5; color: Qt.alpha(root.accentGlint, 0.45) }
             GradientStop { position: 1.0; color: "transparent" }
         }
     }
@@ -131,12 +154,17 @@ Rectangle {
         anchors.leftMargin: Math.max(10, Math.min(parent.radius * 0.55, 32))
         anchors.rightMargin: Math.max(10, Math.min(parent.radius * 0.55, 32))
         height: 1
-        opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.20 : 0.35
+        opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.25 : 0.40
 
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 0.50; color: Qt.rgba(1.0, 1.0, 1.0, 0.30) }
+            GradientStop {
+                position: 0.50
+                color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                    ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.28), Qt.alpha(root.accentGlint, 0.16))
+                    : Qt.rgba(1.0, 1.0, 1.0, 0.45)
+            }
             GradientStop { position: 1.0; color: "transparent" }
         }
     }
@@ -148,8 +176,8 @@ Rectangle {
         anchors.fill: parent
         radius: parent.radius
         color: root.selected
-            ? Qt.alpha(root.accentGlint, 0.12)
-            : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.06) : "transparent")
+            ? Qt.alpha(root.accentGlint, 0.14)
+            : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : "transparent")
         Behavior on color { ColorAnimation { duration: 150 } }
     }
 }

@@ -17,6 +17,13 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: Config.settingsVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
+    BackgroundEffect.blurRegion: Region {
+        x: dialogBox.x
+        y: dialogBox.y
+        width: Config.settingsVisible ? dialogBox.width : 0
+        height: Config.settingsVisible ? dialogBox.height : 0
+    }
+
     mask: Region {
         width: Config.settingsVisible ? root.width : 0
         height: Config.settingsVisible ? root.height : 0
@@ -29,7 +36,7 @@ PanelWindow {
         right: true
     }
 
-    color: Qt.rgba(0, 0, 0, 0.45) // Dim background overlay
+    color: Qt.rgba(0, 0, 0, 0.15) // Soft ambient scrim
 
     // Click backdrop to close
     MouseArea {
@@ -37,17 +44,49 @@ PanelWindow {
         onClicked: Config.settingsVisible = false
     }
 
-    // Modal dialog box
+    // Modal dialog box (Sculpted Liquid Glass)
     Rectangle {
         id: dialogBox
         anchors.centerIn: parent
         width: 860
         height: 580
         radius: Theme.radiusLarge
-        color: Colors.surface
-        border.color: Theme.borderSubtle
+        color: Colors.glassSurface
+        border.color: Colors.glassBorderSpecular
         border.width: 1
         clip: true
+
+        // Top specular hairline glint
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 24
+            anchors.rightMargin: 24
+            height: 1
+            z: 10
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.5; color: Colors.glassBorderSpecular }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+
+        // Inner caustic ambient glow
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 36
+            radius: parent.radius
+            color: "transparent"
+            z: 9
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Colors.glassCausticGlow }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
 
         focus: true
         Keys.onEscapePressed: Config.settingsVisible = false

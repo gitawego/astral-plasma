@@ -295,6 +295,23 @@ function notifyMedia(c) {
     } catch(e) {}
 }
 
+function isWineMediaWindow(c) {
+    if (!c) return false;
+    var cls = ("" + (c.resourceClass || "")).toLowerCase();
+    var app = ("" + (c.desktopFileName || "")).toLowerCase();
+    var known = [
+        "cloudmusic", "netease", "qqmusic", "tencent", "spotify",
+        "kugou", "kuwo", "kwmusic", "foobar2000", "aimp", "musicbee",
+        "yesplaymusic"
+    ];
+    for (var i = 0; i < known.length; i++) {
+        if (cls.indexOf(known[i]) !== -1 || app.indexOf(known[i]) !== -1) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function connectWindow(c) {
     if (!c || c._caelestiaHooked) return;
     c._caelestiaHooked = true;
@@ -303,8 +320,7 @@ function connectWindow(c) {
             if (workspace.activeWindow === c) {
                 notifyActive(c);
             }
-            var cls = "" + (c.resourceClass || "");
-            if (cls.indexOf("cloudmusic") !== -1 || cls.indexOf("netease") !== -1) {
+            if (isWineMediaWindow(c)) {
                 notifyMedia(c);
             }
         });
@@ -312,8 +328,7 @@ function connectWindow(c) {
         c.fullScreenChanged.connect(function() { notifyList(); });
         c.minimizedChanged.connect(function() { notifyList(); });
         c.desktopsChanged.connect(function() { notifyList(); });
-        var cls = "" + (c.resourceClass || "");
-        if (cls.indexOf("cloudmusic") !== -1 || cls.indexOf("netease") !== -1) {
+        if (isWineMediaWindow(c)) {
             notifyMedia(c);
         }
     } catch(e) {}

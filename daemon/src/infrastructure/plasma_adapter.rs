@@ -51,6 +51,15 @@ impl PlasmaAdapter {
             if let Ok(content) = fs::read_to_string(pid_file) {
                 if let Ok(pid) = content.trim().parse::<i32>() {
                     if pid != my_pid {
+                        unsafe {
+                            libc::kill(pid, libc::SIGKILL);
+                        }
+                    }
+                }
+            }
+            if let Ok(content) = fs::read_to_string(pid_file) {
+                if let Ok(pid) = content.trim().parse::<i32>() {
+                    if pid != my_pid {
                         let _ = fs::remove_file(pid_file);
                     }
                 } else {
@@ -71,7 +80,7 @@ impl PlasmaAdapter {
                         if let Ok(pid) = line.trim().parse::<i32>() {
                             if pid != my_pid {
                                 unsafe {
-                                    libc::kill(pid, libc::SIGTERM);
+                                    libc::kill(pid, libc::SIGKILL);
                                 }
                             }
                         }
@@ -209,16 +218,26 @@ impl PlasmaControlPort for PlasmaAdapter {
             target = target_sanitized
         );
 
-        let output = Command::new("qdbus6")
-            .args(["org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", &script])
-            .output()?;
-
         let mut count = 0;
-        let text = String::from_utf8_lossy(&output.stdout);
-        if let Some(pos) = text.find("REMOVED:") {
-            let num_str: String = text[pos + 8..].chars().take_while(|c| c.is_ascii_digit()).collect();
-            if let Ok(n) = num_str.parse::<u32>() {
-                count = n;
+        for attempt in 0..10 {
+            let output = Command::new("qdbus6")
+                .args(["org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", &script])
+                .output();
+
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let text = String::from_utf8_lossy(&out.stdout);
+                    if let Some(pos) = text.find("REMOVED:") {
+                        let num_str: String = text[pos + 8..].chars().take_while(|c| c.is_ascii_digit()).collect();
+                        if let Ok(n) = num_str.parse::<u32>() {
+                            count = n;
+                            break;
+                        }
+                    }
+                }
+            }
+            if attempt < 9 {
+                thread::sleep(Duration::from_millis(150));
             }
         }
 

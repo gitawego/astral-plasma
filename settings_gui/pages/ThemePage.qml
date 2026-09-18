@@ -49,6 +49,7 @@ ColumnLayout {
     function setThemePreset(val) {
         if (testMode) {
             testPreset = val;
+            testDynamicColors = false;
         } else if (typeof Config !== "undefined" && Config.setThemePreset) {
             Config.setThemePreset(val);
         }
@@ -299,7 +300,7 @@ ColumnLayout {
 
                     delegate: Item {
                         id: swatchItem
-                        readonly property bool isSelected: root.presetName === modelData.id
+                        readonly property bool isSelected: !root.isDynamic && (root.presetName === modelData.id)
                         readonly property color accentHue: root.isDark ? modelData.darkColor : modelData.lightColor
 
                         width: 36

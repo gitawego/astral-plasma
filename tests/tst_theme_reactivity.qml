@@ -66,6 +66,12 @@ Item {
         themePage.setDynamicColors(true);
         assert(themePage.isDynamic, "Dynamic colors must be true");
 
+        // 6. Selecting preset while dynamic colors is on deactivates dynamic colors
+        console.log("Test 7: Selecting preset deactivates dynamic colors");
+        themePage.setThemePreset("emerald");
+        assert(themePage.presetName === "emerald", "Preset must be emerald");
+        assert(!themePage.isDynamic, "Dynamic colors must be deactivated when choosing an explicit preset");
+
         // 6. Corner Radius Reactivity
         console.log("Test 7: Corner Radius Reactivity");
         themePage.setThemeCornerRadius(28);

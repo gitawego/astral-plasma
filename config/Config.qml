@@ -295,6 +295,7 @@ Singleton {
         updateSettings(cfg => {
             if (!cfg.theme) cfg.theme = {};
             cfg.theme.preset = name.toLowerCase();
+            cfg.theme.dynamicColors = false;
         });
     }
 
@@ -430,9 +431,9 @@ Singleton {
     }
 
     // Active state toggles
-    property bool dashboardVisible: false
-    property bool settingsVisible: false
-    property string activeSettingsPage: "wallpaper"
+    property bool dashboardVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_DASHBOARD_OPEN") === "1") ? true : (root.settings.dashboardVisible ?? false)
+    property bool settingsVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_SETTINGS_OPEN") === "1") ? true : false
+    property string activeSettingsPage: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_SETTINGS_PAGE")) ? Quickshell.env("CAELESTIA_SETTINGS_PAGE") : "wallpaper"
     property string activePopout: "" // legacy popout tracker
 
     // Command Launcher State

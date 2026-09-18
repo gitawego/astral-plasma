@@ -39,6 +39,11 @@ impl<P: PlasmaControlPort> PlasmaControlUseCase<P> {
 }
 
 pub fn spawn_watchdog(target_pid: u32) {
+    if target_pid == 0 || (env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" && unsafe { libc::kill(target_pid as i32, 0) != 0 }) {
+        eprintln!("[astral-plasma] spawn_watchdog: target PID {} is not running, skipping watchdog.", target_pid);
+        return;
+    }
+
     let adapter = PlasmaAdapter::new();
     adapter.stop_watchdog();
 
@@ -60,6 +65,18 @@ pub fn spawn_watchdog(target_pid: u32) {
 }
 
 pub async fn run_watchdog_loop(target_pid: u32) -> DynResult<()> {
+    if target_pid == 0 {
+        return Ok(());
+    }
+
+    // Safety check: verify target process was actually running at the start
+    if env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" {
+        if unsafe { libc::kill(target_pid as i32, 0) != 0 } {
+            eprintln!("[astral-plasma watchdog] Target PID {} is not active on startup, aborting without restore.", target_pid);
+            return Ok(());
+        }
+    }
+
     let pid_file = Path::new(DEFAULT_WATCHDOG_PID_FILE);
     let _ = fs::write(pid_file, std::process::id().to_string());
 
@@ -69,21 +86,37 @@ pub async fn run_watchdog_loop(target_pid: u32) -> DynResult<()> {
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sigint = signal(SignalKind::interrupt())?;
 
+        let adapter = PlasmaAdapter::new();
+        let mut check_ticks = 0u32;
+
         loop {
             tokio::select! {
                 _ = sigterm.recv() => {
-                    eprintln!("[astral-plasma watchdog] Received SIGTERM signal, restoring original Plasma state...");
-                    break;
+                    eprintln!("[astral-plasma watchdog] Received SIGTERM signal, exiting cleanly without restoring.");
+                    let _ = fs::remove_file(pid_file);
+                    return Ok(());
                 }
                 _ = sigint.recv() => {
-                    eprintln!("[astral-plasma watchdog] Received SIGINT signal, restoring original Plasma state...");
-                    break;
+                    eprintln!("[astral-plasma watchdog] Received SIGINT signal, exiting cleanly without restoring.");
+                    let _ = fs::remove_file(pid_file);
+                    return Ok(());
                 }
                 _ = tokio::time::sleep(Duration::from_millis(500)) => {
                     let alive = unsafe { libc::kill(target_pid as i32, 0) == 0 };
                     if !alive {
                         eprintln!("[astral-plasma watchdog] Monitored PID {} has terminated, restoring original Plasma state...", target_pid);
                         break;
+                    }
+
+                    // Periodically ensure no built-in panels have respawned while Caelestia is active
+                    check_ticks += 1;
+                    if check_ticks % 4 == 0 && env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" {
+                        if let Ok(panels) = adapter.query_panels() {
+                            if !panels.is_empty() {
+                                eprintln!("[astral-plasma watchdog] Detected {} respawned built-in panel(s); re-disabling...", panels.len());
+                                let _ = adapter.disable_panels("all");
+                            }
+                        }
                     }
                 }
             }

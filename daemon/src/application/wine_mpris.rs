@@ -7,11 +7,14 @@ use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 use zbus::Connection;
 
+use crate::domain::media::MediaAction;
 use crate::domain::ports::DynResult;
 use crate::domain::wine_media::WineMediaInfo;
-use crate::infrastructure::x11_input::{send_wine_media_action, WineMediaAction};
+use crate::infrastructure::media::registry::WinePlayerRegistry;
 
-pub struct WineMprisRoot;
+pub struct WineMprisRoot {
+    state: Arc<Mutex<WineMprisPlayerState>>,
+}
 
 #[zbus::interface(name = "org.mpris.MediaPlayer2")]
 impl WineMprisRoot {
@@ -31,8 +34,13 @@ impl WineMprisRoot {
     }
 
     #[zbus(property)]
-    fn identity(&self) -> &str {
-        "NetEase Cloud Music (Wine)"
+    async fn identity(&self) -> String {
+        let st = self.state.lock().await;
+        if !st.player_name.is_empty() {
+            st.player_name.clone()
+        } else {
+            "NetEase Cloud Music (Wine)".to_string()
+        }
     }
 
     #[zbus(property)]
@@ -57,6 +65,8 @@ impl WineMprisRoot {
 
 #[derive(Clone)]
 pub struct WineMprisPlayerState {
+    pub player_id: String,
+    pub player_name: String,
     pub title: String,
     pub artist: String,
     pub art_url: String,
@@ -64,11 +74,15 @@ pub struct WineMprisPlayerState {
     pub duration_micros: i64,
     pub position_micros: i64,
     pub last_play_instant: Option<Instant>,
+    pub track_id: String,
+    pub seq: u64,
 }
 
 impl Default for WineMprisPlayerState {
     fn default() -> Self {
         Self {
+            player_id: "cloudmusic".to_string(),
+            player_name: "NetEase Cloud Music (Wine)".to_string(),
             title: String::new(),
             artist: String::new(),
             art_url: String::new(),
@@ -76,6 +90,8 @@ impl Default for WineMprisPlayerState {
             duration_micros: 0,
             position_micros: 0,
             last_play_instant: None,
+            track_id: String::new(),
+            seq: 0,
         }
     }
 }
@@ -103,7 +119,15 @@ impl WineMprisPlayer {
     async fn metadata(&self) -> HashMap<String, OwnedValue> {
         let st = self.state.lock().await;
         let mut map = HashMap::new();
-        if let Ok(track_id) = ObjectPath::try_from("/org/mpris/MediaPlayer2/Track/1") {
+
+        let track_path_suffix = if !st.track_id.is_empty() {
+            let clean: String = st.track_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+            clean
+        } else {
+            format!("track_{}", st.seq)
+        };
+
+        if let Ok(track_id) = ObjectPath::try_from(format!("/org/mpris/MediaPlayer2/Track/{}", track_path_suffix)) {
             if let Ok(val) = Value::from(track_id).try_into_owned() {
                 map.insert("mpris:trackid".to_string(), val);
             }
@@ -188,22 +212,31 @@ impl WineMprisPlayer {
     }
 
     async fn next(&self) {
-        let _ = send_wine_media_action(WineMediaAction::Next);
-        let mut st = self.state.lock().await;
-        st.position_micros = 0;
-        st.last_play_instant = if st.is_playing { Some(Instant::now()) } else { None };
+        let (player_id, _is_playing) = {
+            let mut st = self.state.lock().await;
+            st.position_micros = 0;
+            st.last_play_instant = if st.is_playing { Some(Instant::now()) } else { None };
+            (st.player_id.clone(), st.is_playing)
+        };
+        let reg = WinePlayerRegistry::new();
+        let adapter = reg.find_adapter(&player_id, "");
+        let _ = adapter.send_action(MediaAction::Next);
     }
 
     async fn previous(&self) {
-        let _ = send_wine_media_action(WineMediaAction::Previous);
-        let mut st = self.state.lock().await;
-        st.position_micros = 0;
-        st.last_play_instant = if st.is_playing { Some(Instant::now()) } else { None };
+        let (player_id, _is_playing) = {
+            let mut st = self.state.lock().await;
+            st.position_micros = 0;
+            st.last_play_instant = if st.is_playing { Some(Instant::now()) } else { None };
+            (st.player_id.clone(), st.is_playing)
+        };
+        let reg = WinePlayerRegistry::new();
+        let adapter = reg.find_adapter(&player_id, "");
+        let _ = adapter.send_action(MediaAction::Previous);
     }
 
     async fn play_pause(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
-        let _ = send_wine_media_action(WineMediaAction::PlayPause);
-        let is_now_playing = {
+        let (player_id, is_now_playing) = {
             let mut st = self.state.lock().await;
             st.is_playing = !st.is_playing;
             if st.is_playing {
@@ -211,8 +244,12 @@ impl WineMprisPlayer {
             } else if let Some(instant) = st.last_play_instant.take() {
                 st.position_micros += instant.elapsed().as_micros() as i64;
             }
-            st.is_playing
+            (st.player_id.clone(), st.is_playing)
         };
+
+        let reg = WinePlayerRegistry::new();
+        let adapter = reg.find_adapter(&player_id, "");
+        let _ = adapter.send_action(MediaAction::PlayPause);
 
         let _ = self.playback_status_changed(&emitter).await;
 
@@ -261,13 +298,16 @@ pub struct WineMprisService {
 impl WineMprisService {
     pub async fn new() -> DynResult<Self> {
         let state = Arc::new(Mutex::new(WineMprisPlayerState::default()));
+        let root = WineMprisRoot {
+            state: Arc::clone(&state),
+        };
         let player = WineMprisPlayer {
             state: Arc::clone(&state),
         };
 
         let conn = Builder::session()?
             .name("org.mpris.MediaPlayer2.cloudmusic")?
-            .serve_at("/org/mpris/MediaPlayer2", WineMprisRoot)?
+            .serve_at("/org/mpris/MediaPlayer2", root)?
             .serve_at("/org/mpris/MediaPlayer2", player.clone())?
             .build()
             .await?;
@@ -280,16 +320,24 @@ impl WineMprisService {
     }
 
     pub async fn update_media(&self, media: &WineMediaInfo) -> DynResult<()> {
-        let (status_changed, meta_changed) = {
+        let (status_changed, meta_changed, should_retry, current_seq) = {
             let mut st = self.state.lock().await;
+            st.seq += 1;
+            let current_seq = st.seq;
+
             let title_changed = st.title != media.title;
             let artist_changed = st.artist != media.artist;
             let art_changed = st.art_url != media.art_url;
             let new_duration_micros = (media.duration_ms * 1000) as i64;
             let duration_changed = st.duration_micros != new_duration_micros;
 
+            st.player_id = media.player_id.clone();
+            if !media.player_name.is_empty() {
+                st.player_name = media.player_name.clone();
+            }
+
             if media.title.is_empty() {
-                // Stopped state (empty or "网易云音乐" caption)
+                // Stopped state
                 let had_title = !st.title.is_empty();
                 let was_playing = st.is_playing;
                 st.title.clear();
@@ -299,7 +347,7 @@ impl WineMprisService {
                 st.position_micros = 0;
                 st.last_play_instant = None;
                 st.is_playing = false;
-                (was_playing, had_title)
+                (was_playing, had_title, false, current_seq)
             } else if title_changed {
                 st.title = media.title.clone();
                 st.artist = media.artist.clone();
@@ -311,15 +359,17 @@ impl WineMprisService {
                 let was_playing = st.is_playing;
                 st.is_playing = should_play;
                 st.last_play_instant = Some(Instant::now());
-                (was_playing != should_play, true)
+
+                let needs_retry = st.art_url.is_empty() || media.duration_ms == 180_000;
+                (was_playing != should_play, true, needs_retry, current_seq)
             } else {
-                // Same title: update art_url or duration if changed, but NEVER overwrite playback state!
+                // Same title: update art_url or duration if changed
                 let mut meta_c = false;
-                if art_changed {
+                if art_changed && !media.art_url.is_empty() {
                     st.art_url = media.art_url.clone();
                     meta_c = true;
                 }
-                if duration_changed {
+                if duration_changed && media.duration_ms > 0 && media.duration_ms != 180_000 {
                     st.duration_micros = new_duration_micros;
                     meta_c = true;
                 }
@@ -327,7 +377,8 @@ impl WineMprisService {
                     st.artist = media.artist.clone();
                     meta_c = true;
                 }
-                (false, meta_c)
+                let needs_retry = st.art_url.is_empty() || st.duration_micros == 180_000_000;
+                (false, meta_c, needs_retry, current_seq)
             }
         };
 
@@ -338,6 +389,75 @@ impl WineMprisService {
             if meta_changed {
                 let _ = self.player.metadata_changed(&emitter).await;
             }
+        }
+
+        // Spawn asynchronous staggered retry task if art_url is missing or duration is placeholder
+        if should_retry && !media.title.is_empty() {
+            let target_title = media.title.clone();
+            let target_artist = media.artist.clone();
+            let player_id = media.player_id.clone();
+            let state = Arc::clone(&self.state);
+            let conn = self.conn.clone();
+            let player = self.player.clone();
+
+            tokio::spawn(async move {
+                let retry_delays_ms = [250, 650, 1400, 2800];
+                for delay in retry_delays_ms {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+
+                    // Check if track is still current
+                    {
+                        let st = state.lock().await;
+                        if st.seq != current_seq || st.title != target_title {
+                            break; // User skipped or track changed
+                        }
+                        if !st.art_url.is_empty() && st.duration_micros != 180_000_000 {
+                            break; // Already fully resolved
+                        }
+                    }
+
+                    // Run metadata resolver in worker thread
+                    let target_t = target_title.clone();
+                    let target_a = target_artist.clone();
+                    let pid = player_id.clone();
+                    let meta_res = tokio::task::spawn_blocking(move || {
+                        let reg = WinePlayerRegistry::new();
+                        let ad = reg.find_adapter(&pid, "");
+                        ad.resolve_metadata(&target_t, &target_a)
+                    }).await;
+
+                    if let Ok(meta) = meta_res {
+                        let mut changed = false;
+                        {
+                            let mut st = state.lock().await;
+                            if st.seq != current_seq || st.title != target_title {
+                                break;
+                            }
+                            if !meta.art_url.is_empty() && st.art_url != meta.art_url {
+                                st.art_url = meta.art_url.clone();
+                                changed = true;
+                            }
+                            if meta.duration_ms > 0 && meta.duration_ms != 180_000 {
+                                let new_dur = (meta.duration_ms * 1000) as i64;
+                                if st.duration_micros != new_dur {
+                                    st.duration_micros = new_dur;
+                                    changed = true;
+                                }
+                            }
+                        }
+
+                        if changed {
+                            if let Ok(emitter) = SignalEmitter::new(&conn, "/org/mpris/MediaPlayer2") {
+                                let _ = player.metadata_changed(&emitter).await;
+                            }
+                            let st = state.lock().await;
+                            if !st.art_url.is_empty() && st.duration_micros != 180_000_000 {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         Ok(())
@@ -446,4 +566,3 @@ pub async fn pause_other_mpris_players() {
         }
     }
 }
-

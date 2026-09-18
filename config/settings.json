@@ -96,7 +96,7 @@
     "enabled": true,
     "showOnHover": true,
     "width": 980,
-    "defaultTab": "media",
+    "defaultTab": "dashboard",
     "mediaAvatar": "/home/hlu/Downloads/Gojo-Satoru-Jujutsu-Kaisen-Character.png",
     "tabs": [
       {
@@ -134,7 +134,7 @@
   },
   "theme": {
     "mode": "dark",
-    "preset": "iris",
+    "preset": "emerald",
     "blurStrength": 0.85,
     "cornerRadius": 20,
     "darkMode": true,
@@ -150,7 +150,7 @@
     "disableNotifications": true
   },
   "dashboardVisible": true,
-  "activeDashboardTab": "media",
+  "activeDashboardTab": "dashboard",
   "media": {
     "visualizerStyle": "speaker"
   }
