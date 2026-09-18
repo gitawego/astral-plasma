@@ -51,6 +51,12 @@ Item {
     readonly property alias innerFilletTRItem: innerFilletTR
     readonly property alias innerFilletBLItem: innerFilletBL
     readonly property alias innerFilletBRItem: innerFilletBR
+    readonly property alias bottomPopoutSurfaceItem: bottomPopoutSurface
+
+    readonly property real popoutFilletFactor: Math.max(0.0, Math.min(1.0, root.currentPopW / Math.max(1, root.filletR)))
+    readonly property real popoutFilletR: root.filletR * popoutFilletFactor
+    readonly property real popoutGapTop: root.popoutY - popoutFilletR
+    readonly property real popoutGapBottom: root.popoutY + root.popoutHeight + (root.fusedProgress > 0.5 ? 0 : popoutFilletR)
 
     // Left Dock Surface
     Rectangle {
@@ -62,11 +68,24 @@ Item {
         height: root.height
         color: root.glassFill
 
+        // Upper segment
         Rectangle {
             x: parent.width - 1
             y: root.borderT + root.cornerFilletR
             width: 1
-            height: Math.max(0, parent.height - root.borderT * 2 - root.cornerFilletR * 2)
+            height: (root.popoutOffsetProgress > 0.001)
+                ? Math.max(0, root.popoutGapTop - y)
+                : Math.max(0, parent.height - root.borderT * 2 - root.cornerFilletR * 2)
+            color: root.borderColor
+        }
+
+        // Lower segment (active when floating popout is open and not bottom-fused)
+        Rectangle {
+            visible: (root.popoutOffsetProgress > 0.001) && (root.fusedProgress <= 0.5)
+            x: parent.width - 1
+            y: Math.max(0, root.popoutGapBottom)
+            width: 1
+            height: Math.max(0, (parent.height - root.borderT - root.cornerFilletR) - y)
             color: root.borderColor
         }
     }
@@ -408,45 +427,143 @@ Item {
         }
     }
 
-    // Bottom Popout Solid Surface (Floating or Bottom-Fused Drawer)
+    // Bottom Popout Solid Surface (Fused Inverted Shoulder Fillets Drawer)
     Item {
         id: bottomPopoutSurface
+        readonly property real filletFactor: Math.max(0.0, Math.min(1.0, root.currentPopW / Math.max(1, root.filletR)))
+        readonly property real currentFilletR: root.filletR * filletFactor
+        readonly property real currentModalR: root.modalRadius * filletFactor
+        readonly property real topR: currentFilletR
+        readonly property real botR: (root.fusedProgress > 0.5) ? 0 : currentFilletR
+        readonly property real effectiveR: (root.fusedProgress > 0.5) ? 0 : currentModalR
+
         x: root.dockW - 1
-        y: root.popoutY
+        y: root.popoutY - topR
         width: root.currentPopW + 1
-        height: root.popoutHeight
+        height: root.popoutHeight + topR + botR
         visible: root.popoutOffsetProgress > 0.001
 
-        readonly property real filletFactor: Math.max(0.0, Math.min(1.0, root.currentPopW / Math.max(1, root.filletR)))
-        readonly property real effectiveR: (root.fusedProgress > 0.5) ? 0 : root.modalRadius
-
-        // 1. Solid Glass Surface Fill
-        Rectangle {
-            anchors.fill: parent
-            color: root.glassFill
-            opacity: bottomPopoutSurface.filletFactor
-            topLeftRadius: 0
-            bottomLeftRadius: 0
-            topRightRadius: root.modalRadius
-            bottomRightRadius: bottomPopoutSurface.effectiveR
-
-            // Subtle top specular highlight catch
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.rightMargin: parent.topRightRadius * 0.4
-                height: 1
-                color: root.glassBorder
-                opacity: 0.45
-            }
-        }
-
-        // 2. Continuous 1px Border Outline (Top, Right, Bottom; Left edge is fused to dock)
+        // 1A. Solid Glass Surface Fill Shape (Floating drawer with inverted shoulder fillets)
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
-            visible: bottomPopoutSurface.filletFactor > 0.01
+            visible: bottomPopoutSurface.filletFactor > 0.01 && root.fusedProgress <= 0.5
+            opacity: bottomPopoutSurface.filletFactor
+
+            ShapePath {
+                fillColor: root.glassFill
+                strokeColor: "transparent"
+                strokeWidth: 0
+
+                startX: -2
+                startY: 0
+
+                PathLine { x: 0; y: 0 }
+                PathArc {
+                    x: bottomPopoutSurface.topR
+                    y: bottomPopoutSurface.topR
+                    radiusX: Math.max(0.1, bottomPopoutSurface.topR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.topR)
+                    direction: PathArc.Counterclockwise
+                }
+                PathLine {
+                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    y: bottomPopoutSurface.topR
+                }
+                PathArc {
+                    x: bottomPopoutSurface.width
+                    y: bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    direction: PathArc.Clockwise
+                }
+                PathLine {
+                    x: bottomPopoutSurface.width
+                    y: Math.max(bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR, bottomPopoutSurface.topR + root.popoutHeight - bottomPopoutSurface.currentModalR)
+                }
+                PathArc {
+                    x: Math.max(bottomPopoutSurface.botR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    y: bottomPopoutSurface.topR + root.popoutHeight
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    direction: PathArc.Clockwise
+                }
+                PathLine {
+                    x: bottomPopoutSurface.botR
+                    y: bottomPopoutSurface.topR + root.popoutHeight
+                }
+                PathArc {
+                    x: 0
+                    y: bottomPopoutSurface.height
+                    radiusX: Math.max(0.1, bottomPopoutSurface.botR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.botR)
+                    direction: PathArc.Counterclockwise
+                }
+                PathLine {
+                    x: -2
+                    y: bottomPopoutSurface.height
+                }
+                PathLine {
+                    x: -2
+                    y: 0
+                }
+            }
+        }
+
+        // 1B. Solid Glass Surface Fill Shape (Bottom-fused drawer)
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            visible: bottomPopoutSurface.filletFactor > 0.01 && root.fusedProgress > 0.5
+            opacity: bottomPopoutSurface.filletFactor
+
+            ShapePath {
+                fillColor: root.glassFill
+                strokeColor: "transparent"
+                strokeWidth: 0
+
+                startX: -2
+                startY: 0
+
+                PathLine { x: 0; y: 0 }
+                PathArc {
+                    x: bottomPopoutSurface.topR
+                    y: bottomPopoutSurface.topR
+                    radiusX: Math.max(0.1, bottomPopoutSurface.topR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.topR)
+                    direction: PathArc.Counterclockwise
+                }
+                PathLine {
+                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    y: bottomPopoutSurface.topR
+                }
+                PathArc {
+                    x: bottomPopoutSurface.width
+                    y: bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    direction: PathArc.Clockwise
+                }
+                PathLine {
+                    x: bottomPopoutSurface.width
+                    y: bottomPopoutSurface.height
+                }
+                PathLine {
+                    x: -2
+                    y: bottomPopoutSurface.height
+                }
+                PathLine {
+                    x: -2
+                    y: 0
+                }
+            }
+        }
+
+        // 2A. Floating Continuous 1px Perimeter Stroke (Inverted shoulder fillets + outer rounded corners)
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            visible: bottomPopoutSurface.filletFactor > 0.01 && root.fusedProgress <= 0.5
             opacity: bottomPopoutSurface.filletFactor
 
             ShapePath {
@@ -455,25 +572,109 @@ Item {
                 strokeWidth: 1
                 capStyle: ShapePath.FlatCap
 
-                startX: 0; startY: 0
-                PathLine { x: Math.max(0, bottomPopoutSurface.width - root.modalRadius); y: 0 }
+                startX: 0
+                startY: 0
+
+                PathArc {
+                    x: bottomPopoutSurface.topR
+                    y: bottomPopoutSurface.topR
+                    radiusX: Math.max(0.1, bottomPopoutSurface.topR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.topR)
+                    direction: PathArc.Counterclockwise
+                }
+                PathLine {
+                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    y: bottomPopoutSurface.topR
+                }
                 PathArc {
                     x: bottomPopoutSurface.width
-                    y: root.modalRadius
-                    radiusX: root.modalRadius
-                    radiusY: root.modalRadius
+                    y: bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     direction: PathArc.Clockwise
                 }
-                PathLine { x: bottomPopoutSurface.width; y: Math.max(root.modalRadius, bottomPopoutSurface.height - bottomPopoutSurface.effectiveR) }
+                PathLine {
+                    x: bottomPopoutSurface.width
+                    y: Math.max(bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR, bottomPopoutSurface.topR + root.popoutHeight - bottomPopoutSurface.currentModalR)
+                }
                 PathArc {
-                    x: Math.max(0, bottomPopoutSurface.width - bottomPopoutSurface.effectiveR)
-                    y: bottomPopoutSurface.height
-                    radiusX: bottomPopoutSurface.effectiveR
-                    radiusY: bottomPopoutSurface.effectiveR
+                    x: Math.max(bottomPopoutSurface.botR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    y: bottomPopoutSurface.topR + root.popoutHeight
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     direction: PathArc.Clockwise
                 }
-                PathLine { x: 0; y: bottomPopoutSurface.height }
+                PathLine {
+                    x: bottomPopoutSurface.botR
+                    y: bottomPopoutSurface.topR + root.popoutHeight
+                }
+                PathArc {
+                    x: 0
+                    y: bottomPopoutSurface.height
+                    radiusX: Math.max(0.1, bottomPopoutSurface.botR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.botR)
+                    direction: PathArc.Counterclockwise
+                }
             }
+        }
+
+        // 2B. Bottom-Fused Continuous 1px Perimeter Stroke (Top shoulder fillet + top-right corner, straight into bottom border)
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            visible: bottomPopoutSurface.filletFactor > 0.01 && root.fusedProgress > 0.5
+            opacity: bottomPopoutSurface.filletFactor
+
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: root.borderColor
+                strokeWidth: 1
+                capStyle: ShapePath.FlatCap
+
+                startX: 0
+                startY: 0
+
+                PathArc {
+                    x: bottomPopoutSurface.topR
+                    y: bottomPopoutSurface.topR
+                    radiusX: Math.max(0.1, bottomPopoutSurface.topR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.topR)
+                    direction: PathArc.Counterclockwise
+                }
+                PathLine {
+                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.width - bottomPopoutSurface.currentModalR)
+                    y: bottomPopoutSurface.topR
+                }
+                PathArc {
+                    x: bottomPopoutSurface.width
+                    y: bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
+                    direction: PathArc.Clockwise
+                }
+                PathLine {
+                    x: bottomPopoutSurface.width
+                    y: bottomPopoutSurface.height
+                }
+                PathLine {
+                    x: 0
+                    y: bottomPopoutSurface.height
+                }
+            }
+        }
+
+        // Top specular highlight line
+        Rectangle {
+            anchors.top: parent.top
+            anchors.topMargin: bottomPopoutSurface.topR
+            anchors.left: parent.left
+            anchors.leftMargin: bottomPopoutSurface.topR
+            anchors.right: parent.right
+            anchors.rightMargin: bottomPopoutSurface.currentModalR * 0.4
+            height: 1
+            color: root.glassBorder
+            opacity: 0.45
+            visible: bottomPopoutSurface.filletFactor > 0.01
         }
     }
 
