@@ -527,4 +527,147 @@ When building sliding edge drawers on the right screen border (e.g. `RightEdgeCo
     - Handle hover via `onEntered: if (Config.dashboardShowOnHover) { closeTimer.stop(); Config.dashboardVisible = true; }` and click via `onClicked: Config.dashboardVisible = !Config.dashboardVisible`.
     - Check `topEdgeMouseArea.containsMouse` in `isDashboardHovered`.
 
+---
+
+## 9. The Definitive Engineering Guide to Building the Liquid Glass Theme Correctly
+
+### 9.1. The Optical Anatomy of Authentic Liquid Glass
+A fundamental trap when building "glassmorphism" is treating glass as a simple semi-transparent flat gray box (`rgba(255, 255, 255, 0.2)` or `rgba(0, 0, 0, 0.2)`).
+- **The Chalky Gray Trap**: Setting an item background to flat translucent white or gray produces a milky, muddy plastic slab that washes out dark desktop wallpapers and looks like untextured cardboard.
+- **The Empty Wireframe Trap**: Setting `color: "transparent"` with a 1px border produces a hollow CAD blueprint outline with zero tangible body.
+
+Real physical glass exhibits thickness, refractive index ($n \approx 1.5$), internal caustic transmission, and Fresnel edge reflections. To construct true Liquid Glass in Qt Quick:
+
+```
++-------------------------------------------------------------+  <- 1px Specular Border Bevel (fades to edges)
+| \ \ \ \ \  Top Specular Hairline Glare (1px)  / / / / / / / |  <- Ambient light gathering
+|-------------------------------------------------------------|
+|           Caustic Ambient Glow (28px vertical decay)        |  <- Internal caustic refraction
+|                                                             |
+|                                                             |
+|           Refractive Glass Substrate Gradient               |  <- >85% optical transparency
+|           (Subtle tint at top, crystal mid, smoked base)    |
+|                                                             |
+|                                                             |
+|-------------------------------------------------------------|
+|              Bottom Inner Rim Catch (1px)                   |  <- Ground bounce reflection
++-------------------------------------------------------------+  <- 1px Subtle Rim Stroke
+      ( ( ( ( ( Ambient Contact Drop Shadow ) ) ) ) )            <- Spatial surface separation
+```
+
+1. **Ambient Contact Drop Shadow (Layer 0)**:
+   - Physical separation from the background. In `LiquidGlassButton.qml` and `LiquidGlassCard.qml`, a Gaussian-blurred or tiered rectangle beneath the glass body provides depth without muddying the transparency.
+2. **Refractive Substrate Gradient (Layer 1)**:
+   - A vertical linear gradient:
+     - Top ($y=0.0$): `Qt.tint(Qt.rgba(1, 1, 1, 0.08), Qt.alpha(accentGlint, 0.06))`
+     - Mid ($y=0.40$): `Qt.tint(Qt.rgba(1, 1, 1, 0.02), Qt.alpha(accentGlint, 0.02))`
+     - Bottom ($y=1.0$): `Qt.rgba(0, 0, 0, 0.15)`
+   - This keeps the core content readable while giving the panel tangible volume.
+3. **Inner Caustic Ambient Glow (Layer 2)**:
+   - Simulates internal reflections where light enters the curved top bevel. A 28px vertical gradient decaying from `Qt.alpha(accentGlint, 0.14)` to `transparent`.
+4. **Top Specular Hairline Glare (Layer 3)**:
+   - A 1px horizontal reflection line along the top curved bevel (`height: 1`). Inset from the left and right corners, with a horizontal gradient fading from `transparent` at edges to bright specular in the center (`Colors.glassBorderSpecular`).
+5. **Bottom Inner Rim Catch (Layer 4)**:
+   - A faint 1px reflection along the bottom curved edge (`opacity: 0.20`, `color: Qt.rgba(1, 1, 1, 0.30)`), simulating ground-bounce light catching the bottom bevel.
+6. **Perimeter Stroke (Layer 5)**:
+   - A 1px outer outline (`border.width: 1`, `border.color: Colors.glassBorderSubtle`).
+
+---
+
+### 9.2. The Three-Tier Architectural Hierarchy
+Never attempt to apply compositor blur uniformly to every layer in the shell. Compositor blur must strictly follow a three-tier hierarchy:
+
+| Tier | Component Type | Example | Visual Strategy | Compositor Blur (`BackgroundEffect.blurRegion`) |
+|:---|:---|:---|:---|:---:|
+| **Tier 1: Structural Shell** | Outer Frame, Dock Capsule, Popout Drawers | `UnifiedDock`, `UnifiedFrame`, `UnifiedShell` | Material token `root.glassFill` ($\alpha \approx 0.22$), KWin dual-kawase blur, organic shoulder fillets. | **YES** (Must blur raw desktop wallpaper) |
+| **Tier 2: Content Cards** | Dashboard Cards, Tab Panes, Dialog Bodies | `LiquidGlassCard`, `Card.qml` | Refractive substrate gradient, caustic glow, specular hairline glare, subtle borders. | **NO** (Inherits blur from Tier 1; nesting blurs causes visual mud & lag) |
+| **Tier 3: Micro-Controls** | Buttons, Pills, Segmented Switches, Sliders | `LiquidGlassButton`, `PillButton`, `GlassPill` | Elastic spring physics, contact drop shadows, depression compression ($0.96\times$), specular glints. | **NO** (Pure QML scene graph rendering) |
+
+---
+
+### 9.3. Renderer Architecture: Why `Shape.GeometryRenderer` is Mandatory
+When rendering organic glass shapes (curved capsules, concave shoulder fillets, fused drawers) using Qt Quick `Shape`:
+- **The `Shape.CurveRenderer` Flaw**:
+  Qt Quick's `preferredRendererType: Shape.CurveRenderer` computes bezier arcs in the GPU fragment shader and caches dirty rectangles in GPU scissor tiles. On Intel Mesa GPU drivers (especially with high-refresh displays at 120Hz-240Hz):
+  1. Dirty-rect scissor boxes often fail to clear synchronously across consecutive Wayland surface commits.
+  2. Sweeping the mouse rapidly over dock icons or drawers causes ghost curve outlines, black flickering rectangular tiles, and leftover border fragments.
+  3. Video recorders (running at 60fps) frequently miss these 1-frame glitches, while the human eye sees persistent flashing in realtime.
+- **The `Shape.GeometryRenderer` Solution**:
+  Enforce `preferredRendererType: Shape.GeometryRenderer` on every `Shape` in the shell:
+  ```qml
+  Shape {
+      preferredRendererType: Shape.GeometryRenderer
+      // ...
+  }
+  ```
+  `GeometryRenderer` tessellates path curves directly into vertex buffers (triangles) on the CPU/vertex pipeline and renders them with hardware multisample anti-aliasing (MSAA). It completely eliminates dirty-rect caching bugs, prevents outline ghosting, and maintains smooth 240Hz frame delivery.
+
+---
+
+### 9.4. Compositor Blur Approximation: Concave vs. Convex Slicing
+Because Wayland compositors (KWin) only accept sets of axis-aligned **rectangular `Region` masks** for `BackgroundEffect.blurRegion`, curved glass edges must be sliced into staircase approximations.
+
+#### 1. Concave Inverted Fillets (Inner Shoulders, $R = 20\text{px}$):
+- Sliced into 7 depth-tapered horizontal rectangles expanding outward:
+  $$w(y) = R - \sqrt{R^2 - y^2}$$
+- Slice heights: $[1, 1, 2, 3, 4, 4, 5]\text{px}$.
+- Each slice starts at the base of the curve and steps inward to meet the straight border.
+
+#### 2. Convex Outer Corners (Card Corners, $R = 20\text{px}$):
+- **The Coarse Inset Notch Bug**: Using coarse 3-tier insets ($dx = 16, 5, 0\text{px}$) leaves a triangular gap up to $9.2\text{px}$ wide inside the corner arc with zero blur. Because the glass fill has low alpha ($\alpha \approx 0.22$), raw, sharp wallpaper text ("GAMES", icons) shines through, creating the illusion that the border radius was not filled.
+- **The Zero-Missing Staircase Profile**:
+  To eliminate unblurred notches without creating harsh gray boxes, use a 7-tier stepped slice profile:
+  - $y \in [0, 1]\text{px} \implies dx = 15\text{px}$
+  - $y \in [1, 2]\text{px} \implies dx = 12\text{px}$
+  - $y \in [2, 4]\text{px} \implies dx = 9\text{px}$
+  - $y \in [4, 7]\text{px} \implies dx = 5\text{px}$
+  - $y \in [7, 10]\text{px} \implies dx = 3\text{px}$
+  - $y \in [10, 14]\text{px} \implies dx = 1\text{px}$
+  - $y \in [14, R]\text{px} \implies dx = 0\text{px}$
+- **Outcome**: Guarantees exactly $0.0\text{px}$ missing blur inside the glass shape. The tiny subpixel outer overflow ($< 1.1\text{px}$) is naturally diffused into the background by KWin's dual-kawase filter, producing a 100% smooth, gapless frosted glass corner.
+
+---
+
+### 9.5. Translucent Compositing & Zero-Overlap Domain Partitioning
+Translucency compositing does not behave like opaque paint. In opaque rendering, overlapping two shapes by 1 pixel hides subpixel gaps cleanly. In translucent rendering:
+$$\alpha_{\text{combined}} = 1 - (1 - \alpha_1)(1 - \alpha_2)$$
+- Overlapping two $\alpha = 0.22$ layers yields $\alpha = 0.39$—a 77% increase in darkness.
+- This creates the dreaded **1px vertical dark seam line** where a drawer touches a dock or frame.
+- **The Domain Partitioning Law**:
+  Every screen pixel column must belong to **strictly one translucent fill**:
+  - Dock capsule fill: screen pixels $X \le 69$.
+  - Drawer surface fill: starts at screen pixel $X = 70$ (local $x = 1$).
+  - Specular stroke: bridges continuously from $X = 69$ to drawer perimeter.
+  - Pixel luminance across the junction remains completely uniform with zero optical seam.
+
+---
+
+### 9.6. Spring Micro-Physics & Organic Glass Interaction Design
+Static glass feels synthetic and rigid. Liquid glass should feel fluid, tactile, and responsive:
+1. **Elastic Bezier Spring Splines**:
+   Replace linear or standard cubic easing with expressive glass spring curves:
+   ```qml
+   easing.type: Easing.BezierSpline
+   easing.bezierCurve: [0.34, 1.56, 0.64, 1] // Theme.curveGlassElastic
+   ```
+2. **Tactile Depress & Elevation**:
+   - Idle state: scale $1.0$, elevation shadow $6\text{px}$.
+   - Hovered state: scale $1.02$, elevation shadow $10\text{px}$, glare opacity $+30\%$.
+   - Pressed state: scale $0.96$, elevation shadow $2\text{px}$, glare dimming $-20\%$.
+3. **Physical Distance Latching**:
+   Never trigger shape morphing (e.g. from floating pill to fused panel) based on instantaneous cursor coordinates or logical modes while an element is flying across the screen. Latch morphing **strictly upon physical arrival** ($\text{distance} \le 3\text{px}$) to prevent in-flight deformation.
+
+---
+
+### 9.7. The Universal Checklist for New Liquid Glass Components
+Before considering any new liquid glass component complete, verify:
+- [ ] **Material Consistency**: Does it use `Colors.glassSurface` or `LiquidGlassCard` rather than hardcoded `rgba(255, 255, 255, ...)`?
+- [ ] **Layer Domain Partitioning**: Does the fill avoid overlapping adjacent translucent borders or capsules by even 1px?
+- [ ] **Closed Geometry**: Do all `PathArc` and `PathLine` closures meet at $(0, 0)$ without cutting corner fillets?
+- [ ] **Hardware Tessellation**: Are all `Shape` items set to `preferredRendererType: Shape.GeometryRenderer`?
+- [ ] **Compositor Blur Alignment**: If using `BackgroundEffect.blurRegion`, does the corner use the zero-missing stepped slice profile ($dx \le \text{arc}$)?
+- [ ] **Zero Nested Compositor Blur**: Are inner cards and buttons relying on QML scene-graph gradients rather than secondary compositor blur regions?
+- [ ] **High-DPI / High-Refresh Verification**: Has the component been verified live on Wayland at native refresh rate (e.g. 240Hz) with full-resolution screenshot auditing?
+
+
 
