@@ -628,8 +628,12 @@ impl TrayPort for TrayAdapter {
                 }
             }
 
-            let menu_path = busctl_get_objpath(svc, path, "Menu");
+            let mut menu_path = busctl_get_objpath(svc, path, "Menu");
             let item_is_menu = sni_get_bool(svc, path, "ItemIsMenu");
+
+            if menu_path.is_empty() {
+                menu_path = "/SyntheticMenu".to_string();
+            }
 
             tray_items.push(TrayItem {
                 service: svc.to_string(),
@@ -648,6 +652,10 @@ impl TrayPort for TrayAdapter {
     }
 
     fn fetch_menu(&self, service: &str, menu_path: &str) -> DynResult<Vec<TrayMenuItem>> {
+        if menu_path == "/SyntheticMenu" || menu_path == "synthetic" {
+            return Ok(Self::fetch_synthetic_menu(service));
+        }
+
         let out = Command::new("busctl")
             .args([
                 "--user",
@@ -665,8 +673,7 @@ impl TrayPort for TrayAdapter {
             .output()?;
 
         if !out.status.success() {
-            let err = String::from_utf8_lossy(&out.stderr);
-            return Err(format!("busctl GetLayout failed: {}", err).into());
+            return Ok(Self::fetch_synthetic_menu(service));
         }
 
         let val: serde_json::Value = serde_json::from_slice(&out.stdout)?;
@@ -674,6 +681,10 @@ impl TrayPort for TrayAdapter {
     }
 
     fn click_item(&self, service: &str, menu_path: &str, item_id: i32) -> DynResult<()> {
+        if menu_path == "/SyntheticMenu" || menu_path == "synthetic" {
+            return Self::click_synthetic_item(service, item_id);
+        }
+
         let out = Command::new("busctl")
             .args([
                 "--user",
@@ -697,5 +708,177 @@ impl TrayPort for TrayAdapter {
         }
 
         Ok(())
+    }
+}
+
+impl TrayAdapter {
+    pub fn fetch_synthetic_menu(service: &str) -> Vec<TrayMenuItem> {
+        let mut app_id = sni_get_str(service, "/StatusNotifierItem", "Id");
+        if app_id.is_empty() {
+            app_id = sni_get_str(service, "/", "Id");
+        }
+        let mut app_title = sni_get_str(service, "/StatusNotifierItem", "Title");
+        if app_title.is_empty() {
+            app_title = sni_get_str(service, "/", "Title");
+        }
+
+        if app_id.chars().all(|c| c.is_ascii_digit()) || app_id.is_empty() {
+            let win_id = if !app_id.is_empty() {
+                app_id.parse::<u64>().unwrap_or(0)
+            } else {
+                sni_get_str(service, "/StatusNotifierItem", "WindowId").parse::<u64>().unwrap_or(0)
+            };
+            if win_id > 0 {
+                let (x_id, x_title, _) = Self::resolve_xembed_identity(win_id);
+                if !x_id.is_empty() {
+                    app_id = x_id;
+                }
+                if app_title.is_empty() && !x_title.is_empty() {
+                    app_title = x_title;
+                }
+            }
+        }
+
+        let id_lower = format!("{} {}", app_id, app_title).to_lowercase();
+        let mut items = Vec::new();
+
+        let make_item = |id: i32, label: &str, icon: &str, has_submenu: bool, children: Vec<TrayMenuItem>| -> TrayMenuItem {
+            TrayMenuItem {
+                id,
+                label: label.to_string(),
+                is_separator: false,
+                enabled: true,
+                icon: icon.to_string(),
+                has_submenu,
+                toggle_type: String::new(),
+                toggle_state: 0,
+                disposition: "normal".to_string(),
+                children,
+            }
+        };
+
+        let make_separator = |id: i32| -> TrayMenuItem {
+            TrayMenuItem {
+                id,
+                label: String::new(),
+                is_separator: true,
+                enabled: true,
+                icon: String::new(),
+                has_submenu: false,
+                toggle_type: String::new(),
+                toggle_state: 0,
+                disposition: "normal".to_string(),
+                children: Vec::new(),
+            }
+        };
+
+        if id_lower.contains("cloudmusic") || id_lower.contains("music") || id_lower.contains("spotify") || id_lower.contains("player") {
+            // Nested Submenu 1: Playback Controls
+            let playback_children = vec![
+                make_item(1001, "Play / Pause", "play_arrow", false, Vec::new()),
+                make_item(1002, "Next Track", "skip_next", false, Vec::new()),
+                make_item(1003, "Previous Track", "skip_previous", false, Vec::new()),
+            ];
+            items.push(make_item(2000, "Playback Controls", "music_note", true, playback_children));
+
+            // Nested Submenu 2: Window Options
+            let window_children = vec![
+                make_item(1004, "Show / Minimize Window", "open_in_new", false, Vec::new()),
+                make_item(1005, "Open Native Win32 Menu...", "menu", false, Vec::new()),
+            ];
+            items.push(make_item(2001, "Window Options", "window", true, window_children));
+
+            items.push(make_separator(2002));
+            let exit_label = if id_lower.contains("cloudmusic") {
+                "Exit NetEase Cloud Music"
+            } else {
+                "Exit Player"
+            };
+            items.push(make_item(1006, exit_label, "power_settings_new", false, Vec::new()));
+        } else {
+            // Generic Wine / XEmbed Application with nested menu
+            let window_children = vec![
+                make_item(1004, "Restore / Show Window", "open_in_new", false, Vec::new()),
+                make_item(1005, "Open Native Win32 Menu...", "menu", false, Vec::new()),
+            ];
+            items.push(make_item(2001, "Window Options", "window", true, window_children));
+
+            items.push(make_separator(2002));
+            let exit_label = if !app_title.is_empty() {
+                format!("Exit {}", app_title)
+            } else {
+                "Exit Application".to_string()
+            };
+            items.push(make_item(1006, &exit_label, "power_settings_new", false, Vec::new()));
+        }
+
+        items
+    }
+
+    pub fn click_synthetic_item(service: &str, item_id: i32) -> DynResult<()> {
+        match item_id {
+            1001 => {
+                let _ = crate::infrastructure::x11_input::send_wine_media_action(crate::infrastructure::x11_input::WineMediaAction::PlayPause);
+            }
+            1002 => {
+                let _ = crate::infrastructure::x11_input::send_wine_media_action(crate::infrastructure::x11_input::WineMediaAction::Next);
+            }
+            1003 => {
+                let _ = crate::infrastructure::x11_input::send_wine_media_action(crate::infrastructure::x11_input::WineMediaAction::Previous);
+            }
+            1004 => {
+                let _ = Command::new("qdbus6")
+                    .args([service, "/StatusNotifierItem", "org.kde.StatusNotifierItem.Activate", "0", "0"])
+                    .output();
+            }
+            1005 => {
+                let (cx, cy) = crate::infrastructure::x11_input::get_cursor_position().unwrap_or((0, 0));
+                let (sx, sy) = (cx.to_string(), cy.to_string());
+                let _ = Command::new("qdbus6")
+                    .args([service, "/StatusNotifierItem", "org.kde.StatusNotifierItem.ContextMenu", &sx, &sy])
+                    .output();
+            }
+            1006 => {
+                Self::terminate_wine_app_for_service(service);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn terminate_wine_app_for_service(service: &str) {
+        let item_id = sni_get_str(service, "/StatusNotifierItem", "Id");
+        let win_id = item_id.parse::<u64>().unwrap_or(0);
+        let mut app_name = String::new();
+        if win_id > 0 {
+            let (x_id, _, _) = Self::resolve_xembed_identity(win_id);
+            app_name = x_id;
+        }
+
+        if !app_name.is_empty() {
+            let _ = Command::new("pkill")
+                .args(["-f", &format!("{}.exe", app_name)])
+                .output();
+        }
+
+        if let Ok(entries) = std::fs::read_dir("/proc") {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if let Some(fname) = p.file_name().and_then(|f| f.to_str()) {
+                    if fname.chars().all(|c| c.is_ascii_digit()) {
+                        let cmdline_file = p.join("cmdline");
+                        if let Ok(data) = std::fs::read(cmdline_file) {
+                            let cmd = String::from_utf8_lossy(&data).replace('\0', " ");
+                            let cmd_lower = cmd.to_lowercase();
+                            if !app_name.is_empty() && cmd_lower.contains(&app_name.to_lowercase()) {
+                                if let Ok(pid) = fname.parse::<i32>() {
+                                    unsafe { libc::kill(pid, libc::SIGTERM); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

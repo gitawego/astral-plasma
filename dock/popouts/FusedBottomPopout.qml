@@ -912,7 +912,7 @@ Item {
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: (WindowService.activeTrayItem && WindowService.activeTrayItem.service) ? WindowService.activeTrayItem.service : "System Tray"
+                                    text: (WindowService.activeTrayItem && WindowService.activeTrayItem.menuPath === "/SyntheticMenu") ? "Wine Application" : ((WindowService.activeTrayItem && WindowService.activeTrayItem.service) ? WindowService.activeTrayItem.service : "System Tray")
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontLabelSmall
                                     color: Colors.textOnSurfaceVariant
@@ -1653,8 +1653,9 @@ Item {
                             hasSubmenu: Boolean(modelData.hasSubmenu) || (Boolean(modelData.children) && modelData.children.length > 0)
                             toggleType: modelData.toggleType || ""
                             toggleState: (modelData.toggleState !== undefined) ? modelData.toggleState : 0
+                            icon: (modelData.icon && !modelData.icon.includes("/") && !modelData.icon.includes("-")) ? modelData.icon : ""
                             iconSource: Config.iconUrl(modelData.icon)
-                            iconColor: (modelData.label && modelData.label.toLowerCase().includes("quit")) ? "#ffb4ab" : Colors.textOnSurface
+                            iconColor: (modelData.label && (modelData.label.toLowerCase().includes("quit") || modelData.label.toLowerCase().includes("exit"))) ? "#ffb4ab" : Colors.textOnSurface
                             onClicked: pageRoot.itemClicked(modelData)
                         }
                     }

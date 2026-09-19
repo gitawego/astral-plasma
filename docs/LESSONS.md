@@ -915,6 +915,28 @@ When `ContextMenu` is called:
      ```
 This ensures context menus consistently appear directly beneath the cursor, allowing users to exit Wine applications reliably.
 
+---
+
+### 11.5. Generic Synthetic Declarative Menus for Wine and Non-DBusMenu Apps
+Even native KDE Plasma 6 does not theme Wine tray menus because Win32 applications create in-process popup menus via `TrackPopupMenuEx` or Chromium/CEF custom windows without exposing DBusMenu endpoints.
+
+To provide a first-class, themed experience in Caelestia:
+1. **The Synthetic Menu Path (`/SyntheticMenu`) Paradigm**:
+   - In `tray_adapter.rs`, when `query_tray()` detects an SNI item with an empty or non-existent `menu_path`, it automatically assigns `menu_path = "/SyntheticMenu".to_string()`.
+   - This notifies `UnifiedDock.qml` and `FusedBottomPopout.qml` that the item supports rich interactive popouts without special-casing inside QML.
+2. **Declarative Menu Synthesis with Multi-Level Submenus**:
+   - In `fetch_menu()`, queries to `"/SyntheticMenu"` return a structured JSON action tree with `hasSubmenu: true`, Material You icon identifiers, and `children: [...]`.
+   - For media players (e.g. NetEase CloudMusic, QQMusic, Spotify), the menu automatically exposes:
+     - `Playback Controls` (Play/Pause, Next Track, Previous Track)
+     - `Window Options` (Show/Minimize, Open Native Win32 Menu fallback)
+     - `Exit <App Name>` (styled with `#ffb4ab` soft red warning tint)
+   - For generic Wine applications, it exposes clean window control, native context menu trigger, and application termination.
+3. **Dual-Layer Sliding Transition Reusability**:
+   - Because `FusedBottomPopout.qml` implements a generic dual-layer sliding engine (`layerA` $\leftrightarrow$ `layerB` with `pushSubmenu` and `popSubmenu`), synthetic submenus slide smoothly with breadcrumb navigation and item count badges without requiring any custom QML per application.
+4. **Targeted Process Termination**:
+   - Win32 applications running under Wine often exit only via their tray icon. When synthetic item `1006` ("Exit") is clicked, `tray_adapter.rs` resolves the specific client `.exe` PID from the SNI service metadata, cleanly terminating only the target executable without disrupting `xembedsniproxy` or other active Wine bottles.
+
+
 
 
 

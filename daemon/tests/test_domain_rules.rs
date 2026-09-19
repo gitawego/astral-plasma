@@ -550,4 +550,37 @@ fn test_cursor_position_query() {
     }
 }
 
+#[test]
+fn test_synthetic_tray_menu_nested_structure() {
+    use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
+
+    // Test synthetic menu for a service (e.g. cloudmusic)
+    let items = TrayAdapter::fetch_synthetic_menu(":1.2122");
+    assert!(!items.is_empty(), "Synthetic menu must contain items");
+
+    // Must contain nested submenus
+    let has_nested = items.iter().any(|it| it.has_submenu && !it.children.is_empty());
+    assert!(has_nested, "Synthetic menu must contain nested submenus with children like CachyOS updater");
+
+    // Check specific submenus
+    let window_opt = items.iter().find(|it| it.label.contains("Window"));
+    assert!(window_opt.is_some(), "Must contain Window Options submenu");
+    let win_children = &window_opt.unwrap().children;
+    assert!(win_children.iter().any(|c| c.id == 1004), "Must contain Activate option (1004)");
+    assert!(win_children.iter().any(|c| c.id == 1005), "Must contain ContextMenu option (1005)");
+
+    // Must contain exit action
+    assert!(items.iter().any(|it| it.id == 1006), "Must contain Exit action (1006)");
+}
+
+#[test]
+fn test_synthetic_tray_click_actions() {
+    use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
+
+    // Triggering synthetic click items should execute gracefully without panicking
+    let _ = TrayAdapter::click_synthetic_item(":1.2122", 1001);
+    let _ = TrayAdapter::click_synthetic_item(":1.2122", 1004);
+}
+
+
 
