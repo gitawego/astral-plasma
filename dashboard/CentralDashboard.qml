@@ -28,29 +28,18 @@ PanelWindow {
 
     color: "transparent"
 
-    Rectangle {
+    LiquidGlassCard {
         id: mainCard
         anchors.horizontalCenter: parent.horizontalCenter
         width: 720
-        implicitHeight: layout.implicitHeight + Theme.padLarge * 2
+        implicitHeight: layout.implicitHeight + ((typeof Theme !== "undefined" && Theme.padLarge) ? Theme.padLarge : 16) * 2
 
         focus: true
         Keys.onEscapePressed: Config.dashboardVisible = false
 
-        radius: Theme.radiusLarge
-        color: Colors.surfaceTranslucent
-        border.color: Theme.borderSubtle
-        border.width: 1
-
-        // Soft outer shadow
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            color: "transparent"
-            border.color: Theme.shadowColor
-            border.width: 3
-            z: -1
-        }
+        radius: (typeof Theme !== "undefined" && Theme.radiusLarge) ? Theme.radiusLarge : 16
+        elevation: 12
+        showShadow: true
 
         ColumnLayout {
             id: layout

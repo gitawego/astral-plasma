@@ -283,7 +283,9 @@ pub async fn capture_window(
 
     let png_bytes = process_bgra_to_png(&raw_data, width, height, stride, target_width)?;
     let out_path = get_target_path(clean_uuid, effective_slot);
-    fs::write(&out_path, png_bytes)?;
+    let tmp_path = format!("{}.tmp.{}", out_path, std::process::id());
+    fs::write(&tmp_path, png_bytes)?;
+    fs::rename(&tmp_path, &out_path)?;
 
     Ok(out_path)
 }

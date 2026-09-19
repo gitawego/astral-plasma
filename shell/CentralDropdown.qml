@@ -40,6 +40,11 @@ Item {
     property bool hoverOverride: false
     readonly property bool isHovered: hoverOverrideActive ? hoverOverride : dropdownHover.hovered
 
+    readonly property alias layoutItem: cardLayout
+    readonly property alias settingsBtnItem: settingsBtn
+    readonly property alias tabRepeaterItem: tabRepeater
+    readonly property alias tabSlidingIndicatorItem: tabSlidingIndicator
+
     x: dropX
     y: 0
     width: dropW
@@ -91,52 +96,40 @@ Item {
             implicitHeight: 60
 
             // Settings Button on the right
-            Rectangle {
+            LiquidGlassButton {
                 id: settingsBtn
                 anchors.right: parent.right
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                width: 38
-                height: 38
-                radius: Theme.radiusSmall
-                color: settingsHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : "transparent"
-                border.color: settingsHover.containsMouse ? (typeof Colors !== "undefined" ? Colors.glassBorderSubtle : Theme.borderSubtle) : "transparent"
-                border.width: 1
-
-                MaterialIcon {
-                    anchors.centerIn: parent
-                    text: "settings"
-                    size: 18
-                    color: settingsHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant
-                }
-
-                MouseArea {
-                    id: settingsHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        Config.dashboardVisible = false;
-                        Config.openSettings();
-                    }
+                implicitWidth: 38
+                implicitHeight: 38
+                paddingHorizontal: 6
+                paddingVertical: 6
+                iconText: "settings"
+                iconSize: 18
+                elevation: 4
+                onClicked: {
+                    Config.dashboardVisible = false;
+                    Config.openSettings();
                 }
 
                 // Tooltip
                 Rectangle {
+                    id: settingsTip
                     z: 100
-                    visible: settingsHover.containsMouse
+                    visible: settingsBtn.hovered
                     anchors.top: parent.bottom
                     anchors.topMargin: 8
                     anchors.horizontalCenter: parent.horizontalCenter
-                    implicitWidth: settingsTip.implicitWidth + 16
-                    implicitHeight: settingsTip.implicitHeight + 8
+                    implicitWidth: settingsTipText.implicitWidth + 16
+                    implicitHeight: settingsTipText.implicitHeight + 8
                     radius: 6
                     color: Colors.glassModalSurface
                     border.color: Colors.glassBorderSubtle
                     border.width: 1
 
                     Text {
-                        id: settingsTip
+                        id: settingsTipText
                         anchors.centerIn: parent
                         text: "Theme Settings"
                         font.family: Theme.fontFamily
@@ -246,14 +239,6 @@ Item {
                     }
                 }
             }
-        }
-
-        // Header Separator
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            height: 1
-            color: (typeof Colors !== "undefined" && Colors.glassBorderSubtle) ? Colors.glassBorderSubtle : Theme.borderSubtle
         }
 
         // Tab Content Sliding View

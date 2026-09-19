@@ -22,6 +22,7 @@ Item {
     required property real dropdownOffsetProgress
 
     // Bottom popout geometry
+    property bool enablePopoutSurface: true
     required property real currentPopW
     required property real popoutY
     required property real popoutHeight
@@ -433,8 +434,8 @@ Item {
         readonly property real filletFactor: Math.max(0.0, Math.min(1.0, root.currentPopW / Math.max(1, root.filletR)))
         readonly property real currentFilletR: root.filletR * filletFactor
         readonly property real currentModalR: root.modalRadius * filletFactor
-        readonly property real topR: currentFilletR
-        readonly property real botR: (root.fusedProgress > 0.5) ? 0 : currentFilletR
+        readonly property real topR: root.filletR
+        readonly property real botR: (root.fusedProgress > 0.5) ? 0 : root.filletR
         readonly property real effectiveR: (root.fusedProgress > 0.5) ? 0 : currentModalR
         readonly property real bodyW: root.currentPopW + 1
         readonly property real fusedBottomFilletR: (root.fusedProgress > 0.5) ? currentFilletR : 0
@@ -443,14 +444,14 @@ Item {
         y: root.popoutY - topR
         width: bodyW + fusedBottomFilletR
         height: root.popoutHeight + topR + botR
-        visible: root.popoutOffsetProgress > 0.001
+        visible: root.enablePopoutSurface && (root.popoutOffsetProgress > 0.001)
 
         // 1A. Solid Glass Surface Fill Shape (Floating drawer with inverted shoulder fillets)
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
             visible: bottomPopoutSurface.filletFactor > 0.01 && root.fusedProgress <= 0.5
-            opacity: bottomPopoutSurface.filletFactor
+            opacity: root.popoutOffsetProgress
 
             ShapePath {
                 fillColor: root.glassFill
@@ -462,14 +463,14 @@ Item {
 
                 PathLine { x: 0; y: 0 }
                 PathArc {
-                    x: bottomPopoutSurface.topR
+                    x: bottomPopoutSurface.currentFilletR
                     y: bottomPopoutSurface.topR
-                    radiusX: Math.max(0.1, bottomPopoutSurface.topR)
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentFilletR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.topR)
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.currentFilletR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR
                 }
                 PathArc {
@@ -484,14 +485,14 @@ Item {
                     y: Math.max(bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR, bottomPopoutSurface.topR + root.popoutHeight - bottomPopoutSurface.currentModalR)
                 }
                 PathArc {
-                    x: Math.max(bottomPopoutSurface.botR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.currentFilletR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR + root.popoutHeight
                     radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     direction: PathArc.Clockwise
                 }
                 PathLine {
-                    x: bottomPopoutSurface.botR
+                    x: bottomPopoutSurface.currentFilletR
                     y: bottomPopoutSurface.topR + root.popoutHeight
                 }
                 PathArc {
@@ -521,7 +522,7 @@ Item {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
             visible: bottomPopoutSurface.filletFactor > 0.01 && root.fusedProgress > 0.5
-            opacity: bottomPopoutSurface.filletFactor
+            opacity: root.popoutOffsetProgress
 
             ShapePath {
                 fillColor: root.glassFill
@@ -533,14 +534,14 @@ Item {
 
                 PathLine { x: 0; y: 0 }
                 PathArc {
-                    x: bottomPopoutSurface.topR
+                    x: bottomPopoutSurface.currentFilletR
                     y: bottomPopoutSurface.topR
-                    radiusX: Math.max(0.1, bottomPopoutSurface.topR)
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentFilletR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.topR)
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.currentFilletR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR
                 }
                 PathArc {
@@ -581,7 +582,7 @@ Item {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
             visible: bottomPopoutSurface.filletFactor > 0.01 && root.fusedProgress <= 0.5
-            opacity: bottomPopoutSurface.filletFactor
+            opacity: root.popoutOffsetProgress
 
             ShapePath {
                 fillColor: "transparent"
@@ -593,14 +594,14 @@ Item {
                 startY: 0
 
                 PathArc {
-                    x: bottomPopoutSurface.topR
+                    x: bottomPopoutSurface.currentFilletR
                     y: bottomPopoutSurface.topR
-                    radiusX: Math.max(0.1, bottomPopoutSurface.topR)
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentFilletR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.topR)
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.currentFilletR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR
                 }
                 PathArc {
@@ -615,14 +616,14 @@ Item {
                     y: Math.max(bottomPopoutSurface.topR + bottomPopoutSurface.currentModalR, bottomPopoutSurface.topR + root.popoutHeight - bottomPopoutSurface.currentModalR)
                 }
                 PathArc {
-                    x: Math.max(bottomPopoutSurface.botR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.currentFilletR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR + root.popoutHeight
                     radiusX: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.currentModalR)
                     direction: PathArc.Clockwise
                 }
                 PathLine {
-                    x: bottomPopoutSurface.botR
+                    x: bottomPopoutSurface.currentFilletR
                     y: bottomPopoutSurface.topR + root.popoutHeight
                 }
                 PathArc {
@@ -640,7 +641,7 @@ Item {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
             visible: bottomPopoutSurface.filletFactor > 0.01 && root.fusedProgress > 0.5
-            opacity: bottomPopoutSurface.filletFactor
+            opacity: root.popoutOffsetProgress
 
             ShapePath {
                 fillColor: "transparent"
@@ -652,14 +653,14 @@ Item {
                 startY: 0
 
                 PathArc {
-                    x: bottomPopoutSurface.topR
+                    x: bottomPopoutSurface.currentFilletR
                     y: bottomPopoutSurface.topR
-                    radiusX: Math.max(0.1, bottomPopoutSurface.topR)
+                    radiusX: Math.max(0.1, bottomPopoutSurface.currentFilletR)
                     radiusY: Math.max(0.1, bottomPopoutSurface.topR)
                     direction: PathArc.Counterclockwise
                 }
                 PathLine {
-                    x: Math.max(bottomPopoutSurface.topR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
+                    x: Math.max(bottomPopoutSurface.currentFilletR, bottomPopoutSurface.bodyW - bottomPopoutSurface.currentModalR)
                     y: bottomPopoutSurface.topR
                 }
                 PathArc {
@@ -694,20 +695,20 @@ Item {
         readonly property real currentModalR: root.modalRadius * filletFactor
         readonly property real topR: currentFilletR
         readonly property real botR: currentFilletR
-        readonly property real bodyW: currentRightW + 1
+        readonly property real bodyW: currentRightW
         readonly property real cornerStartX: Math.max(0.0, Math.min(bodyW - topR, currentModalR))
         readonly property real effectiveModalR: Math.min(currentModalR, cornerStartX)
 
         x: root.width - root.borderT - currentRightW
         y: root.rightControlY - topR
-        width: bodyW + 1
+        width: Math.max(1, bodyW)
         height: root.rightControlH + topR + botR
         visible: root.rightControlOffsetProgress > 0.001
 
         // 1. Solid Liquid Glass Surface Fill (Covers drawer body and shoulder fillets; zero border overlap)
         Shape {
             anchors.fill: parent
-            preferredRendererType: Shape.CurveRenderer
+            preferredRendererType: Shape.GeometryRenderer
             visible: rightControlSurface.currentRightW > 0.01
 
             ShapePath {
@@ -783,7 +784,7 @@ Item {
         // 2. Continuous 1px Border Outline Stroke
         Shape {
             anchors.fill: parent
-            preferredRendererType: Shape.CurveRenderer
+            preferredRendererType: Shape.GeometryRenderer
             visible: rightControlSurface.currentRightW > 0.01
 
             ShapePath {

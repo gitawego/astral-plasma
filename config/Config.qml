@@ -473,10 +473,10 @@ Singleton {
 
     function openBottomPopout(mode, targetY) {
         popoutCloseTimer.stop();
-        if (mode) bottomPopoutMode = mode;
         if (targetY !== undefined && targetY > 0) {
             popoutTargetY = targetY;
         }
+        if (mode) bottomPopoutMode = mode;
         bottomPopoutVisible = true;
     }
 

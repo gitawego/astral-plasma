@@ -212,14 +212,19 @@ Singleton {
 
     Process {
         id: previewCaptureProc
+        property string requestedWinKey: ""
+
         stdout: StdioCollector {
             onStreamFinished: {
                 const lines = this.text.trim().split("\n");
                 const outPath = lines.length > 0 ? lines[lines.length - 1].trim() : "";
                 if (outPath.startsWith("/")) {
                     const fileUrl = "file://" + outPath;
-                    if (root.activePreviewApp && root.activePreviewApp.id) {
-                        root._previewCache[root.activePreviewApp.id.toString()] = fileUrl;
+                    const reqKey = previewCaptureProc.requestedWinKey;
+                    if (reqKey) {
+                        root._previewCache[reqKey] = fileUrl;
+                    }
+                    if (root.activePreviewApp && root.activePreviewApp.id && root.activePreviewApp.id.toString() === reqKey) {
                         root.activePreviewThumbnail = fileUrl;
                     }
                 }
@@ -244,10 +249,12 @@ Singleton {
             root.activePreviewThumbnail = "";
             root.activePreviewLoading = false;
             previewCaptureProc.running = false;
+            previewCaptureProc.requestedWinKey = "";
             return;
         }
 
         const winKey = app.id.toString();
+        previewCaptureProc.requestedWinKey = winKey;
         const cached = root._previewCache[winKey];
         if (cached) {
             root.activePreviewThumbnail = cached;
@@ -264,6 +271,7 @@ Singleton {
     function refreshAppPreview(app) {
         if (!app || !app.id || previewCaptureProc.running) return;
         const winKey = app.id.toString();
+        previewCaptureProc.requestedWinKey = winKey;
         previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
         previewCaptureProc.running = true;
     }

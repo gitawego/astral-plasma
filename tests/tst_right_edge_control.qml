@@ -60,9 +60,15 @@ Item {
     function runTests() {
         console.log("RUNNING: Right Edge Volume & Brightness Control Tests");
 
-        // 1. Geometry Dimensions
+        // 1. Geometry Dimensions & Background Layer
         assert(rightControl.implicitWidth === 60, "RightEdgeControl implicitWidth must be 60");
         assert(rightControl.implicitHeight === 280, "RightEdgeControl implicitHeight must be 280");
+        assert(rightControl.cardItem !== undefined && rightControl.cardItem !== null, "RightEdgeControl must have a cardItem background layer");
+        assert(rightControl.cardItem.visible === true, "cardItem must be visible");
+        assert(rightControl.cardItem.radius >= 20, "cardItem must have rounded capsule radius >= 20");
+        if (typeof Colors !== "undefined" && Colors.glassCard) {
+            assert(rightControl.cardItem.color === Colors.glassCard, "cardItem must use Colors.glassCard");
+        }
 
         // 2. Lifecycle & Hover Auto-Close State Transitions
         assert(!testRoot.rightEdgeControlVisible, "Control must initially be hidden");

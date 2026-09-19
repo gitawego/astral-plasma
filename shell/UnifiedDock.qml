@@ -543,6 +543,15 @@ Item {
             visible: root.taskbarList.length > 0
             clip: true
 
+            HoverHandler {
+                id: appsContainerHover
+                onHoveredChanged: {
+                    if (!hovered && Config.bottomPopoutMode === "app") {
+                        Config.scheduleCloseBottomPopout();
+                    }
+                }
+            }
+
             Flickable {
                 id: appsFlickable
                 anchors.fill: parent
@@ -633,11 +642,15 @@ Item {
                                 cursorShape: Qt.PointingHandCursor
                                 onEntered: {
                                     WindowService.loadAppPreview(modelData);
-                                    const targetCenterY = appDelegate.mapToItem(null, 0, appDelegate.height / 2).y;
+                                    const mapped = appDelegate.mapToItem(null, 0, appDelegate.height / 2);
+                                    const fallbackY = appsContainer.mapToItem(null, 0, appsContainer.height / 2).y;
+                                    const targetCenterY = (mapped && mapped.y > 50) ? mapped.y : fallbackY;
                                     Config.openBottomPopout("app", targetCenterY);
                                 }
                                 onExited: {
-                                    Config.scheduleCloseBottomPopout();
+                                    if (!appsContainerHover.hovered) {
+                                        Config.scheduleCloseBottomPopout();
+                                    }
                                 }
                                 onClicked: mouse => {
                                     if (mouse.button === Qt.RightButton) {
@@ -748,6 +761,15 @@ Item {
             radius: Math.round((root.iconS + 16) * 0.5)
             visible: WindowService.tray.length > 0
 
+            HoverHandler {
+                id: trayContainerHover
+                onHoveredChanged: {
+                    if (!hovered && Config.bottomPopoutMode === "tray") {
+                        Config.scheduleCloseBottomPopout();
+                    }
+                }
+            }
+
             Column {
                 id: trayCol
                 anchors.centerIn: parent
@@ -821,7 +843,9 @@ Item {
                                 }
                             }
                             onExited: {
-                                Config.scheduleCloseBottomPopout();
+                                if (!trayContainerHover.hovered) {
+                                    Config.scheduleCloseBottomPopout();
+                                }
                             }
                             onClicked: mouse => {
                                 const targetCenterY = trayDelegate.mapToItem(null, 0, trayDelegate.height / 2).y;

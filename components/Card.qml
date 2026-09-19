@@ -5,6 +5,5 @@ LiquidGlassCard {
     id: root
 
     property alias content: root.children
-    padding: Theme.padMedium
+    padding: (typeof Theme !== "undefined" && Theme.padMedium) ? Theme.padMedium : 12
 }
-

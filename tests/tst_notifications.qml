@@ -73,6 +73,12 @@ Item {
         assert(notifPopup.fusedPanel.fillColor.a < 0.99, "fusedPanel fillColor must be translucent liquid glass");
         assert(notifPopup.fusedPanel.fillet1.overlap === 0, "fillet1 overlap must be 0 for seamless border fusion");
         assert(notifPopup.fusedPanel.fillet2.overlap === 0, "fillet2 overlap must be 0 for seamless border fusion");
+        assert(notifPopup.cardItem !== undefined && notifPopup.cardItem !== null, "NotificationPopup must have a cardItem background layer");
+        assert(notifPopup.cardItem.visible === true, "cardItem must be visible");
+        assert(notifPopup.cardItem.radius >= 12, "cardItem must have radius >= 12");
+        if (typeof Colors !== "undefined" && Colors.glassCard) {
+            assert(notifPopup.cardItem.color === Colors.glassCard, "cardItem must use Colors.glassCard");
+        }
 
         // Test 7: Dismissal via close() method
         var closedSignalFired = false;

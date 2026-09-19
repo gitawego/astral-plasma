@@ -12,6 +12,14 @@ Item {
     implicitWidth: 940
     implicitHeight: 360
 
+    readonly property alias mediaCardItem: mediaCard
+    readonly property alias vizSwitcherItem: vizSwitchBtn
+    readonly property alias mediaPrevBtnItem: mediaPrevBtn
+    readonly property alias mediaPlayBtnItem: mediaPlayBtn
+    readonly property alias mediaNextBtnItem: mediaNextBtn
+    readonly property alias calendarCardItem: calendarCard
+    readonly property alias calWidgetItem: calWidget
+
     property var currentDate: new Date()
     Timer {
         interval: 1000
@@ -184,8 +192,9 @@ Item {
                     }
                 }
 
-                // Card 4: Month Calendar Grid (exact layout matching upstream Caelestia)
+                // Card 4: Month Calendar Grid (Enlarged, Aligned, Uncropped)
                 Card {
+                    id: calendarCard
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: Theme.radiusGlassCard
@@ -193,7 +202,7 @@ Item {
                     Item {
                         id: calWidget
                         anchors.fill: parent
-                        anchors.margins: 12
+                        anchors.margins: 10
 
                         readonly property var today: new Date()
                         readonly property int currYear: today.getFullYear()
@@ -203,40 +212,48 @@ Item {
                         readonly property int daysInMonth: new Date(currYear, currMonth + 1, 0).getDate()
                         readonly property int daysInPrevMonth: new Date(currYear, currMonth, 0).getDate()
                         readonly property int startOffset: (new Date(currYear, currMonth, 1).getDay() + 6) % 7
+                        readonly property int totalCells: (startOffset + daysInMonth > 35) ? 42 : 35
+
+                        readonly property real cellWidth: 42
+                        readonly property real cellHeight: 26
+                        readonly property real colSpacing: 6
+                        readonly property real headerColSpacing: colSpacing
+                        readonly property real rowSpacing: 4
+                        readonly property int fontSize: 13
 
                         Column {
                             anchors.centerIn: parent
-                            spacing: 4
+                            spacing: 6
 
-                            // Weekday headers
+                            // Weekday headers - identical colSpacing & cellWidth
                             Row {
-                                spacing: 12
+                                spacing: calWidget.colSpacing
                                 Repeater {
                                     model: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
                                     Text {
-                                        width: 28
+                                        width: calWidget.cellWidth
                                         text: modelData
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: 11
-                                        font.weight: Font.Medium
+                                        font.pixelSize: calWidget.fontSize
+                                        font.weight: Font.DemiBold
                                         color: Colors.onSurfaceVariant
                                         horizontalAlignment: Text.AlignHCenter
                                     }
                                 }
                             }
 
-                            // Calendar Days Grid (5 rows of 7 = 35 items)
+                            // Calendar Days Grid (columns: 7, identical cellWidth & colSpacing)
                             Grid {
                                 columns: 7
-                                spacing: 4
+                                columnSpacing: calWidget.colSpacing
+                                rowSpacing: calWidget.rowSpacing
 
                                 Repeater {
-                                    model: 35
+                                    model: calWidget.totalCells
 
-                                    delegate: Rectangle {
-                                        width: 28
-                                        height: 23
-                                        radius: Theme.radiusFull
+                                    delegate: Item {
+                                        width: calWidget.cellWidth
+                                        height: calWidget.cellHeight
 
                                         readonly property bool isPrevMonth: index < calWidget.startOffset
                                         readonly property bool isNextMonth: index >= (calWidget.startOffset + calWidget.daysInMonth)
@@ -254,14 +271,22 @@ Item {
 
                                         readonly property bool isToday: isCurrMonth && (dayNum === calWidget.currDay)
 
-                                        color: isToday ? Colors.primary : "transparent"
+                                        // Today highlight pill/circle
+                                        Rectangle {
+                                            anchors.centerIn: parent
+                                            width: 32
+                                            height: 26
+                                            radius: 13
+                                            visible: isToday
+                                            color: Colors.primary
+                                        }
 
                                         Text {
                                             anchors.centerIn: parent
                                             text: dayNum
                                             font.family: Theme.fontFamily
-                                            font.pixelSize: 11
-                                            font.weight: isToday ? Font.Bold : Font.Normal
+                                            font.pixelSize: calWidget.fontSize
+                                            font.weight: isToday ? Font.Bold : (isCurrMonth ? Font.Medium : Font.Normal)
                                             color: isToday ? Colors.textOnPrimary : (isCurrMonth ? Colors.textOnSurface : Qt.alpha(Colors.textOnSurfaceVariant, 0.35))
                                         }
                                     }
@@ -315,45 +340,29 @@ Item {
             Layout.preferredWidth: 215
             Layout.fillHeight: true
             radius: Theme.radiusGlassCard
-            color: Colors.glassCardVibrant
             clip: true
 
             readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
                 (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
 
             // Visualizer Switcher Pill Button (Top-Right of Media Card)
-            Rectangle {
+            LiquidGlassButton {
+                id: vizSwitchBtn
                 anchors.top: parent.top
                 anchors.right: parent.right
                 anchors.topMargin: 8
                 anchors.rightMargin: 8
                 z: 50
-                width: 24
-                height: 24
-                radius: 12
-                color: dashVizHover.containsMouse ? Qt.alpha(Colors.primary, 0.28) : Qt.alpha(Colors.surfaceContainerHigh, 0.85)
-                border.color: dashVizHover.containsMouse ? Colors.primary : Qt.alpha(Colors.outlineVariant, 0.4)
-                border.width: 1
-
-                Behavior on color { ColorAnimation { duration: 150 } }
-                Behavior on border.color { ColorAnimation { duration: 150 } }
-
-                MaterialIcon {
-                    anchors.centerIn: parent
-                    text: mediaCard.isSpeakerStyle ? "album" : "speaker"
-                    size: 14
-                    color: dashVizHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
-                }
-
-                MouseArea {
-                    id: dashVizHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
-                            Config.setMediaVisualizerStyle(mediaCard.isSpeakerStyle ? "radial" : "speaker");
-                        }
+                implicitWidth: 28
+                implicitHeight: 28
+                paddingHorizontal: 6
+                paddingVertical: 6
+                iconText: mediaCard.isSpeakerStyle ? "album" : "speaker"
+                iconSize: 14
+                elevation: 4
+                onClicked: {
+                    if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
+                        Config.setMediaVisualizerStyle(mediaCard.isSpeakerStyle ? "radial" : "speaker");
                     }
                 }
             }
@@ -555,26 +564,42 @@ Item {
                     Layout.alignment: Qt.AlignHCenter
                     spacing: 8
 
-                    PillButton {
+                    LiquidGlassButton {
+                        id: mediaPrevBtn
                         iconText: "skip_previous"
                         iconSize: 15
                         implicitWidth: 34
                         implicitHeight: 34
+                        paddingHorizontal: 8
+                        paddingVertical: 8
+                        elevation: 4
+                        interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true
+                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true) ? 1.0 : 0.45
                         onClicked: MprisMedia.previous()
                     }
-                    PillButton {
-                        iconText: MprisMedia.isPlaying ? "pause" : "play_arrow"
+                    LiquidGlassButton {
+                        id: mediaPlayBtn
+                        iconText: (typeof MprisMedia !== "undefined" && MprisMedia.isPlaying) ? "pause" : "play_arrow"
                         iconSize: 18
-                        active: true
-                        implicitWidth: 40
-                        implicitHeight: 40
+                        isPrimary: true
+                        implicitWidth: 42
+                        implicitHeight: 42
+                        paddingHorizontal: 10
+                        paddingVertical: 10
+                        elevation: 6
                         onClicked: MprisMedia.togglePlay()
                     }
-                    PillButton {
+                    LiquidGlassButton {
+                        id: mediaNextBtn
                         iconText: "skip_next"
                         iconSize: 15
                         implicitWidth: 34
                         implicitHeight: 34
+                        paddingHorizontal: 8
+                        paddingVertical: 8
+                        elevation: 4
+                        interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true
+                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true) ? 1.0 : 0.45
                         onClicked: MprisMedia.next()
                     }
                 }

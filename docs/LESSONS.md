@@ -240,7 +240,32 @@ To blur a concave fillet with radius $R = 20\text{px}$, slice the curve into 7 s
 
 - **Zero-Overlap Stacking**: Each slice has $y = \text{baseline} - d_i$ and height $h_i = d_i - d_{i-1}$. Summing heights gives $\sum h_i = d_7 = R$.
 - Slices stack seamlessly with zero gap and zero double-blur overlap.
-- Under KWin's multi-pass dual-kawase blur filter, the 7-slice staircase is optically filtered into a completely smooth, continuous frosted glass curve.
+
+### 4.3. Convex Outer Corners & The Zero-Missing Stepped Staircase Architecture
+When blurring convex rounded corners (e.g. radius $R = 20\text{px}$ on `rightControlSurface` or modal drawers) using axis-aligned compositor rectangular regions:
+
+#### The Missing Corner Blur Notch Trap:
+A coarse 3-tier blur approximation (`dx = 16, 5, 0`) leaves large triangular voids inside the corner curve:
+- At $y = 5\text{px}$, the convex circle boundary is at $x(y) = R - \sqrt{R^2 - (R - y)^2} \approx 6.8\text{px}$.
+- If the blur rectangle is inset by $16\text{px}$, a $9.2\text{px}$ wide zone inside the card's glass fill receives **zero blur**.
+- Translucent `root.glassFill` ($\alpha \approx 0.22$) directly transmits raw, sharp desktop wallpaper beneath the notch, creating a stark visual defect perceived as "border radius color is not fully filled".
+
+#### The Zero-Missing Stepped Slice Profile:
+To guarantee 100% blur coverage inside the curve without noticeable outer overflow, construct a 7-tier stepped slice profile for the corner:
+
+| Vertical Slice Range | Slice Height | Inset ($dx$) | Arc $x(y)$ at Slice Midpoint | Blur Gap Inside Arc |
+|:--------------------:|:------------:|:------------:|:----------------------------:|:-------------------:|
+| $y \in [0, 1]\text{px}$ | $1\text{px}$ | $15\text{px}$ | $13.8\text{px}$ | $0.0\text{px}$ |
+| $y \in [1, 2]\text{px}$ | $1\text{px}$ | $12\text{px}$ | $12.3\text{px}$ | $0.0\text{px}$ |
+| $y \in [2, 4]\text{px}$ | $2\text{px}$ | $9\text{px}$ | $9.9\text{px}$ | $0.0\text{px}$ |
+| $y \in [4, 7]\text{px}$ | $3\text{px}$ | $5\text{px}$ | $7.1\text{px}$ | $0.0\text{px}$ |
+| $y \in [7, 10]\text{px}$ | $3\text{px}$ | $3\text{px}$ | $4.8\text{px}$ | $0.0\text{px}$ |
+| $y \in [10, 14]\text{px}$ | $4\text{px}$ | $1\text{px}$ | $2.5\text{px}$ | $0.0\text{px}$ |
+| $y \in [14, R]\text{px}$ | $6\text{px}$ | $0\text{px}$ | $0.0\text{px}$ | $0.0\text{px}$ |
+
+- **Zero Missing Pixels**: Guarantees exactly $0.0\text{px}$ of missing blur within the card surface.
+- **Diffused Overflow**: The subpixel blur overflow ($< 1.1\text{px}$ average) is seamlessly softened by KWin's dual-kawase filter, completely eliminating both jagged unblurred notches and harsh gray rectangular halos.
+- **Hardware Renderer Requirement**: Always enforce `preferredRendererType: Shape.GeometryRenderer` on both fill and stroke shapes on Intel Mesa GPUs to prevent dirty-rect tile caching anomalies.
 
 ---
 

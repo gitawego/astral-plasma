@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import "../theme"
@@ -204,43 +205,130 @@ PanelWindow {
         }
 
         // Fused Bottom Popout (when open & fused to bottom border)
-        Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 16) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.currentPopW : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, (root.height - fusedBottomPopoutWrapper.y) - 16) : 0
-        }
+        // Top-right convex corner slices (when fused to bottom)
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
             y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? fusedBottomPopoutWrapper.y : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 16) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 16 : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 15) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 1 : 0
         }
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 5) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 1) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 12) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 1 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 2) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 9) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 2 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 4) : 0
             width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 5) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 11 : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 3 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 7) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 3) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 3 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 10) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 1) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 4 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 14) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.currentPopW : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, (root.height - fusedBottomPopoutWrapper.y) - 14) : 0
         }
 
         // Floating Bottom Popout (when open & floating)
-        Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 16) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.currentPopW : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, fusedBottomPopoutWrapper.height - 32) : 0
-        }
+        // Top-right convex corner slices (when floating)
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
             y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? fusedBottomPopoutWrapper.y : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 16) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? fusedBottomPopoutWrapper.height : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 15) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 1 : 0
         }
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 5) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 1) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 12) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 1 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 2) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 9) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 2 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 4) : 0
             width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 5) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, fusedBottomPopoutWrapper.height - 10) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 3 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 7) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 3) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 3 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 10) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 1) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 4 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 14) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.currentPopW : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, fusedBottomPopoutWrapper.height - 28) : 0
+        }
+        // Bottom-right convex corner slices (when floating)
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 14) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 1) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 4 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 10) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 3) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 3 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 7) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 5) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 3 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 4) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 9) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 2 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 2) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 12) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 1 : 0
+        }
+        Region {
+            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 1) : 0
+            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 15) : 0
+            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 1 : 0
         }
 
         // Bottom Popout Top Shoulder Fillet (Frosted Glass Blur)
@@ -290,43 +378,43 @@ PanelWindow {
         // Bottom Popout Bottom Shoulder Fillet (Frosted Glass Blur, when floating)
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD1 - root.filletH1) : 0
             width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW1) : 0
             height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH1 : 0
         }
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD1) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD2 - root.filletH2) : 0
             width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW2) : 0
             height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH2 : 0
         }
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD2) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD3 - root.filletH3) : 0
             width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW3) : 0
             height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH3 : 0
         }
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD3) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD4 - root.filletH4) : 0
             width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW4) : 0
             height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH4 : 0
         }
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD4) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD5 - root.filletH5) : 0
             width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW5) : 0
             height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH5 : 0
         }
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD5) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD6 - root.filletH6) : 0
             width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW6) : 0
             height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH6 : 0
         }
         Region {
             x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD6) : 0
+            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD7 - root.filletH7) : 0
             width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW7) : 0
             height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH7 : 0
         }
@@ -381,6 +469,211 @@ PanelWindow {
             y: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardY : (appContextMenu.menuCardVisible ? appContextMenu.menuCardY : 0)
             width: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardW : (appContextMenu.menuCardVisible ? appContextMenu.menuCardW : 0)
             height: trayContextMenu.menuCardVisible ? trayContextMenu.menuCardH : (appContextMenu.menuCardVisible ? appContextMenu.menuCardH : 0)
+        }
+
+        // Right Edge Volume/Brightness Control (when open) - Precision Stepped Blur Body
+        // Top-left convex corner slices
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 15))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlY : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 15) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 1 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 12))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 1) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 12) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 1 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 9))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 2) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 9) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 2 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 5))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 4) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 5) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 3 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 3))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 7) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 3) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 3 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 1))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 10) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 1) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 4 : 0
+        }
+        // Middle full-width body
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - root.currentRightW)
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 14) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.currentRightW + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.max(0, root.rightControlH - 28) : 0
+        }
+        // Bottom-left convex corner slices
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 1))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 14) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 1) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 4 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 3))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 10) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 3) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 3 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 5))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 7) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 5) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 3 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 9))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 4) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 9) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 2 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 12))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 2) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 12) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 1 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001
+                ? (root.width - root.borderT - (root.currentRightW - 15))
+                : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 1) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 15) + root.borderT) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 1 : 0
+        }
+
+        // Right Edge Control Top Shoulder Fillet (Frosted Glass Stepped Slices)
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW1)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD1) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW1) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH1 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW2)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD2) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW2) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH2 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW3)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD3) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW3) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH3 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW4)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD4) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW4) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH4 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW5)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD5) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW5) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH5 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW6)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD6) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW6) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH6 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW7)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD7) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW7) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH7 : 0
+        }
+
+        // Right Edge Control Bottom Shoulder Fillet (Frosted Glass Stepped Slices)
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW1)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD1 - root.filletH1) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW1) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH1 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW2)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD2 - root.filletH2) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW2) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH2 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW3)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD3 - root.filletH3) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW3) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH3 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW4)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD4 - root.filletH4) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW4) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH4 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW5)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD5 - root.filletH5) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW5) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH5 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW6)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD6 - root.filletH6) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW6) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH6 : 0
+        }
+        Region {
+            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW7)) : 0
+            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD7 - root.filletH7) : 0
+            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW7) : 0
+            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH7 : 0
+        }
+
+        // System Notifications Popup (when visible, including shoulder fillets)
+        Region {
+            x: (notifPopup.visible && !notifPopup.isDismissed) ? Math.max(0, root.width - notifPopup.width - root.filletR) : 0
+            y: 0
+            width: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.width + root.filletR) : 0
+            height: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.height + root.filletR) : 0
         }
     }
 
@@ -439,15 +732,7 @@ PanelWindow {
     // Status drawers originating from bottom dock group (Power, Battery/Profiles) or near bottom
     // clamp flush to the bottom border (root.height - root.borderT - root.popoutH) with zero gap.
     readonly property bool isPopoutFusedBottom: {
-        if (Config.bottomPopoutMode === "power" || Config.bottomPopoutMode === "battery" || Config.bottomPopoutMode === "default") {
-            return true;
-        }
-        if (Config.bottomPopoutMode === "app") {
-            return false;
-        }
-        let targetCenter = Config.popoutTargetY;
-        if (targetCenter <= 0) return true;
-        return (targetCenter >= root.height - root.borderT - 180) || ((targetCenter + root.popoutH / 2) >= (root.height - root.borderT - 2));
+        return Config.bottomPopoutMode === "power" || Config.bottomPopoutMode === "battery" || Config.bottomPopoutMode === "default";
     }
 
     readonly property real popoutHeaderCenterY: {
@@ -466,13 +751,16 @@ PanelWindow {
             return root.height - root.borderT - root.popoutH;
         }
         let targetCenter = Config.popoutTargetY;
+        if (targetCenter <= 50) {
+            return Math.round(root.height / 2 - root.popoutH / 2);
+        }
         // For app and tray drawers, anchor the drawer header icon to the dock item center so both icons align on the exact same line.
         const headerOffsetY = (Config.bottomPopoutMode === "app" || Config.bottomPopoutMode === "tray")
             ? root.popoutHeaderCenterY
             : (root.popoutH / 2);
         const desiredY = targetCenter - headerOffsetY;
-        const minY = root.borderT;
-        const maxY = root.height - root.borderT - root.popoutH;
+        const minY = root.borderT + 40;
+        const maxY = root.height - root.borderT - root.popoutH - 20;
         return Math.max(minY, Math.min(maxY, desiredY));
     }
 
@@ -509,6 +797,7 @@ PanelWindow {
 
     readonly property real fusedProgress: isFusedToBottom ? 1.0 : 0.0
     readonly property color borderColor: Colors.glassBorderSpecular
+    readonly property color glassFill: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.06, 0.08, 0.12, 0.70)
 
     Component.onCompleted: {
         if (Config.debugMode) {
@@ -616,27 +905,20 @@ PanelWindow {
             height: dropdownContainer.offsetProgress > 0.001 ? (root.currentDropH + 20) : 0
         }
 
-        // Fused Bottom Popout (when open)
-        Region {
-            x: root.dockW
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.y : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.currentPopW : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? fusedBottomPopoutWrapper.height : 0
-        }
 
-        // Right Edge Volume/Brightness Control (when open)
+        // Right Edge Volume/Brightness Control (when open, including shoulder fillets)
         Region {
             x: rightEdgeControlWrapper.offsetProgress > 0.001
                 ? (root.width - root.borderT - root.rightControlW * rightEdgeControlWrapper.offsetProgress)
                 : 0
             y: rightEdgeControlWrapper.offsetProgress > 0.001
-                ? root.rightControlY
+                ? (root.rightControlY - root.filletR * rightEdgeControlWrapper.offsetProgress)
                 : 0
             width: rightEdgeControlWrapper.offsetProgress > 0.001
                 ? (root.rightControlW * rightEdgeControlWrapper.offsetProgress + root.borderT)
                 : 0
             height: rightEdgeControlWrapper.offsetProgress > 0.001
-                ? root.rightControlH
+                ? (root.rightControlH + root.filletR * 2 * rightEdgeControlWrapper.offsetProgress)
                 : 0
         }
 
@@ -660,6 +942,7 @@ PanelWindow {
     // 1. DESKTOP BORDER FRAME & INNER FILLETS
     UnifiedFrame {
         id: desktopFrame
+        enablePopoutSurface: false
         dockW: root.dockW
         borderT: root.borderT
         filletR: root.filletR
@@ -797,7 +1080,7 @@ PanelWindow {
         width: root.currentPopW
         height: fusedPopout.implicitHeight
         visible: offsetProgress > 0.001
-        clip: true
+        clip: false
 
         property real offsetProgress: Config.bottomPopoutVisible ? 1.0 : 0.0
 
@@ -812,18 +1095,15 @@ PanelWindow {
         Behavior on y {
             enabled: fusedBottomPopoutWrapper.offsetProgress > 0.01
             NumberAnimation {
-                duration: Theme.animExpressiveDefaultSpatial
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                duration: 140
+                easing.type: Easing.OutCubic
             }
         }
 
         Behavior on height {
-            enabled: fusedBottomPopoutWrapper.offsetProgress > 0.01
             NumberAnimation {
-                duration: Theme.animExpressiveDefaultSpatial
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                duration: 160
+                easing.type: Easing.OutCubic
             }
         }
 
@@ -838,16 +1118,274 @@ PanelWindow {
             }
         }
 
+        // Encapsulated Glass Surface & Fillets (Unified visual hierarchy with content)
+        Item {
+            id: popoutSurface
+            readonly property real filletFactor: Math.max(0.0, Math.min(1.0, fusedBottomPopoutWrapper.width / Math.max(1, root.filletR)))
+            readonly property real currentFilletR: root.filletR * filletFactor
+            readonly property real currentModalR: root.filletR * filletFactor
+            readonly property real topR: root.filletR
+            readonly property real botR: (root.fusedProgress > 0.5) ? 0 : root.filletR
+            readonly property real effectiveR: (root.fusedProgress > 0.5) ? 0 : currentModalR
+            readonly property real bodyW: fusedBottomPopoutWrapper.width + 1
+            readonly property real fusedBottomFilletR: (root.fusedProgress > 0.5) ? currentFilletR : 0
+
+            x: -1
+            y: -topR
+            width: bodyW + fusedBottomFilletR
+            height: fusedBottomPopoutWrapper.height + topR + botR
+            visible: fusedBottomPopoutWrapper.offsetProgress > 0.001
+            opacity: fusedBottomPopoutWrapper.offsetProgress
+
+            // 1A. Solid Glass Surface Fill Shape (Floating drawer with inverted shoulder fillets)
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.GeometryRenderer
+                visible: popoutSurface.filletFactor > 0.01 && root.fusedProgress <= 0.5
+
+                ShapePath {
+                    fillColor: root.glassFill
+                    strokeColor: "transparent"
+                    strokeWidth: 0
+
+                    startX: 0
+                    startY: 0
+
+                    PathLine { x: 0; y: 0 }
+                    PathArc {
+                        x: popoutSurface.currentFilletR
+                        y: popoutSurface.topR
+                        radiusX: Math.max(0.1, popoutSurface.currentFilletR)
+                        radiusY: Math.max(0.1, popoutSurface.topR)
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: Math.max(popoutSurface.currentFilletR, popoutSurface.bodyW - popoutSurface.currentModalR)
+                        y: popoutSurface.topR
+                    }
+                    PathArc {
+                        x: popoutSurface.bodyW
+                        y: popoutSurface.topR + popoutSurface.currentModalR
+                        radiusX: Math.max(0.1, popoutSurface.currentModalR)
+                        radiusY: Math.max(0.1, popoutSurface.currentModalR)
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: popoutSurface.bodyW
+                        y: Math.max(popoutSurface.topR + popoutSurface.currentModalR, popoutSurface.topR + fusedBottomPopoutWrapper.height - popoutSurface.currentModalR)
+                    }
+                    PathArc {
+                        x: Math.max(popoutSurface.currentFilletR, popoutSurface.bodyW - popoutSurface.currentModalR)
+                        y: popoutSurface.topR + fusedBottomPopoutWrapper.height
+                        radiusX: Math.max(0.1, popoutSurface.currentModalR)
+                        radiusY: Math.max(0.1, popoutSurface.currentModalR)
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: popoutSurface.currentFilletR
+                        y: popoutSurface.topR + fusedBottomPopoutWrapper.height
+                    }
+                    PathArc {
+                        x: 0
+                        y: popoutSurface.height
+                        radiusX: Math.max(0.1, popoutSurface.botR)
+                        radiusY: Math.max(0.1, popoutSurface.botR)
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: 1
+                        y: popoutSurface.height - popoutSurface.botR
+                    }
+                    PathLine {
+                        x: 1
+                        y: popoutSurface.topR
+                    }
+                    PathLine {
+                        x: 0
+                        y: 0
+                    }
+                }
+            }
+
+            // 1B. Solid Glass Surface Fill Shape (Bottom-fused drawer)
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.GeometryRenderer
+                visible: popoutSurface.filletFactor > 0.01 && root.fusedProgress > 0.5
+
+                ShapePath {
+                    fillColor: root.glassFill
+                    strokeColor: "transparent"
+                    strokeWidth: 0
+
+                    startX: 0
+                    startY: 0
+
+                    PathLine { x: 0; y: 0 }
+                    PathArc {
+                        x: popoutSurface.currentFilletR
+                        y: popoutSurface.topR
+                        radiusX: Math.max(0.1, popoutSurface.currentFilletR)
+                        radiusY: Math.max(0.1, popoutSurface.topR)
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: Math.max(popoutSurface.currentFilletR, popoutSurface.bodyW - popoutSurface.currentModalR)
+                        y: popoutSurface.topR
+                    }
+                    PathArc {
+                        x: popoutSurface.bodyW
+                        y: popoutSurface.topR + popoutSurface.currentModalR
+                        radiusX: Math.max(0.1, popoutSurface.currentModalR)
+                        radiusY: Math.max(0.1, popoutSurface.currentModalR)
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: popoutSurface.bodyW
+                        y: popoutSurface.height - popoutSurface.fusedBottomFilletR
+                    }
+                    PathArc {
+                        x: popoutSurface.bodyW + popoutSurface.fusedBottomFilletR
+                        y: popoutSurface.height
+                        radiusX: Math.max(0.1, popoutSurface.fusedBottomFilletR)
+                        radiusY: Math.max(0.1, popoutSurface.fusedBottomFilletR)
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: 1
+                        y: popoutSurface.height
+                    }
+                    PathLine {
+                        x: 1
+                        y: popoutSurface.topR
+                    }
+                    PathLine {
+                        x: 0
+                        y: 0
+                    }
+                }
+            }
+
+            // 2A. Floating Continuous 1px Perimeter Stroke (Inverted shoulder fillets + outer rounded corners)
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.GeometryRenderer
+                visible: popoutSurface.filletFactor > 0.01 && root.fusedProgress <= 0.5
+
+                ShapePath {
+                    fillColor: "transparent"
+                    strokeColor: root.borderColor
+                    strokeWidth: 1
+                    capStyle: ShapePath.FlatCap
+
+                    startX: 0
+                    startY: 0
+
+                    PathArc {
+                        x: popoutSurface.currentFilletR
+                        y: popoutSurface.topR
+                        radiusX: Math.max(0.1, popoutSurface.currentFilletR)
+                        radiusY: Math.max(0.1, popoutSurface.topR)
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: Math.max(popoutSurface.currentFilletR, popoutSurface.bodyW - popoutSurface.currentModalR)
+                        y: popoutSurface.topR
+                    }
+                    PathArc {
+                        x: popoutSurface.bodyW
+                        y: popoutSurface.topR + popoutSurface.currentModalR
+                        radiusX: Math.max(0.1, popoutSurface.currentModalR)
+                        radiusY: Math.max(0.1, popoutSurface.currentModalR)
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: popoutSurface.bodyW
+                        y: Math.max(popoutSurface.topR + popoutSurface.currentModalR, popoutSurface.topR + fusedBottomPopoutWrapper.height - popoutSurface.currentModalR)
+                    }
+                    PathArc {
+                        x: Math.max(popoutSurface.currentFilletR, popoutSurface.bodyW - popoutSurface.currentModalR)
+                        y: popoutSurface.topR + fusedBottomPopoutWrapper.height
+                        radiusX: Math.max(0.1, popoutSurface.currentModalR)
+                        radiusY: Math.max(0.1, popoutSurface.currentModalR)
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: popoutSurface.currentFilletR
+                        y: popoutSurface.topR + fusedBottomPopoutWrapper.height
+                    }
+                    PathArc {
+                        x: 0
+                        y: popoutSurface.height
+                        radiusX: Math.max(0.1, popoutSurface.botR)
+                        radiusY: Math.max(0.1, popoutSurface.botR)
+                        direction: PathArc.Counterclockwise
+                    }
+                }
+            }
+
+            // 2B. Bottom-Fused Continuous 1px Perimeter Stroke (Top shoulder fillet + top-right corner + bottom-right concave fillet)
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.GeometryRenderer
+                visible: popoutSurface.filletFactor > 0.01 && root.fusedProgress > 0.5
+
+                ShapePath {
+                    fillColor: "transparent"
+                    strokeColor: root.borderColor
+                    strokeWidth: 1
+                    capStyle: ShapePath.FlatCap
+
+                    startX: 0
+                    startY: 0
+
+                    PathArc {
+                        x: popoutSurface.currentFilletR
+                        y: popoutSurface.topR
+                        radiusX: Math.max(0.1, popoutSurface.currentFilletR)
+                        radiusY: Math.max(0.1, popoutSurface.topR)
+                        direction: PathArc.Counterclockwise
+                    }
+                    PathLine {
+                        x: Math.max(popoutSurface.currentFilletR, popoutSurface.bodyW - popoutSurface.currentModalR)
+                        y: popoutSurface.topR
+                    }
+                    PathArc {
+                        x: popoutSurface.bodyW
+                        y: popoutSurface.topR + popoutSurface.currentModalR
+                        radiusX: Math.max(0.1, popoutSurface.currentModalR)
+                        radiusY: Math.max(0.1, popoutSurface.currentModalR)
+                        direction: PathArc.Clockwise
+                    }
+                    PathLine {
+                        x: popoutSurface.bodyW
+                        y: popoutSurface.height - popoutSurface.fusedBottomFilletR
+                    }
+                    PathArc {
+                        x: popoutSurface.bodyW + popoutSurface.fusedBottomFilletR
+                        y: popoutSurface.height
+                        radiusX: Math.max(0.1, popoutSurface.fusedBottomFilletR)
+                        radiusY: Math.max(0.1, popoutSurface.fusedBottomFilletR)
+                        direction: PathArc.Counterclockwise
+                    }
+                }
+            }
+        }
+
         Item {
             id: popoutContentContainer
             anchors.left: parent.left
-            anchors.leftMargin: (-fusedPopout.popWidth - 5) * (1.0 - fusedBottomPopoutWrapper.offsetProgress)
             anchors.top: parent.top
-            width: fusedPopout.popWidth
-            height: fusedPopout.implicitHeight
+            width: fusedBottomPopoutWrapper.width
+            height: parent.height
+            clip: true
+            opacity: fusedBottomPopoutWrapper.offsetProgress
 
             FusedBottomPopout {
                 id: fusedPopout
+                anchors.left: parent.left
+                anchors.top: parent.top
+                width: fusedPopout.popWidth
                 mode: Config.bottomPopoutMode
             }
         }

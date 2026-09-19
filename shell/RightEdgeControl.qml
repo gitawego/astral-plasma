@@ -27,6 +27,8 @@ Item {
 
     readonly property real currentBrightness: (typeof BrightnessService !== "undefined" && BrightnessService) ? (BrightnessService.normalized ?? 1.0) : 1.0
 
+    readonly property alias cardItem: sliderCard
+
     HoverHandler {
         id: controlHover
         onHoveredChanged: {
@@ -48,6 +50,16 @@ Item {
                 PipewireAudio.setVolume(Math.max(0.0, Math.min(1.0, root.currentVolume + step)));
             }
         }
+    }
+
+    // Inner Liquid Glass Substrate Card Layer (Elevated frosted glass plate behind sliders)
+    LiquidGlassCard {
+        id: sliderCard
+        anchors.centerIn: parent
+        width: 48
+        height: 256
+        radius: 24
+        elevation: 4
     }
 
     Column {

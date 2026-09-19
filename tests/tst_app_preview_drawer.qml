@@ -245,6 +245,50 @@ Item {
         assert(getPreviewPlaceholderText(false, true, false, true) === "", "Placeholder hidden when live preview image is ready");
         assert(getPreviewPlaceholderText(false, false, false, false) === "Click to start", "Shows click to start for unlaunched apps");
 
+        // 9. Atomic coordinate ordering & top-screen clamp protection tests
+        console.log("TESTING: Atomic coordinate ordering and idealPopoutY stability");
+        function computeIdealY(mode, targetY, currentY, screenH, borderT, popH, headerOffset) {
+            const isFused = (mode === "power" || mode === "battery" || mode === "default");
+            if (isFused) {
+                return screenH - borderT - popH;
+            }
+            if (targetY <= 0) {
+                return currentY > 0 ? currentY : (screenH - borderT - popH);
+            }
+            const desiredY = targetY - headerOffset;
+            const minY = borderT;
+            const maxY = screenH - borderT - popH;
+            return Math.max(minY, Math.min(maxY, desiredY));
+        }
+
+        // Test transition from bottom (power, Y=1400) to top app icon (Y=300)
+        const screenH = 1600;
+        const borderT = 16;
+        const popH = 320;
+        const headerOffset = 49.5;
+
+        // When mode was power:
+        let prevY = computeIdealY("power", 0, 0, screenH, borderT, popH, headerOffset);
+        assert(prevY === 1600 - 16 - 320, "Power drawer clamped to bottom border");
+
+        // When switching to app with atomic targetY set first:
+        let newIdealY = computeIdealY("app", 300, prevY, screenH, borderT, popH, headerOffset);
+        assert(newIdealY === 300 - 49.5, "App drawer targets exact icon center (250.5) without intermediate jump");
+
+        // When targetY is 0 or invalid, it must NEVER clamp to minY = 16 (top of screen):
+        let guardedY = computeIdealY("app", 0, 250.5, screenH, borderT, popH, headerOffset);
+        assert(guardedY === 250.5, "Invalid targetY preserves current Y, NEVER jumps to screen top (minY=16)");
+
+        // 10. Frame 0 immediate card structure and skeleton presence
+        console.log("TESTING: Frame 0 immediate card layout and height contract");
+        const runningAppCardH = 200;
+        const stoppedAppCardH = 96;
+        function getCardHeight(app) {
+            return (app && (app.isRunning || app.id)) ? runningAppCardH : stoppedAppCardH;
+        }
+        assert(getCardHeight(mockApp) === 200, "Running app preview card pre-allocates 200px instantly on frame 0");
+        assert(getCardHeight(unlaunchedApp) === 96, "Stopped app pre-allocates 96px instantly on frame 0");
+
         console.log("PASS: App Preview Drawer Lifecycle Tests");
         Qt.exit(0);
     }

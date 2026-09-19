@@ -60,6 +60,7 @@ Item {
 
     readonly property alias fusedPanel: panel
     readonly property alias autoCloseTimer: autoCloseTimer
+    readonly property alias cardItem: notifCard
 
     signal closed()
     signal actionInvoked(string actionId)
@@ -125,6 +126,18 @@ Item {
 
         HoverHandler {
             id: hoverHandler
+        }
+
+        // Inner Liquid Glass Substrate Card Layer (Sculpted frosted glass plate behind notification)
+        LiquidGlassCard {
+            id: notifCard
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8 + root.borderThickness
+            anchors.topMargin: root.borderThickness + 2
+            anchors.bottomMargin: 6
+            radius: 14
+            elevation: 4
         }
 
         Item {

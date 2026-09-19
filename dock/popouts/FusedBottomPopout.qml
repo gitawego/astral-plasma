@@ -63,21 +63,8 @@ Item {
     implicitWidth: popWidth
     implicitHeight: popCard.implicitHeight
 
-    readonly property real appIconCenterY: {
-        if (typeof appHeaderIcon !== "undefined" && appHeaderIcon) {
-            const mapped = appHeaderIcon.mapToItem(root, 0, appHeaderIcon.height / 2);
-            if (mapped && mapped.y > 0) return mapped.y;
-        }
-        return 49.5;
-    }
-
-    readonly property real trayIconCenterY: {
-        if (typeof trayHeaderIcon !== "undefined" && trayHeaderIcon) {
-            const mapped = trayHeaderIcon.mapToItem(root, 0, trayHeaderIcon.height / 2);
-            if (mapped && mapped.y > 0) return mapped.y;
-        }
-        return 49.5;
-    }
+    readonly property real appIconCenterY: 49.5
+    readonly property real trayIconCenterY: 49.5
 
     function openTraySubmenu(indexOrTitle) {
         if (!traySection) return false;
@@ -1121,13 +1108,6 @@ Item {
                 readonly property bool isCurrent: root.mode === "app"
                 visible: isCurrent
                 opacity: isCurrent ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: 220
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
-                    }
-                }
 
                 readonly property var currentApp: WindowService.activePreviewApp
                 readonly property bool isRunning: currentApp ? (Boolean(currentApp.isRunning) || Boolean(currentApp.id)) : false
@@ -1217,14 +1197,6 @@ Item {
                     border.color: (appSection.currentApp && appSection.currentApp.isActive) ? Colors.primary : Theme.borderSubtle
                     border.width: (appSection.currentApp && appSection.currentApp.isActive) ? 1.5 : 1
                     clip: true
-
-                    Behavior on implicitHeight {
-                        NumberAnimation {
-                            duration: Theme.animExpressiveDefaultSpatial
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
-                        }
-                    }
 
                     MouseArea {
                         anchors.fill: parent
@@ -1394,32 +1366,60 @@ Item {
                                 }
                             }
 
-                            // Fallback placeholder / loading indicator
-                            RowLayout {
+                            // Fallback placeholder / immediate skeleton preview card
+                            ColumnLayout {
                                 anchors.centerIn: parent
                                 spacing: 8
                                 visible: !livePreviewBufContainer.hasImage
 
-                                MaterialIcon {
-                                    text: (appSection.currentApp && appSection.isRunning)
-                                        ? (WindowService.activePreviewLoading ? "sync" : "picture_in_picture")
-                                        : "play_circle"
-                                    size: 18
-                                    color: (appSection.currentApp && appSection.currentApp.isActive) ? Colors.primary : Colors.textOnSurfaceVariant
+                                Item {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    Layout.preferredWidth: 44
+                                    Layout.preferredHeight: 44
+
+                                    Image {
+                                        anchors.fill: parent
+                                        source: Config.iconUrl(appSection.currentApp ? appSection.currentApp.iconName : "")
+                                        fillMode: Image.PreserveAspectFit
+                                        opacity: 0.85
+                                        visible: status === Image.Ready
+                                    }
+
+                                    MaterialIcon {
+                                        anchors.centerIn: parent
+                                        text: (appSection.currentApp && appSection.currentApp.materialIcon) ? appSection.currentApp.materialIcon : "desktop_windows"
+                                        size: 36
+                                        color: Colors.primary
+                                        opacity: 0.85
+                                        visible: !parent.children[0].visible
+                                    }
                                 }
 
-                                Text {
-                                    text: {
-                                        const app = appSection.currentApp;
-                                        if (!app) return "";
-                                        if (appSection.isRunning) {
-                                            return WindowService.activePreviewLoading ? "Capturing live preview..." : (app.isActive ? "Currently in focus" : "Running in background");
-                                        }
-                                        return "Click to start";
+                                RowLayout {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    spacing: 6
+
+                                    MaterialIcon {
+                                        text: (appSection.currentApp && appSection.isRunning)
+                                            ? (WindowService.activePreviewLoading ? "sync" : "picture_in_picture")
+                                            : "play_circle"
+                                        size: 15
+                                        color: (appSection.currentApp && appSection.currentApp.isActive) ? Colors.primary : Colors.textOnSurfaceVariant
                                     }
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSmall
-                                    color: Colors.textOnSurfaceVariant
+
+                                    Text {
+                                        text: {
+                                            const app = appSection.currentApp;
+                                            if (!app) return "";
+                                            if (appSection.isRunning) {
+                                                return WindowService.activePreviewLoading ? "Capturing live preview..." : (app.isActive ? "Currently in focus" : "Running in background");
+                                            }
+                                            return "Click to start";
+                                        }
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.fontSmall
+                                        color: Colors.textOnSurfaceVariant
+                                    }
                                 }
                             }
                         }

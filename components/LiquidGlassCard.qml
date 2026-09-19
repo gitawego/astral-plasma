@@ -11,26 +11,58 @@ Rectangle {
     property bool showCaustic: true
     property bool showBottomRim: true
     property bool showRefraction: true
+    property bool showShadow: true
+    property real elevation: 6
     property bool interactive: false
     property bool hovered: false
     property bool pressed: false
     property bool selected: false
     property int padding: 0
 
+    // Component exposure aliases for testing & introspection
+    readonly property alias topGlareItem: topGlare
+    readonly property alias subGlareItem: subGlare
+    readonly property alias bottomRimItem: bottomRim
+    readonly property alias shadowItem: ambientShadow
+    readonly property alias causticItem: causticGlow
+
     // Standard geometry and styling
     radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
     border.width: selected ? 1.5 : 1
     border.color: selected 
         ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
-        : (hovered ? specularColor : ((typeof Colors !== "undefined" && Colors.glassBorderSubtle) ? Colors.glassBorderSubtle : Qt.rgba(1, 1, 1, 0.12)))
+        : (hovered 
+            ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.70))
+            : ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Qt.alpha(Colors.glassBorderSpecular, Colors.isDarkMode ? 0.45 : 0.60) : Qt.rgba(1, 1, 1, 0.25)))
 
-    // Base liquid glass substrate tint (crystalline translucent glass plate allowing background content to shine through)
-    color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-        ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.14 : (root.hovered ? 0.10 : 0.06)), Qt.alpha(root.accentGlint, root.selected ? 0.18 : (root.hovered ? 0.12 : 0.08)))
-        : Qt.tint(Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.55 : (root.hovered ? 0.45 : 0.35)), Qt.alpha(root.accentGlint, root.selected ? 0.14 : (root.hovered ? 0.10 : 0.06)))
+    // Base liquid glass substrate tint (crystalline translucent glass plate matching Colors.glassCard, letting background content shine through)
+    color: (typeof Colors !== "undefined" && Colors.glassCard)
+        ? (root.selected ? Colors.glassCardActive : (root.hovered ? Colors.glassCardHover : Colors.glassCard))
+        : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+            ? Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.16 : (root.hovered ? 0.10 : 0.06))
+            : Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.60 : (root.hovered ? 0.50 : 0.40)))
 
     Behavior on color { ColorAnimation { duration: (typeof Theme !== "undefined") ? Theme.animExpressiveFastEffects : 150 } }
     Behavior on border.color { ColorAnimation { duration: (typeof Theme !== "undefined") ? Theme.animExpressiveFastEffects : 150 } }
+
+    // 0. Ambient Contact Drop Shadow (Provides authentic elevation & floating depth)
+    Rectangle {
+        id: ambientShadow
+        visible: root.showShadow
+        z: -1
+        anchors.fill: parent
+        anchors.topMargin: Math.max(1, Math.round(root.elevation * 0.35))
+        anchors.bottomMargin: -Math.max(2, Math.round(root.elevation * 0.45))
+        anchors.leftMargin: -Math.max(1, Math.round(root.elevation * 0.12))
+        anchors.rightMargin: -Math.max(1, Math.round(root.elevation * 0.12))
+        radius: root.radius
+        color: "transparent"
+        border.color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+            ? Qt.rgba(0.0, 0.0, 0.0, 0.15)
+            : Qt.rgba(0.0, 0.0, 0.0, 0.08)
+        border.width: Math.max(1, Math.round(root.elevation * 0.25))
+        opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.20 : 0.12
+    }
 
     // 1. Refractive Glass Gradient (Optical Depth: light gathering at top, crystalline depth at bottom)
     Rectangle {
@@ -44,11 +76,11 @@ Rectangle {
             GradientStop {
                 position: 0.0
                 color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.10), Qt.alpha(root.accentGlint, 0.08))
-                    : Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.40), Qt.alpha(root.accentGlint, 0.06))
+                    ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.08), Qt.alpha(root.accentGlint, 0.06))
+                    : Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.35), Qt.alpha(root.accentGlint, 0.06))
             }
             GradientStop {
-                position: 0.35
+                position: 0.40
                 color: "transparent"
             }
             GradientStop {
@@ -58,8 +90,8 @@ Rectangle {
             GradientStop {
                 position: 1.0
                 color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.rgba(0.0, 0.0, 0.0, 0.08)
-                    : Qt.rgba(1.0, 1.0, 1.0, 0.12)
+                    ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.04), Qt.alpha(root.accentGlint, 0.06))
+                    : Qt.rgba(1.0, 1.0, 1.0, 0.15)
             }
         }
     }
@@ -90,16 +122,18 @@ Rectangle {
         }
     }
 
-    // 3. Dual-Layer Top Specular Hairline Glare (Horizontal light catch along top curved bevel)
+    // 3. Dual-Layer Top Specular Hairline Glare (Horizontal light catch along flat top edge)
+    // NOTE: Must only be visible when parent has a flat top edge (parent.width > parent.radius * 2 + 8).
+    // leftMargin and rightMargin must be >= radius to prevent detached overhanging line artifacts on curved shoulders/pills!
     Rectangle {
         id: topGlare
-        visible: root.showSpecular && parent.width > 24
+        visible: root.showSpecular && (parent.width > (parent.radius * 2 + 8))
         anchors.top: parent.top
         anchors.topMargin: 0.5
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: Math.max(8, Math.min(parent.radius * 0.45, 28))
-        anchors.rightMargin: Math.max(8, Math.min(parent.radius * 0.45, 28))
+        anchors.leftMargin: Math.max(parent.radius + 2, 12)
+        anchors.rightMargin: Math.max(parent.radius + 2, 12)
         height: 1
         opacity: root.hovered ? 1.0 : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.78 : 0.90)
 
@@ -107,16 +141,16 @@ Rectangle {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: "transparent" }
             GradientStop {
-                position: 0.15
-                color: Qt.alpha(root.specularColor, 0.50)
+                position: 0.20
+                color: Qt.alpha(root.specularColor, 0.60)
             }
             GradientStop {
                 position: 0.50
-                color: root.specularColor
+                color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : "#FFFFFF"
             }
             GradientStop {
-                position: 0.85
-                color: Qt.alpha(root.specularColor, 0.50)
+                position: 0.80
+                color: Qt.alpha(root.specularColor, 0.60)
             }
             GradientStop { position: 1.0; color: "transparent" }
         }
@@ -125,13 +159,13 @@ Rectangle {
     // 3b. Secondary Inner Refraction Hairline (Simulates physical glass edge thickness)
     Rectangle {
         id: subGlare
-        visible: root.showSpecular && parent.width > 36
+        visible: root.showSpecular && (parent.width > (parent.radius * 2 + 16))
         anchors.top: parent.top
         anchors.topMargin: 1.5
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: Math.max(12, Math.min(parent.radius * 0.60, 36))
-        anchors.rightMargin: Math.max(12, Math.min(parent.radius * 0.60, 36))
+        anchors.leftMargin: Math.max(parent.radius + 4, 16)
+        anchors.rightMargin: Math.max(parent.radius + 4, 16)
         height: 0.5
         opacity: root.hovered ? 0.65 : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.35 : 0.50)
 
@@ -146,13 +180,13 @@ Rectangle {
     // 4. Bottom Inner Rim Reflection (Subtle reflection on the bottom edge)
     Rectangle {
         id: bottomRim
-        visible: root.showBottomRim && parent.width > 24
+        visible: root.showBottomRim && (parent.width > (parent.radius * 2 + 8))
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 0.5
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: Math.max(10, Math.min(parent.radius * 0.55, 32))
-        anchors.rightMargin: Math.max(10, Math.min(parent.radius * 0.55, 32))
+        anchors.leftMargin: Math.max(parent.radius + 2, 12)
+        anchors.rightMargin: Math.max(parent.radius + 2, 12)
         height: 1
         opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.25 : 0.40
 

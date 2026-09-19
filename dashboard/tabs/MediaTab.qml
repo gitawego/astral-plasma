@@ -64,38 +64,22 @@ Item {
                 }
 
                 // Visualizer Switcher Pill Button (Floating subtle toggle)
-                Rectangle {
+                LiquidGlassButton {
                     anchors.top: parent.top
                     anchors.right: parent.right
                     anchors.topMargin: 4
                     anchors.rightMargin: 4
                     z: 50
-                    width: 28
-                    height: 28
-                    radius: 14
-                    color: vizSwitchHover.containsMouse ? Qt.alpha(Colors.primary, 0.28) : Qt.alpha(Colors.surfaceContainerHigh, 0.85)
-                    border.color: vizSwitchHover.containsMouse ? Colors.primary : Qt.alpha(Colors.outlineVariant, 0.4)
-                    border.width: 1
-
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                    Behavior on border.color { ColorAnimation { duration: 150 } }
-
-                    MaterialIcon {
-                        anchors.centerIn: parent
-                        text: visualizerSlot.isSpeakerStyle ? "album" : "speaker"
-                        size: 16
-                        color: vizSwitchHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
-                    }
-
-                    MouseArea {
-                        id: vizSwitchHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
-                                Config.setMediaVisualizerStyle(visualizerSlot.isSpeakerStyle ? "radial" : "speaker");
-                            }
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    paddingHorizontal: 6
+                    paddingVertical: 6
+                    iconText: visualizerSlot.isSpeakerStyle ? "album" : "speaker"
+                    iconSize: 16
+                    elevation: 4
+                    onClicked: {
+                        if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
+                            Config.setMediaVisualizerStyle(visualizerSlot.isSpeakerStyle ? "radial" : "speaker");
                         }
                     }
                 }
@@ -150,88 +134,44 @@ Item {
                     spacing: Theme.spaceMedium
 
                     // Skip Previous
-                    Rectangle {
-                        width: 38
-                        height: 38
-                        radius: 19
-                        color: prevHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : Colors.surfaceContainerHigh
-                        border.color: prevHover.containsMouse ? Theme.borderSubtle : "transparent"
-                        border.width: 1
-                        scale: prevHover.pressed ? 0.92 : 1.0
-
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                        Behavior on scale { NumberAnimation { duration: 100 } }
-
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            text: "skip_previous"
-                            size: 20
-                            color: MprisMedia.canGoPrevious ? Colors.m3onSurface : Colors.onSurfaceVariant
-                        }
-
-                        MouseArea {
-                            id: prevHover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: MprisMedia.canGoPrevious ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: MprisMedia.previous()
-                        }
+                    LiquidGlassButton {
+                        implicitWidth: 38
+                        implicitHeight: 38
+                        paddingHorizontal: 8
+                        paddingVertical: 8
+                        iconText: "skip_previous"
+                        iconSize: 20
+                        elevation: 4
+                        interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true
+                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true) ? 1.0 : 0.45
+                        onClicked: MprisMedia.previous()
                     }
 
-                    // Play / Pause (Prominent Circular Primary Filled)
-                    Rectangle {
-                        width: 48
-                        height: 48
-                        radius: 24
-                        color: playHover.containsMouse ? Qt.lighter(Colors.primary, 1.1) : Colors.primary
-                        scale: playHover.pressed ? 0.93 : (playHover.containsMouse ? 1.04 : 1.0)
-
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
-
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            text: MprisMedia.isPlaying ? "pause" : "play_arrow"
-                            size: 26
-                            color: Colors.m3onPrimary
-                        }
-
-                        MouseArea {
-                            id: playHover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: MprisMedia.playPause()
-                        }
+                    // Play / Pause (Prominent Circular Primary Liquid Glass)
+                    LiquidGlassButton {
+                        implicitWidth: 48
+                        implicitHeight: 48
+                        paddingHorizontal: 10
+                        paddingVertical: 10
+                        isPrimary: true
+                        iconText: (typeof MprisMedia !== "undefined" && MprisMedia.isPlaying) ? "pause" : "play_arrow"
+                        iconSize: 26
+                        elevation: 8
+                        onClicked: MprisMedia.playPause()
                     }
 
                     // Skip Next
-                    Rectangle {
-                        width: 38
-                        height: 38
-                        radius: 19
-                        color: nextHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : Colors.surfaceContainerHigh
-                        border.color: nextHover.containsMouse ? Theme.borderSubtle : "transparent"
-                        border.width: 1
-                        scale: nextHover.pressed ? 0.92 : 1.0
-
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                        Behavior on scale { NumberAnimation { duration: 100 } }
-
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            text: "skip_next"
-                            size: 20
-                            color: MprisMedia.canGoNext ? Colors.m3onSurface : Colors.onSurfaceVariant
-                        }
-
-                        MouseArea {
-                            id: nextHover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: MprisMedia.canGoNext ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: MprisMedia.next()
-                        }
+                    LiquidGlassButton {
+                        implicitWidth: 38
+                        implicitHeight: 38
+                        paddingHorizontal: 8
+                        paddingVertical: 8
+                        iconText: "skip_next"
+                        iconSize: 20
+                        elevation: 4
+                        interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true
+                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true) ? 1.0 : 0.45
+                        onClicked: MprisMedia.next()
                     }
                 }
 
