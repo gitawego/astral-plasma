@@ -952,6 +952,41 @@ When selecting an input method like Rime from an SNI DBusMenu:
    - Rather than relying on a slow background polling loop (5000ms), `WatcherService` exposes `RefreshTray` over DBus.
    - When any menu item click completes, `qdbus6 org.caelestia.WindowWatcher /Watcher RefreshTray` is triggered immediately, refreshing the dock and popout within milliseconds.
 
+---
+
+### 11.7. Wayland Modal Dialog Input Masking & Authentic Liquid Glass Dialogs
+When presenting full-screen modal confirmation dialogs (Shutdown, Reboot, Log Out) on Wayland:
+1. **The Modal Input Mask Void Trap**:
+   - In Wayland Layer Shell (`PanelWindow`), pointer input is strictly limited to the bounding geometries declared in `mask: Region`.
+   - If a shell surface spans the entire display ($1920\times1080$ or $2560\times1600$) with a restricted input mask (dock + screen borders), rendering a centered modal dialog inside that surface without expanding the mask leaves the dialog in an **input void**.
+   - Pointer clicks fall straight through the dialog card and buttons to underlying application windows or the desktop.
+   - **Fix**: In `UnifiedShell.qml`, conditionally expand `mask: Region` to cover the full screen whenever a modal dialog is active:
+     ```qml
+     Region {
+         x: 0; y: 0
+         width: PowerService.confirmDialogVisible ? root.width : 0
+         height: PowerService.confirmDialogVisible ? root.height : 0
+     }
+     ```
+     This ensures all clicks on action buttons and the surrounding backdrop scrim are cleanly received, while collapsing to $0\times0$ when hidden.
+2. **Backdrop Compositor Dual-Kawase Blur Integration**:
+   - Modal dialogs should dynamically register their card bounding box (`cardX`, `cardY`, `cardW`, `cardH`) in `BackgroundEffect.blurRegion`.
+   - This routes the area behind the dialog card through KWin's dual-kawase blur filter, eliminating sharp wallpaper text and providing authentic frosted glass optics.
+3. **The 6-Layer Liquid Glass Modal Optical Stack**:
+   - Real glass is not an opaque flat box. A modal dialog in Caelestia must incorporate:
+     - **Layer 0**: Ambient Contact Drop Shadow (`MultiEffect` blur 48px, vertical offset 12px, `Colors.glassShadowColor`).
+     - **Layer 1**: Refractive Glass Substrate Gradient (`Qt.tint(rgba(1, 1, 1, 0.09), alpha(accent, 0.06))` to smoked absorption).
+     - **Layer 2**: Inner Caustic Ambient Glow (top 38px vertical gradient decaying from `alpha(accent, 0.22)` to transparent).
+     - **Layer 3**: Dual-Layer Top Specular Hairline Glare (1px horizontal reflection line along the top curved bevel).
+     - **Layer 4**: Bottom Inner Rim Catch (1px subtle reflection along the bottom curved edge).
+     - **Layer 5**: Perimeter Specular Bevel Stroke (`border.color: Colors.glassBorderSpecular`).
+     - **Layer 6**: Dynamic Specular Cursor Glint (220px soft radial highlight tracking cursor position).
+4. **Dynamic Perceptual Contrast for Semantic Buttons**:
+   - Session actions use diverse dynamic Material You accents: error red (`#BA1A1A` / `#D32F2F`) for Shut Down, primary violet (`#6B4FA0`) for Restart/Log Out.
+   - Relying on generic container tokens can cause dark navy text (`#003353`) on red backgrounds.
+   - By calculating perceptual luminance ($L = 0.299R + 0.587G + 0.114B$), buttons dynamically set foreground text and icons to `#FFFFFF` for dark/medium accents and `#1D1B20` for light accents, guaranteeing 100% WCAG AAA contrast ratio.
+
+
 
 
 

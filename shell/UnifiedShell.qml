@@ -675,6 +675,14 @@ PanelWindow {
             width: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.width + root.filletR) : 0
             height: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.height + root.filletR) : 0
         }
+
+        // Power Confirmation Dialog Card Blur (Translucent Liquid Glass Modal)
+        Region {
+            x: (typeof PowerService !== "undefined" && PowerService && PowerService.confirmDialogVisible && typeof powerConfirmDialog !== "undefined") ? powerConfirmDialog.cardX : 0
+            y: (typeof PowerService !== "undefined" && PowerService && PowerService.confirmDialogVisible && typeof powerConfirmDialog !== "undefined") ? powerConfirmDialog.cardY : 0
+            width: (typeof PowerService !== "undefined" && PowerService && PowerService.confirmDialogVisible && typeof powerConfirmDialog !== "undefined") ? powerConfirmDialog.cardW : 0
+            height: (typeof PowerService !== "undefined" && PowerService && PowerService.confirmDialogVisible && typeof powerConfirmDialog !== "undefined") ? powerConfirmDialog.cardH : 0
+        }
     }
 
 
@@ -944,6 +952,14 @@ PanelWindow {
             y: 0
             width: (appContextMenu.visible || trayContextMenu.visible) ? root.width : 0
             height: (appContextMenu.visible || trayContextMenu.visible) ? root.height : 0
+        }
+
+        // Power Confirmation Dialog Input Mask (Modal scrim & dialog card)
+        Region {
+            x: 0
+            y: 0
+            width: (typeof PowerService !== "undefined" && PowerService && PowerService.confirmDialogVisible) ? root.width : 0
+            height: (typeof PowerService !== "undefined" && PowerService && PowerService.confirmDialogVisible) ? root.height : 0
         }
     }
 

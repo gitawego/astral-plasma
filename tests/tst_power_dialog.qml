@@ -102,12 +102,29 @@ Item {
         assert(dialog.currentConfirmLabel === "Shut Down", "currentConfirmLabel must be 'Shut Down'");
         assert(Qt.colorEqual(dialog.currentAccentColor, dangerRed), "currentAccentColor must match danger red (#BA1A1A)");
 
-        // 6. Confirm Action Interaction
+        // 6. Liquid Glass Design System Optical Stack Assertions
+        dialog.testVisible = true;
+        dialog.testAction = "logout";
+        assert(dialog.dialogCardItem !== undefined, "dialogCardItem must be exposed");
+        assert(dialog.dialogCardItem.radius >= 24, "dialogCardItem radius must be >= 24 for organic liquid glass");
+        assert(dialog.cardW === 440, "cardW must be 440px");
+        assert(dialog.cardH > 200, "cardH must be > 200px");
+        assert(dialog.cardX === Math.round((1920 - 440) / 2), "cardX must be centered");
+        assert(dialog.refractionGradientItem !== undefined, "refractionGradientItem must be present");
+        assert(dialog.causticGlowItem !== undefined, "causticGlowItem must be present");
+        assert(dialog.topGlareItem !== undefined, "topGlareItem must be present");
+        assert(dialog.bottomRimItem !== undefined, "bottomRimItem must be present");
+        assert(dialog.cursorGlintItem !== undefined, "cursorGlintItem must be present");
+        assert(dialog.cancelButtonItem !== undefined, "cancelButtonItem must be exposed");
+        assert(dialog.confirmButtonItem !== undefined, "confirmButtonItem must be exposed");
+        assert(dialog.headerBadgeItem !== undefined, "headerBadgeItem must be exposed");
+
+        // 7. Confirm Action Interaction
         testRoot.confirmSignalReceived = false;
         dialog.confirmAction();
         assert(testRoot.confirmSignalReceived, "confirmAction must trigger confirmed signal");
 
-        // 7. Reset to Hidden State
+        // 8. Reset to Hidden State
         dialog.testVisible = false;
         dialog.testAction = "";
         assert(!dialog.isDialogVisible, "Dialog must return to hidden state when closed");
