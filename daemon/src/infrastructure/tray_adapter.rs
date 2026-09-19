@@ -468,6 +468,45 @@ impl TrayAdapter {
         }
         Ok(items)
     }
+    pub fn resolve_xembed_identity(win_id: u64) -> (String, String, String) {
+        let (class_opt, title_opt) = crate::infrastructure::x11_input::query_x11_window_class_and_title(win_id);
+        let raw_class = class_opt.unwrap_or_default();
+        let raw_title = title_opt.unwrap_or_default();
+        let class_lower = raw_class.to_lowercase();
+
+        if class_lower.contains("cloudmusic") {
+            let title = if !raw_title.is_empty() && !raw_title.to_lowercase().contains("cloudmusic") {
+                raw_title
+            } else {
+                "NetEase Cloud Music".to_string()
+            };
+            ("cloudmusic".to_string(), title, "music_note".to_string())
+        } else if class_lower.contains("wechat") {
+            ("wechat".to_string(), "WeChat".to_string(), "chat".to_string())
+        } else if class_lower.contains("qq") {
+            ("qq".to_string(), "QQ".to_string(), "chat".to_string())
+        } else if class_lower.contains("foobar2000") {
+            ("foobar2000".to_string(), "foobar2000".to_string(), "music_note".to_string())
+        } else if !raw_class.is_empty() {
+            let clean_id = raw_class
+                .strip_suffix(".exe")
+                .or_else(|| raw_class.strip_suffix(".EXE"))
+                .unwrap_or(&raw_class)
+                .split('\0')
+                .next()
+                .unwrap_or(&raw_class)
+                .trim()
+                .to_string();
+            let clean_title = if !raw_title.is_empty() {
+                raw_title
+            } else {
+                clean_id.clone()
+            };
+            (clean_id, clean_title, String::new())
+        } else {
+            (String::new(), String::new(), String::new())
+        }
+    }
 }
 
 impl Default for TrayAdapter {
@@ -504,24 +543,18 @@ impl TrayPort for TrayAdapter {
             let mut item_icon = sni_get_str(svc, path, "IconName");
             let mut item_title = sni_get_str(svc, path, "Title");
 
-            if item_title.is_empty() {
-                let tt = sni_get_tooltip_title(svc, path);
-                if !tt.is_empty() {
-                    item_title = tt;
-                }
-            }
-
-            if item_id.is_empty() && item_title.is_empty() && item_icon.is_empty() {
-                continue;
-            }
-            if item_id.chars().all(|c| c.is_ascii_digit()) && item_icon.is_empty() && item_title.is_empty() {
-                continue;
-            }
             if item_icon.starts_with("Error") {
                 item_icon.clear();
             }
             if item_title.starts_with("Error") {
                 item_title.clear();
+            }
+
+            if item_title.is_empty() {
+                let tt = sni_get_tooltip_title(svc, path);
+                if !tt.is_empty() {
+                    item_title = tt;
+                }
             }
 
             if item_icon.is_empty() {
@@ -536,10 +569,42 @@ impl TrayPort for TrayAdapter {
                 }
             }
 
-            let (item_title, mut item_icon, mut m_icon) = Self::resolve_tray_meta(&item_id, &item_title, &item_icon);
+            let mut final_id = item_id.clone();
+            let mut final_title = item_title.clone();
+            let mut final_icon = item_icon.clone();
+
+            let is_numeric = (final_id.chars().all(|c| c.is_ascii_digit()) && !final_id.is_empty()) || final_id.is_empty();
+            if is_numeric {
+                let win_id = if !final_id.is_empty() {
+                    final_id.parse::<u64>().unwrap_or(0)
+                } else {
+                    sni_get_str(svc, path, "WindowId").parse::<u64>().unwrap_or(0)
+                };
+                if win_id > 0 {
+                    let (x_id, x_title, x_icon) = Self::resolve_xembed_identity(win_id);
+                    if !x_id.is_empty() {
+                        final_id = x_id;
+                    }
+                    if final_title.is_empty() && !x_title.is_empty() {
+                        final_title = x_title;
+                    }
+                    if final_icon.is_empty() && !x_icon.is_empty() {
+                        final_icon = x_icon;
+                    }
+                }
+            }
+
+            if final_id.is_empty() && final_title.is_empty() && final_icon.is_empty() {
+                continue;
+            }
+            if final_id.chars().all(|c| c.is_ascii_digit()) && final_icon.is_empty() && final_title.is_empty() {
+                continue;
+            }
+
+            let (item_title, mut item_icon, mut m_icon) = Self::resolve_tray_meta(&final_id, &final_title, &final_icon);
             let mut im_badge = String::new();
 
-            let id_lower = format!("{} {} {}", item_id, item_title, item_icon).to_lowercase();
+            let id_lower = format!("{} {} {}", final_id, item_title, item_icon).to_lowercase();
             if id_lower.contains("keyboard") || id_lower.contains("fcitx") || id_lower.contains("input") {
                 m_icon = "keyboard".to_string();
                 if let Ok(cur_out) = Command::new("fcitx5-remote").arg("-n").output() {
@@ -571,7 +636,7 @@ impl TrayPort for TrayAdapter {
                 path: path.to_string(),
                 menu_path,
                 item_is_menu,
-                id: item_id,
+                id: final_id,
                 title: item_title,
                 material_icon: m_icon,
                 raw_icon: item_icon,

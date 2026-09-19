@@ -821,6 +821,101 @@ When designing hover-activated edge drawers (such as a top drawer that triggers 
 3. **Keep Drawer Open During External Actions**:
    By using targeted background input injection (`send_window_key`) instead of mouse warping, the cursor remains securely inside the drawer's bounds during media button clicks, keeping `isDashboardHovered` continuously true.
 
+---
+
+## 11. Wine & Legacy X11 System Tray (XEmbed to SNI Proxy) Architecture
+
+### 11.1. The Fundamental Problem: Why Wine Tray Icons Disappear
+Modern desktop environments use the **StatusNotifierItem (SNI)** DBus specification (`org.kde.StatusNotifierItem`) for system tray icons.
+Legacy applications (such as Wine applications like NetEase CloudMusic `cloudmusic.exe`, WeChat, QQ, or older Java/GTK2 apps) use the legacy **XEmbed system tray protocol** (`_NET_SYSTEM_TRAY_OPCODE`), where the application asks the tray host to dock an X11 `Window`.
+
+To bridge this gap in KDE/Wayland, `/usr/bin/xembedsniproxy` runs in the background:
+1. It creates an X11 tray selection window (`_NET_SYSTEM_TRAY_S0`).
+2. When a Wine application embeds a tray window, `xembedsniproxy` reparents the window into itself.
+3. It exports an SNI DBus service (e.g., `:1.2122` on `/StatusNotifierItem`).
+
+However, this proxy has unique characteristics that break naive SNI parsers:
+- `Id` is set to the X11 `WindowId` as a numeric string (e.g. `"33554446"`).
+- `IconName` is empty string (`""`).
+- `Title` is empty string (`""`).
+- **`IconPixmap`** contains the raw RGBA image data (e.g., $20 \times 20$ pixels).
+- **`Menu`** property (`com.canonical.dbusmenu`) is completely absent because menus are handled internally by Wine via X11 events.
+
+---
+
+### 11.2. Trap: The Order-of-Operations Filtering Trap
+In naive tray implementations, developers add a ghost/dummy item filter:
+```rust
+// FATAL FLAW: Evaluated BEFORE pixmap extraction!
+if item_id.chars().all(|c| c.is_ascii_digit()) && item_icon.is_empty() && item_title.is_empty() {
+    continue; // Throws away every XEmbed and Wine application!
+}
+```
+Because `xembedsniproxy` provides neither `IconName` nor `Title`, this filter triggers immediately, discarding the tray item **before `sni_get_pixmap` is ever called**.
+
+#### The Correct Order of Operations:
+1. Read `Id`, `IconName`, `Title`, `ToolTip`.
+2. Sanitize and clear error strings (`starts_with("Error")`).
+3. **Extract `IconPixmap` and write cached PNG**.
+4. **Resolve desktop icon** (`resolve_desktop_icon`).
+5. **Resolve XEmbed identity** for numeric IDs (`resolve_xembed_identity`).
+6. **Only now apply ghost filtering**: Drop the item only if after pixmap extraction and identity resolution it *still* has no icon and no title.
+
+---
+
+### 11.3. Resolving Real Identity for Wine Applications
+The XEmbed tray window (`0x200000e`) does NOT belong to `cloudmusic.exe`—it is owned by Wine's internal desktop manager, `explorer.exe` (`WM_CLASS = "explorer.exe"`).
+If an agent only inspects `WM_CLASS` of the docked window, it sees `explorer.exe`.
+
+#### The 3-Tier Discovery Pipeline:
+1. **Tier 1 (`_NET_CLIENT_LIST`)**: Enumerate active client windows on the root window. Find any window whose `WM_CLASS` ends in `.exe` (case-insensitive) excluding Wine system daemons (`explorer.exe`, `services.exe`, `winedevice.exe`, `svchost.exe`, `plugplay.exe`, `rpcss.exe`, `conhost.exe`).
+2. **Tier 2 (`XQueryTree`)**: If the client window was minimized to tray and removed from `_NET_CLIENT_LIST`, traverse child windows of the root window via `XQueryTree`.
+3. **Tier 3 (`/proc` Cmdline Scan)**: If the window is unmapped, scan `/proc/[0-9]*/cmdline` for `.exe` processes to identify the running Wine application.
+
+#### Metadata Normalization:
+- If `.exe` is detected:
+  - `"cloudmusic"` $\to$ `id = "cloudmusic"`, `title = "NetEase Cloud Music"`, `material_icon = "music_note"`.
+  - `"wechat"` $\to$ `id = "wechat"`, `title = "WeChat"`, `material_icon = "chat"`.
+  - Generic `.exe` $\to$ strip `.exe`, capitalize name, default `material_icon = "widgets"`.
+- If window title exists (e.g. current song `"Song - Artist"`), preserve it as the tooltip!
+
+#### Essential X11 Safety Guard:
+If `win_id == 0` or if a window was closed between query steps, calling `XGetWindowProperty` triggers Xlib's default error handler, terminating the entire daemon process with `BadWindow`.
+- Guard against `win_id == 0` before any X11 property call.
+- Always install a non-terminating error handler:
+  ```rust
+  unsafe extern "C" fn x11_silent_error_handler(_dpy: *mut libc::c_void, _event: *mut libc::c_void) -> libc::c_int { 0 }
+  XSetErrorHandler(Some(x11_silent_error_handler));
+  ```
+
+---
+
+### 11.4. Context Menu Coordinate Routing (The Exit Option Trap)
+Because Wine applications lack `com.canonical.dbusmenu`, right-clicking their tray icon cannot open a QML popout menu.
+Instead, they implement `org.kde.StatusNotifierItem.ContextMenu(int x, int y)`.
+
+When `ContextMenu` is called:
+1. `xembedsniproxy` delivers an X11 button press event to the Wine tray window.
+2. Wine spawns a native Win32 popup menu window (`0x2a0001a`) on the X11 display containing buttons like "Previous", "Play", "Next", and crucially, **"退出 / Exit"**.
+3. **The Coordinate Bug**: If `(0, 0)` is passed to `ContextMenu`, Wine positions the popup menu at `(0, 0)` (top-left of the monitor) or offscreen.
+4. **The Solution**:
+   - In QML (`UnifiedDock.qml`), map delegate coordinates to the root screen:
+     ```qml
+     const globalPt = trayDelegate.mapToItem(null, mouse.x, mouse.y);
+     WindowService.contextMenuTray(modelData.service, modelData.path, globalPt.x, globalPt.y);
+     ```
+   - In the CLI daemon (`astral-plasma tray context-menu`), if `x == "0" && y == "0"`, automatically query the real cursor position via `XQueryPointer`:
+     ```rust
+     if x == "0" && y == "0" {
+         if let Some((cx, cy)) = crate::infrastructure::x11_input::get_cursor_position() {
+             x = cx.to_string();
+             y = cy.to_string();
+         }
+     }
+     ```
+This ensures context menus consistently appear directly beneath the cursor, allowing users to exit Wine applications reliably.
+
+
 
 
 

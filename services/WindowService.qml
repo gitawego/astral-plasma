@@ -68,17 +68,25 @@ Singleton {
         id: trayActivateProc
     }
 
-    function activateTray(service, path) {
+    function activateTray(service, path, x, y) {
         if (!service || !path) return;
         trayActivateProc.running = false;
-        trayActivateProc.command = [root.daemonBin, "tray", "activate", service, path];
+        let cmd = [root.daemonBin, "tray", "activate", service, path];
+        if (x !== undefined && y !== undefined) {
+            cmd.push(Math.round(x).toString(), Math.round(y).toString());
+        }
+        trayActivateProc.command = cmd;
         trayActivateProc.running = true;
     }
 
-    function contextMenuTray(service, path) {
+    function contextMenuTray(service, path, x, y) {
         if (!service || !path) return;
         trayActivateProc.running = false;
-        trayActivateProc.command = [root.daemonBin, "tray", "context-menu", service, path];
+        let cmd = [root.daemonBin, "tray", "context-menu", service, path];
+        if (x !== undefined && y !== undefined) {
+            cmd.push(Math.round(x).toString(), Math.round(y).toString());
+        }
+        trayActivateProc.command = cmd;
         trayActivateProc.running = true;
     }
 

@@ -849,12 +849,13 @@ Item {
                             }
                             onClicked: mouse => {
                                 const targetCenterY = trayDelegate.mapToItem(null, 0, trayDelegate.height / 2).y;
+                                const globalPt = trayDelegate.mapToItem(null, mouse.x, mouse.y);
                                 if (mouse.button === Qt.RightButton) {
                                     if (modelData.menuPath && modelData.menuPath.length > 0) {
                                         WindowService.loadTrayMenu(modelData);
                                         Config.openBottomPopout("tray", targetCenterY);
                                     } else {
-                                        WindowService.contextMenuTray(modelData.service, modelData.path);
+                                        WindowService.contextMenuTray(modelData.service, modelData.path, globalPt.x, globalPt.y);
                                     }
                                 } else {
                                     if (modelData.itemIsMenu && modelData.menuPath && modelData.menuPath.length > 0) {
@@ -862,7 +863,7 @@ Item {
                                         Config.openBottomPopout("tray", targetCenterY);
                                     } else {
                                         Config.closeBottomPopout();
-                                        WindowService.activateTray(modelData.service, modelData.path);
+                                        WindowService.activateTray(modelData.service, modelData.path, globalPt.x, globalPt.y);
                                     }
                                 }
                             }

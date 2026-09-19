@@ -420,11 +420,19 @@ pub async fn run_cli() -> DynResult<()> {
                     if args.len() >= 5 {
                         let svc = &args[3];
                         let path = &args[4];
-                        let x = if args.len() >= 6 { args[5].as_str() } else { "0" };
-                        let y = if args.len() >= 7 { args[6].as_str() } else { "0" };
+                        let (mut x, mut y) = (
+                            if args.len() >= 6 { args[5].clone() } else { "0".to_string() },
+                            if args.len() >= 7 { args[6].clone() } else { "0".to_string() },
+                        );
+                        if x == "0" && y == "0" {
+                            if let Some((cx, cy)) = crate::infrastructure::x11_input::get_cursor_position() {
+                                x = cx.to_string();
+                                y = cy.to_string();
+                            }
+                        }
                         let mut ok = false;
                         if let Ok(out) = std::process::Command::new("qdbus6")
-                            .args([svc, path, "org.kde.StatusNotifierItem.Activate", x, y])
+                            .args([svc, path, "org.kde.StatusNotifierItem.Activate", &x, &y])
                             .output()
                         {
                             if out.status.success() && !String::from_utf8_lossy(&out.stderr).contains("Error") {
@@ -433,7 +441,7 @@ pub async fn run_cli() -> DynResult<()> {
                         }
                         if !ok {
                             let _ = std::process::Command::new("busctl")
-                                .args(["--user", "call", svc, path, "org.kde.StatusNotifierItem", "Activate", "ii", x, y])
+                                .args(["--user", "call", svc, path, "org.kde.StatusNotifierItem", "Activate", "ii", &x, &y])
                                 .output();
                         }
                     } else {
@@ -444,11 +452,19 @@ pub async fn run_cli() -> DynResult<()> {
                     if args.len() >= 5 {
                         let svc = &args[3];
                         let path = &args[4];
-                        let x = if args.len() >= 6 { args[5].as_str() } else { "0" };
-                        let y = if args.len() >= 7 { args[6].as_str() } else { "0" };
+                        let (mut x, mut y) = (
+                            if args.len() >= 6 { args[5].clone() } else { "0".to_string() },
+                            if args.len() >= 7 { args[6].clone() } else { "0".to_string() },
+                        );
+                        if x == "0" && y == "0" {
+                            if let Some((cx, cy)) = crate::infrastructure::x11_input::get_cursor_position() {
+                                x = cx.to_string();
+                                y = cy.to_string();
+                            }
+                        }
                         let mut ok = false;
                         if let Ok(out) = std::process::Command::new("qdbus6")
-                            .args([svc, path, "org.kde.StatusNotifierItem.ContextMenu", x, y])
+                            .args([svc, path, "org.kde.StatusNotifierItem.ContextMenu", &x, &y])
                             .output()
                         {
                             if out.status.success() && !String::from_utf8_lossy(&out.stderr).contains("Error") {
@@ -457,7 +473,7 @@ pub async fn run_cli() -> DynResult<()> {
                         }
                         if !ok {
                             let _ = std::process::Command::new("busctl")
-                                .args(["--user", "call", svc, path, "org.kde.StatusNotifierItem", "ContextMenu", "ii", x, y])
+                                .args(["--user", "call", svc, path, "org.kde.StatusNotifierItem", "ContextMenu", "ii", &x, &y])
                                 .output();
                         }
                     } else {
