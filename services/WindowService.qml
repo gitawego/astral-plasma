@@ -147,6 +147,15 @@ Singleton {
 
     Process {
         id: trayClickProc
+        onExited: (exitCode, exitStatus) => {
+            refreshTrayProc.running = false;
+            refreshTrayProc.command = ["qdbus6", "org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher.RefreshTray"];
+            refreshTrayProc.running = true;
+        }
+    }
+
+    Process {
+        id: refreshTrayProc
     }
 
     function fetchTrayMenu(service, menuPath, callback) {

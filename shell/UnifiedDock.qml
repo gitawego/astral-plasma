@@ -811,22 +811,14 @@ Item {
                                 : (trayHover.containsMouse ? Colors.primary : Colors.textOnSurface)
                         }
 
-                        Image {
-                            id: trayIconImg
+                        ThemedIcon {
+                            id: trayThemedIcon
                             anchors.centerIn: parent
-                            width: root.iconS
-                            height: root.iconS
+                            size: root.iconS
                             source: Config.iconUrl(modelData.rawIcon)
-                            fillMode: Image.PreserveAspectFit
-                            visible: !imBadgeText.visible && status === Image.Ready
-                        }
-
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            text: modelData.materialIcon || "circle"
-                            size: Math.round(root.iconS * 0.82)
-                            color: trayHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant
-                            visible: !imBadgeText.visible && (!trayIconImg.visible || trayIconImg.status !== Image.Ready)
+                            materialIcon: modelData.materialIcon || "circle"
+                            color: trayHover.containsMouse ? Colors.primary : Colors.textOnSurface
+                            visible: !imBadgeText.visible
                         }
 
                         MouseArea {

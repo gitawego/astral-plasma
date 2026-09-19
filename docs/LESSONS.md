@@ -936,6 +936,23 @@ To provide a first-class, themed experience in Caelestia:
 4. **Targeted Process Termination**:
    - Win32 applications running under Wine often exit only via their tray icon. When synthetic item `1006` ("Exit") is clicked, `tray_adapter.rs` resolves the specific client `.exe` PID from the SNI service metadata, cleanly terminating only the target executable without disrupting `xembedsniproxy` or other active Wine bottles.
 
+---
+
+### 11.6. Input Method (Fcitx5 / Rime) Active State & Instant Tray Refresh Architecture
+When selecting an input method like Rime from an SNI DBusMenu:
+1. **The Inactive State Trap**:
+   - Sending DBusMenu Event `clicked` changes Fcitx5's profile item, but leaves Fcitx in **State 1 (Inactive)** unless the calling window has an active input context. In State 1, all keys bypass IME engines, causing the user to type in English even though Rime was clicked.
+   - **Fix**: In `tray_adapter.rs` `click_item()`, detect Fcitx selections:
+     - For Chinese IMEs (`rime`, `pinyin`), explicitly execute `fcitx5-remote -s <im>` and `fcitx5-remote -o` (activate state 2).
+     - For English layouts (`keyboard-us`), execute `fcitx5-remote -s keyboard-us` and `fcitx5-remote -c` (deactivate state 1).
+2. **The Text Badge vs Themed Icon Collision**:
+   - `UnifiedDock.qml` previously displayed a text badge `imBadgeText` whenever `imBadge` was non-empty, which hid the underlying icon. For English, `"EN"` is desirable; but for Rime, users expect the iconic Rime square seal (`fcitx-rime.svg`).
+   - Setting `im_badge = ""` for Rime allows `ThemedIcon` to render `/usr/share/icons/breeze-dark/status/22/fcitx-rime.svg`, automatically colorizing the symbolic vector with Material You surface colors.
+3. **Instant Responsive Refresh via DBus**:
+   - Rather than relying on a slow background polling loop (5000ms), `WatcherService` exposes `RefreshTray` over DBus.
+   - When any menu item click completes, `qdbus6 org.caelestia.WindowWatcher /Watcher RefreshTray` is triggered immediately, refreshing the dock and popout within milliseconds.
+
+
 
 
 

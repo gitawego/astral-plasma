@@ -236,6 +236,22 @@ impl WatcherService {
             }
         }
     }
+
+    #[zbus(name = "RefreshTray")]
+    async fn refresh_tray(&self) {
+        let tray_ad = TrayAdapter::new();
+        if let Ok(new_tray) = tray_ad.query_tray() {
+            let mut st = self.state.lock().await;
+            st.cached_tray = new_tray.clone();
+            let payload = TrayPayload {
+                msg_type: "tray".to_string(),
+                tray: new_tray,
+            };
+            if let Ok(serialized) = serde_json::to_string(&payload) {
+                println!("{}", serialized);
+            }
+        }
+    }
 }
 
 pub fn get_kwin_watcher_script() -> &'static str {
@@ -477,7 +493,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
     // Spawn periodic tray poller
     let tray_state = Arc::clone(&state);
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(5000));
+        let mut interval = tokio::time::interval(Duration::from_millis(1000));
         let tray_ad = TrayAdapter::new();
         loop {
             interval.tick().await;

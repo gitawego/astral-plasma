@@ -601,7 +601,7 @@ impl TrayPort for TrayAdapter {
                 continue;
             }
 
-            let (item_title, mut item_icon, mut m_icon) = Self::resolve_tray_meta(&final_id, &final_title, &final_icon);
+            let (mut item_title, mut item_icon, mut m_icon) = Self::resolve_tray_meta(&final_id, &final_title, &final_icon);
             let mut im_badge = String::new();
 
             let id_lower = format!("{} {} {}", final_id, item_title, item_icon).to_lowercase();
@@ -613,16 +613,20 @@ impl TrayPort for TrayAdapter {
                     if cur_lower.contains("rime") {
                         item_icon = "fcitx-rime".to_string();
                         m_icon = "rime".to_string();
-                        im_badge = "中".to_string();
+                        item_title = "Rime".to_string();
+                        im_badge = String::new();
                     } else if cur_lower.contains("pinyin") {
                         item_icon = "fcitx-pinyin".to_string();
                         m_icon = "translate".to_string();
+                        item_title = "Pinyin".to_string();
                         im_badge = "拼".to_string();
                     } else if cur_lower.contains("us") || cur_lower.contains("keyboard") {
                         item_icon = "input-keyboard".to_string();
                         m_icon = "keyboard".to_string();
+                        item_title = "Input Method".to_string();
                         im_badge = "EN".to_string();
                     } else if !cur_im.is_empty() {
+                        item_title = cur_im.clone();
                         im_badge = cur_im.chars().take(2).collect::<String>().to_uppercase();
                     }
                 }
@@ -706,6 +710,32 @@ impl TrayPort for TrayAdapter {
             let err = String::from_utf8_lossy(&out.stderr);
             return Err(format!("busctl Event failed: {}", err).into());
         }
+
+        // Special handling for Fcitx / Input Method: ensure immediate state activation
+        let item_id_str = sni_get_str(service, "/StatusNotifierItem", "Id");
+        if item_id_str == "Fcitx" || service.contains("Fcitx") || service.contains("fcitx") {
+            if let Ok(items) = self.fetch_menu(service, menu_path) {
+                if let Some(clicked_item) = items.iter().find(|it| it.id == item_id) {
+                    let label_lower = clicked_item.label.to_lowercase();
+                    let icon_lower = clicked_item.icon.to_lowercase();
+                    if icon_lower.contains("rime") || label_lower.contains("rime") {
+                        let _ = Command::new("fcitx5-remote").args(["-s", "rime"]).output();
+                        let _ = Command::new("fcitx5-remote").arg("-o").output();
+                    } else if icon_lower.contains("pinyin") || label_lower.contains("pinyin") {
+                        let _ = Command::new("fcitx5-remote").args(["-s", "pinyin"]).output();
+                        let _ = Command::new("fcitx5-remote").arg("-o").output();
+                    } else if icon_lower.contains("keyboard") || label_lower.contains("english") || label_lower.contains("us") {
+                        let _ = Command::new("fcitx5-remote").args(["-s", "keyboard-us"]).output();
+                        let _ = Command::new("fcitx5-remote").arg("-c").output();
+                    }
+                }
+            }
+        }
+
+        // Trigger immediate tray refresh across the desktop shell
+        let _ = Command::new("qdbus6")
+            .args(["org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher.RefreshTray"])
+            .output();
 
         Ok(())
     }
