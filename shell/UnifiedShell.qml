@@ -806,6 +806,8 @@ PanelWindow {
     }
 
     // Domain Policy: Central Dropdown Dashboard Hover & Auto-Close
+    readonly property alias topEdgeHoverAreaItem: topEdgeHoverArea
+    readonly property alias topEdgeMouseAreaItem: topEdgeMouseArea
     readonly property bool isDashboardHovered: (dropdownContainer ? dropdownContainer.isHovered : false) || (typeof topEdgeMouseArea !== "undefined" && topEdgeMouseArea.containsMouse)
 
     onIsDashboardHoveredChanged: {
@@ -848,11 +850,11 @@ PanelWindow {
             height: root.height
         }
 
-        // Top Border / Top Hover Area
+        // Top Border / Top Hover Area (Targeted strictly to central drawer range)
         Region {
-            x: 0
+            x: root.dropX
             y: 0
-            width: root.width
+            width: root.dropW
             height: Math.max(root.borderT, 18)
         }
 
@@ -889,12 +891,18 @@ PanelWindow {
         }
 
 
-        // Active Popout (Network, Bluetooth, Audio, etc.)
+        // Fused Bottom Popout Drawer (App previews, tray, network, bluetooth, audio, power, clock)
         Region {
             x: root.dockW
-            y: Math.max(root.borderT, Math.round((root.height - 400) / 2))
-            width: Config.activePopout !== "" ? 340 : 0
-            height: Config.activePopout !== "" ? 400 : 0
+            y: (Config.bottomPopoutVisible && fusedBottomPopoutWrapper.offsetProgress > 0.001)
+                ? Math.max(0, fusedBottomPopoutWrapper.y - root.filletR)
+                : 0
+            width: (Config.bottomPopoutVisible && fusedBottomPopoutWrapper.offsetProgress > 0.001)
+                ? (Math.max(root.currentPopW, (typeof fusedPopout !== "undefined" ? fusedPopout.popWidth : 350)) + root.filletR)
+                : 0
+            height: (Config.bottomPopoutVisible && fusedBottomPopoutWrapper.offsetProgress > 0.001)
+                ? (fusedBottomPopoutWrapper.height + root.filletR * 2)
+                : 0
         }
 
         // Central Fused Dropdown Dashboard (when open)
@@ -966,12 +974,12 @@ PanelWindow {
         rightControlOffsetProgress: rightEdgeControlWrapper.offsetProgress
     }
 
-    // 2. TOP EDGE HOVER AREA FOR CENTRAL DROPDOWN TRIGGER
+    // 2. TOP EDGE HOVER AREA FOR CENTRAL DROPDOWN TRIGGER (Targeted strictly to drawer range)
     Item {
         id: topEdgeHoverArea
-        x: root.dockW
+        x: root.dropX
         y: 0
-        width: root.width - root.dockW - root.borderT
+        width: root.dropW
         height: Math.max(root.borderT, 18)
         z: 900
 
@@ -1081,6 +1089,7 @@ PanelWindow {
         height: fusedPopout.implicitHeight
         visible: offsetProgress > 0.001
         clip: false
+        z: 1000
 
         property real offsetProgress: Config.bottomPopoutVisible ? 1.0 : 0.0
 

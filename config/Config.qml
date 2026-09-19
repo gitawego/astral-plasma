@@ -466,7 +466,7 @@ Singleton {
 
     Timer {
         id: popoutCloseTimer
-        interval: 450
+        interval: 500
         repeat: false
         onTriggered: root.bottomPopoutVisible = false
     }

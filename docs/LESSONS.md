@@ -519,13 +519,20 @@ When building sliding edge drawers on the right screen border (e.g. `RightEdgeCo
             }
         }
         ```
-- **Unified Full-Border Top Edge Trigger Architecture**:
-  - Placing a `HoverHandler` under an overlapping `MouseArea` without `hoverEnabled: true` causes the `MouseArea` to swallow pointer motions, preventing hover state transitions from firing.
-  - Constraining the hover trigger to only the center 980px (`x: dropX, width: dropW`) causes mouse gestures to fail if the user pushes their cursor to the top edge outside the center zone.
+- **Targeted Drawer-Range Top Edge Trigger Architecture**:
+  - Covering the entire top border (`width: root.width`) causes unwanted drawer activations whenever the cursor touches the top edge to interact with window titlebars, browser tabs, or close buttons on the left or right of the screen.
   - **The Solution**:
-    - Use a single, unified `MouseArea` with `hoverEnabled: true` covering the full top edge (`x: root.dockW`, `width: root.width - root.dockW - root.borderT`, `height: Math.max(root.borderT, 18)`).
-    - Handle hover via `onEntered: if (Config.dashboardShowOnHover) { closeTimer.stop(); Config.dashboardVisible = true; }` and click via `onClicked: Config.dashboardVisible = !Config.dashboardVisible`.
-    - Check `topEdgeMouseArea.containsMouse` in `isDashboardHovered`.
+    - Constrain `topEdgeHoverArea` and the top border in `mask: Region` strictly to the horizontal range of the drawer (`x: root.dropX`, `width: root.dropW`, `height: Math.max(root.borderT, 18)`).
+    - Use `hoverEnabled: true` so `onEntered: if (Config.dashboardShowOnHover) { closeTimer.stop(); Config.dashboardVisible = true; }` and click via `onClicked: Config.dashboardVisible = !Config.dashboardVisible`.
+    - Outside `[dropX, dropX + dropW]`, the top edge passes pointer events cleanly through to underlying windows without triggering or toggling the drawer.
+- **The Wayland Input Mask Void Trap on Dynamic Popout Drawers**:
+  - **The Symptom**: When hovering a dock icon, the popout drawer opens smoothly, but as soon as the mouse moves from the dock into the drawer, the drawer automatically closes, and clicks on action buttons ("Bring to Front", "Unpin from Dock", "Close Window") pass through to windows beneath the shell.
+  - **Root Cause**:
+    In Wayland layer shell (`PanelWindow`), pixels outside `mask: Region` are completely transparent to input. The compositor routes mouse events strictly according to the mask. If `mask: Region` omits `fusedBottomPopoutWrapper` (or tests a stale legacy property), the entire popout envelope is a "black hole" to the compositor. The instant the cursor crosses the dock border ($X > \text{dockW}$), the compositor generates an `onExited` event, `popoutCloseTimer` starts, and `HoverHandler` inside the drawer never receives any pointer events.
+  - **The Solution**:
+    1. **Envelope Masking**: Add `fusedBottomPopoutWrapper` to `mask: Region` whenever `Config.bottomPopoutVisible && offsetProgress > 0.001`, covering the full target width (`fusedPopout.popWidth + filletR`) and height (`height + filletR * 2`).
+    2. **Multi-Tier Hover Protection**: Add `HoverHandler` to `popCard` and call `Config.keepBottomPopout()` inside `ActionItem.onEntered` and `appPreviewCard.onEntered`.
+    3. **Surface Stacking**: Explicitly set `z: 1000` on `fusedBottomPopoutWrapper` so it stacks evenly with the dock.
 
 ---
 

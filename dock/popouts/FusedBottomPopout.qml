@@ -93,6 +93,17 @@ Item {
         implicitHeight: root.targetContentHeight + Theme.padLarge * 2
         height: implicitHeight + Config.borderThickness
 
+        HoverHandler {
+            id: popCardHover
+            onHoveredChanged: {
+                if (hovered) {
+                    Config.keepBottomPopout();
+                } else {
+                    Config.scheduleCloseBottomPopout();
+                }
+            }
+        }
+
         Item {
             id: contentLoader
             anchors.left: parent.left
@@ -1200,7 +1211,9 @@ Item {
 
                     MouseArea {
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: Config.keepBottomPopout()
                         onClicked: {
                             const app = appSection.currentApp;
                             if (!app) return;
@@ -1574,6 +1587,9 @@ Item {
             anchors.fill: parent
             hoverEnabled: actionRoot.enabled
             cursorShape: actionRoot.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onEntered: {
+                Config.keepBottomPopout();
+            }
             onClicked: {
                 if (actionRoot.enabled) actionRoot.clicked();
             }

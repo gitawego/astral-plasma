@@ -289,6 +289,39 @@ Item {
         assert(getCardHeight(mockApp) === 200, "Running app preview card pre-allocates 200px instantly on frame 0");
         assert(getCardHeight(unlaunchedApp) === 96, "Stopped app pre-allocates 96px instantly on frame 0");
 
+        // 11. Wayland input mask coverage for popout drawer envelope
+        console.log("TESTING: Wayland input mask coverage for popout drawer envelope");
+        function computePopoutInputMask(visible, offsetProgress, popoutY, popoutW, popoutH, filletR) {
+            if (!visible || offsetProgress <= 0.001) {
+                return { x: 0, y: 0, width: 0, height: 0 };
+            }
+            return {
+                x: 70, // root.dockW
+                y: Math.max(0, popoutY - filletR),
+                width: Math.max(popoutW * offsetProgress, popoutW) + filletR,
+                height: popoutH + filletR * 2
+            };
+        }
+
+        // When closed, mask must be empty
+        let closedMask = computePopoutInputMask(false, 0.0, 300, 350, 400, 20);
+        assert(closedMask.width === 0 && closedMask.height === 0, "Closed drawer must have 0 input mask");
+
+        // When open, mask must span the entire drawer envelope including fillets
+        let openMask = computePopoutInputMask(true, 1.0, 300, 350, 400, 20);
+        assert(openMask.x === 70, "Open drawer mask must start at dockW (70)");
+        assert(openMask.y === 280, "Open drawer mask y must include top fillet (300 - 20 = 280)");
+        assert(openMask.width === 370, "Open drawer mask width must be 350 + 20 = 370");
+        assert(openMask.height === 440, "Open drawer mask height must include top and bottom fillets (400 + 40 = 440)");
+
+        // Points inside drawer must be within mask
+        function isPointInMask(mask, px, py) {
+            return px >= mask.x && px < (mask.x + mask.width) && py >= mask.y && py < (mask.y + mask.height);
+        }
+        assert(isPointInMask(openMask, 150, 350), "Preview thumbnail point (150, 350) must be inside input mask");
+        assert(isPointInMask(openMask, 150, 600), "Action item button point (150, 600) must be inside input mask");
+        assert(!isPointInMask(openMask, 500, 350), "Point outside drawer (500, 350) must be outside input mask");
+
         console.log("PASS: App Preview Drawer Lifecycle Tests");
         Qt.exit(0);
     }

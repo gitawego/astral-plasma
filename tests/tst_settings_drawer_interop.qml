@@ -33,12 +33,12 @@ Item {
         isOpen: shellState.dashboardVisible
     }
 
-    // Top edge hover area matching UnifiedShell.qml
+    // Top edge hover area matching UnifiedShell.qml (targeted strictly to drawer range)
     Item {
         id: topEdgeArea
-        x: 70
+        x: dropdown.dropX
         y: 0
-        width: 1920 - 70 - 14
+        width: dropdown.dropW
         height: 18
 
         MouseArea {
