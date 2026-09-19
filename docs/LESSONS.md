@@ -676,5 +676,151 @@ Before considering any new liquid glass component complete, verify:
 - [ ] **Zero Nested Compositor Blur**: Are inner cards and buttons relying on QML scene-graph gradients rather than secondary compositor blur regions?
 - [ ] **High-DPI / High-Refresh Verification**: Has the component been verified live on Wayland at native refresh rate (e.g. 240Hz) with full-resolution screenshot auditing?
 
+---
+
+## 10. Robust Desktop Shell Integration: Cross-Server (XWayland/Wine) Input Injection & Wayland Drawer State Stability
+
+Desktop shell widgets (such as Quickshell media controls, top drawers, and dashboard overlays) frequently need to interact with external non-native desktop applications—specifically legacy X11 applications and Windows applications running via Wine/Proton (e.g., NetEase CloudMusic `cloudmusic.exe`).
+
+Integrating Wayland desktop shells with XWayland/Wine applications introduces unique cross-server edge cases that can completely break desktop UX if not handled with rigorous architectural patterns.
+
+---
+
+### 10.1. The Synthetic Pointer Injection Failure Mode (The "Mouse Jumps to Nowhere" Bug)
+
+#### The Naive Pattern:
+A common approach to controlling non-DBus media players is synthetic mouse input:
+1. Locate the player window coordinates.
+2. Query the current cursor location using `XQueryPointer(dpy, root, ...)`.
+3. Use `XTestFakeMotionEvent(dpy, -1, root_x, root_y, 0)` to move the cursor over the play/pause button.
+4. Click via `XTestFakeButtonEvent(dpy, 1, 1/0, 0)`.
+5. Move the cursor back to the queried coordinates using `XTestFakeMotionEvent(dpy, -1, orig_x, orig_y, 0)`.
+
+#### Why This Catastrophically Fails on Wayland:
+1. **The Wayland Coordinate Black Hole**:
+   Under Wayland, when the user's cursor is hovering over a native Wayland layer-shell surface (such as Quickshell's top drawer, bottom dock, or dashboard), the X11 server (XWayland) does not own the pointer focus. Calling `XQueryPointer` on the X11 root window returns $(0, 0)$ or stale coordinates from the last time an X11 surface was active.
+2. **Violent Cursor Warping**:
+   When the code attempts to "restore" pointer coordinates from $(0, 0)$, the user's physical mouse cursor is violently flung across the screen (often to the top-left edge or an arbitrary desktop boundary).
+3. **Cascading UI Dismissal (The Closed Drawer Bug)**:
+   Quickshell and Qt Quick depend on `HoverHandler` or `MouseArea.containsMouse` to keep ephemeral surfaces open. The moment the cursor is warped away:
+   - `containsMouse` immediately turns `false`.
+   - Any auto-close timer (e.g. 350ms hysteresis) triggers.
+   - The drawer dismisses itself before the user can click any further options or see playback state.
+4. **Occlusion & Mis-clicks**:
+   If the Wine window is occluded by another window (such as a code editor, terminal, or browser), `XTestFakeButtonEvent` clicks whichever window is physically on top in the X11 stacking order, stealing focus and failing to toggle playback.
+
+---
+
+### 10.2. The Definitive Solution: Targeted Direct Window Keys (`XSendEvent`)
+
+Instead of simulating physical mouse movements and button clicks, route media keystrokes directly into the target window using `XSendEvent`:
+
+```
++-------------------+                      +-----------------------+
+| Quickshell / QML  |                      | Wayland Pointer State |
+| (Top Drawer Open) |                      | (Unchanged: dx=0,dy=0)|
++---------+---------+                      +-----------------------+
+          | IPC
+          v
++-------------------+
+|   astral-plasma   |
+|   Rust Daemon     |
++---------+---------+
+          | XSendEvent(KeyPress/KeyRelease, keycode=172)
+          v
++------------------------------------------------------------------+
+| NetEase CloudMusic Window (win = 0x2a00009, WM_CLASS=cloudmusic) |
+|   -> Wine translates X11 KeyPress to WM_KEYDOWN(VK_MEDIA_PLAY)    |
+|   -> Operates 100% in background without focus or mouse motion    |
++------------------------------------------------------------------+
+```
+
+#### Key Implementation Details:
+1. **Direct Window Targeting**:
+   Construct an `XKeyEvent` specifically targeted at the Wine client window ID (`win`), with `KeyPressMask` (1) and `KeyReleaseMask` (2):
+   ```rust
+   let mut press_ev = XEvent {
+       xkey: XKeyEvent {
+           type_: 2, // KeyPress
+           serial: 0,
+           send_event: 1,
+           display: dpy,
+           window: win,
+           root,
+           subwindow: 0,
+           time: 0,
+           x: 0, y: 0, x_root: 0, y_root: 0,
+           state: 0,
+           keycode: 172, // XF86AudioPlay
+           same_screen: 1,
+       },
+   };
+   XSendEvent(dpy, win, 1, 1, &mut press_ev);
+   ```
+2. **Wine Translation to Virtual Keys**:
+   Wine's X11 driver maps X11 keycodes directly to Windows Virtual-Key codes:
+   - Keycode 172 (`XF86AudioPlay`) $\to$ `VK_MEDIA_PLAY_PAUSE (0xB3)`
+   - Keycode 171 (`XF86AudioNext`) $\to$ `VK_MEDIA_NEXT_TRACK (0xB0)`
+   - Keycode 173 (`XF86AudioPrev`) $\to$ `VK_MEDIA_PREV_TRACK (0xB1)`
+3. **Zero Cursor Displacement**:
+   The user's mouse cursor does not move a single pixel ($dx = 0, dy = 0$).
+4. **100% Occlusion Tolerance**:
+   The player toggles playback instantly even when completely minimized, hidden, or covered by full-screen windows.
+5. **No Window Activation**:
+   The external player does not steal focus, pop over current work, or disturb active window focus.
+6. **No Desktop Hotkey Hijacking**:
+   Because the event is sent directly to `win` rather than the X11 root window, desktop hotkey daemons (such as KDE's `kglobalaccel`) do not intercept or swallow the event.
+
+---
+
+### 10.3. Window Resolution on Wayland: The Two-Tier `XQueryTree` & Candidate Scoring Pattern
+
+On Wayland compositors (KWin Wayland), `_NET_CLIENT_LIST` on the root window is only updated when XWayland windows are mapped or activated. Under many desktop states (such as when native Wayland surfaces are active), `_NET_CLIENT_LIST` is empty or missing.
+
+#### The Robust Discovery Strategy:
+1. **Tier 1 (Fast Path)**: Read `_NET_CLIENT_LIST` on the root window with `XGetWindowProperty`.
+2. **Tier 2 (Fallback via Root Tree)**: If `_NET_CLIENT_LIST` returns 0 items or fails, call `XQueryTree(dpy, root, ...)` to enumerate all child windows of the root window directly from the X server display connection.
+
+#### The Wine 1x1 Helper Window Trap & Candidate Scoring:
+A naive search returns the **first** window whose `WM_CLASS` contains `"cloudmusic"`. In Wine/Proton, this almost always fails:
+- Every Win32 process spawns dozens of helper X11 windows: 1x1 invisible IME windows (`Default IME`), DDE messaging windows, tooltips (`110x2`), and desktop overlay lyrics.
+- If key events are delivered to a 1x1 helper window, the application completely ignores them.
+- **The Scoring Metric**:
+  1. Filter out all windows with $\text{width} < 200$ or $\text{height} < 200$.
+  2. Query `WM_NAME` / `_NET_WM_NAME`. If the window has a non-empty title (e.g. song name `"Song - Artist"`), award a massive title boost ($+10,000,000$).
+  3. Add the window area ($\text{width} \times \text{height}$) to the score.
+  4. Select the candidate window with the highest score.
+  This ensures the main application window (e.g. `0x2a00009` at $1290 \times 779$) is selected 100% reliably.
+
+
+---
+
+### 10.4. Wayland Ephemeral Drawer Hover & Latching Patterns
+
+When designing hover-activated edge drawers (such as a top drawer that triggers on the top screen border):
+1. **Unified Hover Domain**:
+   Never rely on separate, non-overlapping `MouseArea` items with gaps between the screen border trigger and the expanded drawer body. An un-hovered gap of even 1 pixel will trigger instant dismissal.
+   ```qml
+   readonly property bool isDashboardHovered: topTrigger.containsMouse || drawerBody.containsMouse
+   ```
+2. **Hysteresis Grace Period**:
+   Always introduce an exit debounce timer (e.g. 350ms):
+   ```qml
+   Timer {
+       id: closeTimer
+       interval: 350
+       repeat: false
+       onTriggered: {
+           if (!root.isDashboardHovered && !root.pinned) {
+               root.close();
+           }
+       }
+   }
+   ```
+   When `isDashboardHovered` turns `false`, start the timer; if `isDashboardHovered` becomes `true` again before timeout, immediately stop the timer.
+3. **Keep Drawer Open During External Actions**:
+   By using targeted background input injection (`send_window_key`) instead of mouse warping, the cursor remains securely inside the drawer's bounds during media button clicks, keeping `isDashboardHovered` continuously true.
+
+
 
 

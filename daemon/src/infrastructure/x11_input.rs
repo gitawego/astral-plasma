@@ -48,8 +48,29 @@ pub struct XClientMessageEvent {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+pub struct XKeyEvent {
+    pub type_: libc::c_int,
+    pub serial: libc::c_ulong,
+    pub send_event: libc::c_int,
+    pub display: *mut libc::c_void,
+    pub window: libc::c_ulong,
+    pub root: libc::c_ulong,
+    pub subwindow: libc::c_ulong,
+    pub time: libc::c_ulong,
+    pub x: libc::c_int,
+    pub y: libc::c_int,
+    pub x_root: libc::c_int,
+    pub y_root: libc::c_int,
+    pub state: libc::c_uint,
+    pub keycode: libc::c_uint,
+    pub same_screen: libc::c_int,
+}
+
+#[repr(C)]
 pub union XEvent {
     pub type_: libc::c_int,
+    pub xkey: XKeyEvent,
     pub xbutton: XButtonEvent,
     pub xclient: XClientMessageEvent,
     pub pad: [libc::c_long; 24],
@@ -82,6 +103,7 @@ extern "C" {
         prop_return: *mut *mut libc::c_uchar,
     ) -> libc::c_int;
     fn XFree(data: *mut libc::c_void) -> libc::c_int;
+    #[allow(dead_code)]
     fn XGetGeometry(
         display: *mut libc::c_void,
         d: libc::c_ulong,
@@ -100,6 +122,7 @@ extern "C" {
         event_mask: libc::c_long,
         event_send: *mut XEvent,
     ) -> libc::c_int;
+    #[allow(dead_code)]
     fn XTranslateCoordinates(
         display: *mut libc::c_void,
         src_w: libc::c_ulong,
@@ -116,29 +139,13 @@ extern "C" {
         is_press: libc::c_int,
         delay: libc::c_ulong,
     ) -> libc::c_int;
-    fn XTestFakeMotionEvent(
-        display: *mut libc::c_void,
-        screen_number: libc::c_int,
-        x: libc::c_int,
-        y: libc::c_int,
-        delay: libc::c_ulong,
-    ) -> libc::c_int;
-    fn XTestFakeButtonEvent(
-        display: *mut libc::c_void,
-        button: libc::c_uint,
-        is_press: libc::c_int,
-        delay: libc::c_ulong,
-    ) -> libc::c_int;
-    fn XQueryPointer(
+    fn XQueryTree(
         display: *mut libc::c_void,
         w: libc::c_ulong,
         root_return: *mut libc::c_ulong,
-        child_return: *mut libc::c_ulong,
-        root_x_return: *mut libc::c_int,
-        root_y_return: *mut libc::c_int,
-        win_x_return: *mut libc::c_int,
-        win_y_return: *mut libc::c_int,
-        mask_return: *mut libc::c_uint,
+        parent_return: *mut libc::c_ulong,
+        children_return: *mut *mut libc::c_ulong,
+        nchildren_return: *mut libc::c_uint,
     ) -> libc::c_int;
 }
 
@@ -155,12 +162,126 @@ pub fn calculate_wine_media_coords(action: WineMediaAction, width: u32, height: 
 }
 
 /// Locates a Wine media client window (such as NetEase Cloud Music) from `_NET_CLIENT_LIST`.
+unsafe fn evaluate_candidate_window(
+    dpy: *mut libc::c_void,
+    win: libc::c_ulong,
+    target_lower: &str,
+    wm_class: libc::c_ulong,
+    wm_name: libc::c_ulong,
+) -> Option<u64> {
+    let mut matches = false;
+    let mut has_title = false;
+
+    // 1. Check WM_CLASS
+    let mut c_type = 0;
+    let mut c_fmt = 0;
+    let mut c_nitems = 0;
+    let mut c_after = 0;
+    let mut c_prop: *mut libc::c_uchar = ptr::null_mut();
+
+    if XGetWindowProperty(
+        dpy,
+        win,
+        wm_class,
+        0,
+        1024,
+        0,
+        0,
+        &mut c_type,
+        &mut c_fmt,
+        &mut c_nitems,
+        &mut c_after,
+        &mut c_prop,
+    ) == 0 && !c_prop.is_null() {
+        let slice = std::slice::from_raw_parts(c_prop, c_nitems as usize);
+        let class_str = String::from_utf8_lossy(slice).to_lowercase();
+        XFree(c_prop as *mut libc::c_void);
+        if class_str.contains(target_lower) {
+            matches = true;
+        }
+    }
+
+    // 2. Check WM_NAME
+    let mut n_type = 0;
+    let mut n_fmt = 0;
+    let mut n_nitems = 0;
+    let mut n_after = 0;
+    let mut n_prop: *mut libc::c_uchar = ptr::null_mut();
+
+    if XGetWindowProperty(
+        dpy,
+        win,
+        wm_name,
+        0,
+        1024,
+        0,
+        0,
+        &mut n_type,
+        &mut n_fmt,
+        &mut n_nitems,
+        &mut n_after,
+        &mut n_prop,
+    ) == 0 && !n_prop.is_null() {
+        let slice = std::slice::from_raw_parts(n_prop, n_nitems as usize);
+        let name_str = String::from_utf8_lossy(slice);
+        let trimmed = name_str.trim();
+        if !trimmed.is_empty() {
+            has_title = true;
+        }
+        if trimmed.to_lowercase().contains(target_lower) {
+            matches = true;
+        }
+        XFree(n_prop as *mut libc::c_void);
+    }
+
+    if !matches {
+        return None;
+    }
+
+    // 3. Check Geometry
+    let mut root = 0;
+    let mut x = 0;
+    let mut y = 0;
+    let mut width = 0;
+    let mut height = 0;
+    let mut border_width = 0;
+    let mut depth = 0;
+
+    if XGetGeometry(
+        dpy,
+        win,
+        &mut root,
+        &mut x,
+        &mut y,
+        &mut width,
+        &mut height,
+        &mut border_width,
+        &mut depth,
+    ) == 0 {
+        return None;
+    }
+
+    // Filter out dummy 1x1, tooltips, and non-main helper windows
+    if width < 200 || height < 200 {
+        return None;
+    }
+
+    let area = (width as u64) * (height as u64);
+    let title_boost = if has_title { 10_000_000 } else { 0 };
+    Some(title_boost + area)
+}
+
+#[allow(dead_code)]
 pub unsafe fn find_wine_media_window(dpy: *mut libc::c_void, target_class: &str) -> Option<libc::c_ulong> {
     let root = XDefaultRootWindow(dpy);
     let net_client_list = XInternAtom(dpy, b"_NET_CLIENT_LIST\0".as_ptr() as *const libc::c_char, 0);
     let wm_class = XInternAtom(dpy, b"WM_CLASS\0".as_ptr() as *const libc::c_char, 0);
     let wm_name = XInternAtom(dpy, b"WM_NAME\0".as_ptr() as *const libc::c_char, 0);
+    let target_lower = target_class.to_lowercase();
 
+    let mut best_candidate: Option<(libc::c_ulong, u64)> = None;
+
+    // Fast-path: query _NET_CLIENT_LIST
     let mut actual_type = 0;
     let mut actual_format = 0;
     let mut nitems = 0;
@@ -182,83 +303,45 @@ pub unsafe fn find_wine_media_window(dpy: *mut libc::c_void, target_class: &str)
         &mut prop,
     );
 
-    if ret != 0 || prop.is_null() {
-        return None;
-    }
-
-    let windows = prop as *const libc::c_ulong;
-    let mut found = None;
-    let target_lower = target_class.to_lowercase();
-
-    for i in 0..nitems as usize {
-        let win = *windows.add(i);
-
-        // 1. Check WM_CLASS
-        let mut c_type = 0;
-        let mut c_fmt = 0;
-        let mut c_nitems = 0;
-        let mut c_after = 0;
-        let mut c_prop: *mut libc::c_uchar = ptr::null_mut();
-
-        if XGetWindowProperty(
-            dpy,
-            win,
-            wm_class,
-            0,
-            1024,
-            0,
-            0,
-            &mut c_type,
-            &mut c_fmt,
-            &mut c_nitems,
-            &mut c_after,
-            &mut c_prop,
-        ) == 0 && !c_prop.is_null() {
-            let slice = std::slice::from_raw_parts(c_prop, c_nitems as usize);
-            let class_str = String::from_utf8_lossy(slice).to_lowercase();
-            XFree(c_prop as *mut libc::c_void);
-            if class_str.contains(&target_lower) {
-                found = Some(win);
-                break;
+    if ret == 0 && !prop.is_null() {
+        let windows = prop as *const libc::c_ulong;
+        for i in 0..nitems as usize {
+            let win = *windows.add(i);
+            if let Some(score) = evaluate_candidate_window(dpy, win, &target_lower, wm_class, wm_name) {
+                if best_candidate.as_ref().map_or(true, |(_, s)| score > *s) {
+                    best_candidate = Some((win, score));
+                }
             }
         }
+        XFree(prop as *mut libc::c_void);
+    }
 
-        // 2. Check WM_NAME fallback
-        let mut n_type = 0;
-        let mut n_fmt = 0;
-        let mut n_nitems = 0;
-        let mut n_after = 0;
-        let mut n_prop: *mut libc::c_uchar = ptr::null_mut();
+    // Fallback: enumerate root window hierarchy via XQueryTree
+    if best_candidate.is_none() {
+        let mut q_root = 0;
+        let mut q_parent = 0;
+        let mut children: *mut libc::c_ulong = ptr::null_mut();
+        let mut nchildren = 0;
 
-        if XGetWindowProperty(
-            dpy,
-            win,
-            wm_name,
-            0,
-            1024,
-            0,
-            0,
-            &mut n_type,
-            &mut n_fmt,
-            &mut n_nitems,
-            &mut n_after,
-            &mut n_prop,
-        ) == 0 && !n_prop.is_null() {
-            let slice = std::slice::from_raw_parts(n_prop, n_nitems as usize);
-            let name_str = String::from_utf8_lossy(slice).to_lowercase();
-            XFree(n_prop as *mut libc::c_void);
-            if name_str.contains(&target_lower) {
-                found = Some(win);
-                break;
+        if XQueryTree(dpy, root, &mut q_root, &mut q_parent, &mut children, &mut nchildren) != 0 && !children.is_null() {
+            for i in 0..nchildren as usize {
+                let win = *children.add(i);
+                if let Some(score) = evaluate_candidate_window(dpy, win, &target_lower, wm_class, wm_name) {
+                    if best_candidate.as_ref().map_or(true, |(_, s)| score > *s) {
+                        best_candidate = Some((win, score));
+                    }
+                }
             }
+            XFree(children as *mut libc::c_void);
         }
     }
 
-    XFree(prop as *mut libc::c_void);
-    found
+    best_candidate.map(|(win, _)| win)
 }
 
+
 /// Queries the currently active window ID via `_NET_ACTIVE_WINDOW` on the root window.
+#[allow(dead_code)]
 pub unsafe fn get_active_window(dpy: *mut libc::c_void) -> libc::c_ulong {
     let root = XDefaultRootWindow(dpy);
     let net_active_window = XInternAtom(dpy, b"_NET_ACTIVE_WINDOW\0".as_ptr() as *const libc::c_char, 0);
@@ -297,6 +380,7 @@ pub unsafe fn get_active_window(dpy: *mut libc::c_void) -> libc::c_ulong {
 }
 
 /// Restores focus to the specified active window via an EWMH `_NET_ACTIVE_WINDOW` client message.
+#[allow(dead_code)]
 pub unsafe fn restore_active_window(dpy: *mut libc::c_void, win: libc::c_ulong) {
     if win == 0 {
         return;
@@ -322,115 +406,91 @@ pub unsafe fn restore_active_window(dpy: *mut libc::c_void, win: libc::c_ulong) 
     XFlush(dpy);
 }
 
-/// Sends a direct targeted click event (`XSendEvent`) to the Wine media window controls.
-/// Preserves the currently active window so Wine does not steal focus and pop to the foreground.
-pub fn send_wine_media_action(action: WineMediaAction) -> Result<(), String> {
+/// Emits a targeted X11 KeyPress/KeyRelease event directly to the specified window.
+/// This routes media keys directly into the Wine process without requiring the window to be active,
+/// without moving the mouse pointer, and without triggering global desktop shortcuts.
+pub fn send_window_key(win: libc::c_ulong, key: MediaKey) -> Result<(), String> {
     unsafe {
         let dpy = XOpenDisplay(ptr::null());
         if dpy.is_null() {
             return Err("Failed to open X11 display".to_string());
         }
 
-        let win_opt = find_wine_media_window(dpy, "cloudmusic");
-        let win = match win_opt {
-            Some(w) => w,
-            None => {
-                XCloseDisplay(dpy);
-                return Err("No NetEase Cloud Music window found".to_string());
-            }
+        let root = XDefaultRootWindow(dpy);
+        let keycode = key as libc::c_uint;
+
+        let mut press_ev = XEvent {
+            xkey: XKeyEvent {
+                type_: 2, // KeyPress
+                serial: 0,
+                send_event: 1,
+                display: dpy,
+                window: win,
+                root,
+                subwindow: 0,
+                time: 0,
+                x: 0,
+                y: 0,
+                x_root: 0,
+                y_root: 0,
+                state: 0,
+                keycode,
+                same_screen: 1,
+            },
         };
-
-        let prev_active = get_active_window(dpy);
-
-        let mut root = 0;
-        let mut x = 0;
-        let mut y = 0;
-        let mut width = 0;
-        let mut height = 0;
-        let mut border_width = 0;
-        let mut depth = 0;
-
-        if XGetGeometry(
-            dpy,
-            win,
-            &mut root,
-            &mut x,
-            &mut y,
-            &mut width,
-            &mut height,
-            &mut border_width,
-            &mut depth,
-        ) == 0 {
-            XCloseDisplay(dpy);
-            return Err("Failed to query window geometry".to_string());
-        }
-
-        let (target_x, target_y) = calculate_wine_media_coords(action, width, height);
-
-        let mut rx = 0;
-        let mut ry = 0;
-        let mut child = 0;
-        XTranslateCoordinates(dpy, win, root, 0, 0, &mut rx, &mut ry, &mut child);
-        let root_x = rx + target_x;
-        let root_y = ry + target_y;
-
-        let mut pointer_root = 0;
-        let mut pointer_child = 0;
-        let mut orig_pointer_x = 0;
-        let mut orig_pointer_y = 0;
-        let mut win_x = 0;
-        let mut win_y = 0;
-        let mut mask = 0;
-        let has_pointer = XQueryPointer(
-            dpy,
-            root,
-            &mut pointer_root,
-            &mut pointer_child,
-            &mut orig_pointer_x,
-            &mut orig_pointer_y,
-            &mut win_x,
-            &mut win_y,
-            &mut mask,
-        );
-
-        // Hardware-level input injection via XTest (bypasses Chromium/CEF synthetic event rejection):
-        XTestFakeMotionEvent(dpy, -1, root_x, root_y, 0);
+        XSendEvent(dpy, win, 1, 1, &mut press_ev); // KeyPressMask = 1
         XFlush(dpy);
+
         std::thread::sleep(std::time::Duration::from_millis(30));
 
-        XTestFakeButtonEvent(dpy, 1, 1, 0); // ButtonPress
+        let mut release_ev = XEvent {
+            xkey: XKeyEvent {
+                type_: 3, // KeyRelease
+                serial: 0,
+                send_event: 1,
+                display: dpy,
+                window: win,
+                root,
+                subwindow: 0,
+                time: 0,
+                x: 0,
+                y: 0,
+                x_root: 0,
+                y_root: 0,
+                state: 0,
+                keycode,
+                same_screen: 1,
+            },
+        };
+        XSendEvent(dpy, win, 1, 2, &mut release_ev); // KeyReleaseMask = 2
         XFlush(dpy);
-        std::thread::sleep(std::time::Duration::from_millis(40));
-
-        XTestFakeButtonEvent(dpy, 1, 0, 0); // ButtonRelease
-        XFlush(dpy);
-        std::thread::sleep(std::time::Duration::from_millis(30));
-
-        // Restore pointer location
-        if has_pointer != 0 {
-            XTestFakeMotionEvent(dpy, -1, orig_pointer_x, orig_pointer_y, 0);
-            XFlush(dpy);
-        }
-
-        if prev_active != 0 && prev_active != win {
-            restore_active_window(dpy, prev_active);
-            std::thread::spawn(move || {
-                // Background watchdog: if Wine asynchronously requests activation ~50ms later, restore focus
-                std::thread::sleep(std::time::Duration::from_millis(60));
-                let d = XOpenDisplay(ptr::null());
-                if !d.is_null() {
-                    let cur = get_active_window(d);
-                    if cur == win {
-                        restore_active_window(d, prev_active);
-                    }
-                    XCloseDisplay(d);
-                }
-            });
-        }
 
         XCloseDisplay(dpy);
     }
     Ok(())
+}
+
+/// Sends a media action to a Wine player without moving the mouse pointer.
+/// Dispatches clean targeted X11 KeyPress/KeyRelease events directly to the Wine window.
+pub fn send_wine_media_action(action: WineMediaAction) -> Result<(), String> {
+    let key = match action {
+        WineMediaAction::PlayPause => MediaKey::PlayPause,
+        WineMediaAction::Next => MediaKey::Next,
+        WineMediaAction::Previous => MediaKey::Previous,
+    };
+
+    unsafe {
+        let dpy = XOpenDisplay(ptr::null());
+        if !dpy.is_null() {
+            let win_opt = find_wine_media_window(dpy, "cloudmusic");
+            XCloseDisplay(dpy);
+            if let Some(win) = win_opt {
+                return send_window_key(win, key);
+            }
+        }
+    }
+
+    send_media_key(key)
 }
 
 /// Emits an X11 XTest KeyPress and KeyRelease sequence for the given media key.
