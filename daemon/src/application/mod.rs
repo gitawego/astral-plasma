@@ -11,3 +11,4 @@ pub mod audio_visualizer;
 pub mod wallpaper_service;
 pub mod settings_service;
 pub mod shortcut_service;
+pub mod doctor_service;

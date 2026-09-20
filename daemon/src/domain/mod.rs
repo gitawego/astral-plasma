@@ -9,3 +9,4 @@ pub mod wallpaper;
 pub mod system_settings;
 pub mod shortcuts;
 pub mod media;
+pub mod doctor;

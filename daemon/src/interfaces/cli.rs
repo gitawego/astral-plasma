@@ -25,6 +25,22 @@ pub async fn run_cli() -> DynResult<()> {
     }
 
     match args[1].as_str() {
+        "doctor" | "check" => {
+            use crate::application::doctor_service::DoctorService;
+            let service = DoctorService::new();
+            let report = service.run_diagnostics();
+
+            let is_json = args.iter().any(|a| a == "--json");
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print!("{}", report.render_terminal());
+            }
+
+            if !report.all_required_satisfied {
+                std::process::exit(1);
+            }
+        }
         "run" => {
             run_self_contained_app().await?;
         }
@@ -608,6 +624,7 @@ fn print_usage() {
     eprintln!("  desktop <install|cleanup> - Manage KWin authorization desktop entries");
     eprintln!("  shortcuts <cmd>         - Granular shortcut management: backup, bind, restore, status");
     eprintln!("  tray <cmd>              - System tray operations");
+    eprintln!("  doctor [--json]         - Diagnose and report versions of all system dependencies");
 }
 
 async fn run_self_contained_app() -> DynResult<()> {

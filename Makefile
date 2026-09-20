@@ -3,7 +3,7 @@ BIN_DIR = bin
 TARGET = $(BIN_DIR)/astral-plasma
 DAEMON_DIR = daemon
 
-.PHONY: all build release debug test test-rust test-qml run stop restore clean install help
+.PHONY: all build release debug test test-rust test-qml doctor run stop restore clean install help
 
 all: build
 
@@ -11,6 +11,7 @@ help:
 	@echo "Astral Plasma Management Makefile"
 	@echo "  make build       - Build single self-contained binary to $(TARGET)"
 	@echo "  make debug       - Build debug single binary"
+	@echo "  make doctor      - Check dependencies and system compatibility"
 	@echo "  make test        - Run all tests (Rust unit tests + QML integration tests)"
 	@echo "  make test-rust   - Run only Rust unit tests"
 	@echo "  make test-qml    - Run only QML test suites"
@@ -44,6 +45,9 @@ test-rust:
 
 test-qml:
 	bash tests/run_qml_tests.sh
+
+doctor: build
+	./$(TARGET) doctor
 
 run: build
 	@trap './bin/astral-plasma desktop cleanup 2>/dev/null || true; ./bin/astral-plasma plasma restore' EXIT INT TERM; \

@@ -52,12 +52,23 @@ While the default visual language is **highly inspired by [caelestia-dots/shell]
 - **OS**: Linux with **KDE Plasma 6**
 - **Window Manager**: KWin (Wayland or X11)
 - **Dependencies**:
-  - [`quickshell`](https://quickshell.outfoxxed.me/) (latest git or package)
-  - `qt6-base`, `qt6-declarative`, `qt6-svg`
+  - [`quickshell`](https://quickshell.outfoxxed.me/) (v0.3.0+)
+  - `qt6-base`, `qt6-declarative`, `qt6-svg` (Qt 6.6+)
   - `qdbus6` (standard in Plasma 6)
-  - `python3`
-  - `spectacle` (for screenshots / debugging, optional)
-  - `matugen` (optional, for wallpaper-based palette generation)
+  - `pipewire` / `pw-record` (Audio & visualizer)
+  - `fcitx5` / `fcitx5-remote` (optional, for IME switcher)
+  - `power-profiles-daemon` / `powerprofilesctl` (optional, for power profiles)
+  - `matugen` (optional, for dynamic wallpaper palette extraction)
+  - `spectacle` (optional, for screenshots / debugging)
+
+> 💡 **Automated Dependency Doctor**: You can verify all dependencies, versions, and system readiness at any time:
+> ```bash
+> make doctor
+> # or directly via binary:
+> ./bin/astral-plasma doctor
+> # or machine-readable JSON:
+> ./bin/astral-plasma doctor --json
+> ```
 
 ---
 
