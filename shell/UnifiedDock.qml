@@ -904,8 +904,13 @@ Item {
                 radius: Theme.radiusMedium
                 color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock")
                     ? Colors.primary
-                    : (clockHover.hovered ? Colors.surfaceContainerHigh : "transparent")
+                    : (clockHover.hovered ? Colors.glassPillHover : Colors.glassPill)
+                border.width: 1
+                border.color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock")
+                    ? Colors.primary
+                    : (clockHover.hovered ? Colors.glassBorderSpecular : Colors.glassBorderSubtle)
                 Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+                Behavior on border.color { ColorAnimation { duration: Theme.animDurationFast } }
 
                 Column {
                     id: clockCol

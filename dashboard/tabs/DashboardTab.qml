@@ -76,14 +76,14 @@ Item {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 26
                                 font.weight: Font.DemiBold
-                                color: "#FFFFFF"
+                                color: Colors.textMain
                             }
 
                             Text {
                                 text: WeatherService.condition || "Clear"
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontBodyMedium
-                                color: Qt.alpha("#FFFFFF", 0.70)
+                                color: Colors.textMuted
                             }
                         }
                     }
@@ -164,7 +164,7 @@ Item {
                             font.family: Theme.fontFamily
                             font.pixelSize: 26
                             font.weight: Font.DemiBold
-                            color: "#FFFFFF"
+                            color: Colors.textMain
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -178,7 +178,7 @@ Item {
                             font.family: Theme.fontFamily
                             font.pixelSize: 26
                             font.weight: Font.DemiBold
-                            color: "#FFFFFF"
+                            color: Colors.textMain
                         }
                         Item { width: 1; height: 6 }
                         Text {
@@ -187,7 +187,7 @@ Item {
                             font.family: Theme.fontFamily
                             font.pixelSize: 12
                             font.weight: Font.Medium
-                            color: Qt.alpha("#FFFFFF", 0.70)
+                            color: Colors.textMuted
                         }
                     }
                 }
@@ -286,8 +286,8 @@ Item {
                                             text: dayNum
                                             font.family: Theme.fontFamily
                                             font.pixelSize: calWidget.fontSize
-                                            font.weight: isToday ? Font.Bold : (isCurrMonth ? Font.Medium : Font.Normal)
-                                            color: isToday ? Colors.textOnPrimary : (isCurrMonth ? Colors.textOnSurface : Qt.alpha(Colors.textOnSurfaceVariant, 0.35))
+                                            font.weight: isToday ? Font.Bold : (isCurrMonth ? Font.DemiBold : Font.Normal)
+                                            color: isToday ? Colors.textOnPrimary : (isCurrMonth ? Colors.textOnSurface : Qt.alpha(Colors.textOnSurfaceVariant, 0.45))
                                         }
                                     }
                                 }

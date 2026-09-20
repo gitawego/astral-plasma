@@ -134,7 +134,7 @@ Item {
                         text: "Theme Settings"
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
-                        color: "#FFFFFF"
+                        color: Colors.isDarkMode ? "#FFFFFF" : Colors.textMain
                     }
                 }
             }
@@ -158,7 +158,7 @@ Item {
                         width: 175
                         height: 50
                         radius: Theme.radiusSmall
-                        color: tabHover.containsMouse ? Qt.alpha(Colors.textMain, 0.04) : "transparent"
+                        color: tabHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : "transparent"
 
                         Column {
                             anchors.centerIn: parent
@@ -168,7 +168,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.icon
                                 size: 20
-                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : (Colors.isDarkMode ? Qt.alpha(Colors.textMain, 0.88) : Colors.textMuted))
                                 Behavior on color {
                                     ColorAnimation { duration: Theme.animExpressiveFastEffects }
                                 }
@@ -178,9 +178,9 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.label
                                 font.pixelSize: 12
-                                font.weight: Font.DemiBold
+                                font.weight: isSelected ? Font.Bold : Font.DemiBold
                                 font.family: Theme.fontFamily
-                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.onSurfaceVariant)
+                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : (Colors.isDarkMode ? Qt.alpha(Colors.textMain, 0.88) : Colors.textMuted))
                                 Behavior on color {
                                     ColorAnimation { duration: Theme.animExpressiveFastEffects }
                                 }

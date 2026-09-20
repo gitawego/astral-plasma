@@ -913,12 +913,12 @@ PanelWindow {
                 : 0
         }
 
-        // Central Fused Dropdown Dashboard (when open)
+        // Central Fused Dropdown Dashboard & Backdrop Scrim (when open)
         Region {
-            x: root.dropX - root.filletR
+            x: 0
             y: 0
-            width: dropdownContainer.offsetProgress > 0.001 ? (root.dropW + root.filletR * 2) : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? (root.currentDropH + 20) : 0
+            width: dropdownContainer.offsetProgress > 0.001 ? root.width : 0
+            height: dropdownContainer.offsetProgress > 0.001 ? root.height : 0
         }
 
 
@@ -960,6 +960,24 @@ PanelWindow {
             y: 0
             width: (typeof PowerService !== "undefined" && PowerService && PowerService.confirmDialogVisible) ? root.width : 0
             height: (typeof PowerService !== "undefined" && PowerService && PowerService.confirmDialogVisible) ? root.height : 0
+        }
+    }
+
+    // 0. CENTRAL DROPDOWN BACKDROP SCRIM (Soft contrast shield & click-to-dismiss)
+    Rectangle {
+        id: dropdownScrim
+        anchors.fill: parent
+        visible: dropdownContainer.offsetProgress > 0.001
+        opacity: dropdownContainer.offsetProgress * ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.32 : 0.18)
+        color: "#000000"
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: {
+                if (typeof Config !== "undefined") {
+                    Config.dashboardVisible = false;
+                }
+            }
         }
     }
 
