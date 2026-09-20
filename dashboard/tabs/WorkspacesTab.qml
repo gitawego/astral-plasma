@@ -66,6 +66,8 @@ Item {
                             font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 13
                             font.weight: modelData.active ? Font.Bold : Font.Normal
                             color: modelData.active 
+                            style: Text.Outline
+                            styleColor: Colors.glassTextHalo
                                 ? ((typeof Colors !== "undefined" && Colors.m3onPrimaryContainer) ? Colors.m3onPrimaryContainer : "#FFFFFF")
                                 : ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF")
                         }

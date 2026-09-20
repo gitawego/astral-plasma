@@ -562,6 +562,58 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "blur" => {
+            use crate::infrastructure::kwin_blur::{BlurSettings, KWinBlurAdapter};
+
+            let adapter = KWinBlurAdapter::new();
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("get");
+            match sub {
+                "get" => {
+                    let current = adapter.current()?;
+                    let res = serde_json::json!({
+                        "strength": current.as_ref().map(|c| c.strength),
+                        "noise_strength": current.as_ref().map(|c| c.noise_strength),
+                        "default_strength": crate::infrastructure::kwin_blur::DEFAULT_STRENGTH,
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "set" => {
+                    let settings = match args.get(3).and_then(|v| v.parse::<u32>().ok()) {
+                        Some(strength) => BlurSettings::clamped(
+                            strength,
+                            args.get(4).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0),
+                        ),
+                        None => {
+                            eprintln!("Usage: astral-plasma blur set <1-10> [noise 0-10]");
+                            std::process::exit(2);
+                        }
+                    };
+                    adapter.apply(&settings)?;
+                    let res = serde_json::json!({
+                        "success": true,
+                        "strength": settings.strength,
+                        "noise_strength": settings.noise_strength,
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "fidelity" => {
+                    // Map the shell's 0.0..1.0 blurStrength preference (glass
+                    // fidelity) onto KWin's inverted 1..10 scale.
+                    let pref = args.get(3).and_then(|v| v.parse::<f64>().ok()).unwrap_or(1.0);
+                    let settings = BlurSettings::from_normalized(pref);
+                    adapter.apply(&settings)?;
+                    let res = serde_json::json!({
+                        "success": true,
+                        "preference": pref,
+                        "strength": settings.strength,
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma blur <get|set <1-10> [noise]|fidelity <0.0-1.0>>");
+                }
+            }
+        }
         "preview" => {
             if args.len() >= 3 {
                 let win_id = &args[2];

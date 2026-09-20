@@ -40,8 +40,8 @@ Singleton {
                 surface_variant: "#49454F",
                 outline: "#938F99",
                 outline_variant: "#49454F",
-                on_surface: "#E6E0E9",
-                on_surface_variant: "#CAC4D0",
+                on_surface: "#F3EDF6",
+                on_surface_variant: "#E1DBE7",
                 glassTint: "#CFBCFF"
             },
             light: {
@@ -65,7 +65,7 @@ Singleton {
                 outline: "#79747E",
                 outline_variant: "#CAC4D0",
                 on_surface: "#1D1B20",
-                on_surface_variant: "#49454F",
+                on_surface_variant: "#35313B",
                 glassTint: "#6750A4"
             }
         },
@@ -91,8 +91,8 @@ Singleton {
                 surface_variant: "#42474E",
                 outline: "#8C9199",
                 outline_variant: "#42474E",
-                on_surface: "#E1E2E8",
-                on_surface_variant: "#C2C7CF",
+                on_surface: "#EEEFF5",
+                on_surface_variant: "#D9DEE6",
                 glassTint: "#89b4fa"
             },
             light: {
@@ -116,7 +116,7 @@ Singleton {
                 outline: "#73777F",
                 outline_variant: "#C3C7D0",
                 on_surface: "#181C20",
-                on_surface_variant: "#43474E",
+                on_surface_variant: "#2F333A",
                 glassTint: "#12609A"
             }
         },
@@ -142,8 +142,8 @@ Singleton {
                 surface_variant: "#534341",
                 outline: "#A08C89",
                 outline_variant: "#534341",
-                on_surface: "#EDE0DE",
-                on_surface_variant: "#D8C2BE",
+                on_surface: "#F9ECEA",
+                on_surface_variant: "#EFD9D5",
                 glassTint: "#fab387"
             },
             light: {
@@ -167,7 +167,7 @@ Singleton {
                 outline: "#857370",
                 outline_variant: "#D8C2BE",
                 on_surface: "#201A19",
-                on_surface_variant: "#534341",
+                on_surface_variant: "#3F2F2D",
                 glassTint: "#B32810"
             }
         },
@@ -193,8 +193,8 @@ Singleton {
                 surface_variant: "#414941",
                 outline: "#8B938A",
                 outline_variant: "#414941",
-                on_surface: "#E0E4DE",
-                on_surface_variant: "#C1C9BF",
+                on_surface: "#ECF0EA",
+                on_surface_variant: "#D8E0D6",
                 glassTint: "#81D99C"
             },
             light: {
@@ -218,7 +218,7 @@ Singleton {
                 outline: "#727971",
                 outline_variant: "#C1C9BF",
                 on_surface: "#181D19",
-                on_surface_variant: "#414941",
+                on_surface_variant: "#2D352D",
                 glassTint: "#1E6B42"
             }
         }
@@ -375,11 +375,91 @@ Singleton {
     // =========================================================================
     // Apple Liquid Glass Dynamic Themed Material Tokens
     // =========================================================================
-    // Master surface tint: rich smoked liquid glass in dark mode, crystalline milk glass in light mode
-    readonly property color glassSurface: {
-        const base = root.isDarkMode ? Qt.rgba(0.06, 0.08, 0.13, 0.78) : Qt.rgba(0.96, 0.97, 0.99, 0.86);
-        return Qt.tint(base, Qt.alpha(root.primary, root.isDarkMode ? 0.10 : 0.06));
+    // GLASS PARAMETER TABLE - single source of truth for glass alpha + substrate.
+    //
+    // Liquid glass composites over an ARBITRARY wallpaper, so a fixed alpha
+    // yields an unbounded surface luminance. Over a blown-out (white) backdrop
+    // the surface washes out and light text collapses toward 1:1; over a black
+    // one a light surface stops carrying dark text. Both modes must therefore
+    // satisfy a two-sided legibility contract while still transmitting enough
+    // backdrop to read as glass:
+    //
+    //   1. LEGIBILITY  - text reaches WCAG AA (4.5:1) on its own surface over
+    //                    the worst-case backdrop (white for dark mode, black
+    //                    for light mode).
+    //   2. TRANSMISSION- the substrate stays translucent so the compositor
+    //                    blur remains visible instead of reading as a slab.
+    //
+    // The contract is enforced by tests/tst_glass_contrast_contract.qml, which
+    // parses this table. Alphas are the *minimum* satisfying (1) with margin,
+    // so any increase silently costs transparency and any decrease breaks
+    // legibility - do not tune them without re-running that suite.
+    //
+    // CRITICAL - THE STACK, NOT THE LAYERS. Cards are drawn ON TOP of the plate,
+    // so the surface the user actually looks through is plate + card. Two
+    // independently-reasonable alphas multiply: a 0.76 plate under a 0.78 card
+    // transmits only (1-0.755)(1-0.78) = 5.4% of the wallpaper, which renders as
+    // an opaque slab no matter how correct each layer is in isolation. Per the
+    // three-tier hierarchy in docs/LESSONS.md 9.2, cards are Tier 2 and
+    // *inherit blur from Tier 1* - they are a definition tint that separates a
+    // card from the plate, NOT a second load-bearing glass layer. Hence
+    // cardAlpha is an order of magnitude below surfaceAlpha in effect, and
+    // legibility is provided by the plate beneath. The suite asserts the
+    // combined transmission, and also that the card stays visually distinct
+    // from the plate (a card that transmits perfectly but is invisible fails).
+    //
+    // Note: the structural plate carries BOTH primary and muted text - the
+    // dashboard tab labels and MediaTab metadata render directly on it, with no
+    // card underneath - so the plate must clear AA for the dimmer muted token
+    // too.
+    readonly property var glassParams: ({
+        dark: {
+            // Pure black substrate maximizes contrast per unit alpha, which lets
+            // the plate be substantially more transparent than a lifted
+            // substrate can at equal legibility (a 0.01 grey costs ~2%
+            // transmission for nothing).
+            surfaceBase: [0.0, 0.0, 0.0],
+            surfaceAlpha: 0.45,
+            surfaceTint: 0.04,
+            cardBase: [0.0, 0.0, 0.0],
+            cardAlpha: 0.10,
+            cardTint: 0.10,
+            cardHoverAlpha: 0.30,
+            cardHoverTint: 0.14,
+            cardActiveAlpha: 0.40,
+            cardActiveTint: 0.20,
+            cardVibrantAlpha: 0.30,
+            cardVibrantTint: 0.30
+        },
+        light: {
+            surfaceBase: [1.0, 1.0, 1.0],
+            surfaceAlpha: 0.45,
+            surfaceTint: 0.06,
+            cardBase: [1.0, 1.0, 1.0],
+            cardAlpha: 0.10,
+            cardTint: 0.06,
+            cardHoverAlpha: 0.26,
+            cardHoverTint: 0.14,
+            cardActiveAlpha: 0.36,
+            cardActiveTint: 0.22,
+            cardVibrantAlpha: 0.28,
+            cardVibrantTint: 0.30
+        }
+    })
+
+    readonly property var glassActive: root.isDarkMode ? root.glassParams.dark : root.glassParams.light
+
+    function glassTinted(baseVec, alpha, tintAmount) {
+        return Qt.tint(
+            Qt.rgba(baseVec[0], baseVec[1], baseVec[2], alpha),
+            Qt.alpha(root.primary, tintAmount)
+        );
     }
+
+    // Master structural plate: rich smoked liquid glass (dark) / crystalline
+    // milk glass (light). Carries both primary and muted text.
+    readonly property color glassSurface: glassTinted(
+        root.glassActive.surfaceBase, root.glassActive.surfaceAlpha, root.glassActive.surfaceTint)
 
     // Modal sheet surface (Command Launcher, Central Dropdown)
     readonly property color glassModalSurface: glassSurface
@@ -390,33 +470,20 @@ Singleton {
     // Border frame surface
     readonly property color glassBorderSurface: glassSurface
 
-    // Distinct glass card surfaces (sculpted frosted glass plates with crystalline translucency)
-    readonly property color glassCard: root.isDarkMode
-        ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.08), Qt.alpha(root.primary, 0.08))
-        : Qt.tint(
-            Qt.rgba(1.0, 1.0, 1.0, 0.50),
-            Qt.alpha(root.primary, 0.08)
-        )
-    readonly property color glassCardHover: root.isDarkMode
-        ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.14), Qt.alpha(root.primary, 0.16))
-        : Qt.tint(
-            Qt.rgba(1.0, 1.0, 1.0, 0.65),
-            Qt.alpha(root.primary, 0.12)
-        )
-    readonly property color glassCardActive: root.isDarkMode
-        ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.20), Qt.alpha(root.primary, 0.24))
-        : Qt.tint(
-            Qt.rgba(1.0, 1.0, 1.0, 0.75),
-            Qt.alpha(root.primary, 0.18)
-        )
+    // Content cards: a deeper substrate than the plate. In dark mode the
+    // substrate is dark (overlays darken, they do not add a white veil that
+    // would wash out light text over bright wallpapers); in light mode it is
+    // a near-white frosted plate.
+    readonly property color glassCard: glassTinted(
+        root.glassActive.cardBase, root.glassActive.cardAlpha, root.glassActive.cardTint)
+    readonly property color glassCardHover: glassTinted(
+        root.glassActive.cardBase, root.glassActive.cardHoverAlpha, root.glassActive.cardHoverTint)
+    readonly property color glassCardActive: glassTinted(
+        root.glassActive.cardBase, root.glassActive.cardActiveAlpha, root.glassActive.cardActiveTint)
 
     // Vibrant tinted glass card (e.g. Media Player, Highlighted cards)
-    readonly property color glassCardVibrant: root.isDarkMode
-        ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.12), Qt.alpha(root.primary, 0.24))
-        : Qt.tint(
-            Qt.rgba(1.0, 1.0, 1.0, 0.55),
-            Qt.alpha(root.primary, 0.22)
-        )
+    readonly property color glassCardVibrant: glassTinted(
+        root.glassActive.cardBase, root.glassActive.cardVibrantAlpha, root.glassActive.cardVibrantTint)
 
     // Frosted interactive pills
     readonly property color glassPill: Qt.tint(
@@ -442,6 +509,17 @@ Singleton {
         ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.18), Qt.alpha(root.primary, 0.20))
         : Qt.rgba(0.0, 0.0, 0.0, 0.12)
     readonly property color glassInnerRim: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.18 : 0.45)
+
+    // Text vibrancy halo: a soft outline painted under glyphs that sit on glass.
+    // Liquid glass transmits the wallpaper, so a glyph's local backdrop is
+    // unbounded - over a bright wallpaper light text would collapse toward 1:1
+    // unless the glass is made opaque, which destroys the material. Protecting
+    // the glyphs instead (the technique Apple calls vibrancy) keeps the plate
+    // genuinely transparent AND the text legible at any alpha. Mode-aware: a
+    // dark halo guards light text, a light halo guards dark text.
+    readonly property color glassTextHalo: root.isDarkMode
+        ? Qt.rgba(0.0, 0.0, 0.0, 0.62)
+        : Qt.rgba(1.0, 1.0, 1.0, 0.75)
 
     // Optical refraction caustic glow
     readonly property color glassCausticGlow: Qt.alpha(root.primary, root.isDarkMode ? 0.28 : 0.18)

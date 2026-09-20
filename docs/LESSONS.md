@@ -586,8 +586,8 @@ Never attempt to apply compositor blur uniformly to every layer in the shell. Co
 
 | Tier | Component Type | Example | Visual Strategy | Compositor Blur (`BackgroundEffect.blurRegion`) |
 |:---|:---|:---|:---|:---:|
-| **Tier 1: Structural Shell** | Outer Frame, Dock Capsule, Popout Drawers | `UnifiedDock`, `UnifiedFrame`, `UnifiedShell` | Material token `root.glassFill` ($\alpha \approx 0.22$), KWin dual-kawase blur, organic shoulder fillets. | **YES** (Must blur raw desktop wallpaper) |
-| **Tier 2: Content Cards** | Dashboard Cards, Tab Panes, Dialog Bodies | `LiquidGlassCard`, `Card.qml` | Refractive substrate gradient, caustic glow, specular hairline glare, subtle borders. | **NO** (Inherits blur from Tier 1; nesting blurs causes visual mud & lag) |
+| **Tier 1: Structural Shell** | Outer Frame, Dock Capsule, Popout Drawers | `UnifiedDock`, `UnifiedFrame`, `UnifiedShell` | Material token `root.glassFill` from `Colors.glassParams` ($\alpha \approx 0.76$, ~24% backdrop transmission), KWin dual-kawase blur, organic shoulder fillets. | **YES** (Must blur raw desktop wallpaper) |
+| **Tier 2: Content Cards** | Dashboard Cards, Tab Panes, Dialog Bodies | `LiquidGlassCard`, `Card.qml` | Refractive substrate gradient, caustic glow, specular hairline glare, subtle borders. Alpha is a *definition tint* only ($\alpha \approx 0.28$ effective) - it must never behave as a second opaque glass layer, or the Tier 1 blur below it is extinguished. | **NO** (Inherits blur from Tier 1; nesting blurs causes visual mud & lag) |
 | **Tier 3: Micro-Controls** | Buttons, Pills, Segmented Switches, Sliders | `LiquidGlassButton`, `PillButton`, `GlassPill` | Elastic spring physics, contact drop shadows, depression compression ($0.96\times$), specular glints. | **NO** (Pure QML scene graph rendering) |
 
 ---
@@ -674,7 +674,150 @@ Before considering any new liquid glass component complete, verify:
 - [ ] **Hardware Tessellation**: Are all `Shape` items set to `preferredRendererType: Shape.GeometryRenderer`?
 - [ ] **Compositor Blur Alignment**: If using `BackgroundEffect.blurRegion`, does the corner use the zero-missing stepped slice profile ($dx \le \text{arc}$)?
 - [ ] **Zero Nested Compositor Blur**: Are inner cards and buttons relying on QML scene-graph gradients rather than secondary compositor blur regions?
+- [ ] **Bounded Composite Luminance**: Does the surface stay legible over the *worst-case* backdrop (white in dark mode, black in light mode)? Run `tests/tst_glass_contrast_contract.qml`.
 - [ ] **High-DPI / High-Refresh Verification**: Has the component been verified live on Wayland at native refresh rate (e.g. 240Hz) with full-resolution screenshot auditing?
+
+---
+
+### 9.8. The Glass Contrast Contract: Why a Fixed Alpha Is a Latent Bug
+A translucent surface composites over an **arbitrary** wallpaper, so its rendered
+luminance is unbounded. Picking an alpha by eye on one wallpaper therefore hides
+a two-sided failure that appears on others:
+- **Dark mode over a blown-out (white) backdrop**: the plate washes out toward
+  the light text, contrast collapses toward $1:1$, and the panel reads as a pale
+  gray slab. Text and background become "too close to the same light color."
+- **Light mode over a black backdrop**: the mirror problem - a near-white surface
+  can no longer carry dark text.
+
+The second failure mode is the subtler one, because the naive fix for the first
+(for example raising the dark alpha to $\approx 0.80$) *destroys transparency*:
+at that alpha the panel transmits only ~20% of the backdrop, and because KWin's
+blur then averages the backdrop to near-flat gray, the remaining transmission
+carries no recognisable detail. The result is an opaque slab that no longer
+reads as glass at all - the exact complaint "I don't see any transparency."
+
+**The architectural rule.** Glass alphas are not free design parameters; they are
+solved, and the solution has two sides that must be satisfied simultaneously:
+
+1. **Legibility floor** - every text token reaches WCAG AA ($4.5:1$) against the
+   vibrancy halo over the worst-case backdrop.
+2. **Transmission floor** - the plate keeps at least $45\%$ backdrop transmission
+   (measured live at $52\%$), and the **plate+card stack** keeps at least $35\%$,
+   so compositor blur stays visible through the cards. Below ~$45\%$ the material
+   stops reading as glass no matter how correct the alpha math is.
+
+Note that these two floors only coexist because of **text vibrancy** (9.10): at
+$52\%$ transmission the plate over a white wallpaper is mid-grey, so unprotected
+light text would sit at $\approx 3:1$. The halo, not opacity, is what carries AA.
+
+Four corollaries learned the hard way:
+
+- **Evaluate the STACK, not the layers.** Cards are drawn on top of the plate, so
+  the two alphas multiply. A $\alpha = 0.755$ plate under a $\alpha = 0.775$ card
+  transmits $(1-0.755)(1-0.775) = 5.5\%$ of the wallpaper - an opaque slab - even
+  though each layer validated correctly in isolation. Card alphas must therefore
+  be an order of magnitude *below* the plate's. Per 9.2, cards are Tier 2 and
+  inherit blur from Tier 1: a card alpha is a definition tint separating the card
+  from the plate, not a second load-bearing glass layer.
+- **A pure-black substrate buys transmission for free.** Contrast per unit alpha
+  is maximized when the substrate is pure black (dark mode) or pure white (light
+  mode). A $0.01$ grey substrate costs ~2% transmission at identical legibility,
+  so the substrate must stay at exactly $0.0$/$1.0$ and the theme tint must stay
+  small ($\le 0.04$ dark) - every point of tint brightens the plate and takes
+  contrast away from the light text above it.
+- **Darken the substrate, do not raise the alpha.** Contrast scales with
+  $(1 - \alpha)\cdot\text{substrate contrast}$; darkening the substrate buys
+  legibility *without* costing transmission. Raising $\alpha$ buys the same
+  contrast only by giving up the glass.
+- **Identify which text actually rides on which layer.** The structural plate
+  carries muted text directly (`MediaTab` metadata and the dashboard tab labels
+  have no card underneath), so the plate must clear AA for the *dimmer* token,
+  not just primary text.
+- **A backdrop scrim multiplies with the glass alpha.** A heavy scrim
+  ($0.32$) behind an $\alpha = 0.80$ plate leaves $0.198 \times 0.68 \approx 13.5\%$
+  of original desktop luminance - roughly a $5\times$ loss of perceived
+  transparency. Scrim strength is therefore part of the same contract, bounded
+  at $\le 0.15$ (currently $0.08$ dark / $0.06$ light).
+
+All alphas live in the `glassParams` table in `theme/Colors.qml` and are pinned
+by `tests/tst_glass_contrast_contract.qml`, which parses that table so parameter
+drift fails the suite instead of silently shipping. The suite validates all four
+directions: raising an alpha trips a transmission floor, lowering one trips the
+legibility floor, an over-transparent card trips the card-distinctness floor
+($\Delta \ge 12$ luminance levels, so a card cannot dissolve into the plate), and
+card+plate are asserted as a stack rather than independently.
+
+### 9.9. Compositor Blur Strength Is Part of the Material, Not a User Taste
+The shell's glass is executed by KWin: `BackgroundEffect.blurRegion` declares
+*where* to blur, but KWin's own `BlurStrength` decides *how much*. That makes the
+compositor's blur radius a load-bearing parameter of the design, not a cosmetic
+preference - and an excessive one silently defeats the transparency work above.
+
+**The failure mode.** KWin's dual-kawase filter at high strength homogenises the
+backdrop into a near-flat field. A panel can be perfectly translucent (50%+
+transmission, verified against uniform backdrops) and still read as an opaque
+slab, because the 50% that passes through carries no recognisable structure.
+Measured on this shell's dashboard plate, backdrop structure (std across the top
+strip) collapses as strength rises:
+
+| BlurStrength | 1 | 2 | 3 | 6 | 10 |
+|:---|:---|:---|:---|:---|:---|
+| plate backdrop std | 29.4 | 27.0 | 20.6 | 12.1 | 9.7 |
+
+At strength 10 the plate is flat grey; at 3 the browser toolbar and cards behind
+the panel are clearly readable as frosted shapes. **Strength 3 is the default**
+(`DEFAULT_STRENGTH` in `infrastructure/kwin_blur.rs`); below ~2 the frosting is so
+weak that background text competes with the panel's own content.
+
+**The dead-config trap.** `theme.blurStrength` existed in `settings.json` since
+the first commit but was *never applied to KWin* - nothing read it, so KWin kept
+its own default and every glass-fidelity change was fighting an invisible
+constant. `astral-plasma blur fidelity <0.0-1.0>` now maps that preference onto
+KWin's inverted 1-10 scale (1.0 = crispest glass) and reloads the effect, and
+`run.sh` applies it at startup. Never store a tunable that no code path applies.
+
+Enforced by `daemon/tests/test_kwin_blur.rs`, which pins the clamp bounds, the
+inverted mapping, the KDE-INI round-trip (unrelated `kwinrc` keys must survive),
+and asserts the default stays below the diffuse range.
+
+### 9.10. Text Vibrancy: How to Be Transparent AND Legible
+Section 9.8's two floors are in direct tension. Legibility wants a high alpha
+(opaque surface, predictable contrast); transmissibility wants a low one. Solving
+for both by tuning alpha alone bottoms out at roughly $45\%$ transmission - which
+is still dark enough to read as a slab, as measured above.
+
+The resolution is to stop treating text legibility and surface opacity as the
+same variable. **Protect the glyphs, not the surface:**
+
+- Draw a soft outline under every text item that sits on glass, via Qt's
+  `Text.Outline` + `styleColor` (`Colors.glassTextHalo`, mode-aware: dark halo
+  under light text, light halo under dark text).
+- A glyph's local backdrop is then the *halo*, not the wallpaper. Contrast is
+  guaranteed regardless of what the glass transmits, and the plate is free to be
+  as transparent as the material wants.
+
+Measured on a pure-white backdrop with a $0.62$ halo, the halo colour is what the
+contrast ratio is computed against:
+
+| plate $\alpha$ | transmission | plate grey | halo grey | contrast vs halo |
+|:---|:---|:---|:---|:---|
+| 0.63 | 37% | 94 | - | 4.66:1 (no halo, marginal) |
+| 0.45 | 55% | 140 | 53 | 11.06:1 |
+| 0.35 | 65% | 166 | 63 | 9.24:1 |
+
+This is why the plate can run at $\alpha = 0.45$ (52% measured transmission) with
+AA text. It is also the authentic technique: real frosted glass is legible because
+the light is controlled at the glyph, not because the glass is painted over.
+
+Implementation note: the outline must be applied to **every** Text item on glass,
+including ones whose `color:` is a complex expression (the applier script matches
+the block, not the colour form), and `MaterialIcon` labels inherit it through
+their own `Text` child.
+
+> **Qt.tint alpha gotcha**: `Qt.tint(base, Qt.alpha(color, t))` yields an
+> effective alpha of $t + \alpha_{\text{base}}(1 - t)$, *not* $\alpha_{\text{base}}$.
+> A `0.78` base tinted at `0.10` composites at `0.802`. Any contrast math that
+> uses the raw base alpha underestimates opacity by up to 10 points.
 
 ---
 

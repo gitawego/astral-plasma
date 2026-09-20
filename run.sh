@@ -42,6 +42,22 @@ fi
 # Ensure shortcuts are bound and original state is snapshotted
 bash "$DIR/scripts/bind_shortcuts.sh" meta-space || true
 
+# Tune KWin compositor blur for the shell's liquid glass. KWin executes the
+# BackgroundEffect blur regions behind the panel, and an excessive radius
+# homogenises the backdrop into flat grey - which makes even a genuinely
+# translucent panel read as an opaque slab. This applies the configured glass
+# fidelity to kwinrc; without it that setting is dead config.
+if [ -x "$DIR/bin/astral-plasma" ]; then
+    BLUR_PREF=$(python3 -c "
+import json,sys
+try:
+    print(json.load(open('$DIR/config/settings.json')).get('theme',{}).get('blurStrength', 0.85))
+except Exception:
+    print(0.85)
+" 2>/dev/null || echo 0.85)
+    "$DIR/bin/astral-plasma" blur fidelity "$BLUR_PREF" >/dev/null 2>&1 || true
+fi
+
 # Cleanup trap to restore original shortcuts and Plasma panels when Astral shell exits
 cleanup() {
     trap - EXIT INT TERM

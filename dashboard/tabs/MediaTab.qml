@@ -98,6 +98,8 @@ Item {
                     font.pixelSize: Theme.fontTitleLarge
                     font.weight: Font.DemiBold
                     color: Colors.m3onSurface
+                    style: Text.Outline
+                    styleColor: Colors.glassTextHalo
                     horizontalAlignment: Text.AlignHCenter
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -110,6 +112,8 @@ Item {
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBodySmall
                     color: Colors.primary
+                    style: Text.Outline
+                    styleColor: Colors.glassTextHalo
                     horizontalAlignment: Text.AlignHCenter
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -121,6 +125,8 @@ Item {
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBodyMedium
                     color: Colors.m3onSurfaceVariant
+                    style: Text.Outline
+                    styleColor: Colors.glassTextHalo
                     horizontalAlignment: Text.AlignHCenter
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -246,6 +252,8 @@ Item {
                             const m = Math.floor(secs / 60);
                             const s = secs % 60;
                             return m + ":" + (s < 10 ? "0" : "") + s;
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                         }
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontLabelSmall
@@ -260,6 +268,8 @@ Item {
                             const m = Math.floor(secs / 60);
                             const s = secs % 60;
                             return m + ":" + (s < 10 ? "0" : "") + s;
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                         }
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontLabelSmall
@@ -336,6 +346,8 @@ Item {
                                 font.weight: Font.Medium
                                 color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.onPrimaryContainer : Colors.m3onSurface
                                 Layout.alignment: Qt.AlignVCenter
+                                style: Text.Outline
+                                styleColor: Colors.glassTextHalo
                             }
 
                             MaterialIcon {

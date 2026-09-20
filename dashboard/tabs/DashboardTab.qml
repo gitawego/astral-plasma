@@ -77,6 +77,8 @@ Item {
                                 font.pixelSize: 26
                                 font.weight: Font.DemiBold
                                 color: Colors.textMain
+                                style: Text.Outline
+                                styleColor: Colors.glassTextHalo
                             }
 
                             Text {
@@ -84,6 +86,8 @@ Item {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontBodyMedium
                                 color: Colors.textMuted
+                                style: Text.Outline
+                                styleColor: Colors.glassTextHalo
                             }
                         }
                     }
@@ -165,12 +169,16 @@ Item {
                             font.pixelSize: 26
                             font.weight: Font.DemiBold
                             color: Colors.textMain
+                            style: Text.Outline
+                            styleColor: Colors.glassTextHalo
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "•••"
                             font.pixelSize: 10
                             color: Colors.primary
+                            style: Text.Outline
+                            styleColor: Colors.glassTextHalo
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -179,6 +187,8 @@ Item {
                             font.pixelSize: 26
                             font.weight: Font.DemiBold
                             color: Colors.textMain
+                            style: Text.Outline
+                            styleColor: Colors.glassTextHalo
                         }
                         Item { width: 1; height: 6 }
                         Text {
@@ -188,6 +198,8 @@ Item {
                             font.pixelSize: 12
                             font.weight: Font.Medium
                             color: Colors.textMuted
+                            style: Text.Outline
+                            styleColor: Colors.glassTextHalo
                         }
                     }
                 }
@@ -237,6 +249,8 @@ Item {
                                         font.pixelSize: calWidget.fontSize
                                         font.weight: Font.DemiBold
                                         color: Colors.onSurfaceVariant
+                                        style: Text.Outline
+                                        styleColor: Colors.glassTextHalo
                                         horizontalAlignment: Text.AlignHCenter
                                     }
                                 }
@@ -535,6 +549,8 @@ Item {
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
                     color: Colors.onSurface
+                    style: Text.Outline
+                    styleColor: Colors.glassTextHalo
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                 }
@@ -549,6 +565,8 @@ Item {
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
                     color: Colors.onSurfaceVariant
+                    style: Text.Outline
+                    styleColor: Colors.glassTextHalo
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                 }

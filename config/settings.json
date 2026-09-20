@@ -134,7 +134,7 @@
   },
   "theme": {
     "mode": "dark",
-    "preset": "emerald",
+    "preset": "ocean",
     "blurStrength": 0.85,
     "cornerRadius": 20,
     "darkMode": true,
@@ -152,6 +152,6 @@
   "dashboardVisible": true,
   "activeDashboardTab": "dashboard",
   "media": {
-    "visualizerStyle": "speaker"
+    "visualizerStyle": "radial"
   }
 }

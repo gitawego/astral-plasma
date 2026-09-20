@@ -10,5 +10,6 @@ pub mod x11_input;
 pub mod fs_wallpaper;
 pub mod sys_settings;
 pub mod kwin_shortcuts;
+pub mod kwin_blur;
 pub mod media;
 

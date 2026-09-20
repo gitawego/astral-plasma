@@ -42,6 +42,8 @@ Item {
                         font.weight: Font.DemiBold
                         color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
                         Layout.fillWidth: true 
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                     }
                     Text { 
                         text: Math.round(((typeof SystemService !== "undefined" && SystemService.ramUsage !== undefined) ? SystemService.ramUsage : 0.45) * 100) + "%"
@@ -49,6 +51,8 @@ Item {
                         font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 16
                         font.weight: Font.Bold
                         color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb" 
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                     }
                 }
 
@@ -91,6 +95,8 @@ Item {
                         font.weight: Font.DemiBold
                         color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
                         Layout.fillWidth: true 
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                     }
                     Text { 
                         text: Math.round(((typeof PowerService !== "undefined" && PowerService.percentage !== undefined) ? PowerService.percentage : 1.0) * 100) + "%"
@@ -98,6 +104,8 @@ Item {
                         font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 16
                         font.weight: Font.Bold
                         color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb" 
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                     }
                 }
 
@@ -140,6 +148,8 @@ Item {
                         font.weight: Font.DemiBold
                         color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
                         Layout.fillWidth: true 
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                     }
                     Text { 
                         text: Math.round(((typeof PipewireAudio !== "undefined" && PipewireAudio.volume !== undefined) ? PipewireAudio.volume : 0.70) * 100) + "%"
@@ -147,6 +157,8 @@ Item {
                         font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 16
                         font.weight: Font.Bold
                         color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb" 
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                     }
                 }
 
@@ -189,6 +201,8 @@ Item {
                         font.weight: Font.DemiBold
                         color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
                         Layout.fillWidth: true 
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                     }
                     Text { 
                         text: Math.round(((typeof BrightnessService !== "undefined" && BrightnessService.normalized !== undefined) ? BrightnessService.normalized : 0.80) * 100) + "%"
@@ -196,6 +210,8 @@ Item {
                         font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 16
                         font.weight: Font.Bold
                         color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb" 
+                        style: Text.Outline
+                        styleColor: Colors.glassTextHalo
                     }
                 }
 

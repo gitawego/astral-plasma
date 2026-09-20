@@ -963,12 +963,18 @@ PanelWindow {
         }
     }
 
+    // Backdrop scrim strength. Kept deliberately light: a heavy scrim multiplies
+    // with the glass alpha and flattens the compositor blur into a dimmed wall,
+    // which is what makes the dashboard read as opaque. Bounded by the glass
+    // contrast contract in tests/tst_glass_contrast_contract.qml.
+    readonly property real scrimOpacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.08 : 0.06
+
     // 0. CENTRAL DROPDOWN BACKDROP SCRIM (Soft contrast shield & click-to-dismiss)
     Rectangle {
         id: dropdownScrim
         anchors.fill: parent
         visible: dropdownContainer.offsetProgress > 0.001
-        opacity: dropdownContainer.offsetProgress * ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.32 : 0.18)
+        opacity: dropdownContainer.offsetProgress * root.scrimOpacity
         color: "#000000"
 
         MouseArea {

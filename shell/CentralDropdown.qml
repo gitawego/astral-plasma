@@ -168,7 +168,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.icon
                                 size: 20
-                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : (Colors.isDarkMode ? Qt.alpha(Colors.textMain, 0.88) : Colors.textMuted))
+                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.textMain)
                                 Behavior on color {
                                     ColorAnimation { duration: Theme.animExpressiveFastEffects }
                                 }
@@ -180,7 +180,7 @@ Item {
                                 font.pixelSize: 12
                                 font.weight: isSelected ? Font.Bold : Font.DemiBold
                                 font.family: Theme.fontFamily
-                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : (Colors.isDarkMode ? Qt.alpha(Colors.textMain, 0.88) : Colors.textMuted))
+                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.textMain)
                                 Behavior on color {
                                     ColorAnimation { duration: Theme.animExpressiveFastEffects }
                                 }
