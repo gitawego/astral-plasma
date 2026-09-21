@@ -560,7 +560,7 @@ pub async fn run_cli() -> DynResult<()> {
         "wallpaper" => {
             use crate::infrastructure::fs_wallpaper::FsWallpaperAdapter;
             use crate::application::wallpaper_service::{ListWallpapersUseCase, SetWallpaperUseCase, GeneratePaletteUseCase};
-            use crate::domain::wallpaper::{WallpaperFilter, WallpaperPort};
+            use crate::domain::wallpaper::WallpaperFilter;
             use std::sync::Arc;
 
             let adapter = Arc::new(FsWallpaperAdapter::new());

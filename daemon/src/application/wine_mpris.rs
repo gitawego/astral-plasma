@@ -12,6 +12,9 @@ use crate::domain::ports::DynResult;
 use crate::domain::wine_media::WineMediaInfo;
 use crate::infrastructure::media::registry::WinePlayerRegistry;
 
+/// The bridge holder shared with the supervisor: `None` until it attaches.
+pub type WineMprisSlot = std::sync::Arc<std::sync::RwLock<Option<std::sync::Arc<WineMprisService>>>>;
+
 /// The bus name the Wine player is published under.
 pub const WINE_MPRIS_BUS_NAME: &str = "org.mpris.MediaPlayer2.cloudmusic";
 
@@ -369,18 +372,6 @@ pub struct WineMprisService {
 /// `org.mpris.MediaPlayer2.cloudmusic`. zbus requests names without queueing, so
 /// a single attempt is not enough: retry until the previous instance is gone.
 /// Losing the race permanently would leave the session with no Wine player at
-/// all, which is worse than a short start-up delay.
-pub async fn connect_wine_mpris_with_retry(
-    attempts: u32,
-    delay: std::time::Duration,
-) -> DynResult<WineMprisService> {
-    crate::application::retry::retry_async(attempts, delay, WineMprisService::new).await
-}
-
-/// One attempt at claiming the bridge name, for `retry_forever`.
-pub async fn connect_wine_mpris_with_retry_attempt() -> DynResult<WineMprisService> {
-    WineMprisService::new().await
-}
 
 impl WineMprisService {
     pub async fn new() -> DynResult<Self> {
@@ -393,11 +384,29 @@ impl WineMprisService {
         };
 
         let conn = Builder::session()?
-            .name(WINE_MPRIS_BUS_NAME)?
             .serve_at("/org/mpris/MediaPlayer2", root)?
             .serve_at("/org/mpris/MediaPlayer2", player.clone())?
             .build()
             .await?;
+
+        // Claim the name explicitly and check the reply. The builder's own name
+        // request can be left pending without an owner, which leaves the bridge
+        // serving objects nobody can reach: the shell then loses the Wine player
+        // entirely and falls back to whatever else happens to be on the bus.
+        // `DoNotQueue` turns a lost race into an error the retry loop can report
+        // instead of a silent, unreachable service.
+        let reply = conn
+            .request_name_with_flags(
+                WINE_MPRIS_BUS_NAME,
+                zbus::fdo::RequestNameFlags::DoNotQueue.into(),
+            )
+            .await?;
+        if reply != zbus::fdo::RequestNameReply::PrimaryOwner {
+            return Err(format!(
+                "could not become the owner of {WINE_MPRIS_BUS_NAME}: {reply:?}"
+            )
+            .into());
+        }
 
         Ok(Self {
             conn,
@@ -548,6 +557,27 @@ impl WineMprisService {
         }
 
         Ok(())
+    }
+
+    /// Whether this service still owns the bridge's bus name.
+    ///
+    /// The supervisor uses it to notice a lost connection: a service that no
+    /// longer owns its name cannot be reached by the shell at all.
+    pub async fn is_name_owner(&self) -> bool {
+        let Ok(proxy) = zbus::fdo::DBusProxy::new(&self.conn).await else {
+            return false;
+        };
+        let Ok(name) = zbus::names::BusName::try_from(WINE_MPRIS_BUS_NAME) else {
+            return false;
+        };
+        match proxy.get_name_owner(name).await {
+            Ok(owner) => self
+                .conn
+                .unique_name()
+                .map(|unique| owner.as_str() == unique.as_str())
+                .unwrap_or(false),
+            Err(_) => false,
+        }
     }
 
     /// The player name the bridge publishes, for matching it to an audio stream.

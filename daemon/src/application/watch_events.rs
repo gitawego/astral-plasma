@@ -4,7 +4,7 @@ use crate::domain::app_identity::{
 use crate::domain::branding;
 use crate::domain::meta_resolver::resolve_window_meta_with;
 use crate::domain::wine_media::parse_wine_media;
-use crate::application::wine_mpris::{connect_wine_mpris_with_retry_attempt, WineMprisService};
+use crate::application::wine_mpris::{WineMprisService, WineMprisSlot, WINE_MPRIS_BUS_NAME};
 use crate::domain::model::{
     ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowsListPayload,
 };
@@ -16,7 +16,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::process::Command;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
@@ -89,7 +89,15 @@ pub struct WatcherService {
     state: Arc<Mutex<DaemonState>>,
     /// Filled asynchronously: the bridge may first have to wait for a previous
     /// shell instance to release its singleton bus name.
-    wine_mpris: Arc<OnceLock<Arc<WineMprisService>>>,
+    wine_mpris: WineMprisSlot,
+}
+
+impl WatcherService {
+    /// The Wine MPRIS bridge, re-created by the supervisor whenever it loses the
+    /// bus name. Shared with the bridge task, which owns it for the session.
+    fn bridge(&self) -> Option<Arc<WineMprisService>> {
+        self.wine_mpris.read().ok().and_then(|guard| guard.clone())
+    }
 }
 
 #[zbus::interface(name = "org.astralplasma.WindowWatcher")]
@@ -140,7 +148,7 @@ impl WatcherService {
         }
         crate::infrastructure::x11_input::release_stale_wine_focus(cls);
 
-        if let Some(mpris) = self.wine_mpris.get() {
+        if let Some(mpris) = self.bridge() {
             if let Some(media) = parse_wine_media(title, cls) {
                 let _ = mpris.update_media(&media).await;
             }
@@ -216,7 +224,7 @@ impl WatcherService {
 
     #[zbus(name = "UpdateWinePlaybackStatus")]
     async fn update_wine_playback_status(&self, is_playing: bool) {
-        if let Some(mpris) = self.wine_mpris.get() {
+        if let Some(mpris) = self.bridge() {
             let _ = mpris.update_playback_status(is_playing).await;
         }
     }
@@ -298,7 +306,7 @@ impl WatcherService {
             println!("{}", serialized);
         }
 
-        if let Some(mpris) = self.wine_mpris.get() {
+        if let Some(mpris) = self.bridge() {
             for item in items {
                 let t = item["title"].as_str().unwrap_or_default();
                 let c = item["cls"].as_str().unwrap_or_default();
@@ -312,7 +320,7 @@ impl WatcherService {
 
     #[zbus(name = "MediaWindowChanged")]
     async fn media_window_changed(&self, caption: &str, cls: &str) {
-        if let Some(mpris) = self.wine_mpris.get() {
+        if let Some(mpris) = self.bridge() {
             if let Some(media) = parse_wine_media(caption, cls) {
                 let _ = mpris.update_media(&media).await;
             }
@@ -662,32 +670,54 @@ pub async fn run_event_daemon() -> DynResult<()> {
     // before the outgoing one has necessarily released the bus name, and a
     // lost race must not cost the session its Wine player: retry in the
     // background while the rest of the daemon starts serving.
-    let wine_mpris: Arc<OnceLock<Arc<WineMprisService>>> = Arc::new(OnceLock::new());
+    let wine_mpris: WineMprisSlot = Arc::new(std::sync::RwLock::new(None));
     {
         let slot = Arc::clone(&wine_mpris);
         let initial = initial_wins.clone();
         tokio::spawn(async move {
-            // Retry forever: the bridge is how the shell sees the Wine player at
-            // all, and a start that lost a race against a previous daemon must
-            // still come back minutes later instead of being given up on.
-            let service = crate::application::retry::retry_forever(
-                Duration::from_secs(2),
-                connect_wine_mpris_with_retry_attempt,
-            )
-            .await;
-            {
-                {
-                    let service = Arc::new(service);
-                    for w in &initial {
-                        if let Some(media) = parse_wine_media(&w.title, &w.app_id)
-                            .or_else(|| parse_wine_media(&w.title, &w.icon_name))
-                            .or_else(|| parse_wine_media(&w.title, &w.app_name))
-                        {
-                            let _ = service.update_media(&media).await;
-                            break;
+            // This task owns the slot for the whole session: the bridge - and the
+            // bus name it holds - must live as long as the daemon, so the shell
+            // always has the Wine player to show. A service that stops owning its
+            // name (a lost connection, a restart race) is replaced, and the media
+            // that is already playing is re-published onto the new one.
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+
+                let healthy = match slot.read().ok().and_then(|guard| guard.clone()) {
+                    Some(service) => service.is_name_owner().await,
+                    None => false,
+                };
+                if healthy {
+                    continue;
+                }
+
+                match WineMprisService::new().await {
+                    Ok(service) => {
+                        let service = Arc::new(service);
+                        for w in &initial {
+                            if let Some(media) = parse_wine_media(&w.title, &w.app_id)
+                                .or_else(|| parse_wine_media(&w.title, &w.icon_name))
+                                .or_else(|| parse_wine_media(&w.title, &w.app_name))
+                            {
+                                let _ = service.update_media(&media).await;
+                                break;
+                            }
+                        }
+                        eprintln!(
+                            "[{}] Wine MPRIS bridge attached as {}",
+                            branding::APP_NAME,
+                            WINE_MPRIS_BUS_NAME
+                        );
+                        if let Ok(mut guard) = slot.write() {
+                            *guard = Some(service);
                         }
                     }
-                    let _ = slot.set(service);
+                    Err(error) => eprintln!(
+                        "[{}] Wine MPRIS bridge reconnecting: {}",
+                        branding::APP_NAME,
+                        error
+                    ),
                 }
             }
         });
@@ -726,7 +756,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
             loop {
                 interval.tick().await;
                 // The bridge may not be attached yet (see above); skip until it is.
-                let Some(mpris_audio) = slot.get() else {
+                let Some(mpris_audio) = slot.read().ok().and_then(|guard| guard.clone()) else {
                     continue;
                 };
                 // The sound server decides who owns the audio. Asking the other

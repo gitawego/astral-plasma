@@ -385,13 +385,15 @@ Item {
     }
 
     // MIDDLE SECTION: Vertical Rotated Active Window
+    // Kept clear of the workspaces switcher above it: the 16px outer gap
+    // reads as a true module separation instead of a cramped stack.
     Item {
         id: activeWindowPill
         anchors.top: topSection.bottom
-        anchors.topMargin: 8
+        anchors.topMargin: 16
         anchors.horizontalCenter: parent.horizontalCenter
         implicitWidth: root.iconS + 16
-        implicitHeight: Math.max(0, root.height - topSection.implicitHeight - bottomCol.implicitHeight - 20)
+        implicitHeight: Math.max(0, root.height - topSection.implicitHeight - bottomCol.implicitHeight - 28)
         visible: implicitHeight >= (root.iconS + 10)
 
         // 1. App Icon
@@ -425,10 +427,10 @@ Item {
         Item {
             id: activeTitleRotated
             anchors.top: activeIconContainer.bottom
-            anchors.topMargin: 6
+            anchors.topMargin: 10
             anchors.horizontalCenter: parent.horizontalCenter
             width: 24
-            height: Math.max(0, parent.height - activeIconContainer.height - 8)
+            height: Math.max(0, parent.height - activeIconContainer.height - 12)
             clip: true
             visible: height >= 36
 
@@ -438,7 +440,7 @@ Item {
             TextMetrics {
                 id: titleMetrics
                 font.family: Theme.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontBodyMedium
                 font.weight: Font.Medium
                 text: activeTitleRotated.windowTitle
                 elide: Text.ElideRight
@@ -540,7 +542,9 @@ Item {
     // leftover space - it is not part of `topSection.implicitHeight`. Reserving
     // its content here is what stops a long taskbar from growing over it (the
     // reported "no more active app icon and name on the task bar").
-    readonly property real activeWindowReserve: 84
+    // 92 = 16px switcher clearance + 36px icon + 10px icon/title gap + ~30px
+    // of title breathing room.
+    readonly property real activeWindowReserve: 92
     readonly property real listBudget: Math.max(150,
         root.height - topSection.implicitHeight - root.activeWindowReserve
             - root.fixedDockHeight - root.listGap)

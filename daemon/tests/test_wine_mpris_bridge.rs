@@ -48,3 +48,39 @@ async fn bridge_acquires_the_name_that_a_dying_instance_still_holds() {
         .await
         .expect("the recovered bridge must accept media updates");
 }
+
+/// The bridge must own its bus name, and release it when it goes away.
+///
+/// The shell discovers the Wine player by that name alone. The connection
+/// builder's own name request can be left pending without an owner - the bridge
+/// then serves objects nobody can reach, the shell loses the music player, and
+/// the media widget falls back to whatever else is on the bus (a browser session
+/// that merely claims to be playing). Claiming the name explicitly and checking
+/// the reply is what keeps it reachable.
+#[tokio::test]
+async fn the_bridge_owns_its_bus_name() {
+    use astral_plasma::application::wine_mpris::{WineMprisService, WINE_MPRIS_BUS_NAME};
+
+    let conn = zbus::Connection::session().await.expect("session bus");
+    let proxy = zbus::fdo::DBusProxy::new(&conn).await.expect("bus proxy");
+    let name = zbus::names::BusName::try_from(WINE_MPRIS_BUS_NAME).expect("bus name");
+
+    if proxy.get_name_owner(name.clone()).await.is_ok() {
+        // A running shell already owns it; nothing to prove here.
+        eprintln!("skipping: {WINE_MPRIS_BUS_NAME} is already owned");
+        return;
+    }
+
+    let service = WineMprisService::new().await.expect("bridge must build");
+    let owner = proxy.get_name_owner(name.clone()).await;
+    assert!(
+        owner.is_ok(),
+        "the bridge must own {WINE_MPRIS_BUS_NAME} once built: {owner:?}"
+    );
+
+    drop(service);
+    assert!(
+        proxy.get_name_owner(name).await.is_err(),
+        "dropping the bridge must release the name, so a restart can take over"
+    );
+}
