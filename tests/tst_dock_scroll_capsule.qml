@@ -77,6 +77,28 @@ Item {
         }
     }
 
+    // The real dock list is not uniform: pinned apps, a 12px divider, then the
+    // unpinned apps. A budget that easily fits the whole list must not crop the
+    // last icon or force the scrollbar just because the divider is not an item.
+    DockScrollCapsule {
+        id: dividedCapsule
+        width: 48
+        itemSize: 40
+        itemSpacing: 4
+        vPad: 10
+        maxHeight: 400
+
+        Repeater {
+            model: 5
+            delegate: Rectangle { width: 40; height: 40 }
+        }
+        Rectangle { width: 30; height: 12 }
+        Repeater {
+            model: 3
+            delegate: Rectangle { width: 40; height: 40 }
+        }
+    }
+
     Timer {
         interval: 50
         running: true
@@ -121,6 +143,16 @@ Item {
             "no end chevrons without overflow");
 
         // ---- 4. Overflow affordances ------------------------------------
+        assert(dividedCapsule.overflowing === false,
+            "a divided list that fits its budget must not overflow (last icon cropped / "
+            + "scrollbar forced); content " + dividedCapsule.contentHeight
+            + " vs viewport " + dividedCapsule.listHeight);
+        assert(dividedCapsule.implicitHeight === dividedCapsule.naturalHeight,
+            "a fitting divided list must take its natural height (got "
+            + dividedCapsule.implicitHeight + " vs " + dividedCapsule.naturalHeight + ")");
+        assert(dividedCapsule.thumbItem.visible === false,
+            "no scrollbar when the divided list fits");
+
         assert(overflowingCapsule.thumbItem.visible === true,
             "overflow must show the scrollbar thumb");
         const track = overflowingCapsule.thumbTrackItem;

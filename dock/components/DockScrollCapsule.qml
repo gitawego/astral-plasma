@@ -41,19 +41,51 @@ LiquidGlassCard {
     readonly property real listHeight: Math.max(0, height - root.vPad * 2)
     readonly property real contentHeight: listColumn.implicitHeight
     readonly property int stride: Math.max(1, root.itemSize + root.itemSpacing)
-    readonly property int visibleItemCount: {
-        if (root.maxVisibleItems > 0) return root.maxVisibleItems;
-        if (root.maxHeight <= 0) return Math.max(1, Math.round(root.contentHeight / root.stride));
-        return Math.max(1, Math.floor((root.maxHeight - root.vPad * 2 + root.itemSpacing) / root.stride));
+
+    // The largest leading prefix of the content that fits the budget, snapped to
+    // REAL child boundaries.
+    //
+    // Children are not uniform: the dock inserts a divider between pinned and
+    // unpinned apps, and the Repeaters themselves are zero-height children of the
+    // column (they still consume a spacing slot, exactly as Qt's Column lays them
+    // out). Counting synthetic `itemSize + itemSpacing` strides therefore came up
+    // short and cropped the last icon while forcing the scrollbar, even when the
+    // budget easily fitted the whole list.
+    function snapPrefix() {
+        const budget = (root.maxHeight > 0) ? root.maxHeight : Number.POSITIVE_INFINITY;
+        const children = listColumn.children;
+        let used = root.vPad * 2;
+        let first = true;
+        let icons = 0;
+        for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            if (child.visible === false) continue;
+            const h = child.height || 0;
+            // Zero-height children (the Repeaters that own the delegates) are not
+            // laid out by Qt's Column and must not consume a spacing slot here
+            // either - counting them made the snapped height fall short of the
+            // content, cropping the last icon and forcing the scrollbar.
+            if (h <= 0) continue;
+            const isIcon = h >= root.itemSize * 0.8;
+            if (root.maxVisibleItems > 0 && isIcon && icons >= root.maxVisibleItems) break;
+            const add = first ? h : root.itemSpacing + h;
+            if (used + add > budget) break;
+            used += add;
+            first = false;
+            if (isIcon) icons++;
+        }
+        return { height: used, icons: Math.max(1, icons) };
     }
+
+    readonly property var snapped: root.snapPrefix()
+    readonly property real snappedHeight: root.snapped.height
+    readonly property int visibleItemCount: root.snapped.icons
     readonly property bool overflowing: root.contentHeight > root.listHeight + 0.5
     readonly property bool atTop: listFlick.contentY <= 0.5
     readonly property bool atBottom: listFlick.contentY >= root.contentHeight - root.listHeight - 0.5
 
-    // Height of exactly `visibleItemCount` whole items; never taller than the
-    // granted budget, never taller than the content.
-    readonly property real cappedHeight: root.vPad * 2 + root.visibleItemCount * root.stride - root.itemSpacing
-    implicitHeight: Math.min(root.naturalHeight, root.cappedHeight)
+    // Never taller than the granted budget, never taller than the content.
+    implicitHeight: Math.min(root.naturalHeight, root.snappedHeight)
 
     function scrollToTop() { listFlick.contentY = 0; }
     function scrollToBottom() { listFlick.contentY = Math.max(0, root.contentHeight - root.listHeight); }
