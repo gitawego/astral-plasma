@@ -538,23 +538,40 @@ Singleton {
         const home = Quickshell.env("HOME");
         return (home && home.length > 0) ? home + "/.cache" : "";
     }
+    // Parse and apply the generated palette.
+    //
+    // Shared by the first read and every watched rewrite: `loaded` fires only
+    // once, so a palette regenerated while the shell runs is delivered as
+    // `fileChanged`. Without this the accent kept the colours of whatever
+    // wallpaper was active when the shell started.
+    function applyPalette() {
+        try {
+            const text = colorsCache.text();
+            if (text && text.trim().length > 0) {
+                const parsed = JSON.parse(text);
+                if (parsed.colors) {
+                    root.dynamicPalette = parsed.colors;
+                }
+            }
+        } catch (e) {
+            console.log("[Palette] Using default Astral Plasma scheme");
+        }
+    }
+
     FileView {
         id: colorsCache
         path: root.cacheHome.length > 0 ? root.cacheHome + "/astral-plasma/colors.json" : ""
         preload: true
-
-        onLoaded: {
-            try {
-                const text = colorsCache.text();
-                if (text && text.trim().length > 0) {
-                    const parsed = JSON.parse(text);
-                    if (parsed.colors) {
-                        root.dynamicPalette = parsed.colors;
-                    }
-                }
-            } catch (e) {
-                console.log("[Palette] Using default Astral Plasma scheme");
-            }
-        }
+        // The palette is regenerated whenever the wallpaper changes, while the
+        // shell keeps running. Matugen rewrites the file from another process,
+        // so without watching it the shell would keep the palette it loaded at
+        // start-up - the accent would show the colours of whatever wallpaper was
+        // active back then (reported as "the dynamic accent is pinky").
+        watchChanges: true
+        onLoaded: root.applyPalette()
+        // `fileChanged` only announces the change - the contents are still the
+        // old ones until reload() re-reads them, after which `loaded` fires and
+        // applies the new palette.
+        onFileChanged: colorsCache.reload()
     }
 }
