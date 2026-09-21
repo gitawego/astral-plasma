@@ -740,11 +740,15 @@ PanelWindow {
             height: 46
             radius: 23
             interactive: false
-            active: searchInput.activeFocus
+            // Focus must REFINE the glass, not replace it (LESSONS 9.1). The field
+            // is focused as soon as the launcher opens, so taking the `active`
+            // fill would paint it in `glassPillActive` - a saturated 65%-alpha
+            // primary tint - permanently. The specular ring carries the focus.
+            active: false
             baseColor: Colors.glassPill
             hoverColor: Colors.glassPillHover
             borderColor: searchInput.activeFocus ? Colors.glassBorderSpecular : Colors.glassBorderSubtle
-            borderWidth: 1.0
+            borderWidth: searchInput.activeFocus ? 1.4 : 1.0
 
             RowLayout {
                 anchors.fill: parent

@@ -64,6 +64,23 @@ impl Default for DaemonState {
     }
 }
 
+/// Whitelisted shell IPC actions the desktop may trigger through the daemon.
+///
+/// A KWin script cannot launch processes, and kglobalaccel's `invokeShortcut` on
+/// a `.desktop` service only emits a signal - nobody launches the entry (Plasma's
+/// own panel does that for the shortcuts it registers). So the shortcut forwards
+/// here and the daemon runs the shell's IPC command. The names are a whitelist:
+/// a D-Bus method that executes arbitrary commands would be a privilege hole.
+pub fn shell_ipc_arguments(action: &str) -> Option<Vec<&'static str>> {
+    match action {
+        "launcher.toggle" => Some(vec!["call", "launcher", "toggle"]),
+        "launcher.wallpaper" => Some(vec!["call", "launcher", "open", "wallpaper"]),
+        "dashboard.toggle" => Some(vec!["call", "dashboard", "toggle"]),
+        "settings.toggle" => Some(vec!["call", "settings", "toggle"]),
+        _ => None,
+    }
+}
+
 /// Serves the window/tray event interface. Cheap to clone: every field is a
 /// shared handle, so a connection attempt can be retried without rebuilding
 /// state.
@@ -77,6 +94,39 @@ pub struct WatcherService {
 
 #[zbus::interface(name = "org.astralplasma.WindowWatcher")]
 impl WatcherService {
+    /// Run a whitelisted shell IPC action (the KWin shortcut script's target).
+    #[zbus(name = "ShellIpc")]
+    async fn shell_ipc(&self, action: &str) -> bool {
+        let Some(arguments) = shell_ipc_arguments(action) else {
+            eprintln!("[shell-ipc] refused unknown action {action:?}");
+            return false;
+        };
+
+        // The shell was started from the checkout (development) or from the
+        // extracted package (installed); both are addressed the same way.
+        let directory = branding::repo_root_from_exe()
+            .filter(|dir| dir.join("shell.qml").is_file())
+            .unwrap_or_else(branding::default_package_dir);
+
+        let status = Command::new("quickshell")
+            .arg("ipc")
+            .arg("-p")
+            .arg(&directory)
+            .args(&arguments)
+            .status();
+
+        match status {
+            Ok(status) if status.success() => true,
+            _ => {
+                eprintln!(
+                    "[shell-ipc] {action} failed (no running shell at {})",
+                    directory.display()
+                );
+                false
+            }
+        }
+    }
+
     #[zbus(name = "WindowActivated")]
     async fn window_activated(&self, title: &str, cls: &str, app: &str, wid: &str) {
         // Wine windows are X11 clients: activating one leaves Xwayland's

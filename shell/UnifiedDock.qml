@@ -787,6 +787,8 @@ Item {
             radius: Math.round((root.iconS + 8) * 0.5)
             visible: WindowService.tray.length > 0
             subtle: true
+            // No card: the tray is a column of icons, not another panel.
+            bare: true
             itemSize: root.iconS - 4
             itemSpacing: 2
             vPad: 6
@@ -929,9 +931,11 @@ Item {
                 width: root.iconS
                 implicitHeight: clockCol.implicitHeight + 8
                 radius: Theme.radiusMedium
+                // No resting card: bare text, tinted only on hover or while the
+                // clock popout is open.
                 color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock")
                     ? Colors.primary
-                    : (clockHover.hovered ? Colors.glassPillHover : Colors.glassPill)
+                    : (clockHover.hovered ? Colors.glassPillHover : "transparent")
                 // No border: the clock is a translucent pill, and its active state is
                 // already expressed by the fill colour.
                 Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }

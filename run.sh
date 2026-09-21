@@ -2,7 +2,10 @@
 # Safe live testing script - runs without modifying KDE Plasma system config
 set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks: the installed desktop entries run this script through
+# ~/.config/quickshell, and Quickshell matches instances by the path it was
+# started with - the launched shell must agree with the IPC scripts.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 # Check if an instance is already running and handle IPC commands
 MODE="${1:-}"

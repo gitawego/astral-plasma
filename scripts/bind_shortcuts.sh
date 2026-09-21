@@ -27,17 +27,17 @@ fi
 case "$MODE" in
     "meta-space"|"space")
         echo "[*] Setting Astral Plasma Launcher shortcut to: Meta+Space (Super+Space)"
-        kwriteconfig6 --file kglobalshortcutsrc --group "services" --group "astral-launcher.desktop" --key "_launch" "Meta+Space,none,Astral Plasma Launcher"
+        LAUNCHER_KEY="Meta+Space"
         ;;
     "meta"|"super")
         echo "[*] Setting Astral Plasma Launcher shortcut to: Meta key (Super key alone via Alt+F1)"
-        kwriteconfig6 --file kglobalshortcutsrc --group "services" --group "astral-launcher.desktop" --key "_launch" "Alt+F1,none,Astral Plasma Launcher"
+        LAUNCHER_KEY="Alt+F1"
         # Avoid conflict with default plasmashell menu
         kwriteconfig6 --file kglobalshortcutsrc --group "plasmashell" --key "activate application launcher" "none,none,Activate Application Launcher"
         ;;
     "alt-space")
         echo "[*] Setting Astral Plasma Launcher shortcut to: Alt+Space"
-        kwriteconfig6 --file kglobalshortcutsrc --group "services" --group "astral-launcher.desktop" --key "_launch" "Alt+Space,none,Astral Plasma Launcher"
+        LAUNCHER_KEY="Alt+Space"
         ;;
     *)
         echo "Usage: $0 [meta-space | meta | alt-space]"
@@ -45,8 +45,16 @@ case "$MODE" in
         ;;
 esac
 
-# Also bind the Wallpaper Picker to Meta+Shift+W
-kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralWallpaper" "Meta+Shift+W,none,Astral Plasma Wallpaper Picker"
+# The KWin actions own the shortcuts. Their handler forwards to the daemon,
+# which runs the shell's IPC (a KWin script cannot launch processes, and
+# kglobalaccel's invokeShortcut on a .desktop service only emits a signal nobody
+# launches). The `services` entries must stay unbound: two owners of one key
+# means neither reliably fires.
+kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralLauncher" "$LAUNCHER_KEY,none,Astral Plasma: Toggle Launcher"
+kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralWallpaper" "Meta+Shift+W,none,Astral Plasma: Open Wallpaper Picker"
+for entry in astral-launcher.desktop astral-wallpaper.desktop; do
+    kwriteconfig6 --file kglobalshortcutsrc --group "services" --group "$entry" --key "_launch" --delete 2>/dev/null || true
+done
 
 # 1. Install / update KWin script package
 KWIN_SCRIPT_SRC="$DIR/kwin/astral-plasma-shortcuts"
@@ -87,13 +95,14 @@ try:
     accel.doRegister(['astral-launcher.desktop', '_launch', 'astral-launcher.desktop', 'Astral Plasma Launcher'])
     accel.doRegister(['astral-wallpaper.desktop', '_launch', 'astral-wallpaper.desktop', 'Astral Plasma Wallpaper Picker'])
 
-    # Clear any duplicate bindings on .desktop so KWin compositor action has sole ownership
+    # Clear the .desktop services so the KWin action has sole ownership of the key
     accel.setForeignShortcut(['astral-launcher.desktop', '_launch', 'default', 'Astral Plasma Launcher'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-wallpaper.desktop', '_launch', 'default', 'Astral Plasma Wallpaper Picker'], [dbus.Int32(0)])
 
-    # Assign directly to KWin compositor shortcuts
-    accel.setForeignShortcut(['kwin', 'AstralLauncher', 'default', 'Astral Plasma Launcher'], [dbus.Int32(launcher_key)])
-    accel.setForeignShortcut(['kwin', 'AstralWallpaper', 'default', 'Astral Plasma Wallpaper Picker'], [dbus.Int32(wallpaper_key)])
+    # The KWin actions own the shortcuts; their script forwards to the daemon,
+    # which runs the shell IPC.
+    accel.setForeignShortcut(['kwin', 'AstralLauncher', 'default', 'Astral Plasma: Toggle Launcher'], [dbus.Int32(launcher_key)])
+    accel.setForeignShortcut(['kwin', 'AstralWallpaper', 'default', 'Astral Plasma: Open Wallpaper Picker'], [dbus.Int32(wallpaper_key)])
 
     print("[✓] Dynamically registered in KWin compositor & KGlobalAccel")
 except Exception as e:

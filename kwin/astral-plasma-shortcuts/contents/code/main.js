@@ -1,4 +1,10 @@
 // Astral Plasma Launcher & Wallpaper Picker KWin Shortcuts
+//
+// KWin scripts cannot launch processes, and invoking a `.desktop` service
+// through kglobalaccel only emits a signal that nothing in this shell listens to
+// (Plasma's own panel does the launching for the shortcuts it registers). The
+// shortcuts therefore forward to the daemon, which runs the shell's IPC command.
+// The action names are whitelisted by the daemon.
 registerShortcut(
     "AstralLauncher",
     "Astral Plasma: Toggle Launcher",
@@ -6,11 +12,11 @@ registerShortcut(
     function() {
         console.info("Astral Plasma: Triggering launcher toggle");
         callDBus(
-            "org.kde.kglobalaccel",
-            "/component/astral_launcher_desktop",
-            "org.kde.kglobalaccel.Component",
-            "invokeShortcut",
-            "_launch"
+            "org.astralplasma.WindowWatcher",
+            "/Watcher",
+            "org.astralplasma.WindowWatcher",
+            "ShellIpc",
+            "launcher.toggle"
         );
     }
 );
@@ -22,11 +28,11 @@ registerShortcut(
     function() {
         console.info("Astral Plasma: Triggering wallpaper picker");
         callDBus(
-            "org.kde.kglobalaccel",
-            "/component/astral_wallpaper_desktop",
-            "org.kde.kglobalaccel.Component",
-            "invokeShortcut",
-            "_launch"
+            "org.astralplasma.WindowWatcher",
+            "/Watcher",
+            "org.astralplasma.WindowWatcher",
+            "ShellIpc",
+            "launcher.wallpaper"
         );
     }
 );

@@ -23,6 +23,10 @@ Rectangle {
     // the ring and keep the specular hairlines, which is what actually defines a
     // glass edge (see docs/LESSONS.md 9.1 "Clean Glass Materials").
     property bool showBorder: true
+    // Bare mode: no fill, shadow, caustic, refraction, specular or rim. For
+    // containers that only need the interaction/scroll plumbing (the dock's
+    // system-tray group), not another panel of glass.
+    property bool bare: false
 
     // Component exposure aliases for testing & introspection
     readonly property alias topGlareItem: topGlare
@@ -33,7 +37,7 @@ Rectangle {
 
     // Standard geometry and styling
     radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
-    border.width: root.showBorder ? (selected ? 1.5 : 1) : 0
+    border.width: root.showBorder && !root.bare ? (selected ? 1.5 : 1) : 0
     border.color: selected 
         ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
         : (hovered 
@@ -41,11 +45,12 @@ Rectangle {
             : ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Qt.alpha(Colors.glassBorderSpecular, Colors.isDarkMode ? 0.45 : 0.60) : Qt.rgba(1, 1, 1, 0.25)))
 
     // Base liquid glass substrate tint (crystalline translucent glass plate matching Colors.glassCard, letting background content shine through)
-    color: (typeof Colors !== "undefined" && Colors.glassCard)
-        ? (root.selected ? Colors.glassCardActive : (root.hovered ? Colors.glassCardHover : Colors.glassCard))
-        : ((typeof Colors !== "undefined" && Colors.isDarkMode)
-            ? Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.16 : (root.hovered ? 0.10 : 0.06))
-            : Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.60 : (root.hovered ? 0.50 : 0.40)))
+    color: root.bare ? "transparent"
+        : ((typeof Colors !== "undefined" && Colors.glassCard)
+            ? (root.selected ? Colors.glassCardActive : (root.hovered ? Colors.glassCardHover : Colors.glassCard))
+            : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+                ? Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.16 : (root.hovered ? 0.10 : 0.06))
+                : Qt.rgba(1.0, 1.0, 1.0, root.selected ? 0.60 : (root.hovered ? 0.50 : 0.40))))
 
     Behavior on color { ColorAnimation { duration: (typeof Theme !== "undefined") ? Theme.animExpressiveFastEffects : 150 } }
     Behavior on border.color { ColorAnimation { duration: (typeof Theme !== "undefined") ? Theme.animExpressiveFastEffects : 150 } }
@@ -53,7 +58,7 @@ Rectangle {
     // 0. Ambient Contact Drop Shadow (Provides authentic elevation & floating depth)
     Rectangle {
         id: ambientShadow
-        visible: root.showShadow
+        visible: root.showShadow && !root.bare
         z: -1
         anchors.fill: parent
         anchors.topMargin: Math.max(1, Math.round(root.elevation * 0.35))
@@ -72,7 +77,7 @@ Rectangle {
     // 1. Refractive Glass Gradient (Optical Depth: light gathering at top, crystalline depth at bottom)
     Rectangle {
         id: refractionGradient
-        visible: root.showRefraction
+        visible: root.showRefraction && !root.bare
         anchors.fill: parent
         radius: parent.radius
         color: "transparent"
@@ -104,7 +109,7 @@ Rectangle {
     // 2. Inner Caustic Ambient Glow (Simulates ambient light diffusing into top edge)
     Rectangle {
         id: causticGlow
-        visible: root.showCaustic && parent.height > 20
+        visible: root.showCaustic && !root.bare && parent.height > 20
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
@@ -132,7 +137,7 @@ Rectangle {
     // leftMargin and rightMargin must be >= radius to prevent detached overhanging line artifacts on curved shoulders/pills!
     Rectangle {
         id: topGlare
-        visible: root.showSpecular && (parent.width > (parent.radius * 2 + 8))
+        visible: root.showSpecular && !root.bare && (parent.width > (parent.radius * 2 + 8))
         anchors.top: parent.top
         anchors.topMargin: 0.5
         anchors.left: parent.left
@@ -164,7 +169,7 @@ Rectangle {
     // 3b. Secondary Inner Refraction Hairline (Simulates physical glass edge thickness)
     Rectangle {
         id: subGlare
-        visible: root.showSpecular && (parent.width > (parent.radius * 2 + 16))
+        visible: root.showSpecular && !root.bare && (parent.width > (parent.radius * 2 + 16))
         anchors.top: parent.top
         anchors.topMargin: 1.5
         anchors.left: parent.left
@@ -185,7 +190,7 @@ Rectangle {
     // 4. Bottom Inner Rim Reflection (Subtle reflection on the bottom edge)
     Rectangle {
         id: bottomRim
-        visible: root.showBottomRim && (parent.width > (parent.radius * 2 + 8))
+        visible: root.showBottomRim && !root.bare && (parent.width > (parent.radius * 2 + 8))
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 0.5
         anchors.left: parent.left
