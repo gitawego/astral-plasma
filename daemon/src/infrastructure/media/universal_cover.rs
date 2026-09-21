@@ -1,3 +1,4 @@
+use crate::domain::branding;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -9,7 +10,7 @@ pub struct UniversalCoverResolver {
 
 impl Default for UniversalCoverResolver {
     fn default() -> Self {
-        let dir = PathBuf::from("/tmp/caelestia_art_cache");
+        let dir = branding::art_cache_dir();
         let _ = fs::create_dir_all(&dir);
         Self { cache_dir: dir }
     }

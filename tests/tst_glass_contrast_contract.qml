@@ -87,7 +87,11 @@ Item {
     // ------------------------------------------------------------------
     function readLocalFile(relUrl) {
         const xhr = new XMLHttpRequest();
-        xhr.open("GET", Qt.resolvedUrl(relUrl), false);
+        // Cache-buster: Qt caches file:// reads, so a guard can silently test
+        // STALE source and pass while the real file has changed. Appending a
+        // unique query forces a fresh read. (CACHEBUST)
+        const bust = (relUrl.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now() + Math.random();
+        xhr.open("GET", Qt.resolvedUrl(relUrl) + bust, false);
         xhr.send();
         return xhr.responseText || "";
     }

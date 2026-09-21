@@ -1,10 +1,10 @@
-// Caelestia Launcher & Wallpaper Picker KWin Shortcuts
+// Astral Plasma Launcher & Wallpaper Picker KWin Shortcuts
 registerShortcut(
-    "CaelestiaLauncher",
-    "Caelestia: Toggle Launcher",
+    "AstralLauncher",
+    "Astral Plasma: Toggle Launcher",
     "Meta+Space",
     function() {
-        console.info("Caelestia: Triggering launcher toggle");
+        console.info("Astral Plasma: Triggering launcher toggle");
         callDBus(
             "org.kde.kglobalaccel",
             "/component/astral_launcher_desktop",
@@ -16,11 +16,11 @@ registerShortcut(
 );
 
 registerShortcut(
-    "CaelestiaWallpaper",
-    "Caelestia: Open Wallpaper Picker",
+    "AstralWallpaper",
+    "Astral Plasma: Open Wallpaper Picker",
     "Meta+Shift+W",
     function() {
-        console.info("Caelestia: Triggering wallpaper picker");
+        console.info("Astral Plasma: Triggering wallpaper picker");
         callDBus(
             "org.kde.kglobalaccel",
             "/component/astral_wallpaper_desktop",

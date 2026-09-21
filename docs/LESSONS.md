@@ -1,6 +1,6 @@
 # Lessons Learned: Building Highly Custom Desktop Themes (Liquid Glass, Perfect Border Radii & Seamless Drawer Transitions)
 
-> **Context**: Architectural principles, failure modes, mathematical derivations, and hard-earned engineering lessons from developing the Caelestia KDE / Astral Plasma desktop shell (Quickshell, Qt Quick / QML, KWin Wayland).
+> **Context**: Architectural principles, failure modes, mathematical derivations, and hard-earned engineering lessons from developing the Astral Plasma desktop shell (Quickshell, Qt Quick / QML, KWin Wayland).
 
 ---
 
@@ -321,7 +321,7 @@ A common pitfall in modal drawers is hardcoding fixed container heights (e.g. `d
 5. Have `UnifiedShell` and `UnifiedFrame` dynamically track `dropdownContainer.dropH` so KWin blur slices and glass perimeter envelopes morph smoothly across tab switches.
 
 ### 7.2. Constructing Clean Radial Audio Spectrum Visualizers
-Cartoony rainbow notes and chunky bounding handles clutter media interfaces. Upstream Caelestia achieves its signature sleek aesthetic with a radial soundwave halo:
+Cartoony rainbow notes and chunky bounding handles clutter media interfaces. The upstream [caelestia-dots/shell](https://github.com/caelestia-dots/shell) design achieves its signature sleek aesthetic with a radial soundwave halo:
 1. **Polar Pill Bars**: 48 radial bars arranged around 360° using rotated items centered at `(centerX, centerY)`:
    ```qml
    Item {
@@ -337,7 +337,7 @@ Cartoony rainbow notes and chunky bounding handles clutter media interfaces. Ups
    }
    ```
 2. **MultiEffect Masking Contract**: When masking circular album art with `MultiEffect`, the `maskSource` must NEVER be defined inline within the effect property; it must be a standalone sibling `Rectangle` with `layer.enabled: true` and `visible: false` to guarantee valid GPU texture rendering.
-3. **Bespoke Vertical Pill Thumb**: Caelestia's signature slider uses a vertical rounded pill (5x15px, `radius: 2.5`) on a slim 5px track with timestamps positioned neatly below the track.
+3. **Bespoke Vertical Pill Thumb**: The upstream signature slider uses a vertical rounded pill (5x15px, `radius: 2.5`) on a slim 5px track with timestamps positioned neatly below the track.
 4. **Tonal Utility Row**: Keep shuffle, player badge pill, and loop buttons in a compact row using `surfaceContainerHigh` tonal backgrounds and dedicated Nerd Font glyphs (`󰒝` for shuffle, `󰑖` for repeat, `󰑗` for repeat_one).
 
 ---
@@ -367,7 +367,7 @@ When building sliding edge controls (such as the right-edge volume/brightness co
      ```
 
 ### 8.2. Dual Visualizer Architecture & User Choice
-When modernizing UI components (such as adopting Caelestia's radial spectrum halo over the original heatmap speaker):
+When modernizing UI components (such as adopting the upstream [caelestia-dots/shell](https://github.com/caelestia-dots/shell) radial spectrum halo over the original heatmap speaker):
 - **Preserve User Choice**: Always retain the original component as a first-class selectable option.
 - **Coexistence Slot Pattern**:
   1. Standardize both visualizers to the same geometry slot (`240x240`).
@@ -475,11 +475,11 @@ When building sliding edge drawers on the right screen border (e.g. `RightEdgeCo
   5. **1px Specular / Subtle Rim Stroke**:
      The outer perimeter outline (`border.width: 1`, `border.color: Colors.glassBorderSubtle`).
 - **Generic, Reusable Implementation (`LiquidGlassCard.qml`)**:
-  - Encapsulated directly as a native `Rectangle` component in [`components/LiquidGlassCard.qml`](file:///mnt/data/workspace/caelestia-kde/components/LiquidGlassCard.qml).
+  - Encapsulated directly as a native `Rectangle` component in [`components/LiquidGlassCard.qml`](file:///mnt/data/workspace/astral-plasma/components/LiquidGlassCard.qml).
   - Works anywhere a `Rectangle` was used (`radius`, `border`, `color`, `content`, `children` all native).
-  - Used by [`components/Card.qml`](file:///mnt/data/workspace/caelestia-kde/components/Card.qml), automatically styling all 6 Dashboard cards and Performance cards.
-  - Used in [`shell/UnifiedDock.qml`](file:///mnt/data/workspace/caelestia-kde/shell/UnifiedDock.qml) for the workspace pill (`wsContainer`), running apps taskbar (`appsContainer`), and system tray (`trayContainer`).
-  - Used in [`dock/components/DockStatusIcons.qml`](file:///mnt/data/workspace/caelestia-kde/dock/components/DockStatusIcons.qml) for the anchored status icons pill.
+  - Used by [`components/Card.qml`](file:///mnt/data/workspace/astral-plasma/components/Card.qml), automatically styling all 6 Dashboard cards and Performance cards.
+  - Used in [`shell/UnifiedDock.qml`](file:///mnt/data/workspace/astral-plasma/shell/UnifiedDock.qml) for the workspace pill (`wsContainer`), running apps taskbar (`appsContainer`), and system tray (`trayContainer`).
+  - Used in [`dock/components/DockStatusIcons.qml`](file:///mnt/data/workspace/astral-plasma/dock/components/DockStatusIcons.qml) for the anchored status icons pill.
 
 ### 8.8. Wayland PanelWindow Lifecycle, Dynamic Input Masking, and Drawer Re-entry
 - **The Invisible Window Input Trap in Wayland Layer Shell**:
@@ -673,6 +673,7 @@ Before considering any new liquid glass component complete, verify:
 - [ ] **Closed Geometry**: Do all `PathArc` and `PathLine` closures meet at $(0, 0)$ without cutting corner fillets?
 - [ ] **Hardware Tessellation**: Are all `Shape` items set to `preferredRendererType: Shape.GeometryRenderer`?
 - [ ] **Compositor Blur Alignment**: If using `BackgroundEffect.blurRegion`, does the corner use the zero-missing stepped slice profile ($dx \le \text{arc}$)?
+- [ ] **Blur Mask Atomicity**: Is EVERY dimension of the mask gated by a single boolean, with a positive floor on the body, so the mask is never a degenerate zero-area strip? Does that gate clear *before* the animation ends? Run `tests/tst_blur_region_teardown.qml`.
 - [ ] **Zero Nested Compositor Blur**: Are inner cards and buttons relying on QML scene-graph gradients rather than secondary compositor blur regions?
 - [ ] **Bounded Composite Luminance**: Does the surface stay legible over the *worst-case* backdrop (white in dark mode, black in light mode)? Run `tests/tst_glass_contrast_contract.qml`.
 - [ ] **High-DPI / High-Refresh Verification**: Has the component been verified live on Wayland at native refresh rate (e.g. 240Hz) with full-resolution screenshot auditing?
@@ -813,6 +814,108 @@ Implementation note: the outline must be applied to **every** Text item on glass
 including ones whose `color:` is a complex expression (the applier script matches
 the block, not the colour form), and `MaterialIcon` labels inherit it through
 their own `Text` child.
+
+### 9.11. Blur Region Geometry: Why It Desyncs From The Visuals
+Symptom: closing a drawer leaves the compositor blur behind, apparently until an
+unrelated repaint happens ~1s later.
+
+#### 9.11.1. The architectural root cause: no shared geometry
+The instinctive fix is "put the blur and the surface in one parent container and
+animate the parent once." That is not possible here, and the reason is the whole
+lesson:
+
+> `BackgroundEffect.blurRegion` is **not a visual item**. It is a Wayland protocol
+> mask (`ext_background_effect_manager_v1`) - a set of rectangles sent to the
+> compositor. It has no scene-graph node, so it cannot be a child of a QML
+> container and cannot inherit a transform or animation.
+
+Everything else in the shell animates by moving one item. The blur mask cannot,
+so its geometry must be **re-derived** at every point it is used. That duplication
+is the defect generator: any expression that disagrees with the surface's real
+geometry - by one frame, or by a different rounding, or by crossing zero at a
+different threshold - shows up as a mask that is out of step with what the user
+sees. When adding a blur region, treat its geometry as a second implementation of
+the surface layout and keep the two derived from one shared property, never
+recomputed inline per dimension.
+
+#### 9.11.2. The verified defect: dimensions collapsing at different thresholds
+The dropdown's regions gated each dimension independently. Width used
+`offsetProgress > 0.001`; the body height used
+`Math.max(0, currentDropH - filletR)`, which reaches zero at
+`offset = filletR / dropH` (0.045 for a 444px drawer). Between those two offsets
+the mask handed to the compositor is a **980x0 degenerate strip** - zero area but
+non-zero width. Measured on the animated close:
+
+| offset | width gate | height | mask sent |
+|:---|:---|:---|:---|
+| 0.0600 | 980 | 6.64 | 980x7 |
+| 0.0450 | 980 | 0.00 | **980x0** |
+| 0.0011 | 980 | 0.00 | **980x0** |
+| 0.0009 | 0 | 0.00 | 0x0 |
+
+Because the compositor applies the LAST mask it receives, the degenerate strip is
+what persists.
+
+#### 9.11.3. The fix: one gate, positive floor, early teardown
+Every dimension of a mask must switch on a **single** boolean, and that boolean
+must clear while the animation still has frames left to flush the change:
+
+```qml
+readonly property real blurRegionMinProgress: 0.06
+readonly property bool blurRegionActive: dropdownContainer.offsetProgress > root.blurRegionMinProgress
+readonly property real blurDropH: root.blurRegionActive
+    ? Math.max(1, root.currentDropH - root.filletR) : 0
+```
+
+The mask is then either a valid positive-area rectangle or fully empty - never a
+degenerate strip - and it clears ~30ms (18 frames at 60Hz) before the animation
+ends. The identical latent defect existed in three more drawers, each with its own
+progress driver; all now use the same single-gate pattern
+(`blurPopoutActive`, `blurPopoutFused`, `blurPopoutFloating`,
+`blurRightEdgeActive`).
+
+#### 9.11.4. Measurement traps that hid this bug
+Two traps cost hours and will mislead anyone re-testing this area:
+
+1. **Screenshot cadence cannot resolve a 500ms animation.** `spectacle` costs
+   ~450ms per capture, so even back-to-back burst shots land at ~490ms - after the
+   close has already finished and everything correctly reads sharp. Do not
+   conclude "not reproducible" from screenshots at this cadence; instrument the
+   QML instead (`Connections { function onOffsetProgressChanged() }` logging the
+   mask rect) to get the real sequence.
+2. **Adding any continuously-repainting element masks the symptom.** A diagnostic
+   overlay (or a phase bar) keeps the surface committing frames, which flushes the
+   mask change immediately. Every measurement taken with instrumentation on the
+   screen was measuring a different system than the one the user sees. Observe the
+   idle case with nothing extra on screen.
+
+Also note: absolute pixel energy is a poor blur metric because the backdrop varies
+per region. Compare high-frequency energy inside the footprint against control
+bands at the same rows, outside it.
+
+#### 9.11.5. Status and how to pin it down on a live session
+The degenerate-strip defect is fixed and covered by tests. It does **not** fully
+explain a ~1s persistence, and instrumenting the real shell showed the mask
+sequence `980x14 -> 0x0` 44ms apart, which is already correct. The remaining
+suspicion is the **commit boundary**: a mask update only reaches the compositor
+when the surface commits a frame, and the final change lands as the surface is
+about to go idle, so the clear may sit uncommitted until something else dirties
+the scene. That is consistent with both traps above but is not yet proven.
+
+To confirm on a live session, set `debugMode: true` in `config/settings.json`. The
+shell then logs the exact rect handed to the compositor on every change:
+
+```
+[BlurRegion] t=<ms> dropdown=<w>x<h> popout=<on|off> rightEdge=<on|off>
+```
+
+Compare the timestamp of the final `dropdown=0x0` line against when the blur
+visually disappears. If the log shows `0x0` well before the blur goes, the mask is
+being set but not committed, and the fix belongs at the commit boundary rather
+than in the geometry.
+
+Enforced by `tests/tst_blur_region_teardown.qml`: a single gate, zero raw-epsilon
+dimension tests, a positive height floor, and a non-zero teardown lead time.
 
 > **Qt.tint alpha gotcha**: `Qt.tint(base, Qt.alpha(color, t))` yields an
 > effective alpha of $t + \alpha_{\text{base}}(1 - t)$, *not* $\alpha_{\text{base}}$.
@@ -1063,7 +1166,7 @@ This ensures context menus consistently appear directly beneath the cursor, allo
 ### 11.5. Generic Synthetic Declarative Menus for Wine and Non-DBusMenu Apps
 Even native KDE Plasma 6 does not theme Wine tray menus because Win32 applications create in-process popup menus via `TrackPopupMenuEx` or Chromium/CEF custom windows without exposing DBusMenu endpoints.
 
-To provide a first-class, themed experience in Caelestia:
+To provide a first-class, themed experience in Astral Plasma:
 1. **The Synthetic Menu Path (`/SyntheticMenu`) Paradigm**:
    - In `tray_adapter.rs`, when `query_tray()` detects an SNI item with an empty or non-existent `menu_path`, it automatically assigns `menu_path = "/SyntheticMenu".to_string()`.
    - This notifies `UnifiedDock.qml` and `FusedBottomPopout.qml` that the item supports rich interactive popouts without special-casing inside QML.
@@ -1093,7 +1196,7 @@ When selecting an input method like Rime from an SNI DBusMenu:
    - Setting `im_badge = ""` for Rime allows `ThemedIcon` to render `/usr/share/icons/breeze-dark/status/22/fcitx-rime.svg`, automatically colorizing the symbolic vector with Material You surface colors.
 3. **Instant Responsive Refresh via DBus**:
    - Rather than relying on a slow background polling loop (5000ms), `WatcherService` exposes `RefreshTray` over DBus.
-   - When any menu item click completes, `qdbus6 org.caelestia.WindowWatcher /Watcher RefreshTray` is triggered immediately, refreshing the dock and popout within milliseconds.
+   - When any menu item click completes, `qdbus6 org.astralplasma.WindowWatcher /Watcher RefreshTray` is triggered immediately, refreshing the dock and popout within milliseconds.
 
 ---
 
@@ -1116,7 +1219,7 @@ When presenting full-screen modal confirmation dialogs (Shutdown, Reboot, Log Ou
    - Modal dialogs should dynamically register their card bounding box (`cardX`, `cardY`, `cardW`, `cardH`) in `BackgroundEffect.blurRegion`.
    - This routes the area behind the dialog card through KWin's dual-kawase blur filter, eliminating sharp wallpaper text and providing authentic frosted glass optics.
 3. **The 6-Layer Liquid Glass Modal Optical Stack**:
-   - Real glass is not an opaque flat box. A modal dialog in Caelestia must incorporate:
+   - Real glass is not an opaque flat box. A modal dialog in Astral Plasma must incorporate:
      - **Layer 0**: Ambient Contact Drop Shadow (`MultiEffect` blur 48px, vertical offset 12px, `Colors.glassShadowColor`).
      - **Layer 1**: Refractive Glass Substrate Gradient (`Qt.tint(rgba(1, 1, 1, 0.09), alpha(accent, 0.06))` to smoked absorption).
      - **Layer 2**: Inner Caustic Ambient Glow (top 38px vertical gradient decaying from `alpha(accent, 0.22)` to transparent).
@@ -1129,10 +1232,565 @@ When presenting full-screen modal confirmation dialogs (Shutdown, Reboot, Log Ou
    - Relying on generic container tokens can cause dark navy text (`#003353`) on red backgrounds.
    - By calculating perceptual luminance ($L = 0.299R + 0.587G + 0.114B$), buttons dynamically set foreground text and icons to `#FFFFFF` for dark/medium accents and `#1D1B20` for light accents, guaranteeing 100% WCAG AAA contrast ratio.
 
+---
+
+## 12. Application Identity Resolution: Data-Driven, Never Substring-Guessed
+
+### 12.1. The Symptom
+A running ZCode AppImage showed up in the dock as a **second VS Code icon** - wrong
+name, wrong icon, wrong id - so the user could not find their own window. The app
+was never missing from the window list; it was mislabelled.
+
+### 12.2. Root Cause: A Curated Substring Table
+`resolve_window_meta` (now `meta_resolver.rs`) decided identity with ~38 hardcoded
+`cls.contains("keyword")` tests. KWin reported the window class as `zcode`, and:
+
+```rust
+if cls_lower.contains("code") {   // "zcode".contains("code") == true
+```
+
+matched, so the ZCode window was dressed as VS Code before anything ZCode-aware
+could ever run.
+
+This is structural, not a one-off typo. Auditing that table against the 327
+desktop entries installed on this machine found **23 patterns that are substrings
+of other, distinct applications**:
+
+| pattern | also swallows |
+|:---|:---|
+| `code` | `zcode`, `opencode`, `claude-code`, `minimax-code` |
+| `terminal` | `dev.lizardbyte.app.sunshine.terminal` |
+| `edge` | `knowledge` (any word containing it) |
+| `lutris` | `net.lutris.lutris1` |
+
+Any app whose name merely *contains* a curated keyword is misidentified. Adding a
+`zcode` rule would only move the collision to `xzcode`.
+
+### 12.3. The Fix: Read the Standard Instead of Guessing
+Window identity mapping is already standardized. A desktop entry declares
+`StartupWMClass=` - the window class the application reports - alongside `Name=`
+and `Icon=`. Reading those entries makes resolution **data-driven and exact**:
+
+```
+daemon/src/domain/app_identity.rs   AppIdentityIndex
+  load()      scan XDG application dirs (user -> system -> flatpak -> snap)
+  resolve()   exact match on StartupWMClass, then desktop-file id
+```
+
+Resolution order, and why:
+
+1. **Curated presentation layer** - some apps present unusable identities (Wine
+   titles, AppImages without a desktop entry, opaque `Name=` values) and deserve a
+   deliberate name/icon. This tier is now **token-matched** (see 12.4).
+2. **Desktop-entry index** - any installed application resolves from its own
+   entry. This is what makes the solution general: **no per-app code, and no
+   substring ambiguity by construction.** The entry's `Icon=` is what the dock
+   draws, and `Categories=` is mapped to a Material Symbols glyph so even an
+   unknown app gets a sensible icon.
+3. **Generic fallback** - pure heuristic naming for dotnet/odd-toolkit windows.
+
+`StartupWMClass` is consulted before the desktop-id because it is the app's own
+declaration of the class it reports; ids then cover the 61% of entries that never
+set it.
+
+The index is built once and cached in a `OnceLock<RwLock<Arc<..>>>`
+(`shared_index()`), with `refresh_shared_index()` for installs while the shell is
+running, so the watcher never rescans the filesystem per event.
+
+### 12.4. Token Boundaries, Not Substrings - The General Rule
+The durable rule, applicable wherever a keyword classifies anything:
+
+> Normalize both sides to space-padded lowercase alphanumerics, then require the
+> keyword to match a **whole token sequence**.
+
+```rust
+token_match("zcode",                 "code")       // false
+token_match("code",                  "code")       // true
+token_match("com.mitchellh.ghostty", "ghostty")    // true
+token_match("microsoft-edge",        "edge")       // true
+token_match("cloudmusic.exe",        "cloudmusic") // true
+token_match("knowledge",             "edge")       // false
+token_match("com.gitawego.token-tracker-dashboard", "token-tracker") // true
+```
+
+This keeps every legitimate reverse-DNS, hyphenated and `.exe` class working while
+making the false positives impossible. `"zcode"` is one token and `"code"` is
+another, so they never collide.
+
+### 12.5. Verification
+`daemon/tests/test_app_identity.rs` (20 tests) pins the contract, including the
+exact regression: `zcode` resolves to ZCode and `assert_ne!(app_id, "code")`,
+while `code` still resolves to VS Code. Live check across all nine windows on a
+real session after the fix:
+
+```
+ZCode      -> appName "ZCode"  appId "zcode"       icon "zcode"
+VS Code    -> appName "VS Code" appId "code"        icon "vscode"
+```
+
+Note the remaining asymmetry, which is by design: a desktop entry's `Name=` wins
+over a curated nickname (the user named the app, so respect it), while curated
+entries still apply to anything without a matching entry.
+
+### 12.6. Not Our Bug: Apps That Register No Tray Icon
+The same investigation showed ZCode absent from the system tray. That is **not
+fixable from the shell**: the app registers no `StatusNotifierItem` at all
+(verified against KDE's `StatusNotifierWatcher` and by the absence of any
+`new Tray(...)` in its Electron bundle). No shell can display a tray icon for an
+app that never creates one, and fabricating a placeholder would violate the
+"never fabricate content" rule. A running app belongs on the **taskbar**, which is
+what section 12.3 restores.
+
+---
+
+## 13. Shell Surfaces Are Not Applications: Filtering The Active Window
+
+### 13.1. The Symptom
+Hovering a dock icon, opening a popout drawer, or focusing the settings window
+made the dock's active-window pill display **"Quickshell"** - an entry for the
+shell itself, which is not a program the user is working in.
+
+### 13.2. Root Cause: An Asymmetry Between Two Code Paths
+The shell creates real KWin windows: the unified desktop surface, drawers,
+popouts, the notification layer and the settings window. Verified live - a
+running session had **6 quickshell windows**, every one of them with
+`skipTaskbar: true` and an empty caption.
+
+Identity was filtered in exactly one of the two places that needed it:
+
+```
+getWindowList()   if (w.normalWindow && w.caption && w.resourceClass !== "quickshell")
+notifyActive(c)   // no filter at all   <-- the leak
+```
+
+So `activeTitle` was updated from an unfiltered source. Because a layer-surface
+can become KWin's `activeWindow` (a hover or focus grab is enough), the shell
+reported its own surface as the active application. The window *list* was clean,
+which is why the bug only ever appeared in the active-app display - and why
+grepping the list path looked correct.
+
+### 13.3. The Fix: Use The Standard Flag, On Every Path
+KWin exposes the answer directly: `w.skipTaskbar`, the EWMH flag meaning "do not
+represent me in a taskbar". It cleanly separated the two populations on a live
+session:
+
+| window class | skipTaskbar | count |
+|:---|:---|:---|
+| `quickshell` | **true** | 6 |
+| real applications (`code`, `zcode`, `microsoft-edge`, `ghostty`, ...) | **false** | 9 |
+
+The fix has three layers, deliberately redundant because the leak had two entry
+points:
+
+1. **KWin script, active path** - `notifyActive()` now returns early for a shell
+   surface (via `isShellSurface(c)`, which consults `skipTaskbar` and the class).
+   Reporting nothing is the correct behaviour: the daemon then keeps the last
+   genuine application, rather than blanking the pill on every hover.
+2. **KWin script, list path** - the existing class check is extended to honour
+   `skipTaskbar` as well, and the flag is forwarded in the payload.
+3. **Daemon** - `window_activated` re-checks `is_shell_owned_surface`, because
+   that interface is independently addressable on the D-Bus, and the list
+   enrichment re-checks `should_skip_taskbar`.
+
+### 13.4. Match Class And App Id, Never The Title
+`is_shell_owned_surface(cls, app, title)` deliberately ignores the title. Editing
+`UnifiedShell.qml` in VS Code produces a window whose *title* contains
+"UnifiedShell"/"astral-plasma", and a title-based filter would hide the user's editor.
+The title parameter is kept in the signature (and documented as unused) so the
+omission is explicit rather than accidental. Recognised shell identities are
+matched by exact class, or by the class as a dotted/hyphenated prefix
+(`quickshell`, `org.quickshell`, `astral-plasma`, `astral-plasma-settings`).
+
+### 13.5. Verification
+Live, with KWin actually reporting a shell surface as the active window:
+
+```
+KWin says active: {"caption":"","cls":"quickshell","skip":true}
+Shell reports   : activeTitle='Terminal'  activeAppId='ghostty'   <- last real app
+```
+
+That is the failure state reproduced and corrected in the same measurement. The
+window list holds 10 entries with 0 quickshell entries. Covered by
+`daemon/tests/test_app_identity.rs`, which asserts the predicate on both paths,
+that a title mentioning the shell does not flag a real application, and that the
+script forwards the skip flag.
+
+### 13.6. The General Rule
+> When the shell owns its own windows, ask the compositor which windows belong in
+> a taskbar (`skipTaskbar`) instead of enumerating the classes to exclude.
+
+A class-based denylist has to be extended for every new shell surface (drawer,
+popout, OSD, settings window) and silently fails as soon as someone adds one
+without updating it. `skipTaskbar` is set by the surface itself, so it scales with
+the shell and cannot be forgotten.
+
+### 13.7. The Deeper Root Cause: Activation Is Never Returned
+Filtering the shell surface out of the *reported* active window treated the
+symptom. The actual defect was upstream of that:
+
+```
+baseline            : active = ZCode
+dashboard open      : active = quickshell     <- KWin activates the layer surface
+dashboard closed    : active = quickshell     <- and NEVER gives it back
+t+2s ... t+10s      : active = quickshell     <- still there, indefinitely
+```
+
+Requesting keyboard focus on a full-screen layer surface (`WlrKeyboardFocus.
+OnDemand`) makes KWin **activate** that surface. Withdrawing the request does not
+reassign activation, so the compositor keeps an invisible shell surface as its
+active window forever. Two consequences, and the second is the one that looked
+like a frozen dock:
+
+1. The shell surface becomes the reported active window.
+2. **No further `windowActivated` events fire at all** - the watcher is starved,
+   so the dock's active-app display freezes on whatever application happened to
+   be active before the interaction. This is why the symptom appeared as "always
+   displaying Edge": Edge was simply the last real window seen before the drawer
+   was opened.
+
+**The fix is to not request focus in the first place.** `UnifiedShell` requested
+`OnDemand` whenever a drawer, popout or modal was open - but the only thing that
+genuinely needs key events is the power-confirmation modal (Enter/Escape). Drawers
+and popouts close on mouse-leave, scrim click, or the toggle shortcut, so they
+gain nothing from a focus request and were paying for it with permanent
+activation loss:
+
+```qml
+WlrLayershell.keyboardFocus: PowerService.confirmDialogVisible
+    ? WlrKeyboardFocus.OnDemand
+    : WlrKeyboardFocus.None
+```
+
+Because the modal legitimately needs focus, its cycle is closed explicitly:
+`astral-plasma focus restore` (a one-shot KWin script) hands activation back to
+the most recent real window on modal close. Restoring automatically on *open*
+would be wrong - it would strip the modal of the focus it needs.
+
+Verified live: `workspace.activeWindow = target` does restore activation, so KWin
+accepts the reassignment; it simply never does it on its own.
+
+**The general rule**: a shell should request keyboard focus only for genuine
+modal input, and any surface that does must return activation explicitly when it
+finishes. Never request focus for a surface the user only hovers or clicks
+through.
+
+**Measurement note**: this class of bug is invisible to code reading alone - the
+filter *looked* correct and the window list was clean. It took a KWin-script probe
+(`workspace.activeWindow` logged across a scripted open/close cycle) to see that
+activation never came back. Probe the compositor's own state, not the shell's
+derived copy of it.
+
+---
+
+## 14. Screen Fillet Blur Masks: Coverage, Not Slices
+
+### 14.1. The Symptom
+The inner fillets where the dock meets the top/bottom border rendered as a
+**stepped, jagged corner** instead of a smooth arc.
+
+### 14.2. Root Cause: Slices Sized For The Wrong Depth
+The compositor blurs only axis-aligned rectangles, so each concave fillet arc is
+approximated by stacked slices. The fillet region has radius $R$ and its glass is
+the area *outside* the inscribed circle (centre at $(R, R)$ local), so the glass
+width at depth $d$ is:
+
+$$w_{\text{glass}}(d) = R - \sqrt{R^2 - (R-d)^2}$$
+
+The profile was hand-tuned to widths `12 / 7 / 4 / 2 / 1`, with each width sized
+for its slice's **bottom** depth. Because the arc widens steeply toward the
+tangency, the *top* of every slice was left uncovered:
+
+| slice depth | mask width | glass needs | uncovered |
+|:---|:---|:---|:---|
+| 0-2 | 12 | 20.0 | **8.0px** |
+| 2-5 | 7 | 11.3 | **4.3px** |
+| 5-9 | 4 | 6.8 | **2.8px** |
+| 9-14 | 2 | 3.3 | **1.3px** |
+
+The fillet glass is translucent ($\alpha \approx 0.65$), so every uncovered wedge
+showed the wallpaper through it *unblurred* - five discrete jumps reading as a
+stair-stepped corner. This is the same failure mode as 9.4's "coarse inset notch"
+warning, but the earlier note only warned about it; this is the measured
+magnitude and the general fix.
+
+### 14.3. The Fix: Derive The Profile From The Arc
+The widths are no longer tuned by hand; they are computed from the arc equation
+and sized for each slice's **top** depth, so the mask covers the glass by
+construction and automatically tracks `filletR`:
+
+```qml
+readonly property var filletProfile: {
+    const R = root.filletR;
+    // Fine near the tangency, where the curve changes fastest.
+    const depths = [0, 1, 2, 4, 7, 11, 15, R];
+    // width[i] = ceil(glass width at depths[i])   // slice TOP, never underside
+}
+```
+
+All four corners reference the same profile (28 regions), so a radius change
+propagates everywhere. Measured coverage for the configured $R = 20$:
+
+| depth | mask width | glass needs | gap |
+|:---|:---|:---|:---|
+| 0-1 | 20 | 20.0 | 0.0 |
+| 1-2 | 14 | 13.8 | 0.0 |
+| 2-4 | 12 | 11.3 | 0.0 |
+| 4-7 | 8 | 8.0 | 0.0 |
+| 7-11 | 5 | 4.8 | 0.0 |
+| 11-15 | 3 | 2.1 | 0.0 |
+| 15-20 | 1 | 0.6 | 0.0 |
+
+Worst gap: **0.00px** (was 8.0px). Slice heights sum exactly to `filletR`, so the
+mask spans the arc without overlap or gap. The residual outward overshoot is at
+most ~1px and is feathered by the blur kernel.
+
+### 14.4. The Two Rules
+1. **Size each slice for the deepest point it must cover** - which for a convex
+   arc widening downward is the slice's TOP edge, not its bottom. Sizing for the
+   bottom systematically under-covers.
+2. **Derive widths from the curve equation, never by hand.** A literal table
+   silently under-covers as soon as the radius changes, and cannot be verified.
+
+Enforced by `tests/tst_fillet_blur_coverage.qml`, which parses the depth list out
+of the source, recomputes the arc, and asserts zero gap for $R = 12..32$ plus the
+configured radius, that all four corners use all seven slices, and that the depth
+fractions are fine near the tangency. Verified to fail on both a coarse-but-
+increasing depth list and a non-increasing one.
+
+### 14.5. Measurement Note
+The fillet boundary has to be observed against a **high-contrast, uniform**
+backdrop: the uncovered wedges only show as visible steps when the wallpaper
+behind them is sharp and bright. Against normal desktop content the defect is far
+subtler, and against a backdrop that the shell itself draws it is invisible
+because the mask and the surface are then both sourced from the shell. A magenta
+full-screen window at `WindowStaysOnTopHint` (above other windows, below the
+shell's Top layer) made the artifact unambiguous and locatable in a capture.
+
+---
+
+## 15. Don't Ship Diagnostic Slows: Motion Tokens Are Guarded by DESIGN.md
+
+### 15.1. The Symptom
+The drawer's open animation regressed from "the border transforms and fuses into
+the drawer" to "a pre-defined box sliding out", which reads as mechanical.
+
+### 15.2. Root Cause: A Leftover Diagnostic Slowdown
+`theme/Theme.qml` was left with `animExpressiveDefaultSpatial: 4000` - the
+duration had been temporarily changed from **500ms to 4000ms** to make the
+transition slow enough for `spectacle` (whose ~450ms capture cadence cannot
+resolve a 500ms animation). The edit was never reverted.
+
+Nothing caught it because nothing connected the token to its specification.
+DESIGN.md section 2.1 documents the motion palette and names
+`theme/Theme.qml` as its formalization, but no test read the table.
+
+At 8x the intended duration every nuance of the expressive spring is lost: the
+overshoot and the fast opening beat happen in what is now the first tenth of a
+perceptually linear crawl. The morph still *happens*, but the eye reads the shape
+as extruding rather than transforming - so the complaint ("pre-defined shape,
+pushing out") is an accurate description of what a slowed spring actually looks
+like.
+
+### 15.3. Why This Class Of Bug Is Easy To Ship
+Diagnostic edits are *deliberately* obvious while you are making them, and
+invisible once you have moved on. Three habits prevent shipping them:
+
+1. **Revert before running the suite, not after.** A diagnostic that changes a
+   shared token affects every consumer, so the suite is the wrong place to notice.
+2. **Prefer a per-call override to editing a shared token.** Slowing one
+   animation for a capture is safest via a local `Behavior` override, not the
+   global token every transition reads.
+3. **Have a test that ties shared tokens to their documentation**, so an edit
+   fails loudly instead of looking like a design choice.
+
+### 15.4. The Guard
+`tests/tst_motion_tokens.qml` parses DESIGN.md's token table and Theme.qml's
+declarations and asserts they agree:
+
+- every documented duration exists in Theme.qml with the documented value;
+- every documented curve exists as a 6-value bezier with the documented control
+  values;
+- the three `animExpressive*Spatial` tokens exist **by name** (the shell's
+  transitions depend on them) and their durations sit in the documented
+  150-800ms spring range.
+
+Validation is by content rather than by name pairing, because Theme.qml's naming
+is not uniform: `animExpressiveDefaultSpatial` pairs with
+`curveExpressiveDefaultSpatial`, but `animEmphasized` pairs with
+`curveEmphasizedDecel`. Content matching keeps the guard robust to that while
+still pinning the tokens that matter by name.
+
+Verified to fail on the exact leftover (`4000ms`), reporting that no duration
+token has the documented value.
+
+### 15.5. The General Rule
+> A shared token that a specification documents must be asserted against that
+> specification. Otherwise "temporarily wrong" and "intentionally changed" are
+> indistinguishable to every future reader, including the test suite.
+
+This is the same principle as §9.8 (glass alphas solved, not chosen) and §14
+(fillet widths derived, not hand-tuned): when a value has a documented contract,
+encode the contract as a test so drift is a failure rather than a silent change.
+
+---
+
+## 16. One Definition Per Surface: Blur Masks Must Consume The Drawn Rect
+
+### 16.1. The Recurring Bug
+Every blur defect in this shell has had the same shape: the compositor mask and
+the glass it must blur were **authored as two separate expressions** for one visual
+object, and then drifted. Three instances, all measured:
+
+| surface | the mask computed | the glass was | result |
+|:---|:---|:---|:---|
+| screen fillets | widths `12/7/4/2/1` tuned by hand | arc of radius 20 | 8px of glass unblurred, stepped corner (14) |
+| bottom popout (fused) | `h = root.height - wrapper.y` | `wrapper.height + topR + botR` | mask reached the screen bottom, blurring bare desktop (15) |
+| notification | `w = notifW + filletR`, `h = notifH + filletR` | `0,0,panelW,currentEnvelopeHeight` | 20px frosted wallpaper on two sides |
+
+The third was verified live: panel bottom `y=78`, mask bottom `y=98`, and rows
+78..97 read *bright* (bare wallpaper, mean 115-118) while their local energy was
+suppressed to 5-11 against a sharp reference of 26.75 - frosted wallpaper with
+nothing painted over it.
+
+### 16.2. The Rule
+> A blur mask must not recompute geometry. The surface that draws the glass must
+> publish its painted rect, and the mask must consume it.
+
+This is the same principle as 9.8 (alphas solved, not chosen) and 14 (fillet
+widths derived, not tuned), applied to geometry instead of colour. The mask is a
+Wayland protocol region and cannot be a child of the surface (9.11.1), so a shared
+*property* is the only available mechanism - and it is sufficient.
+
+### 16.3. Implementation
+`UnifiedFrame.bottomPopoutSurface` publishes its own extent:
+
+```qml
+readonly property rect fullRect:  Qt.rect(x, y, width, height)      // whole painted surface
+readonly property rect bodyRect:  Qt.rect(x, popoutY, popW, popoutHeight)  // straight-sided part
+```
+
+and `UnifiedShell` consumes it rather than re-deriving:
+
+```qml
+y:      desktopFrame.bottomPopoutSurfaceItem.fullRect.y
+width:  desktopFrame.bottomPopoutSurfaceItem.fullRect.width
+height: desktopFrame.bottomPopoutSurfaceItem.fullRect.height
+```
+
+**Use `fullRect`, not `bodyRect`, for the body mask.** The top and bottom
+`filletR` bands are glass right across the width - only their leftmost sliver is
+the concave shoulder - so a body-sized mask leaves those bands unblurred. This
+mistake was made and caught during the fix: the first attempt consumed `bodyRect`
+and would have shrunk the mask.
+
+`NotificationPopup` does the same with `surfaceWidth/surfaceHeight/surfaceX`, plus
+a separate `shoulderRect` for the single concave corner fillet, which is a quarter
+disc living in the top `borderRounding` rows - not a full-height column.
+
+### 16.4. Two Traps When Fixing This
+1. **Adding `filletR` on every side is almost always wrong.** It is right only
+   where a shoulder actually spans that edge across its full length. Where the
+   shoulder is a corner arc, the correct mask is the panel rect plus a small stub.
+2. **A stale mask is invisible in a static screenshot.** Blurring bare desktop
+   looks like a slightly hazy region rather than an error. It only becomes obvious
+   over a high-frequency backdrop (a checkerboard), where "blurred" and "sharp" are
+   separable by local energy - or by logging the mask rect and comparing it with
+   the surface's, which is what finally localised these cases.
+
+### 16.5. Also Fixed: A Stray Inner Border
+The notification's inner `LiquidGlassCard` drew its own 1px perimeter ring,
+visible as a second rounded box inside the panel (measured as two hairlines at
+`y=16` and `y=71` against the panel edge at `y=77-78`). A resting container should
+not draw a ring: the specular hairlines already define the glass edge (9.1, "Clean
+Glass Materials"). `LiquidGlassCard` now takes `showBorder`, and the notification's
+inner card sets it `false`.
+
+### 16.6. Verification
+- `tests/tst_popout_blur_extent.qml` - both popout variants consume `fullRect`,
+  `fullRect` equals the surface extent in fused AND floating states, no mask may be
+  sized to the screen bottom, and each variant still declares a region set.
+- `tests/tst_notification_blur_extent.qml` - the mask reads the panel's own
+  extents plus a bounded `shoulderRect`, adds no `filletR` to width or height, and
+  the inner ring is disabled.
+
+Both are verified to fail when the respective defect is re-injected. The permanent
+`[BlurAudit]` logger (`debugMode: true`) prints every active mask rect, which is
+how each of these was localised:
+
+```
+[BlurAudit] active: notification=2180,0 380x78        <- after: exactly the panel
+[BlurAudit] active: notification=2160,0 400x98        <- before: 20px overhang
+```
 
 
+---
 
+## 17. Wine Windows, Xwayland Focus, and KWin Rules
 
+Wine applications are X11 (Xwayland) clients, and two of their properties interact
+badly with normal activation and keyboard routing. Both were diagnosed from a
+single symptom - *"pressing Enter in a native app toggles the Wine music player"*.
 
+### 17.1. `WM_HINTS.input = 0` disables click-to-focus
 
+`xprop -id <win>` on a Wine main window can show:
 
+```
+WM_HINTS(WM_HINTS): ... InputHint, input: False
+```
+
+Wine sets this when the application declares `WS_EX_NOACTIVATE` (background
+players, tray-style windows). KWin honours it: the window never takes keyboard
+focus, so clicking it neither focuses nor raises it. The dock's "Bring to Front"
+still works because it activates the window from *inside* KWin
+(`workspace.activeWindow = w`), bypassing the hint - which is why it looked like
+the only way to reach the window.
+
+Fix, scoped to the window class in `kwinrulesrc`:
+
+```ini
+[1]
+Description=Wine background player
+acceptfocus=true
+acceptfocusrule=2
+wmclass=cloudmusic.exe
+wmclassmatch=1
+```
+
+`acceptfocus` is "Controls whether or not the window becomes focused when
+clicked" (KCM string). KWin's scripting API exposes the resolved state as
+`w.wantsInput`, which makes the fix verifiable without clicking.
+
+### 17.2. Extreme focus stealing prevention blocks even user actions
+
+A rule with `fsplevel=4` (`fsplevelrule=2`) is a common way to stop a chatty
+Wine app from raising itself. It also blocks *user* activation: an EWMH
+`_NET_ACTIVE_WINDOW` request with source indication 2 (user action) is refused,
+leaving the window stuck with `_NET_WM_STATE_DEMANDS_ATTENTION`. Lowering it to
+`fsplevel=1` (Low) keeps the app from stealing focus in unambiguous cases while
+allowing activation, after which `_NET_ACTIVE_WINDOW`, `_NET_WM_STATE_FOCUSED`,
+`XGetInputFocus` and `workspace.activeWindow` all agree.
+
+### 17.3. A stale Xwayland focus leaks keystrokes into the Wine window
+
+Activating a Wine window leaves Xwayland's keyboard focus on it; when the user
+then focuses a native Wayland window, KWin can keep forwarding keys to that X11
+focus, so typing in any native app also drives the Wine app. Measured with a
+passive `KeyPressMask` observer on the Wine window: pressing Enter in a native
+chat box delivered `keycode=36 (Return)` into NetEase CloudMusic, whose focused
+control was its play/pause button.
+
+The shell therefore hands the X11 focus back whenever the active window is not a
+Wine window (`XSetInputFocus(None, RevertToNone)`), re-enforced every 500 ms
+because Wine re-asserts its focus after being cleared. Two consequences worth
+remembering:
+
+- `workspace.windowActivated` does **not** fire for script-driven activation
+  (`workspace.activeWindow = w`), so the `activate` KWin script reports the
+  activation to the daemon itself; otherwise the focus guard would immediately
+  take the keyboard focus back from the window just brought to the front.
+- Release only when `WM_CLASS` ends in `.exe` **and** the active window is not a
+  Wine window; a Wine window that is genuinely active must keep its focus.
+
+Decision logic lives in pure functions (`is_wine_class`,
+`should_release_x11_focus`) with tests in `daemon/tests/test_x11_focus_handoff.rs`.

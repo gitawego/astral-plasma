@@ -48,7 +48,7 @@ Singleton {
     readonly property int animDurationSlow: 400
     readonly property var animEasing: Easing.OutCubic
 
-    // Expressive Motion Durations (ms) matching upstream Caelestia
+    // Expressive Motion Durations (ms) matching the upstream design language
     readonly property int animExpressiveFastSpatial: 350
     readonly property int animExpressiveDefaultSpatial: 500
     readonly property int animExpressiveSlowSpatial: 650

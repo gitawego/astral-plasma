@@ -3,39 +3,39 @@ use astral_plasma::domain::model::*;
 use astral_plasma::domain::sys_parser::*;
 
 #[test]
-fn test_antigravity_resolution() {
-    let meta = resolve_window_meta("Antigravity Editor", "antigravity", "ai.opencode.desktop", "");
+fn test_window_without_entry_is_named_by_its_own_class() {
+    // No desktop entry -> no invented name, brand or icon: the window's own
+    // class identifies it, exactly as an unknown app behaves in Plasma.
+    let meta = resolve_window_meta("Antigravity Editor", "antigravity", "", "");
     assert_eq!(meta.app_name, "Antigravity");
-    assert_eq!(meta.icon_name, "antigravity");
-    assert_eq!(meta.material_icon, "smart_toy");
     assert_eq!(meta.app_id, "antigravity");
-    assert_eq!(meta.desktop_file, "ai.opencode.desktop");
+    assert_eq!(meta.icon_name, "antigravity");
+    assert_eq!(meta.material_icon, "window");
 }
 
 #[test]
-fn test_cloudmusic_resolution() {
+fn test_identity_is_never_attributed_to_another_application() {
+    // A class that merely contains a known word must not borrow that app's
+    // identity: no built-in table exists to do so any more.
     let meta = resolve_window_meta("网易云音乐", "netease-cloud-music", "cloudmusic", "");
-    assert_eq!(meta.app_name, "CloudMusic");
-    assert_eq!(meta.icon_name, "netease-cloud-music");
-    assert_eq!(meta.material_icon, "music_note");
-    assert_eq!(meta.desktop_file, "lutris:rungame/netease-cloud-music");
+    assert_eq!(meta.app_id, "cloudmusic", "the reported app id is the identity");
+    assert_eq!(meta.icon_name, "cloudmusic");
+    assert_eq!(meta.material_icon, "window");
 }
 
 #[test]
-fn test_ghostty_terminal_resolution() {
+fn test_reverse_dns_class_uses_its_own_identity() {
     let meta = resolve_window_meta("ghostty", "com.mitchellh.ghostty", "ghostty", "");
-    assert_eq!(meta.app_name, "Terminal");
-    assert_eq!(meta.icon_name, "com.mitchellh.ghostty");
-    assert_eq!(meta.material_icon, "terminal");
-    assert_eq!(meta.app_id, "ghostty");
+    assert_eq!(meta.app_id, "ghostty", "the reported app id is the identity");
+    assert_eq!(meta.icon_name, "ghostty");
 }
 
 #[test]
-fn test_quickshell_resolution() {
+fn test_generic_material_glyph_for_unresolved_windows() {
     let meta = resolve_window_meta("Quickshell", "quickshell", "quickshell", "");
     assert_eq!(meta.app_name, "Quickshell");
-    assert_eq!(meta.icon_name, "org.quickshell");
-    assert_eq!(meta.material_icon, "widgets");
+    assert_eq!(meta.icon_name, "quickshell");
+    assert_eq!(meta.material_icon, "window");
     assert_eq!(meta.app_id, "quickshell");
 }
 
@@ -49,11 +49,12 @@ fn test_wine_executable_resolution() {
 }
 
 #[test]
-fn test_wine_cloudmusic_resolution() {
+fn test_wine_without_entry_uses_its_executable_name() {
     let meta = resolve_window_meta("CloudMusic Win", "cloudmusic.exe", "", "");
-    assert_eq!(meta.app_name, "CloudMusic");
-    assert_eq!(meta.icon_name, "netease-cloud-music");
-    assert_eq!(meta.material_icon, "music_note");
+    assert_eq!(meta.app_name, "Cloudmusic");
+    assert_eq!(meta.icon_name, "wine");
+    assert_eq!(meta.material_icon, "window");
+    assert_eq!(meta.app_id, "cloudmusic");
 }
 
 #[test]
@@ -182,18 +183,19 @@ fn test_tray_error_filtering_rules() {
 }
 
 #[test]
-fn test_tray_antigravity_resolution() {
+fn test_tray_item_without_icon_is_not_fabricated() {
     use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
 
-    let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("Antigravity_status_icon_1", "", "");
-    assert_eq!(title, "Antigravity");
-    assert_eq!(icon, "antigravity");
-    assert_eq!(m_icon, "smart_toy");
+    // No title, no icon on the wire: the item keeps its own id and the generic
+    // glyph. Nothing is invented on its behalf.
+    let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("some_status_icon_1", "", "");
+    assert_eq!(title, "some_status_icon_1");
+    assert_eq!(icon, "");
+    assert_eq!(m_icon, "circle");
 
-    let (title2, icon2, m_icon2) = TrayAdapter::resolve_tray_meta("Antigravity_status_icon_1", "Antigravity", "");
-    assert_eq!(title2, "Antigravity");
-    assert_eq!(icon2, "antigravity");
-    assert_eq!(m_icon2, "smart_toy");
+    // A title the item publishes itself is always used verbatim.
+    let (title2, _, _) = TrayAdapter::resolve_tray_meta("some_status_icon_1", "My App", "");
+    assert_eq!(title2, "My App");
 }
 
 #[test]
@@ -206,6 +208,29 @@ fn test_kwin_watcher_dbus_casing() {
     // Must call UpdateWindowList with capital U to match zbus default CamelCase
     assert!(script.contains(r#""UpdateWindowList""#), "Script must call UpdateWindowList (capital U)");
     assert!(!script.contains(r#""updateWindowList""#), "Script must NOT call updateWindowList (lowercase u)");
+}
+
+#[test]
+fn shell_driven_activation_reports_itself_to_the_watcher() {
+    use astral_plasma::infrastructure::kwin_adapter::activate_script;
+
+    let script = activate_script("abc-123");
+
+    // It activates the requested window...
+    assert!(script.contains("workspace.activeWindow = w"));
+    assert!(script.contains("abc-123"));
+
+    // ...and then reports the activation. KWin's `windowActivated` signal does
+    // not fire for script-driven activation, so without this the daemon's
+    // Xwayland focus guard would take the keyboard focus back from the window
+    // the user just brought to the front ("Bring to Front" would raise it but
+    // leave it unable to receive typing).
+    assert!(
+        script.contains(r#""WindowActivated""#),
+        "activation must be reported to the watcher"
+    );
+    assert!(script.contains("org.astralplasma.WindowWatcher"));
+    assert!(script.contains("/Watcher"));
 }
 
 #[test]
@@ -450,26 +475,19 @@ fn test_power_session_confirmation_rules() {
 fn test_tray_metadata_resolution() {
     use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
 
-    // Test Strawberry Music Player: should map to music_note and have no spaces in icon name
+    // The SNI's own metadata is authoritative: no keyword mapping decides what
+    // an item is called or which icon it uses.
     let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("Strawberry Music Player", "Strawberry Music Player", "");
-    assert_eq!(m_icon, "music_note");
+    assert_eq!(title, "Strawberry Music Player");
+    assert_eq!(icon, "");
+    assert_eq!(m_icon, "circle");
     assert!(!icon.contains(' '), "Icon name must never contain spaces: got '{}'", icon);
+
+    // A pre-resolved file:// icon passes through untouched.
+    let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("Strawberry Music Player", "Strawberry Music Player", "file:///tmp/astral_plasma_tray/test.png");
     assert_eq!(title, "Strawberry Music Player");
-
-    // Test with pre-resolved file:// icon
-    let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("Strawberry Music Player", "Strawberry Music Player", "file:///tmp/caelestia_tray/test.png");
-    assert_eq!(m_icon, "music_note");
-    assert_eq!(icon, "file:///tmp/caelestia_tray/test.png");
-    assert_eq!(title, "Strawberry Music Player");
-
-    // Test other generic media players
-    let (_, _, m_icon) = TrayAdapter::resolve_tray_meta("org.mpris.MediaPlayer2.spotify", "Spotify", "");
-    assert_eq!(m_icon, "music_note");
-
-    // Test chat applications
-    let (_, icon, m_icon) = TrayAdapter::resolve_tray_meta("discord", "Discord", "");
-    assert_eq!(m_icon, "chat");
-    assert_eq!(icon, "discord");
+    assert_eq!(icon, "file:///tmp/astral_plasma_tray/test.png");
+    assert_eq!(m_icon, "circle");
 }
 
 #[tokio::test]
@@ -525,11 +543,11 @@ async fn test_pause_other_mpris_players() {
 fn test_tray_xembed_rules() {
     use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
 
-    // Test cloudmusic resolution
+    // The item's own title and icon are used as published.
     let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta("cloudmusic", "NetEase Cloud Music", "file:///tmp/tray.png");
     assert_eq!(title, "NetEase Cloud Music");
     assert_eq!(icon, "file:///tmp/tray.png");
-    assert_eq!(m_icon, "music_note");
+    assert_eq!(m_icon, "circle");
 
     // Test resolve_xembed_identity fallback logic
     let (id, title2, m_icon2) = TrayAdapter::resolve_xembed_identity(0);

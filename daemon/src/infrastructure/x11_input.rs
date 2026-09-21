@@ -103,6 +103,17 @@ extern "C" {
         prop_return: *mut *mut libc::c_uchar,
     ) -> libc::c_int;
     pub(crate) fn XFree(data: *mut libc::c_void) -> libc::c_int;
+    pub(crate) fn XGetInputFocus(
+        display: *mut libc::c_void,
+        focus_return: *mut libc::c_ulong,
+        revert_to_return: *mut libc::c_int,
+    ) -> libc::c_int;
+    pub(crate) fn XSetInputFocus(
+        display: *mut libc::c_void,
+        focus: libc::c_ulong,
+        revert_to: libc::c_int,
+        time: libc::c_ulong,
+    ) -> libc::c_int;
     #[allow(dead_code)]
     pub(crate) fn XGetGeometry(
         display: *mut libc::c_void,
@@ -489,6 +500,121 @@ pub fn send_window_key(win: libc::c_ulong, key: MediaKey) -> Result<(), String> 
         XCloseDisplay(dpy);
     }
     Ok(())
+}
+
+/// Is this window class a Wine (Windows) application?
+///
+/// Wine reports the executable as the window class, so the `.exe` suffix is the
+/// one reliable marker of an X11 client that Wine owns.
+pub fn is_wine_class(class: &str) -> bool {
+    class.trim().to_lowercase().ends_with(".exe")
+}
+
+/// Should Xwayland's keyboard focus be handed back?
+///
+/// Yes when a Wine window still holds the X11 keyboard focus but some other
+/// window is the active one: KWin keeps forwarding keystrokes to Xwayland's
+/// focus, so otherwise typing in a native application also drives the Wine
+/// application (pressing Enter in a chat box would press its play button).
+pub fn should_release_x11_focus(focused_class: &str, active_class: &str) -> bool {
+    is_wine_class(focused_class) && !is_wine_class(active_class)
+}
+
+/// Hand Xwayland's keyboard focus back when a Wine window is no longer active.
+///
+/// Called on every window activation: reads the X11 input focus, and clears it
+/// when [`should_release_x11_focus`] says so. Best-effort - a machine without
+/// Xwayland simply has nothing to do.
+pub fn release_stale_wine_focus(active_class: &str) -> bool {
+    unsafe {
+        let dpy = XOpenDisplay(ptr::null());
+        if dpy.is_null() {
+            return false;
+        }
+        let mut focused: libc::c_ulong = 0;
+        let mut revert_to: libc::c_int = 0;
+        XGetInputFocus(dpy, &mut focused, &mut revert_to);
+
+        let focused_class = if focused == 0 {
+            String::new()
+        } else {
+            window_class(dpy, focused).unwrap_or_default()
+        };
+
+        let released = if should_release_x11_focus(&focused_class, active_class) {
+            // `None` + RevertToNone: no X11 client receives keys until KWin
+            // focuses a real X11 window again.
+            XSetInputFocus(dpy, 0, 0, 0);
+            XFlush(dpy);
+            log_release(&focused_class, active_class);
+            true
+        } else {
+            false
+        };
+        XCloseDisplay(dpy);
+        released
+    }
+}
+
+/// Log a release, at most once every five seconds.
+///
+/// A Wine application can re-assert its focus right after being cleared; the
+/// guard then releases it again on every tick, and an unthrottled log would
+/// flood the shell's output with identical lines.
+fn log_release(focused_class: &str, active_class: &str) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static LAST_LOG_MS: AtomicU64 = AtomicU64::new(0);
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let last = LAST_LOG_MS.load(Ordering::Relaxed);
+    if now_ms.saturating_sub(last) < 5_000 {
+        return;
+    }
+    LAST_LOG_MS.store(now_ms, Ordering::Relaxed);
+    eprintln!(
+        "[x11] released stale Wine keyboard focus (was {focused_class:?}, active {active_class:?})"
+    );
+}
+
+/// The `WM_CLASS` instance name of an X11 window, if readable.
+unsafe fn window_class(dpy: *mut libc::c_void, win: libc::c_ulong) -> Option<String> {
+    let wm_class = XInternAtom(dpy, b"WM_CLASS\0".as_ptr() as *const libc::c_char, 0);
+    let mut actual_type = 0;
+    let mut actual_format = 0;
+    let mut nitems = 0;
+    let mut bytes_after = 0;
+    let mut prop: *mut libc::c_uchar = ptr::null_mut();
+
+    let ret = XGetWindowProperty(
+        dpy,
+        win,
+        wm_class,
+        0,
+        64,
+        0,
+        0,
+        &mut actual_type,
+        &mut actual_format,
+        &mut nitems,
+        &mut bytes_after,
+        &mut prop,
+    );
+    if ret != 0 || prop.is_null() {
+        return None;
+    }
+    let bytes = std::slice::from_raw_parts(prop, nitems as usize);
+    // WM_CLASS is NUL-separated: "instance\0class\0".
+    let instance = bytes
+        .split(|b| *b == 0)
+        .next()
+        .map(|slice| String::from_utf8_lossy(slice).to_string())
+        .unwrap_or_default();
+    XFree(prop as *mut libc::c_void);
+    Some(instance)
 }
 
 /// Sends a media action to a Wine player without moving the mouse pointer.

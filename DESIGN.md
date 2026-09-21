@@ -1,6 +1,6 @@
-# Astral Plasma / Caelestia KDE Design System
+# Astral Plasma Design System
 
-> Authoritative specification for the visual design language, motion system, spatial physics, and component architecture of **Astral Plasma / Caelestia KDE**.
+> Authoritative specification for the visual design language, motion system, spatial physics, and component architecture of **Astral Plasma**.
 
 ---
 

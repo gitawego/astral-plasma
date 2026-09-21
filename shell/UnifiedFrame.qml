@@ -54,6 +54,8 @@ Item {
     readonly property alias innerFilletBRItem: innerFilletBR
     readonly property alias bottomPopoutSurfaceItem: bottomPopoutSurface
 
+    function sizeRounded(v) { return Math.max(0, Math.round(v)) }
+
     readonly property real popoutFilletFactor: Math.max(0.0, Math.min(1.0, root.currentPopW / Math.max(1, root.filletR)))
     readonly property real popoutFilletR: root.filletR * popoutFilletFactor
     readonly property real popoutGapTop: root.popoutY - popoutFilletR
@@ -445,6 +447,30 @@ Item {
         width: bodyW + fusedBottomFilletR
         height: root.popoutHeight + topR + botR
         visible: root.enablePopoutSurface && (root.popoutOffsetProgress > 0.001)
+
+        // --- Authoritative popout extents -------------------------------
+        // The blur mask in UnifiedShell must cover exactly this surface. Exposing
+        // the rects here makes UnifiedFrame the single source of truth, so the
+        // mask cannot drift from the glass when the shoulder radii change.
+        //
+        // (Earlier, the mask re-derived its own extents from `filletR`, which
+        // agreed with the glass only while `botR == filletR`. In the fused state
+        // `botR` is 0, so the mask was 20px taller than the glass and reached the
+        // screen bottom -- the "blur zone is too large" defect.)
+        //
+        // `fullRect`: the entire painted surface, fillet bands included.
+        readonly property rect fullRect: Qt.rect(
+            root.dockW - 1,
+            root.popoutY - root.filletR,
+            sizeRounded(root.currentPopW + 1 + fusedBottomFilletR),
+            sizeRounded(root.popoutHeight + root.filletR + botR))
+        // `bodyRect`: the straight-sided section between the two shoulder bands.
+        // This is what a full-width blur region should span.
+        readonly property rect bodyRect: Qt.rect(
+            root.dockW - 1,
+            root.popoutY,
+            sizeRounded(root.currentPopW),
+            sizeRounded(root.popoutHeight))
 
         // 1A. Solid Glass Surface Fill Shape (Floating drawer with inverted shoulder fillets)
         Shape {

@@ -1,4 +1,6 @@
-use crate::domain::meta_resolver::resolve_window_meta;
+use crate::domain::app_identity::shared_index;
+use crate::domain::branding;
+use crate::domain::meta_resolver::resolve_window_meta_with;
 use crate::domain::model::{Desktop, Window};
 use crate::domain::ports::{DynResult, WindowManagerPort, WorkspacePort};
 use crate::domain::sys_parser::parse_kwin_desktops;
@@ -9,6 +11,38 @@ use std::fs;
 use std::process::Command;
 
 pub struct KWinAdapter;
+
+/// Build the KWin script that activates a window.
+///
+/// KWin does not emit `windowActivated` for script-driven activation, so the
+/// script reports the activation to the watcher itself. Without that report the
+/// daemon's Xwayland focus guard would keep treating the previously active
+/// native window as active and hand the keyboard focus straight back - "Bring
+/// to Front" would raise the window but leave it unable to receive typing.
+pub fn activate_script(target_uuid: &str) -> String {
+    format!(
+        r#"
+var target = "{target_uuid}";
+var wins = workspace.windowList();
+for (var i = 0; i < wins.length; i++) {{
+    var w = wins[i];
+    var wid = ("" + w.internalId).replace("{{", "").replace("}}", "");
+    if (wid === target) {{
+        console.warn("ASTRAL_PLASMA ACTIVATING: " + w.caption);
+        workspace.activeWindow = w;
+        callDBus("{dbus_name}", "{dbus_path}", "{dbus_name}", "WindowActivated",
+                 "" + (w.caption || ""),
+                 "" + (w.resourceClass || ""),
+                 "" + (w.desktopFileName || ""),
+                 ("" + w.internalId).replace("{{","").replace("}}",""));
+        break;
+    }}
+}}
+"#,
+        dbus_name = branding::DBUS_WATCHER_NAME,
+        dbus_path = branding::DBUS_WATCHER_PATH,
+    )
+}
 
 impl KWinAdapter {
     pub fn new() -> Self {
@@ -63,13 +97,13 @@ for (var i = 0; i < wins.length; i++) {
         });
     }
 }
-console.warn('CAELESTIA_WINS:' + JSON.stringify(res));
+console.warn('ASTRAL_PLASMA_WINS:' + JSON.stringify(res));
 "#;
-        let script_file = "/tmp/caelestia_kwin_query.js";
-        fs::write(script_file, script)?;
+        let script_file = branding::tmp_file("kwin_query.js");
+        fs::write(&script_file, script)?;
 
         let num_out = Command::new("qdbus6")
-            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", script_file])
+            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy()])
             .output()?;
         let num = String::from_utf8_lossy(&num_out.stdout).trim().to_string();
 
@@ -87,8 +121,8 @@ console.warn('CAELESTIA_WINS:' + JSON.stringify(res));
 
         let mut raw_wins_opt: Option<Value> = None;
         for line in j_text.lines().rev() {
-            if let Some(idx) = line.find("CAELESTIA_WINS:") {
-                let json_str = &line[idx + "CAELESTIA_WINS:".len()..];
+            if let Some(idx) = line.find("ASTRAL_PLASMA_WINS:") {
+                let json_str = &line[idx + "ASTRAL_PLASMA_WINS:".len()..];
                 if let Ok(v) = serde_json::from_str::<Value>(json_str) {
                     raw_wins_opt = Some(v);
                     break;
@@ -97,6 +131,7 @@ console.warn('CAELESTIA_WINS:' + JSON.stringify(res));
         }
 
         let krunner_icons = self.query_krunner_icons();
+        let index = shared_index();
         let mut windows = Vec::new();
         let mut active_win = None;
         let mut seen_ids = HashSet::new();
@@ -117,7 +152,7 @@ console.warn('CAELESTIA_WINS:' + JSON.stringify(res));
                 let is_fullscreen = item["fullScreen"].as_bool().unwrap_or(false);
 
                 let k_icon = krunner_icons.get(title).map(|s| s.as_str()).unwrap_or("");
-                let meta = resolve_window_meta(title, cls, app, k_icon);
+                let meta = resolve_window_meta_with(Some(&index), title, cls, app, k_icon);
 
                 let win_obj = Window {
                     id: wid,
@@ -150,27 +185,13 @@ console.warn('CAELESTIA_WINS:' + JSON.stringify(res));
             .trim()
             .to_string();
 
-        let script = format!(
-            r#"
-var target = "{target_uuid}";
-var wins = workspace.windowList();
-for (var i = 0; i < wins.length; i++) {{
-    var w = wins[i];
-    var wid = ("" + w.internalId).replace("{{", "").replace("}}", "");
-    if (wid === target) {{
-        console.warn("CAELESTIA ACTIVATING: " + w.caption);
-        workspace.activeWindow = w;
-        break;
-    }}
-}}
-"#
-        );
+        let script = activate_script(&target_uuid);
 
-        let script_file = "/tmp/caelestia_activate.js";
-        fs::write(script_file, script)?;
+        let script_file = branding::tmp_file("kwin_activate.js");
+        fs::write(&script_file, script)?;
 
         let num_out = Command::new("qdbus6")
-            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", script_file])
+            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy()])
             .output()?;
         let num = String::from_utf8_lossy(&num_out.stdout).trim().to_string();
 
@@ -207,11 +228,11 @@ for (var i = 0; i < wins.length; i++) {{
 "#
         );
 
-        let script_file = "/tmp/caelestia_close.js";
-        fs::write(script_file, script)?;
+        let script_file = branding::tmp_file("kwin_close.js");
+        fs::write(&script_file, script)?;
 
         let num_out = Command::new("qdbus6")
-            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", script_file])
+            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy()])
             .output()?;
         let num = String::from_utf8_lossy(&num_out.stdout).trim().to_string();
 

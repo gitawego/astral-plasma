@@ -17,7 +17,7 @@ pub struct DisplacedShortcut {
     pub full_value: String,
 }
 
-/// An atomic session backup tracking ONLY keys modified by Astral/Caelestia
+/// An atomic session backup tracking ONLY keys modified by this shell
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AstralShortcutSessionBackup {
     pub timestamp: u64,

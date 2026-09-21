@@ -1,3 +1,4 @@
+use crate::domain::branding;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -219,8 +220,8 @@ impl NetEaseAdapter {
         if dat_path.exists() {
             if let Ok(meta) = fs::metadata(&dat_path) {
                 if meta.len() > 100 {
-                    let cache_dir = Path::new("/tmp/caelestia_art_cache");
-                    let _ = fs::create_dir_all(cache_dir);
+                    let cache_dir = branding::art_cache_dir();
+                    let _ = fs::create_dir_all(&cache_dir);
                     let target_file = cache_dir.join(format!("netease_{}.jpg", track_id));
                     if fs::copy(&dat_path, &target_file).is_ok() {
                         return Some(format!("file://{}", target_file.display()));

@@ -2,7 +2,7 @@
 # Generate Material You colors dynamically using matugen
 set -euo pipefail
 
-CACHE_DIR="$HOME/.cache/caelestia"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/astral-plasma"
 mkdir -p "$CACHE_DIR"
 
 WALLPAPER=""
@@ -23,5 +23,5 @@ if [ -f "$WALLPAPER" ] && command -v matugen >/dev/null 2>&1; then
     matugen image "$WALLPAPER" --source-color-index 0 --json hex > "$CACHE_DIR/colors.json" 2>/dev/null || true
     echo "[Palette] Successfully written to $CACHE_DIR/colors.json"
 else
-    echo "[Palette] Matugen not found or wallpaper not found; using Caelestia pastel defaults"
+    echo "[Palette] Matugen not found or wallpaper not found; using default pastel palette"
 fi

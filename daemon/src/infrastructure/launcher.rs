@@ -1,5 +1,76 @@
-use crate::domain::ports::{AppLauncherPort, DynResult};
+//! Application launching and enumeration.
+//!
+//! Both directions are driven by the same desktop-entry data the rest of the
+//! desktop uses - there is no per-application branch anywhere in this module:
+//!
+//! * [`DesktopLauncherAdapter::launch`] turns a target into a [`LaunchPlan`].
+//!   A desktop id is resolved by the system's own entry resolver, a URI is
+//!   handed to its scheme handler. Nothing here knows the name of any app.
+//! * [`DesktopLauncherAdapter::list_apps`] reuses
+//!   [`AppIdentityIndex::load_from`], so the list is exactly the set of
+//!   installed applications - including nested entries such as Wine programs
+//!   and Flatpak exports - parsed once, by one parser.
+
+use crate::domain::app_identity::{AppIdentityIndex, DesktopApp};
+use crate::domain::ports::{AppInfo, AppLauncherPort, DynResult};
+use std::path::PathBuf;
 use std::process::Command;
+
+/// How a launch target should be resolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LaunchPlan {
+    /// A URI (`lutris:rungame/...`): handed to the handler registered for its
+    /// scheme. The scheme is a protocol, not application knowledge.
+    Uri(String),
+    /// A desktop-entry id: resolved by the system's own entry resolver.
+    DesktopEntry(String),
+}
+
+/// Decide how to launch `target` from its form alone.
+///
+/// A desktop id is passed through exactly as given: an id may legitimately
+/// contain `.desktop` (`ai.opencode.desktop` is the name of OpenCode's entry),
+/// so trimming the suffix here would corrupt it. The executor asks the
+/// system's resolver for the variants instead.
+pub fn resolve_launch_plan(target: &str) -> Option<LaunchPlan> {
+    let trimmed = target.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if uri_scheme(trimmed).is_some() {
+        return Some(LaunchPlan::Uri(trimmed.to_string()));
+    }
+    Some(LaunchPlan::DesktopEntry(trimmed.to_string()))
+}
+
+/// The URI scheme of `target`, per RFC 3986: an alphabetic first character
+/// followed by letters, digits, `+`, `-` or `.`. A single letter is rejected so
+/// a Windows path (`C:\...`) is not mistaken for a scheme.
+fn uri_scheme(target: &str) -> Option<&str> {
+    let (scheme, _) = target.split_once(':')?;
+    if scheme.len() < 2 {
+        return None;
+    }
+    let mut chars = scheme.chars();
+    if !chars.next()?.is_ascii_alphabetic() {
+        return None;
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')) {
+        return None;
+    }
+    Some(scheme)
+}
+
+/// Map an indexed desktop entry to the launcher's view of it.
+pub fn app_info_from_entry(entry: &DesktopApp) -> AppInfo {
+    AppInfo {
+        name: entry.name.clone(),
+        desktop_file: format!("{}.desktop", entry.desktop_id),
+        icon: entry.icon.clone(),
+        comment: entry.comment.clone(),
+        exec: entry.exec.clone(),
+    }
+}
 
 pub struct DesktopLauncherAdapter;
 
@@ -17,152 +88,60 @@ impl Default for DesktopLauncherAdapter {
 
 impl AppLauncherPort for DesktopLauncherAdapter {
     fn launch(&self, target: &str) -> DynResult<()> {
-        let trimmed = target.trim();
-        if trimmed.is_empty() {
+        let Some(plan) = resolve_launch_plan(target) else {
             return Ok(());
-        }
+        };
 
-        // 1. Lutris
-        if trimmed.starts_with("lutris:") || trimmed == "cloudmusic" || trimmed == "netease-cloud-music" {
-            let game_id = trimmed
-                .replace("lutris:rungame/", "")
-                .replace("lutris:", "");
-            let final_id = if game_id == "cloudmusic" { "netease-cloud-music" } else { &game_id };
-            let _ = Command::new("lutris")
-                .arg(format!("lutris:rungame/{}", final_id))
-                .spawn();
-            return Ok(());
-        }
-
-        // 2. Flatpak
-        if trimmed.starts_with("be.alexandervanhee.gradia") || trimmed == "gradia" {
-            let _ = Command::new("flatpak")
-                .args(["run", "be.alexandervanhee.gradia"])
-                .spawn();
-            return Ok(());
-        }
-
-        // 3. Antigravity special handling
-        if trimmed == "antigravity" || trimmed == "ai.opencode.desktop" {
-            for cand in ["ai.opencode.desktop", "opencode-desktop", "antigravity"] {
-                if let Ok(mut child) = Command::new("gtk-launch").arg(cand).spawn() {
-                    if let Ok(status) = child.wait() {
-                        if status.success() {
-                            return Ok(());
+        match plan {
+            LaunchPlan::Uri(uri) => {
+                // The desktop environment dispatches the URI to whichever
+                // application registered that scheme.
+                let _ = Command::new("xdg-open").arg(&uri).spawn();
+            }
+            LaunchPlan::DesktopEntry(id) => {
+                // The system's desktop-entry resolver decides what the id means
+                // (a normal app, a Flatpak export, a Wine program...). Both the
+                // bare id and the `.desktop`-suffixed form are offered because
+                // an id may itself end in `.desktop`.
+                let bare = id.strip_suffix(".desktop").unwrap_or(&id).to_string();
+                let with_suffix = format!("{bare}.desktop");
+                let mut candidates = vec![id.clone(), bare.clone(), with_suffix];
+                candidates.dedup();
+                for candidate in &candidates {
+                    if let Ok(mut child) = Command::new("gtk-launch").arg(candidate).spawn() {
+                        if let Ok(status) = child.wait() {
+                            if status.success() {
+                                return Ok(());
+                            }
                         }
                     }
                 }
-            }
-        }
-
-        // 4. General gtk-launch
-        let desktop = if trimmed.ends_with(".desktop") {
-            &trimmed[..trimmed.len() - 8]
-        } else {
-            trimmed
-        };
-
-        if let Ok(mut child) = Command::new("gtk-launch").arg(desktop).spawn() {
-            if let Ok(status) = child.wait() {
-                if status.success() {
-                    return Ok(());
+                // Direct execution fallback for bare commands.
+                for cmd in [id.as_str(), bare.as_str(), &id.to_lowercase()] {
+                    if !cmd.is_empty() && Command::new(cmd).spawn().is_ok() {
+                        return Ok(());
+                    }
                 }
-            }
-        }
-
-        // 5. Direct execution fallback
-        for cmd in [trimmed, &trimmed.to_lowercase()] {
-            if Command::new(cmd).spawn().is_ok() {
-                return Ok(());
             }
         }
 
         Ok(())
     }
 
-    fn list_apps(&self) -> DynResult<Vec<crate::domain::ports::AppInfo>> {
-        use std::collections::HashSet;
-        use std::fs;
-        use std::path::PathBuf;
-
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-        let app_dirs = [
-            PathBuf::from(&home).join(".local/share/applications"),
-            PathBuf::from("/usr/share/applications"),
-        ];
-
-        let mut seen = HashSet::new();
-        let mut apps = Vec::new();
-
-        for dir in &app_dirs {
-            if !dir.exists() {
-                continue;
-            }
-            if let Ok(entries) = fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("desktop") {
-                        let filename = match path.file_name().and_then(|s| s.to_str()) {
-                            Some(n) => n.to_string(),
-                            None => continue,
-                        };
-
-                        if seen.contains(&filename) {
-                            continue;
-                        }
-
-                        if let Ok(content) = fs::read_to_string(&path) {
-                            let mut in_desktop_entry = false;
-                            let mut name = String::new();
-                            let mut icon = String::new();
-                            let mut comment = String::new();
-                            let mut exec = String::new();
-                            let mut no_display = false;
-                            let mut is_app = false;
-
-                            for line in content.lines() {
-                                let trimmed = line.trim();
-                                if trimmed == "[Desktop Entry]" {
-                                    in_desktop_entry = true;
-                                    continue;
-                                } else if trimmed.starts_with('[') {
-                                    in_desktop_entry = false;
-                                }
-
-                                if in_desktop_entry {
-                                    if trimmed == "Type=Application" {
-                                        is_app = true;
-                                    } else if trimmed == "NoDisplay=true" {
-                                        no_display = true;
-                                    } else if trimmed.starts_with("Name=") && name.is_empty() {
-                                        name = trimmed[5..].trim().to_string();
-                                    } else if trimmed.starts_with("Icon=") && icon.is_empty() {
-                                        icon = trimmed[5..].trim().to_string();
-                                    } else if trimmed.starts_with("Comment=") && comment.is_empty() {
-                                        comment = trimmed[8..].trim().to_string();
-                                    } else if trimmed.starts_with("Exec=") && exec.is_empty() {
-                                        exec = trimmed[5..].trim().to_string();
-                                    }
-                                }
-                            }
-
-                            if (is_app || !name.is_empty()) && !no_display {
-                                seen.insert(filename.clone());
-                                apps.push(crate::domain::ports::AppInfo {
-                                    name,
-                                    desktop_file: filename,
-                                    icon,
-                                    comment,
-                                    exec,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+    fn list_apps(&self) -> DynResult<Vec<AppInfo>> {
+        let mut apps: Vec<AppInfo> = AppIdentityIndex::load_from(&Self::search_dirs())
+            .entries()
+            .iter()
+            .map(|entry| app_info_from_entry(entry))
+            .collect();
         apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         Ok(apps)
+    }
+}
+
+impl DesktopLauncherAdapter {
+    /// Directories searched for launcher entries, in precedence order.
+    fn search_dirs() -> Vec<PathBuf> {
+        AppIdentityIndex::search_dirs()
     }
 }

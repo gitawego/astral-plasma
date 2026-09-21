@@ -1,3 +1,5 @@
+use crate::domain::app_identity::{shared_index, AppIdentityIndex};
+use crate::domain::branding;
 use crate::domain::model::{TrayItem, TrayMenuItem};
 use crate::domain::ports::{DynResult, TrayPort};
 use std::process::Command;
@@ -170,7 +172,7 @@ fn sni_get_pixmap(svc: &str, path: &str) -> Option<String> {
 
                             let hash = hasher.finish();
                             let uid = unsafe { libc::getuid() };
-                            let cache_dir = std::env::temp_dir().join(format!("caelestia_tray_{}", uid));
+                            let cache_dir = branding::tmp_dir().join(format!("{}tray_{}", branding::TMP_PREFIX, uid));
                             let _ = std::fs::create_dir_all(&cache_dir);
 
                             let safe_svc = svc.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect::<String>();
@@ -266,69 +268,94 @@ fn resolve_desktop_icon(svc: &str, item_id: &str) -> Option<String> {
 
 pub struct TrayAdapter;
 
+/// Identity of a legacy XEmbed tray item from the window's own properties.
+///
+/// The window class names the application (Wine reports `foo.exe`) and the
+/// window title is the application's own text; an installed desktop entry, when
+/// one exists, supplies the display name and the Material glyph. No
+/// application is special-cased.
+pub fn xembed_identity_from_window(
+    index: Option<&AppIdentityIndex>,
+    raw_class: &str,
+    raw_title: &str,
+) -> (String, String, String) {
+    let class = raw_class.split('\0').next().unwrap_or(raw_class).trim();
+    let stem = class
+        .strip_suffix(".exe")
+        .or_else(|| class.strip_suffix(".EXE"))
+        .unwrap_or(class)
+        .trim();
+    let id = stem.to_lowercase();
+
+    let entry = if id.is_empty() {
+        None
+    } else {
+        index.and_then(|i| i.resolve(class, &id))
+    };
+
+    let title = if !raw_title.trim().is_empty() {
+        raw_title.trim().to_string()
+    } else if let Some(found) = entry {
+        found.name.clone()
+    } else {
+        capitalize(stem)
+    };
+
+    let glyph = entry
+        .map(|found| found.material_icon.clone())
+        .unwrap_or_else(|| "circle".to_string());
+
+    (id, title, glyph)
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
 impl TrayAdapter {
     pub fn new() -> Self {
         Self
     }
 
+    /// Presentation metadata for a tray item, resolved from its own data first.
+    ///
+    /// The StatusNotifierItem is authoritative: its `Title` names it and its
+    /// `IconName` draws it. Only when the item ships no icon of its own is the
+    /// desktop entry of the same id consulted - the same data any other app
+    /// list would use. Nothing is invented for an item the system cannot
+    /// describe; the generic Material glyph covers that case.
     pub fn resolve_tray_meta(item_id: &str, item_title: &str, item_icon: &str) -> (String, String, String) {
-        let mut title = item_title.to_string();
+        Self::resolve_tray_meta_with(None, item_id, item_title, item_icon)
+    }
+
+    pub fn resolve_tray_meta_with(
+        index: Option<&AppIdentityIndex>,
+        item_id: &str,
+        item_title: &str,
+        item_icon: &str,
+    ) -> (String, String, String) {
+        let title = if item_title.trim().is_empty() {
+            item_id.to_string()
+        } else {
+            item_title.to_string()
+        };
+
         let mut icon = item_icon.to_string();
         let mut m_icon = "circle".to_string();
 
-        let id_lower = format!("{} {} {}", item_id, title, icon).to_lowercase();
-
-        if id_lower.contains("keyboard") || id_lower.contains("fcitx") || id_lower.contains("input") {
-            m_icon = "keyboard".to_string();
-        } else if id_lower.contains("antigravity") || id_lower.contains("opencode") {
-            m_icon = "smart_toy".to_string();
-            if icon.is_empty() {
-                icon = "antigravity".to_string();
+        if let Some(entry) = index.and_then(|i| i.resolve(item_id, item_id)) {
+            if icon.trim().is_empty() {
+                icon = if entry.icon.is_empty() {
+                    entry.desktop_id.clone()
+                } else {
+                    entry.icon.clone()
+                };
             }
-            if title.is_empty() {
-                title = "Antigravity".to_string();
-            }
-        } else if id_lower.contains("music") || id_lower.contains("strawberry") || id_lower.contains("spotify") || id_lower.contains("player") || id_lower.contains("audio") {
-            m_icon = "music_note".to_string();
-            if icon.is_empty() {
-                if id_lower.contains("spotify") { icon = "spotify".to_string(); }
-                else if id_lower.contains("strawberry") { icon = "strawberry".to_string(); }
-            }
-        } else if id_lower.contains("update") || id_lower.contains("cachy") {
-            m_icon = "system_update".to_string();
-        } else if id_lower.contains("sunshine") || id_lower.contains("stream") {
-            m_icon = "cast".to_string();
-        } else if id_lower.contains("token") {
-            m_icon = "toll".to_string();
-        } else if id_lower.contains("dropbox") || id_lower.contains("cloud") {
-            m_icon = "cloud".to_string();
-        } else if id_lower.contains("discord") {
-            m_icon = "chat".to_string();
-            if icon.is_empty() { icon = "discord".to_string(); }
-        } else if id_lower.contains("slack") {
-            m_icon = "forum".to_string();
-            if icon.is_empty() { icon = "slack".to_string(); }
-        } else if id_lower.contains("code") || id_lower.contains("vscode") {
-            m_icon = "code".to_string();
-            if icon.is_empty() { icon = "vscode".to_string(); }
-        } else if id_lower.contains("steam") {
-            m_icon = "sports_esports".to_string();
-            if icon.is_empty() { icon = "steam".to_string(); }
-        } else if id_lower.contains("telegram") {
-            m_icon = "send".to_string();
-            if icon.is_empty() { icon = "telegram".to_string(); }
-        } else if id_lower.contains("bluetooth") {
-            m_icon = "bluetooth".to_string();
-        } else if id_lower.contains("volume") || id_lower.contains("audio") {
-            m_icon = "volume_up".to_string();
-        } else if id_lower.contains("wifi") || id_lower.contains("network") {
-            m_icon = "wifi".to_string();
-        } else if icon.is_empty() {
-            if let Some(prefix) = item_id.split('_').next() {
-                if !prefix.is_empty() && !prefix.chars().all(|c| c.is_ascii_digit()) && !prefix.contains(' ') {
-                    icon = prefix.to_lowercase();
-                }
-            }
+            m_icon = entry.material_icon.clone();
         }
 
         if !icon.starts_with("file://") && !icon.starts_with('/') && icon.contains(' ') {
@@ -468,44 +495,17 @@ impl TrayAdapter {
         }
         Ok(items)
     }
+    /// Identity of a legacy XEmbed tray item from its window id.
+    ///
+    /// Thin wrapper: X11 window properties in, a pure identity mapping out.
     pub fn resolve_xembed_identity(win_id: u64) -> (String, String, String) {
-        let (class_opt, title_opt) = crate::infrastructure::x11_input::query_x11_window_class_and_title(win_id);
-        let raw_class = class_opt.unwrap_or_default();
-        let raw_title = title_opt.unwrap_or_default();
-        let class_lower = raw_class.to_lowercase();
-
-        if class_lower.contains("cloudmusic") {
-            let title = if !raw_title.is_empty() && !raw_title.to_lowercase().contains("cloudmusic") {
-                raw_title
-            } else {
-                "NetEase Cloud Music".to_string()
-            };
-            ("cloudmusic".to_string(), title, "music_note".to_string())
-        } else if class_lower.contains("wechat") {
-            ("wechat".to_string(), "WeChat".to_string(), "chat".to_string())
-        } else if class_lower.contains("qq") {
-            ("qq".to_string(), "QQ".to_string(), "chat".to_string())
-        } else if class_lower.contains("foobar2000") {
-            ("foobar2000".to_string(), "foobar2000".to_string(), "music_note".to_string())
-        } else if !raw_class.is_empty() {
-            let clean_id = raw_class
-                .strip_suffix(".exe")
-                .or_else(|| raw_class.strip_suffix(".EXE"))
-                .unwrap_or(&raw_class)
-                .split('\0')
-                .next()
-                .unwrap_or(&raw_class)
-                .trim()
-                .to_string();
-            let clean_title = if !raw_title.is_empty() {
-                raw_title
-            } else {
-                clean_id.clone()
-            };
-            (clean_id, clean_title, String::new())
-        } else {
-            (String::new(), String::new(), String::new())
-        }
+        let (class_opt, title_opt) =
+            crate::infrastructure::x11_input::query_x11_window_class_and_title(win_id);
+        xembed_identity_from_window(
+            Some(shared_index().as_ref()),
+            &class_opt.unwrap_or_default(),
+            &title_opt.unwrap_or_default(),
+        )
     }
 }
 
@@ -572,6 +572,7 @@ impl TrayPort for TrayAdapter {
             let mut final_id = item_id.clone();
             let mut final_title = item_title.clone();
             let mut final_icon = item_icon.clone();
+            let mut xembed_glyph: Option<String> = None;
 
             let is_numeric = (final_id.chars().all(|c| c.is_ascii_digit()) && !final_id.is_empty()) || final_id.is_empty();
             if is_numeric {
@@ -581,15 +582,17 @@ impl TrayPort for TrayAdapter {
                     sni_get_str(svc, path, "WindowId").parse::<u64>().unwrap_or(0)
                 };
                 if win_id > 0 {
-                    let (x_id, x_title, x_icon) = Self::resolve_xembed_identity(win_id);
+                    let (x_id, x_title, x_glyph) = Self::resolve_xembed_identity(win_id);
                     if !x_id.is_empty() {
                         final_id = x_id;
                     }
                     if final_title.is_empty() && !x_title.is_empty() {
                         final_title = x_title;
                     }
-                    if final_icon.is_empty() && !x_icon.is_empty() {
-                        final_icon = x_icon;
+                    // The XEmbed window's own Material glyph is a fallback; it
+                    // is not an icon name, so it must never be used as one.
+                    if xembed_glyph.is_none() && !x_glyph.is_empty() && x_glyph != "circle" {
+                        xembed_glyph = Some(x_glyph);
                     }
                 }
             }
@@ -601,7 +604,14 @@ impl TrayPort for TrayAdapter {
                 continue;
             }
 
-            let (mut item_title, mut item_icon, mut m_icon) = Self::resolve_tray_meta(&final_id, &final_title, &final_icon);
+            let identity_index = shared_index();
+            let (mut item_title, mut item_icon, mut m_icon) =
+                Self::resolve_tray_meta_with(Some(identity_index.as_ref()), &final_id, &final_title, &final_icon);
+            if m_icon == "circle" {
+                if let Some(glyph) = xembed_glyph {
+                    m_icon = glyph;
+                }
+            }
             let mut im_badge = String::new();
 
             let id_lower = format!("{} {} {}", final_id, item_title, item_icon).to_lowercase();
@@ -734,7 +744,7 @@ impl TrayPort for TrayAdapter {
 
         // Trigger immediate tray refresh across the desktop shell
         let _ = Command::new("qdbus6")
-            .args(["org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher.RefreshTray"])
+            .args([branding::DBUS_WATCHER_NAME, branding::DBUS_WATCHER_PATH, &format!("{}.RefreshTray", branding::DBUS_WATCHER_NAME)])
             .output();
 
         Ok(())

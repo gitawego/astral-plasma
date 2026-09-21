@@ -1,13 +1,12 @@
+use crate::domain::branding;
 use crate::domain::ports::{DynResult, ShortcutControlPort};
 use crate::domain::shortcuts::{AstralShortcutSessionBackup, DisplacedShortcut, GranularShortcutSnapshot};
 use std::collections::BTreeMap;
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const DEFAULT_SHORTCUTS_BACKUP_DIR: &str = "caelestia/shortcuts-backup";
 pub const BACKUP_FILENAME: &str = "shortcuts_backup.json";
 
 pub struct KWinShortcutsAdapter;
@@ -18,22 +17,14 @@ impl KWinShortcutsAdapter {
     }
 
     pub fn resolve_backup_dir(&self) -> PathBuf {
-        if let Ok(val) = env::var("CAELESTIA_SHORTCUTS_BACKUP_DIR") {
-            return PathBuf::from(val);
+        if let Some(dir) = branding::dir_override(branding::ENV_SHORTCUTS_BACKUP_DIR) {
+            return dir;
         }
-        let data_home = env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
-            let home = env::var("HOME").unwrap_or_else(|_| "/home/user".into());
-            format!("{}/.local/share", home)
-        });
-        PathBuf::from(data_home).join(DEFAULT_SHORTCUTS_BACKUP_DIR)
+        branding::data_dir().join(branding::SHORTCUTS_BACKUP_SUBDIR)
     }
 
     pub fn resolve_config_dir(&self) -> PathBuf {
-        if let Ok(val) = env::var("XDG_CONFIG_HOME") {
-            return PathBuf::from(val);
-        }
-        let home = env::var("HOME").unwrap_or_else(|_| "/home/user".into());
-        PathBuf::from(home).join(".config")
+        branding::config_home()
     }
 
     pub fn backup_file_path(&self) -> PathBuf {
@@ -139,8 +130,8 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
         // Keys touched by Astral
         let mut affected = Vec::new();
         let monitored_keys = [
-            ("kwin", "CaelestiaLauncher"),
-            ("kwin", "CaelestiaWallpaper"),
+            ("kwin", branding::SHORTCUT_LAUNCHER_KEY),
+            ("kwin", branding::SHORTCUT_WALLPAPER_KEY),
             ("services", "astral-launcher.desktop"),
             ("services", "astral-wallpaper.desktop"),
             ("plasmashell", "activate application launcher"),
@@ -188,7 +179,7 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
         };
         let kwinrc_ini = KdeIniFile::parse(&kwinrc_content);
         let plugin_enabled = kwinrc_ini
-            .get("Plugins", "caelestia-shortcutsEnabled")
+            .get("Plugins", branding::KWIN_SHORTCUTS_ENABLED_KEY)
             .map(|v| v.to_lowercase() == "true")
             .unwrap_or(false);
 
@@ -250,17 +241,17 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
             let kwinrc_content = fs::read_to_string(&kwinrc_path).unwrap_or_default();
             let mut ini = KdeIniFile::parse(&kwinrc_content);
             if backup.previous_kwin_plugin_enabled {
-                ini.set("Plugins", "caelestia-shortcutsEnabled", "true");
+                ini.set("Plugins", branding::KWIN_SHORTCUTS_ENABLED_KEY, "true");
             } else {
-                ini.remove("Plugins", "caelestia-shortcutsEnabled");
+                ini.remove("Plugins", branding::KWIN_SHORTCUTS_ENABLED_KEY);
             }
             fs::write(&kwinrc_path, ini.serialize())?;
         }
 
         // 3. Live Compositor and DBus Cleanup (skipped in test mode)
-        if env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" {
+        if !branding::test_mode() {
             let _ = Command::new("qdbus6")
-                .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", "caelestia-shortcuts"])
+                .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", branding::KWIN_SCRIPT_SHORTCUTS])
                 .status();
 
             let _ = Command::new("qdbus6")
@@ -268,19 +259,24 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
                 .status();
 
             // Clear in-memory shortcuts over dbus python script
-            let clear_py = r#"
+            let clear_py = format!(r#"
 import dbus
 try:
     bus = dbus.SessionBus()
     accel = dbus.Interface(bus.get_object('org.kde.kglobalaccel', '/kglobalaccel'), 'org.kde.KGlobalAccel')
-    accel.setForeignShortcut(['kwin', 'CaelestiaLauncher', 'default', 'Caelestia Launcher'], [dbus.Int32(0)])
-    accel.setForeignShortcut(['kwin', 'CaelestiaWallpaper', 'default', 'Caelestia Wallpaper Picker'], [dbus.Int32(0)])
-    accel.setForeignShortcut(['astral-launcher.desktop', '_launch', 'default', 'Caelestia Launcher'], [dbus.Int32(0)])
-    accel.setForeignShortcut(['astral-wallpaper.desktop', '_launch', 'default', 'Caelestia Wallpaper Picker'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['kwin', '{launcher}', 'default', '{launcher_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['kwin', '{wallpaper}', 'default', '{wallpaper_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-launcher.desktop', '_launch', 'default', '{launcher_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-wallpaper.desktop', '_launch', 'default', '{wallpaper_label}'], [dbus.Int32(0)])
 except Exception:
     pass
-"#;
-            let _ = Command::new("python3").args(["-c", clear_py]).status();
+"#,
+                launcher = branding::SHORTCUT_LAUNCHER_KEY,
+                launcher_label = branding::SHORTCUT_LAUNCHER_LABEL,
+                wallpaper = branding::SHORTCUT_WALLPAPER_KEY,
+                wallpaper_label = branding::SHORTCUT_WALLPAPER_LABEL,
+            );
+            let _ = Command::new("python3").args(["-c", &clear_py]).status();
         }
 
         let _ = fs::remove_file(&backup_path);
@@ -288,8 +284,8 @@ except Exception:
     }
 
     fn bind_shortcuts(&self, mode: &str) -> DynResult<()> {
-        if env::var("CAELESTIA_TEST_MODE").unwrap_or_default() == "1" {
-            // Test mode simulation: set CaelestiaLauncher in mock kglobalshortcutsrc
+        if branding::test_mode() {
+            // Test mode simulation: set the launcher shortcut in the mock config
             let config_dir = self.resolve_config_dir();
             let kglobal_path = config_dir.join("kglobalshortcutsrc");
             let kglobal_content = if kglobal_path.exists() {
@@ -298,22 +294,31 @@ except Exception:
                 String::new()
             };
             let mut ini = KdeIniFile::parse(&kglobal_content);
-            ini.set("kwin", "CaelestiaLauncher", "Meta+Space,none,Caelestia Launcher");
-            ini.set("kwin", "CaelestiaWallpaper", "Meta+Shift+W,none,Caelestia Wallpaper Picker");
+            ini.set(
+                "kwin",
+                branding::SHORTCUT_LAUNCHER_KEY,
+                &format!("Meta+Space,none,{}", branding::SHORTCUT_LAUNCHER_LABEL),
+            );
+            ini.set(
+                "kwin",
+                branding::SHORTCUT_WALLPAPER_KEY,
+                &format!("Meta+Shift+W,none,{}", branding::SHORTCUT_WALLPAPER_LABEL),
+            );
             fs::write(&kglobal_path, ini.serialize())?;
             return Ok(());
         }
 
-        let home = env::var("HOME").unwrap_or_else(|_| "/home/user".into());
-        let script = Path::new(&home).join(".local/share/caelestia-kde/scripts/bind_shortcuts.sh");
-        let script_path = if script.exists() {
-            script
-        } else {
-            PathBuf::from("./scripts/bind_shortcuts.sh")
-        };
+        // The binder ships with the repository, so resolve it relative to the
+        // running executable (bin/astral-plasma -> <root>/scripts) and fall
+        // back to the current directory for a bare `cargo run` session. A path
+        // baked into $HOME would silently rot after the first move.
+        let script = branding::repo_root_from_exe()
+            .map(|root| root.join("scripts").join("bind_shortcuts.sh"))
+            .filter(|path| path.exists())
+            .unwrap_or_else(|| PathBuf::from("./scripts/bind_shortcuts.sh"));
 
         let _ = Command::new("bash")
-            .arg(script_path)
+            .arg(script)
             .arg(mode)
             .status();
 

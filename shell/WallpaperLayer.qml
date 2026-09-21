@@ -13,7 +13,7 @@ PanelWindow {
     screen: targetScreen
 
     WlrLayershell.layer: WlrLayer.Background
-    WlrLayershell.namespace: "caelestia-wallpaper"
+    WlrLayershell.namespace: "astral-plasma-wallpaper"
     WlrLayershell.exclusionMode: ExclusionMode.Ignore
 
     anchors {

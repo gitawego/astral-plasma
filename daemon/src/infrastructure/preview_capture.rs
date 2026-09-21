@@ -1,3 +1,4 @@
+use crate::domain::branding;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
@@ -8,17 +9,14 @@ use zbus::Connection;
 
 pub fn generate_desktop_entry(exe_path: &Path) -> String {
     format!(
-        "[Desktop Entry]\nVersion=1.5\nType=Application\nNoDisplay=true\nName=Astral Plasma\nExec={}\nX-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2,org.kde.kwin.Screenshot\nX-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstable_v1\n",
+        "[Desktop Entry]\nVersion=1.5\nType=Application\nNoDisplay=true\nName={}\nExec={}\nX-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2,org.kde.kwin.Screenshot\nX-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstable_v1\n",
+        branding::APP_NAME,
         exe_path.display()
     )
 }
 
 pub fn get_default_applications_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".local/share/applications")
-    } else {
-        PathBuf::from("/tmp")
-    }
+    branding::applications_dir()
 }
 
 pub fn install_desktop_entry_with_notification(
@@ -35,7 +33,7 @@ pub fn install_desktop_entry_with_notification(
     };
 
     let canonical_exe = exe_path.canonicalize().unwrap_or(exe_path);
-    let desktop_path = app_dir.join("astral-plasma.desktop");
+    let desktop_path = app_dir.join(format!("{}.desktop", branding::APP_ID));
     let expected_content = generate_desktop_entry(&canonical_exe);
 
     if desktop_path.exists() {
@@ -49,17 +47,9 @@ pub fn install_desktop_entry_with_notification(
     fs::create_dir_all(&app_dir)?;
     fs::write(&desktop_path, &expected_content)?;
 
-    // Ensure backward-compatible symlink in the binary's directory
-    if let Some(parent) = canonical_exe.parent() {
-        let legacy_symlink = parent.join("caelestia-daemon");
-        if !legacy_symlink.exists() {
-            #[cfg(unix)]
-            let _ = std::os::unix::fs::symlink(&canonical_exe, &legacy_symlink);
-        }
-    }
-
     eprintln!(
-        "[astral-plasma] Notice: Registered KWin screenshot authorization entry: {}",
+        "[{}] Notice: Registered KWin screenshot authorization entry: {}",
+        branding::APP_NAME,
         desktop_path.display()
     );
 
@@ -87,26 +77,16 @@ pub fn remove_desktop_entry(
         .map(Path::to_path_buf)
         .unwrap_or_else(get_default_applications_dir);
 
-    let target_astral = app_dir.join("astral-plasma.desktop");
-    let target_legacy = app_dir.join("caelestia-daemon.desktop");
+    let target_astral = app_dir.join(format!("{}.desktop", branding::APP_ID));
 
     let mut removed = false;
 
     if target_astral.exists() {
         if fs::remove_file(&target_astral).is_ok() {
             eprintln!(
-                "[astral-plasma] Notice: Removed KWin screenshot authorization entry: {}",
+                "[{}] Notice: Removed KWin screenshot authorization entry: {}",
+                branding::APP_NAME,
                 target_astral.display()
-            );
-            removed = true;
-        }
-    }
-
-    if target_legacy.exists() {
-        if fs::remove_file(&target_legacy).is_ok() {
-            eprintln!(
-                "[astral-plasma] Notice: Removed legacy authorization entry: {}",
-                target_legacy.display()
             );
             removed = true;
         }
@@ -121,7 +101,9 @@ pub fn remove_desktop_entry(
 
 pub fn get_target_path(win_uuid: &str, slot: &str) -> String {
     let clean_uuid = win_uuid.trim_matches(|c| c == '{' || c == '}');
-    format!("/tmp/caelestia_preview_{}_{}.png", clean_uuid, slot)
+    branding::tmp_file(&format!("preview_{}_{}.png", clean_uuid, slot))
+        .to_string_lossy()
+        .to_string()
 }
 
 pub fn get_next_slot(win_uuid: &str) -> &'static str {

@@ -25,7 +25,7 @@ Item {
             anchors.bottomMargin: Theme.padSmall
             spacing: Theme.spaceLarge
 
-            // Left: Audio Spectrum Visualizer (User-selectable: Radial Caelestia Halo vs Heatmap Speaker)
+            // Left: Audio Spectrum Visualizer (User-selectable: Radial Halo vs Heatmap Speaker)
             Item {
                 id: visualizerSlot
                 Layout.preferredWidth: 240
@@ -35,7 +35,7 @@ Item {
                 readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
                     (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
 
-                // Caelestia Radial Visualizer (Spectrum halo around circular album art)
+                // Radial Visualizer (Spectrum halo around circular album art)
                 RadialCoverVisualiser {
                     id: radialViz
                     anchors.centerIn: parent
@@ -85,7 +85,7 @@ Item {
                 }
             }
 
-            // Center: Track Details & Controls (Caelestia layout)
+            // Center: Track Details & Controls
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
@@ -206,7 +206,7 @@ Item {
                             color: Colors.primary
                         }
 
-                        // Bespoke Caelestia Vertical Pill Thumb
+                        // Bespoke Vertical Pill Thumb
                         Rectangle {
                             id: sliderThumb
                             width: 5

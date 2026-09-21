@@ -1,11 +1,10 @@
 [Desktop Entry]
-Name=Caelestia Launcher
-Comment=Toggle Caelestia Command Launcher & Wallpaper Picker
-Exec=/mnt/data/workspace/caelestia-kde/scripts/toggle_launcher.sh
+Name=Astral Plasma Launcher
+Comment=Toggle the Astral Plasma Command Launcher & Wallpaper Picker
+Exec=sh -c "$HOME/.config/quickshell/scripts/toggle_launcher.sh"
 Icon=preferences-system-search
 Terminal=false
 Type=Application
 Categories=Utility;
 StartupNotify=false
 X-KDE-Shortcuts=Meta+Space
-

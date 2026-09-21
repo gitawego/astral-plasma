@@ -1,3 +1,4 @@
+pub mod retry;
 pub mod watch_events;
 pub mod window_control;
 pub mod workspace_control;

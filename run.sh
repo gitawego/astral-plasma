@@ -11,15 +11,15 @@ if [ "$MODE" = "wallpaper" ] || [ "$MODE" = "--wallpaper" ] || [ "$MODE" = "-w" 
         echo "[*] Quickshell is already running. Wallpaper picker opened via IPC."
         exit 0
     fi
-    export CAELESTIA_LAUNCHER_OPEN=1
-    export CAELESTIA_LAUNCHER_MODE=wallpaper
+    export ASTRAL_PLASMA_LAUNCHER_OPEN=1
+    export ASTRAL_PLASMA_LAUNCHER_MODE=wallpaper
 elif [ "$MODE" = "launcher" ] || [ "$MODE" = "--launcher" ]; then
     if quickshell ipc -p "$DIR" call launcher toggle 2>/dev/null; then
         echo "[*] Quickshell is already running. Launcher toggled via IPC."
         exit 0
     fi
-    export CAELESTIA_LAUNCHER_OPEN=1
-    export CAELESTIA_LAUNCHER_MODE=apps
+    export ASTRAL_PLASMA_LAUNCHER_OPEN=1
+    export ASTRAL_PLASMA_LAUNCHER_MODE=apps
 fi
 
 echo "=========================================================="

@@ -1,3 +1,4 @@
+use astral_plasma::domain::branding;
 use astral_plasma::application::plasma_service::PlasmaControlUseCase;
 use astral_plasma::domain::plasma::is_panel_target_match;
 use astral_plasma::domain::ports::PlasmaControlPort;
@@ -34,12 +35,12 @@ fn test_plasma_backup_and_restore_rust() {
     let orig_shell = "[PlasmaViews][Panel 42]\nthickness=40\n";
     fs::write(&shellrc, orig_shell).unwrap();
 
-    let backup_dir = mock_data.join("caelestia").join("plasma-backup");
+    let backup_dir = mock_data.join(branding::DATA_DIR).join(branding::PLASMA_BACKUP_SUBDIR);
 
     std::env::set_var("XDG_CONFIG_HOME", &mock_config);
     std::env::set_var("XDG_DATA_HOME", &mock_data);
-    std::env::set_var("CAELESTIA_PLASMA_BACKUP_DIR", &backup_dir);
-    std::env::set_var("CAELESTIA_TEST_MODE", "1");
+    std::env::set_var(branding::ENV_PLASMA_BACKUP_DIR, &backup_dir);
+    std::env::set_var(branding::ENV_TEST_MODE, "1");
 
     let adapter = PlasmaAdapter::new();
     let use_case = PlasmaControlUseCase::new(adapter);
@@ -95,7 +96,7 @@ fn test_plasma_status_struct_serialization() {
 
     let status = PlasmaStatus {
         panels: panels.clone(),
-        backup_dir: "/home/user/.local/share/caelestia/plasma-backup".to_string(),
+        backup_dir: format!("/home/user/.local/share/{}/{}", branding::DATA_DIR, branding::PLASMA_BACKUP_SUBDIR),
         session_active: true,
         watchdog_pid: Some(12345),
     };
@@ -124,7 +125,7 @@ fn test_plasma_layout_fallback_and_stop_watchdog() {
     fs::create_dir_all(&mock_config).unwrap();
     fs::create_dir_all(&mock_data).unwrap();
 
-    let backup_dir = mock_data.join("caelestia").join("plasma-backup");
+    let backup_dir = mock_data.join(branding::DATA_DIR).join(branding::PLASMA_BACKUP_SUBDIR);
     fs::create_dir_all(&backup_dir).unwrap();
 
     // Create a mock layout.js in backup
@@ -134,8 +135,8 @@ fn test_plasma_layout_fallback_and_stop_watchdog() {
 
     std::env::set_var("XDG_CONFIG_HOME", &mock_config);
     std::env::set_var("XDG_DATA_HOME", &mock_data);
-    std::env::set_var("CAELESTIA_PLASMA_BACKUP_DIR", &backup_dir);
-    std::env::set_var("CAELESTIA_TEST_MODE", "1");
+    std::env::set_var(branding::ENV_PLASMA_BACKUP_DIR, &backup_dir);
+    std::env::set_var(branding::ENV_TEST_MODE, "1");
 
     let adapter = PlasmaAdapter::new();
 
@@ -152,7 +153,8 @@ fn test_plasma_layout_fallback_and_stop_watchdog() {
 async fn test_stop_watchdog_does_not_kill_self() {
     let _lock = TEST_MUTEX.lock().unwrap();
     let my_pid = std::process::id();
-    let pid_file = std::path::Path::new("/tmp/caelestia-plasma-watchdog.pid");
+    let pid_file = astral_plasma::infrastructure::plasma_adapter::watchdog_pid_file();
+    let pid_file = pid_file.as_path();
     let _ = fs::write(pid_file, my_pid.to_string());
 
     let adapter = PlasmaAdapter::new();
@@ -171,15 +173,15 @@ async fn test_watchdog_loop_on_target_exit() {
     fs::create_dir_all(&mock_config).unwrap();
     fs::create_dir_all(&mock_data).unwrap();
 
-    let backup_dir = mock_data.join("caelestia").join("plasma-backup");
+    let backup_dir = mock_data.join(branding::DATA_DIR).join(branding::PLASMA_BACKUP_SUBDIR);
     fs::create_dir_all(&backup_dir).unwrap();
     fs::write(backup_dir.join("layout.js"), "// test layout").unwrap();
     fs::write(backup_dir.join("session_active"), "").unwrap();
 
     std::env::set_var("XDG_CONFIG_HOME", &mock_config);
     std::env::set_var("XDG_DATA_HOME", &mock_data);
-    std::env::set_var("CAELESTIA_PLASMA_BACKUP_DIR", &backup_dir);
-    std::env::set_var("CAELESTIA_TEST_MODE", "1");
+    std::env::set_var(branding::ENV_PLASMA_BACKUP_DIR, &backup_dir);
+    std::env::set_var(branding::ENV_TEST_MODE, "1");
 
     // Spawn a quick short-lived process
     let mut child = std::process::Command::new("true").spawn().unwrap();

@@ -4,7 +4,8 @@ use crate::domain::systemd::ServiceStatus;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 
-pub type DynResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+pub type DynError = Box<dyn Error + Send + Sync>;
+pub type DynResult<T> = Result<T, DynError>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppInfo {

@@ -5,6 +5,7 @@ use crate::application::systemd_service::SystemdControlUseCase;
 use crate::application::watch_events::run_event_daemon;
 use crate::application::window_control::WindowControlUseCase;
 use crate::application::workspace_control::WorkspaceControlUseCase;
+use crate::domain::branding;
 use crate::domain::ports::DynResult;
 use crate::infrastructure::embedded_bundle::{extract_embedded_theme, get_default_package_dir};
 use crate::infrastructure::kwin_adapter::KWinAdapter;
@@ -251,7 +252,7 @@ pub async fn run_cli() -> DynResult<()> {
                             println!(r#"{{"success":true,"action":"{}"}}"#, action);
                         }
                         _ => {
-                            eprintln!("Failed to invoke Quickshell settings IPC (is Caelestia running?)");
+                            eprintln!("Failed to invoke Quickshell settings IPC (is Astral Plasma running?)");
                         }
                     }
                 }
@@ -289,7 +290,7 @@ pub async fn run_cli() -> DynResult<()> {
                     println!(r#"{{"success":true,"theme_command":"{}"}}"#, sub);
                 }
                 _ => {
-                    eprintln!("Failed to invoke Quickshell theme IPC (is Caelestia running?)");
+                    eprintln!("Failed to invoke Quickshell theme IPC (is Astral Plasma running?)");
                 }
             }
         }
@@ -562,6 +563,35 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "focus" => {
+            // Hand compositor activation back to the user's real window. See
+            // get_focus_restore_script: KWin does not reassign activation when a
+            // layer surface (the shell's modal) stops requesting keyboard focus.
+            use crate::application::watch_events::get_focus_restore_script;
+
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("restore");
+            if sub != "restore" {
+                eprintln!("Usage: astral-plasma focus restore");
+            } else {
+                let script_file = branding::tmp_file("focus_restore.js");
+                if let Err(e) = std::fs::write(&script_file, get_focus_restore_script()) {
+                    eprintln!("focus restore: cannot write script to {}: {e}", script_file.display());
+                } else {
+                    let out = Command::new("qdbus6")
+                        .args(["org.kde.KWin", "/Scripting",
+                               "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy()])
+                        .output();
+                    if let Ok(o) = out {
+                        let num = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        if !num.is_empty() {
+                            let path = format!("/Scripting/Script{num}");
+                            let _ = Command::new("qdbus6").args(["org.kde.KWin", &path, "org.kde.kwin.Script.run"]).output();
+                            let _ = Command::new("qdbus6").args(["org.kde.KWin", &path, "org.kde.kwin.Script.stop"]).output();
+                        }
+                    }
+                }
+            }
+        }
         "blur" => {
             use crate::infrastructure::kwin_blur::{BlurSettings, KWinBlurAdapter};
 
@@ -661,7 +691,7 @@ pub async fn run_cli() -> DynResult<()> {
 fn print_usage() {
     eprintln!("Usage: astral-plasma <command> [args...]");
     eprintln!("Commands:");
-    eprintln!("  run                     - Run full self-contained Caelestia desktop shell");
+    eprintln!("  run                     - Run full self-contained Astral Plasma desktop shell");
     eprintln!("  serve [--port <port>]   - Run native REST & Unix socket API server");
     eprintln!("  extract [target_dir]    - Extract embedded QML theme bundle");
     eprintln!("  plasma <cmd>            - Plasma panels management: disable, restore, status, watchdog");
@@ -689,7 +719,7 @@ async fn run_self_contained_app() -> DynResult<()> {
         pkg_dir
     };
 
-    println!("[Caelestia] Starting desktop shell using package at: {}", theme_dir.display());
+    println!("[{}] Starting desktop shell using package at: {}", branding::APP_NAME, theme_dir.display());
 
     // Register desktop authorization entry with notification
     let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
@@ -743,7 +773,7 @@ async fn run_self_contained_app() -> DynResult<()> {
     }
 
     // 6. On exit, restore original Plasma panels cleanly and clean up authorization entry
-    println!("[Caelestia] Quickshell stopped. Restoring original KDE Plasma panels and cleaning up authorization...");
+    println!("[{}] Quickshell stopped. Restoring original KDE Plasma panels and cleaning up authorization...", branding::APP_NAME);
     let _ = plasma.restore();
     let _ = crate::infrastructure::preview_capture::remove_desktop_entry(None);
 

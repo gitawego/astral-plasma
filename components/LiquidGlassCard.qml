@@ -18,6 +18,11 @@ Rectangle {
     property bool pressed: false
     property bool selected: false
     property int padding: 0
+    // A full 1px perimeter ring suits interactive/elevated cards, but on a resting
+    // container it reads as a stray box drawn inside the panel. Callers can drop
+    // the ring and keep the specular hairlines, which is what actually defines a
+    // glass edge (see docs/LESSONS.md 9.1 "Clean Glass Materials").
+    property bool showBorder: true
 
     // Component exposure aliases for testing & introspection
     readonly property alias topGlareItem: topGlare
@@ -28,7 +33,7 @@ Rectangle {
 
     // Standard geometry and styling
     radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
-    border.width: selected ? 1.5 : 1
+    border.width: root.showBorder ? (selected ? 1.5 : 1) : 0
     border.color: selected 
         ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
         : (hovered 

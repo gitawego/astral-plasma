@@ -91,7 +91,7 @@ Singleton {
     }
 
     function updateWinePlaybackStatus(isPlaying) {
-        activateProc.command = ["qdbus6", "org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher.UpdateWinePlaybackStatus", isPlaying ? "true" : "false"];
+        activateProc.command = ["qdbus6", "org.astralplasma.WindowWatcher", "/Watcher", "org.astralplasma.WindowWatcher.UpdateWinePlaybackStatus", isPlaying ? "true" : "false"];
         activateProc.running = true;
     }
 
@@ -149,7 +149,7 @@ Singleton {
         id: trayClickProc
         onExited: (exitCode, exitStatus) => {
             refreshTrayProc.running = false;
-            refreshTrayProc.command = ["qdbus6", "org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher.RefreshTray"];
+            refreshTrayProc.command = ["qdbus6", "org.astralplasma.WindowWatcher", "/Watcher", "org.astralplasma.WindowWatcher.RefreshTray"];
             refreshTrayProc.running = true;
         }
     }

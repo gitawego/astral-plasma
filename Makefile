@@ -26,16 +26,12 @@ release:
 	@mkdir -p $(BIN_DIR)
 	$(CARGO) build --release --manifest-path $(DAEMON_DIR)/Cargo.toml
 	install -m 755 $(DAEMON_DIR)/target/release/astral-plasma $(TARGET)
-	ln -sf astral-plasma $(BIN_DIR)/caelestia-daemon
-	ln -sf astral-plasma $(BIN_DIR)/caelestia
 	@echo "Built single self-contained binary: $(TARGET)"
 
 debug:
 	@mkdir -p $(BIN_DIR)
 	$(CARGO) build --manifest-path $(DAEMON_DIR)/Cargo.toml
 	install -m 755 $(DAEMON_DIR)/target/debug/astral-plasma $(TARGET)
-	ln -sf astral-plasma $(BIN_DIR)/caelestia-daemon
-	ln -sf astral-plasma $(BIN_DIR)/caelestia
 	@echo "Built debug: $(TARGET)"
 
 test: test-rust test-qml

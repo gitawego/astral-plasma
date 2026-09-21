@@ -1,0 +1,16 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Astral Plasma"
+            }
+        ],
+        "Description": "Global shortcut daemon for the Astral Plasma Launcher and Wallpaper Picker",
+        "Icon": "preferences-system-windows-script-test",
+        "Id": "astral-plasma-shortcuts",
+        "License": "GPL-3.0+",
+        "Name": "Astral Plasma Shortcuts"
+    },
+    "X-Plasma-API": "javascript"
+}

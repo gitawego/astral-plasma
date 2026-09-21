@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> Guidelines, architecture map, and development conventions for AI coding assistants working in **Astral Plasma / Caelestia KDE**.
+> Guidelines, architecture map, and development conventions for AI coding assistants working in **Astral Plasma**.
 
 ---
 
@@ -72,7 +72,7 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 ## 5. Repository Map
 
 ```
-caelestia-kde/
+astral-plasma/
 ├── Makefile                  # Build, test, and run automation (make test, make build, make run)
 ├── AGENTS.md                 # Agent instructions & development conventions (this file)
 ├── DESIGN.md                 # Design system specification, motion tokens & layout rules
@@ -118,7 +118,7 @@ caelestia-kde/
 Always use `make` commands:
 ```bash
 make test         # MANDATORY: Runs both Rust unit tests and all QML test suites
-make build        # Compiles release Rust daemon (bin/caelestia-daemon)
+make build        # Compiles release Rust daemon (bin/astral-plasma)
 make test-rust    # Runs Rust unit tests
 make test-qml     # Runs QML offscreen test suites
 make run          # Runs shell with daemon

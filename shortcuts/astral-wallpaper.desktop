@@ -1,11 +1,10 @@
 [Desktop Entry]
-Name=Caelestia Wallpaper Picker
-Comment=Open Caelestia Wallpaper Picker Carousel
-Exec=/mnt/data/workspace/caelestia-kde/scripts/open_wallpaper.sh
+Name=Astral Plasma Wallpaper Picker
+Comment=Open the Astral Plasma Wallpaper Picker Carousel
+Exec=sh -c "$HOME/.config/quickshell/scripts/open_wallpaper.sh"
 Icon=preferences-desktop-wallpaper
 Terminal=false
 Type=Application
 Categories=Utility;
 StartupNotify=false
 X-KDE-Shortcuts=Meta+Shift+W
-

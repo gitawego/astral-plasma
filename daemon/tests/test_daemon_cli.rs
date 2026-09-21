@@ -55,7 +55,7 @@ fn test_daemon_preview_usage() {
 #[test]
 fn test_daemon_config_write() {
     let bin = get_bin_path();
-    let test_dir = std::env::temp_dir().join("caelestia_test_config");
+    let test_dir = std::env::temp_dir().join("astral_plasma_test_config");
     let test_file = test_dir.join("test_settings.json");
     let content = r#"{"test_key":"test_val"}"#;
 

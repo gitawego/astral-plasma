@@ -1,13 +1,16 @@
+use crate::domain::branding;
 use crate::domain::plasma::{PlasmaPanelInfo, PlasmaStatus};
 use crate::domain::ports::{DynResult, PlasmaControlPort};
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
-pub const DEFAULT_WATCHDOG_PID_FILE: &str = "/tmp/caelestia_plasma_watchdog.pid";
+/// PID file of the detached Plasma watchdog process.
+pub fn watchdog_pid_file() -> PathBuf {
+    branding::tmp_file("watchdog.pid")
+}
 
 #[derive(Clone, Default)]
 pub struct PlasmaAdapter;
@@ -18,25 +21,19 @@ impl PlasmaAdapter {
     }
 
     pub fn resolve_backup_dir(&self) -> PathBuf {
-        if let Ok(dir) = env::var("CAELESTIA_PLASMA_BACKUP_DIR") {
-            if !dir.trim().is_empty() {
-                return PathBuf::from(dir);
-            }
+        if let Some(dir) = branding::dir_override(branding::ENV_PLASMA_BACKUP_DIR) {
+            return dir;
         }
-
-        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let data_home = env::var("XDG_DATA_HOME").unwrap_or_else(|_| format!("{}/.local/share", home));
-        PathBuf::from(data_home).join("caelestia").join("plasma-backup")
+        branding::data_dir().join(branding::PLASMA_BACKUP_SUBDIR)
     }
 
     pub fn resolve_config_dir(&self) -> PathBuf {
-        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let config_home = env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{}/.config", home));
-        PathBuf::from(config_home)
+        branding::config_home()
     }
 
     pub fn stop_watchdog(&self) {
-        let pid_file = Path::new(DEFAULT_WATCHDOG_PID_FILE);
+        let pid_file = watchdog_pid_file();
+        let pid_file = pid_file.as_path();
         let my_pid = std::process::id() as i32;
         if pid_file.exists() {
             if let Ok(content) = fs::read_to_string(pid_file) {
@@ -68,7 +65,7 @@ impl PlasmaAdapter {
             }
         }
 
-        if env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" {
+        if !branding::test_mode() {
             #[cfg(unix)]
             {
                 if let Ok(output) = Command::new("pgrep")
@@ -93,7 +90,7 @@ impl PlasmaAdapter {
 
 impl PlasmaControlPort for PlasmaAdapter {
     fn query_panels(&self) -> DynResult<Vec<PlasmaPanelInfo>> {
-        if env::var("CAELESTIA_TEST_MODE").unwrap_or_default() == "1" {
+        if branding::test_mode() {
             return Ok(Vec::new());
         }
 
@@ -195,7 +192,7 @@ impl PlasmaControlPort for PlasmaAdapter {
         // Guarantee pristine backup before disabling
         self.backup_config()?;
 
-        if env::var("CAELESTIA_TEST_MODE").unwrap_or_default() == "1" {
+        if branding::test_mode() {
             return Ok(0);
         }
 
@@ -277,7 +274,7 @@ impl PlasmaControlPort for PlasmaAdapter {
             return Ok(false);
         }
 
-        let is_test = env::var("CAELESTIA_TEST_MODE").unwrap_or_default() == "1";
+        let is_test = branding::test_mode();
 
         if !is_test {
             // Stop plasmashell cleanly so it cannot overwrite config upon exit
@@ -373,9 +370,9 @@ impl PlasmaControlPort for PlasmaAdapter {
         let session_active = backup_dir.join("session_active").exists();
 
         let mut watchdog_pid = None;
-        let pid_file = Path::new(DEFAULT_WATCHDOG_PID_FILE);
+        let pid_file = watchdog_pid_file();
         if pid_file.exists() {
-            if let Ok(content) = fs::read_to_string(pid_file) {
+            if let Ok(content) = fs::read_to_string(&pid_file) {
                 if let Ok(pid) = content.trim().parse::<u32>() {
                     let is_alive = unsafe { libc::kill(pid as i32, 0) == 0 };
                     if is_alive {

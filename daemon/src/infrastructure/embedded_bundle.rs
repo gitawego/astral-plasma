@@ -1,3 +1,4 @@
+use crate::domain::branding;
 use include_dir::{include_dir, Dir};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,13 +18,7 @@ pub static SHORTCUTS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../shortcu
 pub static TOPBAR_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../topbar");
 
 pub fn get_default_package_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("CAELESTIA_PACKAGE_DIR") {
-        if !dir.trim().is_empty() {
-            return PathBuf::from(dir);
-        }
-    }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".local").join("share").join("caelestia").join("package")
+    branding::default_package_dir()
 }
 
 pub fn extract_embedded_theme(target_dir: &Path) -> DynResult<()> {

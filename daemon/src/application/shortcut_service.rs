@@ -24,7 +24,7 @@ impl<P: ShortcutControlPort> ShortcutControlUseCase<P> {
         Ok(())
     }
 
-    /// Granularly snapshots only Astral-relevant shortcuts (if not already backed up) and binds Caelestia shortcuts
+    /// Granularly snapshots only Astral-relevant shortcuts (if not already backed up) and binds this shell's shortcuts
     pub fn backup_and_bind(&self, mode: &str) -> DynResult<()> {
         self.snapshot(mode)?;
         self.port.bind_shortcuts(mode)?;

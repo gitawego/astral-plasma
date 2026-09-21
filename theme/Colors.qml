@@ -13,7 +13,7 @@ Singleton {
     readonly property bool dynamicColorsEnabled: (typeof Config !== "undefined") ? Config.dynamicColors : false
     readonly property string currentPreset: (typeof Config !== "undefined" && Config.themePreset) ? Config.themePreset : "iris"
 
-    // Dynamic parsed palette cache from matugen (~/.cache/caelestia/colors.json)
+    // Dynamic parsed palette cache from matugen (XDG cache dir, see the loader below)
     property var dynamicPalette: null
 
     // Comprehensive chromatic theme registry
@@ -526,10 +526,21 @@ Singleton {
     readonly property color glassShadowColor: Qt.rgba(0, 0, 0, root.isDarkMode ? 0.45 : 0.14)
 
 
-    // Dynamic color loader (reads ~/.cache/caelestia/colors.json if matugen was run)
+    // Dynamic color loader (reads the matugen cache written by the daemon)
+    //
+    // The cache lives under XDG_CACHE_HOME; falling back to `$HOME/.cache`
+    // unconditionally would silently read a stale palette on any machine that
+    // redirects the XDG cache directory.
+    readonly property string cacheHome: {
+        if (typeof Quickshell === "undefined" || !Quickshell.env) return "";
+        const xdg = Quickshell.env("XDG_CACHE_HOME");
+        if (xdg && xdg.length > 0) return xdg;
+        const home = Quickshell.env("HOME");
+        return (home && home.length > 0) ? home + "/.cache" : "";
+    }
     FileView {
         id: colorsCache
-        path: Quickshell.env("HOME") + "/.cache/caelestia/colors.json"
+        path: root.cacheHome.length > 0 ? root.cacheHome + "/astral-plasma/colors.json" : ""
         preload: true
 
         onLoaded: {
@@ -542,7 +553,7 @@ Singleton {
                     }
                 }
             } catch (e) {
-                console.log("[Palette] Using default Caelestia scheme");
+                console.log("[Palette] Using default Astral Plasma scheme");
             }
         }
     }

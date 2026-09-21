@@ -96,6 +96,46 @@ impl Default for WineMprisPlayerState {
     }
 }
 
+/// Best-effort description of a D-Bus caller, for playback diagnostics.
+///
+/// The Wine bridge is a public MPRIS interface: any client on the session can
+/// press its buttons. When playback toggles unexpectedly, the log must say who
+/// asked for it instead of leaving it a mystery.
+async fn describe_caller(sender: Option<&zbus::names::UniqueName<'_>>) -> String {
+    let Some(sender) = sender else {
+        return "unknown caller".to_string();
+    };
+    let unique = sender.as_str().to_string();
+    let pid = tokio::process::Command::new("qdbus6")
+        .args([
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus.GetConnectionUnixProcessID",
+            &unique,
+        ])
+        .output()
+        .await
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| {
+            String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .parse::<u32>()
+                .ok()
+        });
+    match pid {
+        Some(pid) => {
+            let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+            format!("{unique} (pid {pid} {})", comm.trim())
+        }
+        None => unique,
+    }
+}
+
+async fn log_mpris_call(method: &str, sender: Option<&zbus::names::UniqueName<'_>>) {
+    eprintln!("[mpris] {method} requested by {}", describe_caller(sender).await);
+}
+
 #[derive(Clone)]
 pub struct WineMprisPlayer {
     state: Arc<Mutex<WineMprisPlayerState>>,
@@ -211,7 +251,8 @@ impl WineMprisPlayer {
         false
     }
 
-    async fn next(&self) {
+    async fn next(&self, #[zbus(header)] header: zbus::message::Header<'_>) {
+        eprintln!("[mpris] Next requested by {}", describe_caller(header.sender()).await);
         let (player_id, _is_playing) = {
             let mut st = self.state.lock().await;
             st.position_micros = 0;
@@ -223,7 +264,8 @@ impl WineMprisPlayer {
         let _ = adapter.send_action(MediaAction::Next);
     }
 
-    async fn previous(&self) {
+    async fn previous(&self, #[zbus(header)] header: zbus::message::Header<'_>) {
+        eprintln!("[mpris] Previous requested by {}", describe_caller(header.sender()).await);
         let (player_id, _is_playing) = {
             let mut st = self.state.lock().await;
             st.position_micros = 0;
@@ -235,7 +277,59 @@ impl WineMprisPlayer {
         let _ = adapter.send_action(MediaAction::Previous);
     }
 
-    async fn play_pause(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
+    /// The D-Bus entry point every playback toggle funnels through.
+    ///
+    /// The logging is deliberate: this interface is public, so "why did my
+    /// music start playing?" must be answerable from the daemon log.
+    async fn play_pause(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) {
+        log_mpris_call("PlayPause", header.sender()).await;
+        self.toggle_playback(emitter).await;
+    }
+
+    async fn play(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) {
+        let is_playing = self.state.lock().await.is_playing;
+        if !is_playing {
+            log_mpris_call("Play", header.sender()).await;
+            self.toggle_playback(emitter).await;
+        }
+    }
+
+    async fn pause(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) {
+        let is_playing = self.state.lock().await.is_playing;
+        if is_playing {
+            log_mpris_call("Pause", header.sender()).await;
+            self.toggle_playback(emitter).await;
+        }
+    }
+
+    async fn stop(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) {
+        let is_playing = self.state.lock().await.is_playing;
+        if is_playing {
+            log_mpris_call("Stop", header.sender()).await;
+            self.toggle_playback(emitter).await;
+        }
+    }
+}
+
+impl WineMprisPlayer {
+    /// Toggle the Wine player and publish the resulting state.
+    async fn toggle_playback(&self, emitter: SignalEmitter<'_>) {
         let (player_id, is_now_playing) = {
             let mut st = self.state.lock().await;
             st.is_playing = !st.is_playing;
@@ -257,42 +351,27 @@ impl WineMprisPlayer {
             pause_other_mpris_players().await;
         }
     }
-
-    async fn play(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
-        let is_playing = {
-            let st = self.state.lock().await;
-            st.is_playing
-        };
-        if !is_playing {
-            self.play_pause(emitter).await;
-        }
-    }
-
-    async fn pause(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
-        let is_playing = {
-            let st = self.state.lock().await;
-            st.is_playing
-        };
-        if is_playing {
-            self.play_pause(emitter).await;
-        }
-    }
-
-    async fn stop(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
-        let is_playing = {
-            let st = self.state.lock().await;
-            st.is_playing
-        };
-        if is_playing {
-            self.play_pause(emitter).await;
-        }
-    }
 }
 
 pub struct WineMprisService {
     conn: Connection,
     player: WineMprisPlayer,
     state: Arc<Mutex<WineMprisPlayerState>>,
+}
+
+/// Acquire the Wine MPRIS bridge, waiting out a previous owner of the bus name.
+///
+/// The bridge is a session singleton, and a shell reload starts the incoming
+/// daemon before the outgoing one has necessarily released
+/// `org.mpris.MediaPlayer2.cloudmusic`. zbus requests names without queueing, so
+/// a single attempt is not enough: retry until the previous instance is gone.
+/// Losing the race permanently would leave the session with no Wine player at
+/// all, which is worse than a short start-up delay.
+pub async fn connect_wine_mpris_with_retry(
+    attempts: u32,
+    delay: std::time::Duration,
+) -> DynResult<WineMprisService> {
+    crate::application::retry::retry_async(attempts, delay, WineMprisService::new).await
 }
 
 impl WineMprisService {

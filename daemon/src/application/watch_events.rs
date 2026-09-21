@@ -1,6 +1,10 @@
-use crate::domain::meta_resolver::resolve_window_meta;
+use crate::domain::app_identity::{
+    is_shell_owned_surface, shared_index, shell_classes_js, should_skip_taskbar,
+};
+use crate::domain::branding;
+use crate::domain::meta_resolver::resolve_window_meta_with;
 use crate::domain::wine_media::parse_wine_media;
-use crate::application::wine_mpris::WineMprisService;
+use crate::application::wine_mpris::{connect_wine_mpris_with_retry, WineMprisService};
 use crate::domain::model::{
     ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowsListPayload,
 };
@@ -11,13 +15,26 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::process::Command;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use zbus::connection::Builder;
 
-const KWIN_SCRIPT_NAME: &str = "caelestia-watcher";
+const KWIN_SCRIPT_NAME: &str = branding::KWIN_SCRIPT_WATCHER;
+
+/// Identifier tokens inside the KWin JavaScript. Rust values cannot be
+/// interpolated into a raw JS literal without escaping every brace, so the
+/// scripts carry explicit tokens and [`render_kwin_script`] substitutes them.
+const TOKEN_DBUS_NAME: &str = "@DBUS_WATCHER_NAME@";
+const TOKEN_SHELL_CLASSES: &str = "@SHELL_WINDOW_CLASSES@";
+
+/// Substitute branding identifiers into a KWin JavaScript template.
+fn render_kwin_script(template: &str) -> String {
+    template
+        .replace(TOKEN_DBUS_NAME, branding::DBUS_WATCHER_NAME)
+        .replace(TOKEN_SHELL_CLASSES, &shell_classes_js())
+}
 
 pub struct DaemonState {
     pub cached_windows: Vec<Window>,
@@ -27,6 +44,8 @@ pub struct DaemonState {
     pub active_icon_name: String,
     pub active_app_id: String,
     pub active_id: String,
+    /// Raw window class of the active window, used by the Xwayland focus guard.
+    pub active_cls: String,
 }
 
 impl Default for DaemonState {
@@ -39,26 +58,53 @@ impl Default for DaemonState {
             active_icon_name: String::new(),
             active_app_id: String::new(),
             active_id: String::new(),
+            active_cls: String::new(),
         }
     }
 }
 
+/// Serves the window/tray event interface. Cheap to clone: every field is a
+/// shared handle, so a connection attempt can be retried without rebuilding
+/// state.
+#[derive(Clone)]
 pub struct WatcherService {
     state: Arc<Mutex<DaemonState>>,
-    wine_mpris: Option<Arc<WineMprisService>>,
+    /// Filled asynchronously: the bridge may first have to wait for a previous
+    /// shell instance to release its singleton bus name.
+    wine_mpris: Arc<OnceLock<Arc<WineMprisService>>>,
 }
 
-#[zbus::interface(name = "org.caelestia.WindowWatcher")]
+#[zbus::interface(name = "org.astralplasma.WindowWatcher")]
 impl WatcherService {
     #[zbus(name = "WindowActivated")]
     async fn window_activated(&self, title: &str, cls: &str, app: &str, wid: &str) {
-        if let Some(mpris) = &self.wine_mpris {
+        // Wine windows are X11 clients: activating one leaves Xwayland's
+        // keyboard focus on it, and KWin keeps forwarding keys there once a
+        // native window becomes active - so typing in a Wayland app would also
+        // drive the Wine app (Enter in a chat box would press its play button).
+        // Hand the X11 focus back as soon as the Wine window is no longer
+        // active; the periodic guard below keeps enforcing it, because Wine
+        // re-asserts its focus right after it is cleared.
+        {
+            let mut st = self.state.lock().await;
+            st.active_cls = cls.to_string();
+        }
+        crate::infrastructure::x11_input::release_stale_wine_focus(cls);
+
+        if let Some(mpris) = self.wine_mpris.get() {
             if let Some(media) = parse_wine_media(title, cls) {
                 let _ = mpris.update_media(&media).await;
             }
         }
 
-        let meta = resolve_window_meta(title, cls, app, "");
+        // Defence in depth: the KWin script already suppresses shell surfaces, but
+        // this interface is independently addressable on the bus, so re-check here.
+        // A shell surface must never overwrite the genuine active application.
+        if is_shell_owned_surface(cls, app, title) {
+            return;
+        }
+
+        let meta = resolve_window_meta_with(Some(&shared_index()), title, cls, app, "");
         let mut st = self.state.lock().await;
 
         let clean_wid = wid.trim_matches(|c| c == '{' || c == '}');
@@ -115,7 +161,7 @@ impl WatcherService {
 
     #[zbus(name = "UpdateWinePlaybackStatus")]
     async fn update_wine_playback_status(&self, is_playing: bool) {
-        if let Some(mpris) = &self.wine_mpris {
+        if let Some(mpris) = self.wine_mpris.get() {
             let _ = mpris.update_playback_status(is_playing).await;
         }
     }
@@ -129,6 +175,7 @@ impl WatcherService {
             return;
         };
 
+        let index = shared_index();
         let mut enriched = Vec::new();
         let mut st = self.state.lock().await;
         let active_wid = st.active_id.trim_matches(|c| c == '{' || c == '}').to_string();
@@ -146,7 +193,13 @@ impl WatcherService {
             let c = item["cls"].as_str().unwrap_or_default();
             let a = item["app"].as_str().unwrap_or_default();
 
-            let meta = resolve_window_meta(t, c, a, "");
+            if should_skip_taskbar(
+                item["skipTaskbar"].as_bool().unwrap_or(false), c, a, t,
+            ) {
+                continue;
+            }
+
+            let meta = resolve_window_meta_with(Some(&index), t, c, a, "");
             let is_active = if !active_wid.is_empty() {
                 wid == active_wid
             } else {
@@ -187,7 +240,7 @@ impl WatcherService {
             println!("{}", serialized);
         }
 
-        if let Some(mpris) = &self.wine_mpris {
+        if let Some(mpris) = self.wine_mpris.get() {
             for item in items {
                 let t = item["title"].as_str().unwrap_or_default();
                 let c = item["cls"].as_str().unwrap_or_default();
@@ -201,7 +254,7 @@ impl WatcherService {
 
     #[zbus(name = "MediaWindowChanged")]
     async fn media_window_changed(&self, caption: &str, cls: &str) {
-        if let Some(mpris) = &self.wine_mpris {
+        if let Some(mpris) = self.wine_mpris.get() {
             if let Some(media) = parse_wine_media(caption, cls) {
                 let _ = mpris.update_media(&media).await;
             }
@@ -254,18 +307,83 @@ impl WatcherService {
     }
 }
 
-pub fn get_kwin_watcher_script() -> &'static str {
-    r#"
+pub fn get_kwin_watcher_script() -> String {
+    render_kwin_script(r#"
+// A window that asked not to appear in a taskbar (EWMH skipTaskbar), or one of
+// the shell's own layer surfaces, must never be reported as the active window.
+// Hovering a drawer or opening a popout can make such a surface KWin's "active
+// window"; without this filter the dock's active-app pill shows a bogus
+// "Quickshell" entry instead of the program the user is actually working in.
+function isShellSurface(c) {
+    if (!c) return true;
+    try {
+        if (c.skipTaskbar) return true;
+    } catch(e) {}
+    var cls = ("" + (c.resourceClass || "")).toLowerCase();
+    var app = ("" + (c.desktopFileName || "")).toLowerCase();
+    var known = @SHELL_WINDOW_CLASSES@;
+    for (var pass = 0; pass < 2; pass++) {
+        var v = pass === 0 ? cls : app;
+        if (!v) continue;
+        for (var i = 0; i < known.length; i++) {
+            if (v === known[i] || v.indexOf(known[i] + ".") === 0 || v.indexOf(known[i] + "-") === 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// KWin does NOT hand activation back when a layer surface stops grabbing it:
+// after a drawer closes, `workspace.activeWindow` stays on the (now invisible)
+// shell surface indefinitely. That starves the whole watcher - no further
+// windowActivated events ever fire - so the dock would sit frozen on whatever app
+// happened to be active before the interaction.
+//
+// The shell must therefore release activation explicitly. Restoring the last real
+// window we saw returns focus where the user expects it, and re-arms the watcher.
+var lastRealWindow = null;
+
+function restoreActivationAfterShellSurface() {
+    try {
+        var cur = workspace.activeWindow;
+        if (cur && !isShellSurface(cur)) return;   // nothing to do
+        if (lastRealWindow && lastRealWindow.normalWindow && lastRealWindow.caption) {
+            workspace.activeWindow = lastRealWindow;
+        } else {
+            // Fall back to the topmost real window on the current desktop.
+            var wins = workspace.stackingOrder || [];
+            for (var i = wins.length - 1; i >= 0; i--) {
+                var w = wins[i];
+                if (w.normalWindow && w.caption && !isShellSurface(w)) {
+                    workspace.activeWindow = w;
+                    break;
+                }
+            }
+        }
+    } catch(e) {}
+}
+
 function notifyActive(c) {
     try {
+        if (c && isShellSurface(c)) {
+            // A shell surface took activation. Do NOT report it as the active
+            // application. We do not restore activation here either: the only
+            // surface that legitimately requests keyboard focus is the power
+            // confirmation modal, and yanking activation away from it would break
+            // its Enter/Escape handling. Restoration is an explicit, timed action
+            // (see the `focus restore` CLI), invoked when the modal closes.
+            return;
+        }
         if (c) {
-            callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "WindowActivated",
+            lastRealWindow = c;
+            callDBus("@DBUS_WATCHER_NAME@", "/Watcher", "@DBUS_WATCHER_NAME@", "WindowActivated",
                      "" + (c.caption || ""),
                      "" + (c.resourceClass || ""),
                      "" + (c.desktopFileName || ""),
                      ("" + c.internalId).replace("{","").replace("}",""));
         } else {
-            callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "WindowActivated",
+            callDBus("@DBUS_WATCHER_NAME@", "/Watcher", "@DBUS_WATCHER_NAME@", "WindowActivated",
                      "Desktop", "", "", "");
         }
     } catch(e) {}
@@ -278,7 +396,13 @@ function getWindowList() {
     var activeId = workspace.activeWindow ? ("" + workspace.activeWindow.internalId).replace("{","").replace("}","") : "";
     for (var i = 0; i < wins.length; i++) {
         var w = wins[i];
-        if (w.normalWindow && w.caption && w.resourceClass !== "quickshell") {
+        var isShell = false;
+        try { isShell = !!w.skipTaskbar; } catch(e) {}
+        if (!isShell) {
+            var wcls = ("" + (w.resourceClass || "")).toLowerCase();
+            if (wcls === "quickshell" || wcls === "org.quickshell") isShell = true;
+        }
+        if (!isShell && w.normalWindow && w.caption) {
             var onCurrent = w.desktops ? (w.desktops.indexOf(cur) !== -1 || w.onAllDesktops) : true;
             res.push({
                 id: ("" + w.internalId).replace("{","").replace("}",""),
@@ -287,7 +411,8 @@ function getWindowList() {
                 app: "" + (w.desktopFileName || ""),
                 active: ("" + w.internalId).replace("{","").replace("}","") === activeId,
                 maximized: (w.maximizeMode === 3) && !w.minimized && onCurrent,
-                fullScreen: Boolean(w.fullScreen) && !w.minimized && onCurrent
+                fullScreen: Boolean(w.fullScreen) && !w.minimized && onCurrent,
+                skipTaskbar: isShell
             });
         }
     }
@@ -297,14 +422,14 @@ function getWindowList() {
 function notifyList() {
     try {
         var list = getWindowList();
-        callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "UpdateWindowList", JSON.stringify(list));
+        callDBus("@DBUS_WATCHER_NAME@", "/Watcher", "@DBUS_WATCHER_NAME@", "UpdateWindowList", JSON.stringify(list));
     } catch(e) {}
 }
 
 function notifyMedia(c) {
     try {
         if (c) {
-            callDBus("org.caelestia.WindowWatcher", "/Watcher", "org.caelestia.WindowWatcher", "MediaWindowChanged",
+            callDBus("@DBUS_WATCHER_NAME@", "/Watcher", "@DBUS_WATCHER_NAME@", "MediaWindowChanged",
                      "" + (c.caption || ""),
                      "" + (c.resourceClass || ""));
         }
@@ -329,8 +454,8 @@ function isWineMediaWindow(c) {
 }
 
 function connectWindow(c) {
-    if (!c || c._caelestiaHooked) return;
-    c._caelestiaHooked = true;
+    if (!c || c._astralPlasmaHooked) return;
+    c._astralPlasmaHooked = true;
     try {
         c.captionChanged.connect(function() {
             if (workspace.activeWindow === c) {
@@ -374,7 +499,49 @@ try {
 
 notifyActive(workspace.activeWindow);
 notifyList();
-"#
+"#)
+}
+
+/// One-shot KWin script that hands activation back to the user's real window.
+///
+/// Used by `astral-plasma focus restore`. KWin does not reassign activation when
+/// a layer surface stops requesting keyboard focus, so after the power modal
+/// closes the compositor would otherwise leave its invisible full-screen surface
+/// as the active window - freezing the dock's active-app display and starving the
+/// watcher of `windowActivated` events.
+pub fn get_focus_restore_script() -> String {
+    render_kwin_script(r#"
+var wins = workspace.stackingOrder || workspace.windowList();
+var target = null;
+var known = @SHELL_WINDOW_CLASSES@;
+function isShell(c) {
+    if (!c) return true;
+    try { if (c.skipTaskbar) return true; } catch(e) {}
+    var v = ("" + (c.resourceClass || "")).toLowerCase();
+    var a = ("" + (c.desktopFileName || "")).toLowerCase();
+    for (var i = 0; i < known.length; i++) {
+        for (var j = 0; j < 2; j++) {
+            var s = j === 0 ? v : a;
+            if (!s) continue;
+            if (s === known[i] || s.indexOf(known[i] + ".") === 0 || s.indexOf(known[i] + "-") === 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+// Prefer the most recently used real window, which is what the user expects.
+for (var i = wins.length - 1; i >= 0; i--) {
+    var w = wins[i];
+    if (w.normalWindow && w.caption && !isShell(w)) { target = w; break; }
+}
+if (target) {
+    workspace.activeWindow = target;
+    console.warn("ASTRAL_PLASMA_FOCUS_RESTORED:" + target.resourceClass);
+} else {
+    console.warn("ASTRAL_PLASMA_FOCUS_RESTORED:none");
+}
+"#)
 }
 
 pub fn cleanup_kwin_script() {
@@ -433,44 +600,71 @@ pub async fn run_event_daemon() -> DynResult<()> {
         }
     }
 
-    let wine_mpris = match WineMprisService::new().await {
-        Ok(s) => Some(Arc::new(s)),
-        Err(e) => {
-            eprintln!("[astral-plasma] Failed to start WineMprisService: {}", e);
-            None
-        }
-    };
-
-    if let Some(mpris) = &wine_mpris {
-        for w in &initial_wins {
-            if let Some(media) = parse_wine_media(&w.title, &w.app_id)
-                .or_else(|| parse_wine_media(&w.title, &w.icon_name))
-                .or_else(|| parse_wine_media(&w.title, &w.app_name))
-            {
-                let _ = mpris.update_media(&media).await;
-                break;
+    // The bridge is a session singleton. A shell reload starts this daemon
+    // before the outgoing one has necessarily released the bus name, and a
+    // lost race must not cost the session its Wine player: retry in the
+    // background while the rest of the daemon starts serving.
+    let wine_mpris: Arc<OnceLock<Arc<WineMprisService>>> = Arc::new(OnceLock::new());
+    {
+        let slot = Arc::clone(&wine_mpris);
+        let initial = initial_wins.clone();
+        tokio::spawn(async move {
+            match connect_wine_mpris_with_retry(120, Duration::from_millis(250)).await {
+                Ok(service) => {
+                    let service = Arc::new(service);
+                    for w in &initial {
+                        if let Some(media) = parse_wine_media(&w.title, &w.app_id)
+                            .or_else(|| parse_wine_media(&w.title, &w.icon_name))
+                            .or_else(|| parse_wine_media(&w.title, &w.app_name))
+                        {
+                            let _ = service.update_media(&media).await;
+                            break;
+                        }
+                    }
+                    let _ = slot.set(service);
+                }
+                Err(e) => eprintln!(
+                    "[{}] Wine MPRIS bridge unavailable: {}",
+                    branding::APP_NAME, e
+                ),
             }
-        }
+        });
     }
 
     // Register DBus server
     let watcher_service = WatcherService {
         state: Arc::clone(&state),
-        wine_mpris: wine_mpris.clone(),
+        wine_mpris: Arc::clone(&wine_mpris),
     };
 
-    let _conn = Builder::session()?
-        .name("org.caelestia.WindowWatcher")?
-        .serve_at("/Watcher", watcher_service)?
-        .build()
+    // The watcher name is a singleton too: during a reload the outgoing daemon
+    // may still hold it for a moment, and losing it would leave the taskbar
+    // frozen for the rest of the session.
+    let _conn: zbus::Connection =
+        crate::application::retry::retry_async(120, Duration::from_millis(250), || {
+            let service = watcher_service.clone();
+            async move {
+                let conn: zbus::Connection = Builder::session()?
+                    .name(branding::DBUS_WATCHER_NAME)?
+                    .serve_at(branding::DBUS_WATCHER_PATH, service)?
+                    .build()
+                    .await?;
+                Ok::<zbus::Connection, crate::domain::ports::DynError>(conn)
+            }
+        })
         .await?;
 
-    if let Some(mpris_audio) = wine_mpris.clone() {
+    {
+        let slot = Arc::clone(&wine_mpris);
         tokio::spawn(async move {
             use crate::application::wine_mpris::is_other_mpris_playing;
             let mut interval = tokio::time::interval(Duration::from_millis(2000));
             loop {
                 interval.tick().await;
+                // The bridge may not be attached yet (see above); skip until it is.
+                let Some(mpris_audio) = slot.get() else {
+                    continue;
+                };
                 if is_other_mpris_playing().await {
                     let _ = mpris_audio.update_playback_status(false).await;
                 }
@@ -480,15 +674,44 @@ pub async fn run_event_daemon() -> DynResult<()> {
 
     // Install and start KWin script
     cleanup_kwin_script();
-    let script_file = "/tmp/caelestia_kwin_watcher.js";
-    fs::write(script_file, get_kwin_watcher_script())?;
+    let script_file = branding::tmp_file("kwin_watcher.js");
+    fs::write(&script_file, get_kwin_watcher_script())?;
 
     let _ = Command::new("qdbus6")
-        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", script_file, KWIN_SCRIPT_NAME])
+        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
         .output();
     let _ = Command::new("qdbus6")
         .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
         .output();
+
+    // Xwayland focus guard.
+    //
+    // While the active window is a native application, no Wine window may hold
+    // Xwayland's keyboard focus: KWin forwards keystrokes there regardless, so
+    // typing in a native app would silently drive the Wine app as well. The
+    // activation handler clears it once, but Wine re-asserts its focus right
+    // after, so the invariant is re-enforced until it sticks.
+    {
+        let guard_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_millis(500));
+            loop {
+                interval.tick().await;
+                let active_cls = {
+                    let st = guard_state.lock().await;
+                    st.active_cls.clone()
+                };
+                if active_cls.is_empty() {
+                    continue;
+                }
+                // A Wine window is active: it may keep the X11 focus.
+                if crate::infrastructure::x11_input::is_wine_class(&active_cls) {
+                    continue;
+                }
+                crate::infrastructure::x11_input::release_stale_wine_focus(&active_cls);
+            }
+        });
+    }
 
     // Spawn periodic tray poller
     let tray_state = Arc::clone(&state);

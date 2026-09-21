@@ -55,7 +55,7 @@ Item {
 
         // 1. MediaTab Implicit Height
         assert(testMediaTab.implicitHeight === 260,
-               "MediaTab implicitHeight should be 260px (compact Caelestia fit), got: " + testMediaTab.implicitHeight);
+               "MediaTab implicitHeight should be 260px (compact fit), got: " + testMediaTab.implicitHeight);
 
         // 2. RadialCoverVisualiser geometry
         assert(testVisualiser.barsCount === 48,

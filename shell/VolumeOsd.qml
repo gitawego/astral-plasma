@@ -155,7 +155,7 @@ Item {
     readonly property real wave3Scale: 0.88 + 0.14 * wave3Progress
 
     // =========================================================================
-    // THEME PALETTE BINDINGS (Consistent with Iris & Caelestia pastel presets)
+    // THEME PALETTE BINDINGS (Consistent with the Iris & pastel presets)
     // =========================================================================
     readonly property color cardColor: (typeof Colors !== "undefined" && Colors.glassSurface)
         ? Colors.glassSurface

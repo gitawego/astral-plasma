@@ -66,7 +66,7 @@ Singleton {
         },
         "theme": {
             "mode": "dynamic",
-            "preset": "caelestia-pastel",
+            "preset": "iris",
             "blurStrength": 0.85,
             "cornerRadius": 20
         },
@@ -431,14 +431,14 @@ Singleton {
     }
 
     // Active state toggles
-    property bool dashboardVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_DASHBOARD_OPEN") === "1") ? true : (root.settings.dashboardVisible ?? false)
-    property bool settingsVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_SETTINGS_OPEN") === "1") ? true : false
-    property string activeSettingsPage: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_SETTINGS_PAGE")) ? Quickshell.env("CAELESTIA_SETTINGS_PAGE") : "wallpaper"
+    property bool dashboardVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_DASHBOARD_OPEN") === "1") ? true : (root.settings.dashboardVisible ?? false)
+    property bool settingsVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_SETTINGS_OPEN") === "1") ? true : false
+    property string activeSettingsPage: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_SETTINGS_PAGE")) ? Quickshell.env("ASTRAL_PLASMA_SETTINGS_PAGE") : "wallpaper"
     property string activePopout: "" // legacy popout tracker
 
     // Command Launcher State
-    property bool commandLauncherVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_LAUNCHER_OPEN") === "1") ? true : false
-    property string commandLauncherMode: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("CAELESTIA_LAUNCHER_MODE")) ? Quickshell.env("CAELESTIA_LAUNCHER_MODE") : "apps"
+    property bool commandLauncherVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_LAUNCHER_OPEN") === "1") ? true : false
+    property string commandLauncherMode: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_LAUNCHER_MODE")) ? Quickshell.env("ASTRAL_PLASMA_LAUNCHER_MODE") : "apps"
 
     function toggleCommandLauncher(mode) {
         if (root.commandLauncherVisible) {

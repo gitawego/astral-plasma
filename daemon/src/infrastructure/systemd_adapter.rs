@@ -1,3 +1,4 @@
+use crate::domain::branding;
 use crate::domain::ports::{DynResult, SystemdControlPort};
 use crate::domain::systemd::{generate_unit_file_content, ServiceStatus};
 use std::env;
@@ -13,22 +14,21 @@ impl SystemdAdapter {
         Self
     }
 
+    /// Path of the user unit this shell owns.
+    pub fn unit_path(&self) -> PathBuf {
+        self.resolve_systemd_dir().join(branding::SYSTEMD_UNIT)
+    }
+
     pub fn resolve_systemd_dir(&self) -> PathBuf {
-        if let Ok(dir) = env::var("CAELESTIA_SYSTEMD_DIR") {
-            if !dir.trim().is_empty() {
-                return PathBuf::from(dir);
-            }
+        if let Some(dir) = branding::dir_override(branding::ENV_SYSTEMD_DIR) {
+            return dir;
         }
-        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let config_home = env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{}/.config", home));
-        PathBuf::from(config_home).join("systemd").join("user")
+        branding::config_home().join("systemd").join("user")
     }
 
     pub fn resolve_theme_dir(&self) -> PathBuf {
-        if let Ok(dir) = env::var("CAELESTIA_THEME_DIR") {
-            if !dir.trim().is_empty() {
-                return PathBuf::from(dir);
-            }
+        if let Some(dir) = branding::dir_override(branding::ENV_THEME_DIR) {
+            return dir;
         }
         if let Ok(exe) = env::current_exe() {
             if let Some(parent) = exe.parent() {
@@ -43,23 +43,22 @@ impl SystemdAdapter {
 
 impl SystemdControlPort for SystemdAdapter {
     fn query_status(&self) -> DynResult<ServiceStatus> {
-        let dir = self.resolve_systemd_dir();
-        let service_file = dir.join("caelestia.service");
+        let service_file = self.unit_path();
         let installed = service_file.exists();
 
         let mut enabled = false;
         let mut active = false;
 
-        let is_test = env::var("CAELESTIA_TEST_MODE").unwrap_or_default() == "1";
+        let is_test = branding::test_mode();
         if installed && !is_test {
             enabled = Command::new("systemctl")
-                .args(["--user", "is-enabled", "--quiet", "caelestia.service"])
+                .args(["--user", "is-enabled", "--quiet", branding::SYSTEMD_UNIT])
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false);
 
             active = Command::new("systemctl")
-                .args(["--user", "is-active", "--quiet", "caelestia.service"])
+                .args(["--user", "is-active", "--quiet", branding::SYSTEMD_UNIT])
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false);
@@ -77,7 +76,7 @@ impl SystemdControlPort for SystemdAdapter {
         let dir = self.resolve_systemd_dir();
         fs::create_dir_all(&dir)?;
 
-        let service_file = dir.join("caelestia.service");
+        let service_file = self.unit_path();
         let quickshell_bin = which_quickshell();
         let theme_dir = self.resolve_theme_dir();
 
@@ -90,23 +89,22 @@ impl SystemdControlPort for SystemdAdapter {
             let _ = fs::set_permissions(&service_file, fs::Permissions::from_mode(0o644));
         }
 
-        let is_test = env::var("CAELESTIA_TEST_MODE").unwrap_or_default() == "1";
+        let is_test = branding::test_mode();
         if !is_test {
             let _ = Command::new("systemctl").args(["--user", "daemon-reload"]).status();
-            let _ = Command::new("systemctl").args(["--user", "enable", "caelestia.service"]).status();
+            let _ = Command::new("systemctl").args(["--user", "enable", branding::SYSTEMD_UNIT]).status();
         }
 
         self.query_status()
     }
 
     fn remove_service(&self) -> DynResult<ServiceStatus> {
-        let dir = self.resolve_systemd_dir();
-        let service_file = dir.join("caelestia.service");
+        let service_file = self.unit_path();
 
-        let is_test = env::var("CAELESTIA_TEST_MODE").unwrap_or_default() == "1";
+        let is_test = branding::test_mode();
         if !is_test {
             let _ = Command::new("systemctl")
-                .args(["--user", "disable", "--now", "caelestia.service"])
+                .args(["--user", "disable", "--now", branding::SYSTEMD_UNIT])
                 .status();
         }
 

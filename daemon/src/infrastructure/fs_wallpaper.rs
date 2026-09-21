@@ -1,3 +1,4 @@
+use crate::domain::branding;
 use crate::domain::ports::DynResult;
 use crate::domain::wallpaper::{ColorPalette, Wallpaper, WallpaperPort, WallpaperType};
 use std::fs::{self, File};
@@ -21,16 +22,8 @@ impl FsWallpaperAdapter {
     pub fn new() -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
         let home_dir = PathBuf::from(&home);
-        let state_path = home_dir
-            .join(".local")
-            .join("state")
-            .join("caelestia")
-            .join("wallpaper")
-            .join("path.txt");
-        let thumbnail_cache_dir = home_dir
-            .join(".cache")
-            .join("caelestia")
-            .join("thumbnails");
+        let state_path = branding::state_dir().join("wallpaper").join("path.txt");
+        let thumbnail_cache_dir = branding::cache_dir().join("thumbnails");
 
         Self {
             home_dir,
@@ -48,7 +41,7 @@ impl FsWallpaperAdapter {
     pub fn with_paths(home_dir: PathBuf, state_path: PathBuf) -> Self {
         let thumbnail_cache_dir = home_dir
             .join(".cache")
-            .join("caelestia")
+            .join(branding::CACHE_DIR)
             .join("thumbnails");
         Self {
             home_dir,
@@ -328,9 +321,8 @@ impl WallpaperPort for FsWallpaperAdapter {
 
         if let Ok(out) = output {
             if out.status.success() {
-                // Save to ~/.cache/caelestia/colors.json for Colors.qml
-                let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-                let cache_dir = PathBuf::from(&home).join(".cache").join("caelestia");
+                // Save to ~/.cache/astral-plasma/colors.json for Colors.qml
+                let cache_dir = branding::cache_dir();
                 let _ = fs::create_dir_all(&cache_dir);
                 let colors_file = cache_dir.join("colors.json");
                 let _ = fs::write(&colors_file, &out.stdout);

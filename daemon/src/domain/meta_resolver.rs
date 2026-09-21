@@ -1,257 +1,63 @@
+//! Window identity resolution.
+//!
+//! A taskbar needs, for every window: a display name, an icon and a stable id.
+//! There is exactly one trustworthy source for that - the desktop entry the
+//! application installed - so resolution is:
+//!
+//!   1. The XDG desktop-entry index, matched on `StartupWMClass` or desktop id
+//!      (see [`crate::domain::app_identity`]). This is the same lookup Plasma's
+//!      own taskbar performs, so any installed application works without any
+//!      code here knowing about it.
+//!   2. Wine executables, which ship no usable entry, are named by their own
+//!      executable (`cloudmusic.exe` -> "Cloudmusic").
+//!   3. Everything else falls back to the window's own strings.
+//!
+//! There is deliberately no per-application table: adding one would mean every
+//! new app needs a code change, and would override the data an app declares
+//! about itself.
+
+use crate::domain::app_identity::AppIdentityIndex;
 use crate::domain::model::WindowMeta;
 
-pub fn resolve_window_meta(
-    title: &str,
-    cls: &str,
-    app: &str,
-    krunner_icon: &str,
-) -> WindowMeta {
-    let cls_lower = cls.to_lowercase();
-    let app_lower = app.to_lowercase();
-    let t_lower = title.to_lowercase();
+/// Identity of a Wine executable that has no desktop entry.
+///
+/// Wine reports the program's executable as the window class and offers no
+/// desktop file. The executable's own name is therefore the only real identity
+/// available - it is used verbatim, never mapped onto some *guess* at what the
+/// program is.
+fn wine_meta(cls: &str, krunner_icon: &str) -> Option<WindowMeta> {
+    let stem = cls
+        .len()
+        .checked_sub(4)
+        .filter(|_| cls.to_lowercase().ends_with(".exe"))
+        .map(|len| &cls[..len])?;
+    if stem.trim().is_empty() {
+        return None;
+    }
+    let app_name = capitalize_truncate(stem, 14);
+    Some(WindowMeta {
+        app_name,
+        icon_name: if krunner_icon.is_empty() {
+            "wine".to_string()
+        } else {
+            krunner_icon.to_string()
+        },
+        material_icon: "window".to_string(),
+        app_id: stem.to_lowercase(),
+        desktop_file: stem.to_lowercase(),
+    })
+}
 
-    // 1. High-priority exact or class-based matches
-    if cls_lower.contains("cloudmusic") || cls_lower.contains("netease") || app_lower.contains("cloudmusic") {
-        return WindowMeta {
-            app_name: "CloudMusic".to_string(),
-            icon_name: "netease-cloud-music".to_string(),
-            material_icon: "music_note".to_string(),
-            app_id: "cloudmusic".to_string(),
-            desktop_file: "lutris:rungame/netease-cloud-music".to_string(),
-        };
-    }
-
-    if cls_lower.contains("antigravity") || app_lower.contains("antigravity") || cls_lower.contains("opencode") || app_lower.contains("opencode") {
-        return WindowMeta {
-            app_name: "Antigravity".to_string(),
-            icon_name: "antigravity".to_string(),
-            material_icon: "smart_toy".to_string(),
-            app_id: "antigravity".to_string(),
-            desktop_file: "ai.opencode.desktop".to_string(),
-        };
-    }
-
-    if cls_lower.contains("edge") || cls_lower.contains("msedge") {
-        return WindowMeta {
-            app_name: "Edge".to_string(),
-            icon_name: "microsoft-edge".to_string(),
-            material_icon: "language".to_string(),
-            app_id: "microsoft-edge".to_string(),
-            desktop_file: "microsoft-edge".to_string(),
-        };
-    }
-
-    if cls_lower.contains("ghostty") || app_lower.contains("ghostty") {
-        return WindowMeta {
-            app_name: "Terminal".to_string(),
-            icon_name: "com.mitchellh.ghostty".to_string(),
-            material_icon: "terminal".to_string(),
-            app_id: "ghostty".to_string(),
-            desktop_file: "com.mitchellh.ghostty".to_string(),
-        };
-    }
-
-    if cls_lower.contains("quickshell") || app_lower.contains("quickshell") {
-        return WindowMeta {
-            app_name: "Quickshell".to_string(),
-            icon_name: "org.quickshell".to_string(),
-            material_icon: "widgets".to_string(),
-            app_id: "quickshell".to_string(),
-            desktop_file: "org.quickshell".to_string(),
-        };
-    }
-
-    if cls_lower.contains("code") {
-        return WindowMeta {
-            app_name: "VS Code".to_string(),
-            icon_name: "vscode".to_string(),
-            material_icon: "code".to_string(),
-            app_id: "code".to_string(),
-            desktop_file: "code".to_string(),
-        };
-    }
-
-    if cls_lower.contains("dolphin") {
-        return WindowMeta {
-            app_name: "Files".to_string(),
-            icon_name: "org.kde.dolphin".to_string(),
-            material_icon: "folder".to_string(),
-            app_id: "org.kde.dolphin".to_string(),
-            desktop_file: "org.kde.dolphin".to_string(),
-        };
-    }
-
-    if cls_lower.contains("lutris") {
-        return WindowMeta {
-            app_name: "Lutris".to_string(),
-            icon_name: "net.lutris.Lutris".to_string(),
-            material_icon: "sports_esports".to_string(),
-            app_id: "net.lutris.Lutris".to_string(),
-            desktop_file: "net.lutris.Lutris".to_string(),
-        };
-    }
-
-    if cls_lower.contains("token-tracker") || app_lower.contains("token-tracker") {
-        return WindowMeta {
-            app_name: "Tracker".to_string(),
-            icon_name: "token-tracker".to_string(),
-            material_icon: "insights".to_string(),
-            app_id: "token-tracker".to_string(),
-            desktop_file: "com.gitawego.token-tracker-dashboard".to_string(),
-        };
-    }
-
-    if cls_lower.contains("haruna") || t_lower.contains("mp4") || t_lower.contains("mkv") {
-        return WindowMeta {
-            app_name: "Haruna".to_string(),
-            icon_name: "org.kde.haruna".to_string(),
-            material_icon: "movie".to_string(),
-            app_id: "haruna".to_string(),
-            desktop_file: "org.kde.haruna".to_string(),
-        };
-    }
-
-    if cls_lower.contains("gradia") {
-        return WindowMeta {
-            app_name: "Gradia".to_string(),
-            icon_name: "be.alexandervanhee.gradia".to_string(),
-            material_icon: "palette".to_string(),
-            app_id: "gradia".to_string(),
-            desktop_file: "be.alexandervanhee.gradia".to_string(),
-        };
-    }
-
-    if cls_lower.contains("spectacle") {
-        return WindowMeta {
-            app_name: "Spectacle".to_string(),
-            icon_name: "org.kde.spectacle".to_string(),
-            material_icon: "photo_camera".to_string(),
-            app_id: "spectacle".to_string(),
-            desktop_file: "org.kde.spectacle".to_string(),
-        };
-    }
-
-    if cls_lower.contains("discord") || cls_lower.contains("vesktop") {
-        return WindowMeta {
-            app_name: "Discord".to_string(),
-            icon_name: "discord".to_string(),
-            material_icon: "chat".to_string(),
-            app_id: "discord".to_string(),
-            desktop_file: "discord".to_string(),
-        };
-    }
-
-    if cls_lower.contains("steam") {
-        return WindowMeta {
-            app_name: "Steam".to_string(),
-            icon_name: "steam".to_string(),
-            material_icon: "sports_esports".to_string(),
-            app_id: "steam".to_string(),
-            desktop_file: "steam".to_string(),
-        };
-    }
-
-    if cls_lower.contains("spotify") {
-        return WindowMeta {
-            app_name: "Spotify".to_string(),
-            icon_name: "spotify".to_string(),
-            material_icon: "music_note".to_string(),
-            app_id: "spotify".to_string(),
-            desktop_file: "spotify".to_string(),
-        };
-    }
-
-    // 2. Wine executable recognition
-    if cls_lower.ends_with(".exe") {
-        let clean = &cls[..cls.len() - 4];
-        let clean_lower = clean.to_lowercase();
-        if clean_lower.contains("cloudmusic") || clean_lower.contains("netease") {
-            return WindowMeta {
-                app_name: "CloudMusic".to_string(),
-                icon_name: "netease-cloud-music".to_string(),
-                material_icon: "music_note".to_string(),
-                app_id: "cloudmusic".to_string(),
-                desktop_file: "lutris:rungame/netease-cloud-music".to_string(),
-            };
-        }
-        if clean_lower.contains("wechat") {
-            return WindowMeta {
-                app_name: "WeChat".to_string(),
-                icon_name: "wechat".to_string(),
-                material_icon: "chat".to_string(),
-                app_id: "wechat".to_string(),
-                desktop_file: "wechat".to_string(),
-            };
-        }
-        if clean_lower.contains("qq") {
-            return WindowMeta {
-                app_name: "QQ".to_string(),
-                icon_name: "qq".to_string(),
-                material_icon: "chat".to_string(),
-                app_id: "qq".to_string(),
-                desktop_file: "qq".to_string(),
-            };
-        }
-        let cap = capitalize_truncate(clean, 14);
-        let icon = if !krunner_icon.is_empty() { krunner_icon } else { "wine" };
-        return WindowMeta {
-            app_name: cap,
-            icon_name: icon.to_string(),
-            material_icon: "window".to_string(),
-            app_id: clean_lower.clone(),
-            desktop_file: clean_lower,
-        };
-    }
-
-    // 3. Title-based fallbacks
-    if t_lower.contains("antigravity") {
-        return WindowMeta {
-            app_name: "Antigravity".to_string(),
-            icon_name: "antigravity".to_string(),
-            material_icon: "smart_toy".to_string(),
-            app_id: "antigravity".to_string(),
-            desktop_file: "ai.opencode.desktop".to_string(),
-        };
-    }
-    if t_lower.contains("netease") || t_lower.contains("cloudmusic") {
-        return WindowMeta {
-            app_name: "CloudMusic".to_string(),
-            icon_name: "netease-cloud-music".to_string(),
-            material_icon: "music_note".to_string(),
-            app_id: "cloudmusic".to_string(),
-            desktop_file: "lutris:rungame/netease-cloud-music".to_string(),
-        };
-    }
-    if t_lower.contains("visual studio code") {
-        return WindowMeta {
-            app_name: "VS Code".to_string(),
-            icon_name: "vscode".to_string(),
-            material_icon: "code".to_string(),
-            app_id: "code".to_string(),
-            desktop_file: "code".to_string(),
-        };
-    }
-    if t_lower.contains("terminal") || t_lower.contains("konsole") || t_lower.contains("workspace") {
-        return WindowMeta {
-            app_name: "Terminal".to_string(),
-            icon_name: "utilities-terminal".to_string(),
-            material_icon: "terminal".to_string(),
-            app_id: "terminal".to_string(),
-            desktop_file: "utilities-terminal".to_string(),
-        };
-    }
-
-    // 4. General fallback
-    let mut icon_candidate = if !krunner_icon.is_empty() {
+/// Generic fallback for windows that have neither a desktop entry nor a Wine
+/// executable name (ad-hoc binaries, unusual toolkits).
+fn generic_meta(title: &str, cls: &str, app: &str, krunner_icon: &str) -> WindowMeta {
+    let icon_candidate = if !krunner_icon.is_empty() {
         krunner_icon
     } else if !app.is_empty() {
         app
     } else {
         cls
     };
-    if icon_candidate == "ai.opencode.desktop" {
-        icon_candidate = "antigravity";
-    }
 
     let app_name = if let Some(idx) = title.rfind(" — ") {
         title[idx + 4..].trim().chars().take(14).collect::<String>()
@@ -289,6 +95,47 @@ pub fn resolve_window_meta(
         app_id,
         desktop_file,
     }
+}
+
+/// Resolve a window's identity, preferring installed desktop entries.
+///
+/// Tier 1 is what makes this general: any installed application resolves from
+/// its own desktop entry, with no per-app code and no substring ambiguity.
+pub fn resolve_window_meta_with(
+    index: Option<&AppIdentityIndex>,
+    title: &str,
+    cls: &str,
+    app: &str,
+    krunner_icon: &str,
+) -> WindowMeta {
+    if let Some(entry) = index.and_then(|i| i.resolve(cls, app)) {
+        return WindowMeta {
+            app_name: entry.name.clone(),
+            // The desktop entry's Icon= is what the taskbar should draw.
+            icon_name: if entry.icon.is_empty() {
+                entry.desktop_id.clone()
+            } else {
+                entry.icon.clone()
+            },
+            material_icon: entry.material_icon.clone(),
+            app_id: entry.desktop_id.clone(),
+            desktop_file: entry.desktop_id.clone(),
+        };
+    }
+
+    if let Some(meta) = wine_meta(cls, krunner_icon) {
+        return meta;
+    }
+
+    generic_meta(title, cls, app, krunner_icon)
+}
+
+/// Resolve without consulting installed desktop entries.
+///
+/// Retained for callers that need a pure, filesystem-free function (and for
+/// tests); production code uses [`resolve_window_meta_with`].
+pub fn resolve_window_meta(title: &str, cls: &str, app: &str, krunner_icon: &str) -> WindowMeta {
+    resolve_window_meta_with(None, title, cls, app, krunner_icon)
 }
 
 fn capitalize_truncate(s: &str, max_chars: usize) -> String {

@@ -28,7 +28,10 @@ Item {
     }
     readonly property string plasmaBackupDir: settings.plasma?.backupDir ?? ""
     readonly property bool autoRestorePlasmaOnExit: settings.plasma?.autoRestoreOnExit ?? true
-    readonly property string daemonBin: "/mnt/data/workspace/caelestia-kde/bin/astral-plasma"
+    // Derived from this test file's own location: a hardcoded machine path
+    // would silently rot the moment the checkout moves.
+    readonly property string repoRoot: Qt.resolvedUrl("..").toString().replace(/\/$/, "")
+    readonly property string daemonBin: repoRoot + "/bin/astral-plasma"
 
     // Helper functions for command preparation matching shell.qml
     function buildDisableCommand(pid) {

@@ -14,7 +14,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QML_FILES=$(find "$DIR" -maxdepth 1 -name "tst_*.qml" | sort)
 COUNT=$(echo "$QML_FILES" | wc -l)
 
-echo "=== Running $COUNT Caelestia KDE QML Test Suite(s) ==="
+echo "=== Running $COUNT Astral Plasma QML Test Suite(s) ==="
 ALL_PASSED=1
 
 for test_file in $QML_FILES; do

@@ -58,6 +58,26 @@ Item {
 
     property bool isDismissed: false
 
+    // --- Authoritative painted extents ---------------------------------
+    // The compositor blur mask in UnifiedShell consumes these so it can never
+    // overhang the glass. FusedPanel's cardRectangle fills this item's rect
+    // exactly (0,0,panelWidth,currentEnvelopeHeight), so the body is simply the
+    // panel's own rect - NOT extended by the border rounding.
+    //
+    // Extending the mask by `borderRounding` on every side (as it previously did)
+    // frosted a strip of bare desktop along the bottom and left, where nothing is
+    // drawn. The only painted area outside this rect is the single concave corner
+    // fillet at the top-left junction, which is a quarter disc living in the top
+    // `borderRounding` rows - exposed separately as `shoulderRect` so the mask can
+    // cover just that stub instead of a full-height column.
+    readonly property real surfaceWidth: width
+    readonly property real surfaceHeight: height
+    readonly property real surfaceX: x
+    readonly property real shoulderWidth: (panel.filletFactor > 0.01) ? borderRounding : 0
+    readonly property rect shoulderRect: Qt.rect(
+        Math.max(0, x - shoulderWidth), 0,
+        shoulderWidth, (panel.filletFactor > 0.01) ? borderRounding : 0)
+
     readonly property alias fusedPanel: panel
     readonly property alias autoCloseTimer: autoCloseTimer
     readonly property alias cardItem: notifCard
@@ -138,6 +158,11 @@ Item {
             anchors.bottomMargin: 6
             radius: 14
             elevation: 4
+            // No perimeter ring: the notification is a resting container, and its
+            // full-bleed silhouette is already defined by the panel's own fused
+            // border plus the specular hairlines. A ring here drew a second,
+            // smaller rounded box visibly inside the panel.
+            showBorder: false
         }
 
         Item {

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import "../theme"
 import "../config"
@@ -25,11 +26,41 @@ PanelWindow {
 
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: (PowerService.confirmDialogVisible || dropdownContainer.offsetProgress > 0.001 || Config.bottomPopoutVisible) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    // Keyboard focus policy.
+    //
+    // Requesting focus on this surface (OnDemand) makes KWin activate it - and
+    // because the surface is an invisible, full-screen layer shell, KWin never
+    // hands activation back when the focus request is withdrawn. The result was
+    // that merely opening a drawer left a `quickshell` window as the compositor's
+    // active window forever, starving the window watcher of `windowActivated`
+    // events so the dock's active-app display froze on a stale application.
+    //
+    // So focus is requested ONLY for the power-confirmation modal, where Enter and
+    // Escape are essential and a brief activation shift is what a user expects
+    // from a modal. Drawers and popouts instead close on mouse-leave and on
+    // scrim click, and cost nothing in activation terms.
+    WlrLayershell.keyboardFocus: (typeof PowerService !== "undefined" && PowerService.confirmDialogVisible)
+        ? WlrKeyboardFocus.OnDemand
+        : WlrKeyboardFocus.None
     WlrLayershell.exclusionMode: ExclusionMode.Ignore
 
     // Wayland Native Compositor Backdrop Blur for Liquid Glass
     BackgroundEffect.blurRegion: Region {
+        // Blur-region visibility gate.
+        //
+        // The compositor keeps applying the LAST region it received, so a
+        // region that collapses through a partially-zero (degenerate) state on
+        // the animation's final frame can stay on screen until some unrelated
+        // repaint happens to commit the clear - which is why the blur outlives
+        // a closing drawer by up to a second. Two rules prevent it:
+        //
+        //   1. All dimensions are gated by ONE boolean, so the region is either
+        //      a valid positive-area rect or fully empty - never 980x0.
+        //   2. That boolean clears while the close animation still has frames
+        //      left (offset 0.06 leaves ~17 frames at 60Hz to flush the clear).
+        //
+        // The main body's height is clamped to the frame thickness so it can
+        // never thin out to nothing while still active.
         // Left Dock
         Region {
             x: 0
@@ -63,404 +94,430 @@ PanelWindow {
         }
 
         // Screen Inner Fillet: Top-Left
-        Region { x: root.dockW; y: root.borderT; width: 12; height: 2 }
-        Region { x: root.dockW; y: root.borderT + 2; width: 7; height: 3 }
-        Region { x: root.dockW; y: root.borderT + 5; width: 4; height: 4 }
-        Region { x: root.dockW; y: root.borderT + 9; width: 2; height: 5 }
-        Region { x: root.dockW; y: root.borderT + 14; width: 1; height: 6 }
+        Region { x: root.dockW; y: root.borderT + root.filletProfile.depths[0]; width: root.filletProfile.widths[0]; height: root.filletProfile.heights[0] }
+        Region { x: root.dockW; y: root.borderT + root.filletProfile.depths[1]; width: root.filletProfile.widths[1]; height: root.filletProfile.heights[1] }
+        Region { x: root.dockW; y: root.borderT + root.filletProfile.depths[2]; width: root.filletProfile.widths[2]; height: root.filletProfile.heights[2] }
+        Region { x: root.dockW; y: root.borderT + root.filletProfile.depths[3]; width: root.filletProfile.widths[3]; height: root.filletProfile.heights[3] }
+        Region { x: root.dockW; y: root.borderT + root.filletProfile.depths[4]; width: root.filletProfile.widths[4]; height: root.filletProfile.heights[4] }
+        Region { x: root.dockW; y: root.borderT + root.filletProfile.depths[5]; width: root.filletProfile.widths[5]; height: root.filletProfile.heights[5] }
+        Region { x: root.dockW; y: root.borderT + root.filletProfile.depths[6]; width: root.filletProfile.widths[6]; height: root.filletProfile.heights[6] }
 
         // Screen Inner Fillet: Top-Right
-        Region { x: root.width - root.borderT - 12; y: root.borderT; width: 12; height: 2 }
-        Region { x: root.width - root.borderT - 7; y: root.borderT + 2; width: 7; height: 3 }
-        Region { x: root.width - root.borderT - 4; y: root.borderT + 5; width: 4; height: 4 }
-        Region { x: root.width - root.borderT - 2; y: root.borderT + 9; width: 2; height: 5 }
-        Region { x: root.width - root.borderT - 1; y: root.borderT + 14; width: 1; height: 6 }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[0]; y: root.borderT + root.filletProfile.depths[0]; width: root.filletProfile.widths[0]; height: root.filletProfile.heights[0] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[1]; y: root.borderT + root.filletProfile.depths[1]; width: root.filletProfile.widths[1]; height: root.filletProfile.heights[1] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[2]; y: root.borderT + root.filletProfile.depths[2]; width: root.filletProfile.widths[2]; height: root.filletProfile.heights[2] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[3]; y: root.borderT + root.filletProfile.depths[3]; width: root.filletProfile.widths[3]; height: root.filletProfile.heights[3] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[4]; y: root.borderT + root.filletProfile.depths[4]; width: root.filletProfile.widths[4]; height: root.filletProfile.heights[4] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[5]; y: root.borderT + root.filletProfile.depths[5]; width: root.filletProfile.widths[5]; height: root.filletProfile.heights[5] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[6]; y: root.borderT + root.filletProfile.depths[6]; width: root.filletProfile.widths[6]; height: root.filletProfile.heights[6] }
 
         // Screen Inner Fillet: Bottom-Left
-        Region { x: root.dockW; y: root.height - root.borderT - 2; width: 12; height: 2 }
-        Region { x: root.dockW; y: root.height - root.borderT - 5; width: 7; height: 3 }
-        Region { x: root.dockW; y: root.height - root.borderT - 9; width: 4; height: 4 }
-        Region { x: root.dockW; y: root.height - root.borderT - 14; width: 2; height: 5 }
-        Region { x: root.dockW; y: root.height - root.borderT - 20; width: 1; height: 6 }
+        Region { x: root.dockW; y: root.height - root.borderT - root.filletProfile.depths[1]; width: root.filletProfile.widths[0]; height: root.filletProfile.heights[0] }
+        Region { x: root.dockW; y: root.height - root.borderT - root.filletProfile.depths[2]; width: root.filletProfile.widths[1]; height: root.filletProfile.heights[1] }
+        Region { x: root.dockW; y: root.height - root.borderT - root.filletProfile.depths[3]; width: root.filletProfile.widths[2]; height: root.filletProfile.heights[2] }
+        Region { x: root.dockW; y: root.height - root.borderT - root.filletProfile.depths[4]; width: root.filletProfile.widths[3]; height: root.filletProfile.heights[3] }
+        Region { x: root.dockW; y: root.height - root.borderT - root.filletProfile.depths[5]; width: root.filletProfile.widths[4]; height: root.filletProfile.heights[4] }
+        Region { x: root.dockW; y: root.height - root.borderT - root.filletProfile.depths[6]; width: root.filletProfile.widths[5]; height: root.filletProfile.heights[5] }
+        Region { x: root.dockW; y: root.height - root.borderT - root.filletProfile.depths[7]; width: root.filletProfile.widths[6]; height: root.filletProfile.heights[6] }
 
         // Screen Inner Fillet: Bottom-Right
-        Region { x: root.width - root.borderT - 12; y: root.height - root.borderT - 2; width: 12; height: 2 }
-        Region { x: root.width - root.borderT - 7; y: root.height - root.borderT - 5; width: 7; height: 3 }
-        Region { x: root.width - root.borderT - 4; y: root.height - root.borderT - 9; width: 4; height: 4 }
-        Region { x: root.width - root.borderT - 2; y: root.height - root.borderT - 14; width: 2; height: 5 }
-        Region { x: root.width - root.borderT - 1; y: root.height - root.borderT - 20; width: 1; height: 6 }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[0]; y: root.height - root.borderT - root.filletProfile.depths[1]; width: root.filletProfile.widths[0]; height: root.filletProfile.heights[0] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[1]; y: root.height - root.borderT - root.filletProfile.depths[2]; width: root.filletProfile.widths[1]; height: root.filletProfile.heights[1] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[2]; y: root.height - root.borderT - root.filletProfile.depths[3]; width: root.filletProfile.widths[2]; height: root.filletProfile.heights[2] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[3]; y: root.height - root.borderT - root.filletProfile.depths[4]; width: root.filletProfile.widths[3]; height: root.filletProfile.heights[3] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[4]; y: root.height - root.borderT - root.filletProfile.depths[5]; width: root.filletProfile.widths[4]; height: root.filletProfile.heights[4] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[5]; y: root.height - root.borderT - root.filletProfile.depths[6]; width: root.filletProfile.widths[5]; height: root.filletProfile.heights[5] }
+        Region { x: root.width - root.borderT - root.filletProfile.widths[6]; y: root.height - root.borderT - root.filletProfile.depths[7]; width: root.filletProfile.widths[6]; height: root.filletProfile.heights[6] }
 
         // Central Dropdown Dashboard (when open) - Inset bottom corners to match rounded card borders
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? root.dropX : 0
+            x: root.blurRegionActive ? root.dropX : 0
             y: 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.dropW : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.max(0, root.currentDropH - root.filletR) : 0
+            width: root.blurRegionActive ? root.dropW : 0
+            height: root.blurRegionActive ? root.blurDropH : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + Math.round(root.filletR * 0.15)) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? Math.max(0, root.currentDropH - root.filletR) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? Math.max(0, root.dropW - Math.round(root.filletR * 0.30)) : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.round(root.filletR * 0.50) : 0
+            x: root.blurRegionActive ? (root.dropX + Math.round(root.filletR * 0.15)) : 0
+            y: root.blurRegionActive ? root.blurDropH : 0
+            width: root.blurRegionActive ? Math.max(0, root.dropW - Math.round(root.filletR * 0.30)) : 0
+            height: root.blurRegionActive ? Math.round(root.filletR * 0.50) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + Math.round(root.filletR * 0.40)) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? Math.max(0, root.currentDropH - Math.round(root.filletR * 0.50)) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? Math.max(0, root.dropW - Math.round(root.filletR * 0.80)) : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.round(root.filletR * 0.30) : 0
+            x: root.blurRegionActive ? (root.dropX + Math.round(root.filletR * 0.40)) : 0
+            y: root.blurRegionActive ? Math.max(0, root.currentDropH - Math.round(root.filletR * 0.50)) : 0
+            width: root.blurRegionActive ? Math.max(0, root.dropW - Math.round(root.filletR * 0.80)) : 0
+            height: root.blurRegionActive ? Math.round(root.filletR * 0.30) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.filletR) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? Math.max(0, root.currentDropH - Math.round(root.filletR * 0.20)) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? Math.max(0, root.dropW - root.filletR * 2) : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.round(root.filletR * 0.20) : 0
+            x: root.blurRegionActive ? (root.dropX + root.filletR) : 0
+            y: root.blurRegionActive ? Math.max(0, root.currentDropH - Math.round(root.filletR * 0.20)) : 0
+            width: root.blurRegionActive ? Math.max(0, root.dropW - root.filletR * 2) : 0
+            height: root.blurRegionActive ? Math.round(root.filletR * 0.20) : 0
         }
 
         // Central Dropdown Left Shoulder Fillet
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - root.filletW1) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? root.borderT : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW1 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH1, Math.max(0, root.currentDropH - root.borderT)) : 0
+            x: root.blurRegionActive ? (root.dropX - root.filletW1) : 0
+            y: root.blurRegionActive ? root.borderT : 0
+            width: root.blurRegionActive ? root.filletW1 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH1, Math.max(0, root.currentDropH - root.borderT)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - root.filletW2) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD1) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW2 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH2, Math.max(0, root.currentDropH - root.borderT - root.filletD1)) : 0
+            x: root.blurRegionActive ? (root.dropX - root.filletW2) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD1) : 0
+            width: root.blurRegionActive ? root.filletW2 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH2, Math.max(0, root.currentDropH - root.borderT - root.filletD1)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - root.filletW3) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD2) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW3 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH3, Math.max(0, root.currentDropH - root.borderT - root.filletD2)) : 0
+            x: root.blurRegionActive ? (root.dropX - root.filletW3) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD2) : 0
+            width: root.blurRegionActive ? root.filletW3 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH3, Math.max(0, root.currentDropH - root.borderT - root.filletD2)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - root.filletW4) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD3) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW4 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH4, Math.max(0, root.currentDropH - root.borderT - root.filletD3)) : 0
+            x: root.blurRegionActive ? (root.dropX - root.filletW4) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD3) : 0
+            width: root.blurRegionActive ? root.filletW4 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH4, Math.max(0, root.currentDropH - root.borderT - root.filletD3)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - root.filletW5) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD4) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW5 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH5, Math.max(0, root.currentDropH - root.borderT - root.filletD4)) : 0
+            x: root.blurRegionActive ? (root.dropX - root.filletW5) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD4) : 0
+            width: root.blurRegionActive ? root.filletW5 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH5, Math.max(0, root.currentDropH - root.borderT - root.filletD4)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - root.filletW6) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD5) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW6 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH6, Math.max(0, root.currentDropH - root.borderT - root.filletD5)) : 0
+            x: root.blurRegionActive ? (root.dropX - root.filletW6) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD5) : 0
+            width: root.blurRegionActive ? root.filletW6 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH6, Math.max(0, root.currentDropH - root.borderT - root.filletD5)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX - root.filletW7) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD6) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW7 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH7, Math.max(0, root.currentDropH - root.borderT - root.filletD6)) : 0
+            x: root.blurRegionActive ? (root.dropX - root.filletW7) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD6) : 0
+            width: root.blurRegionActive ? root.filletW7 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH7, Math.max(0, root.currentDropH - root.borderT - root.filletD6)) : 0
         }
 
         // Central Dropdown Right Shoulder Fillet
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? root.borderT : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW1 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH1, Math.max(0, root.currentDropH - root.borderT)) : 0
+            x: root.blurRegionActive ? (root.dropX + root.dropW) : 0
+            y: root.blurRegionActive ? root.borderT : 0
+            width: root.blurRegionActive ? root.filletW1 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH1, Math.max(0, root.currentDropH - root.borderT)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD1) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW2 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH2, Math.max(0, root.currentDropH - root.borderT - root.filletD1)) : 0
+            x: root.blurRegionActive ? (root.dropX + root.dropW) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD1) : 0
+            width: root.blurRegionActive ? root.filletW2 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH2, Math.max(0, root.currentDropH - root.borderT - root.filletD1)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD2) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW3 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH3, Math.max(0, root.currentDropH - root.borderT - root.filletD2)) : 0
+            x: root.blurRegionActive ? (root.dropX + root.dropW) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD2) : 0
+            width: root.blurRegionActive ? root.filletW3 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH3, Math.max(0, root.currentDropH - root.borderT - root.filletD2)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD3) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW4 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH4, Math.max(0, root.currentDropH - root.borderT - root.filletD3)) : 0
+            x: root.blurRegionActive ? (root.dropX + root.dropW) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD3) : 0
+            width: root.blurRegionActive ? root.filletW4 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH4, Math.max(0, root.currentDropH - root.borderT - root.filletD3)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD4) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW5 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH5, Math.max(0, root.currentDropH - root.borderT - root.filletD4)) : 0
+            x: root.blurRegionActive ? (root.dropX + root.dropW) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD4) : 0
+            width: root.blurRegionActive ? root.filletW5 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH5, Math.max(0, root.currentDropH - root.borderT - root.filletD4)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD5) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW6 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH6, Math.max(0, root.currentDropH - root.borderT - root.filletD5)) : 0
+            x: root.blurRegionActive ? (root.dropX + root.dropW) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD5) : 0
+            width: root.blurRegionActive ? root.filletW6 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH6, Math.max(0, root.currentDropH - root.borderT - root.filletD5)) : 0
         }
         Region {
-            x: dropdownContainer.offsetProgress > 0.001 ? (root.dropX + root.dropW) : 0
-            y: dropdownContainer.offsetProgress > 0.001 ? (root.borderT + root.filletD6) : 0
-            width: dropdownContainer.offsetProgress > 0.001 ? root.filletW7 : 0
-            height: dropdownContainer.offsetProgress > 0.001 ? Math.min(root.filletH7, Math.max(0, root.currentDropH - root.borderT - root.filletD6)) : 0
+            x: root.blurRegionActive ? (root.dropX + root.dropW) : 0
+            y: root.blurRegionActive ? (root.borderT + root.filletD6) : 0
+            width: root.blurRegionActive ? root.filletW7 : 0
+            height: root.blurRegionActive ? Math.min(root.filletH7, Math.max(0, root.currentDropH - root.borderT - root.filletD6)) : 0
         }
 
         // Fused Bottom Popout (when open & fused to bottom border)
         // Top-right convex corner slices (when fused to bottom)
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? fusedBottomPopoutWrapper.y : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 15) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 1 : 0
+            x: (root.blurPopoutFused) ? root.dockW : 0
+            y: (root.blurPopoutFused) ? fusedBottomPopoutWrapper.y : 0
+            width: (root.blurPopoutFused) ? Math.max(0, root.currentPopW - 15) : 0
+            height: (root.blurPopoutFused) ? 1 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 1) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 12) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 1 : 0
+            x: (root.blurPopoutFused) ? root.dockW : 0
+            y: (root.blurPopoutFused) ? (fusedBottomPopoutWrapper.y + 1) : 0
+            width: (root.blurPopoutFused) ? Math.max(0, root.currentPopW - 12) : 0
+            height: (root.blurPopoutFused) ? 1 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 2) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 9) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 2 : 0
+            x: (root.blurPopoutFused) ? root.dockW : 0
+            y: (root.blurPopoutFused) ? (fusedBottomPopoutWrapper.y + 2) : 0
+            width: (root.blurPopoutFused) ? Math.max(0, root.currentPopW - 9) : 0
+            height: (root.blurPopoutFused) ? 2 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 4) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 5) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 3 : 0
+            x: (root.blurPopoutFused) ? root.dockW : 0
+            y: (root.blurPopoutFused) ? (fusedBottomPopoutWrapper.y + 4) : 0
+            width: (root.blurPopoutFused) ? Math.max(0, root.currentPopW - 5) : 0
+            height: (root.blurPopoutFused) ? 3 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 7) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 3) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 3 : 0
+            x: (root.blurPopoutFused) ? root.dockW : 0
+            y: (root.blurPopoutFused) ? (fusedBottomPopoutWrapper.y + 7) : 0
+            width: (root.blurPopoutFused) ? Math.max(0, root.currentPopW - 3) : 0
+            height: (root.blurPopoutFused) ? 3 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 10) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, root.currentPopW - 1) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? 4 : 0
+            x: (root.blurPopoutFused) ? root.dockW : 0
+            y: (root.blurPopoutFused) ? (fusedBottomPopoutWrapper.y + 10) : 0
+            width: (root.blurPopoutFused) ? Math.max(0, root.currentPopW - 1) : 0
+            height: (root.blurPopoutFused) ? 4 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (fusedBottomPopoutWrapper.y + 14) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.currentPopW : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? Math.max(0, (root.height - fusedBottomPopoutWrapper.y) - 14) : 0
+            x: (root.blurPopoutFused) ? root.dockW : 0
+            // Spans the whole surface: the mask is a UNION, so overlapping the
+            // corner staircases below is harmless. Any inset here would instead
+            // leave a full-width band of unblurred glass, which shows the
+            // wallpaper sharply and reads as the blur lagging the popout.
+            // Consumes UnifiedFrame's authoritative FULL surface rect, so the mask
+            // cannot diverge from the drawn glass. fullRect (not bodyRect) is
+            // required: the top and bottom `filletR` bands are glass right across
+            // the width - only their leftmost sliver is the concave shoulder - so a
+            // body-sized mask would leave those bands unblurred.
+            // (Was `root.height - wrapper.y`, sized to the screen bottom rather
+            // than to the surface.)
+            y: (root.blurPopoutFused) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.y : 0
+            width: (root.blurPopoutFused) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.width : 0
+            height: (root.blurPopoutFused) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.height : 0
         }
 
         // Floating Bottom Popout (when open & floating)
         // Top-right convex corner slices (when floating)
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? fusedBottomPopoutWrapper.y : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 15) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 1 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? fusedBottomPopoutWrapper.y : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 15) : 0
+            height: (root.blurPopoutFloating) ? 1 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 1) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 12) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 1 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 1) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 12) : 0
+            height: (root.blurPopoutFloating) ? 1 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 2) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 9) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 2 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 2) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 9) : 0
+            height: (root.blurPopoutFloating) ? 2 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 4) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 5) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 3 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 4) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 5) : 0
+            height: (root.blurPopoutFloating) ? 3 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 7) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 3) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 3 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 7) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 3) : 0
+            height: (root.blurPopoutFloating) ? 3 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 10) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 1) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 4 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 10) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 1) : 0
+            height: (root.blurPopoutFloating) ? 4 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + 14) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.currentPopW : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, fusedBottomPopoutWrapper.height - 28) : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            // Full-height, full-width body (see the fused body's note: the mask
+            // is a union, so overlapping the staircases is harmless and the
+            // previous 14px insets left unblurred bands top and bottom).
+            // Reach past the wrapper by the shoulder radius so the concave
+            // shoulder bands are covered too.
+            // Same authoritative source as the fused body (see its note): fullRect,
+            // so the shoulder bands are covered across their whole width.
+            y: (root.blurPopoutFloating) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.y : 0
+            width: (root.blurPopoutFloating) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.width : 0
+            height: (root.blurPopoutFloating) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.height : 0
         }
         // Bottom-right convex corner slices (when floating)
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 14) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 1) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 4 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 14) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 1) : 0
+            height: (root.blurPopoutFloating) ? 4 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 10) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 3) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 3 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 10) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 3) : 0
+            height: (root.blurPopoutFloating) ? 3 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 7) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 5) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 3 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 7) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 5) : 0
+            height: (root.blurPopoutFloating) ? 3 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 4) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 9) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 2 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 4) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 9) : 0
+            height: (root.blurPopoutFloating) ? 2 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 2) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 12) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 1 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 2) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 12) : 0
+            height: (root.blurPopoutFloating) ? 1 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 1) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.max(0, root.currentPopW - 15) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? 1 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 1) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 15) : 0
+            height: (root.blurPopoutFloating) ? 1 : 0
         }
 
         // Bottom Popout Top Shoulder Fillet (Frosted Glass Blur)
         Region {
-            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.y - root.filletD1) : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.min(root.currentPopW, root.filletW1) : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletH1 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD1) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW1) : 0
+            height: root.blurPopoutActive ? root.filletH1 : 0
         }
         Region {
-            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.y - root.filletD2) : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.min(root.currentPopW, root.filletW2) : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletH2 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD2) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW2) : 0
+            height: root.blurPopoutActive ? root.filletH2 : 0
         }
         Region {
-            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.y - root.filletD3) : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.min(root.currentPopW, root.filletW3) : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletH3 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD3) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW3) : 0
+            height: root.blurPopoutActive ? root.filletH3 : 0
         }
         Region {
-            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.y - root.filletD4) : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.min(root.currentPopW, root.filletW4) : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletH4 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD4) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW4) : 0
+            height: root.blurPopoutActive ? root.filletH4 : 0
         }
         Region {
-            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.y - root.filletD5) : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.min(root.currentPopW, root.filletW5) : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletH5 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD5) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW5) : 0
+            height: root.blurPopoutActive ? root.filletH5 : 0
         }
         Region {
-            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.y - root.filletD6) : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.min(root.currentPopW, root.filletW6) : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletH6 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD6) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW6) : 0
+            height: root.blurPopoutActive ? root.filletH6 : 0
         }
         Region {
-            x: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.dockW : 0
-            y: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? (fusedBottomPopoutWrapper.y - root.filletD7) : 0
-            width: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? Math.min(root.currentPopW, root.filletW7) : 0
-            height: fusedBottomPopoutWrapper.offsetProgress > 0.001 ? root.filletH7 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD7) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW7) : 0
+            height: root.blurPopoutActive ? root.filletH7 : 0
         }
 
         // Bottom Popout Bottom Shoulder Fillet (Frosted Glass Blur, when floating)
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD1 - root.filletH1) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW1) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH1 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD1 - root.filletH1) : 0
+            width: (root.blurPopoutFloating) ? Math.min(root.currentPopW, root.filletW1) : 0
+            height: (root.blurPopoutFloating) ? root.filletH1 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD2 - root.filletH2) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW2) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH2 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD2 - root.filletH2) : 0
+            width: (root.blurPopoutFloating) ? Math.min(root.currentPopW, root.filletW2) : 0
+            height: (root.blurPopoutFloating) ? root.filletH2 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD3 - root.filletH3) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW3) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH3 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD3 - root.filletH3) : 0
+            width: (root.blurPopoutFloating) ? Math.min(root.currentPopW, root.filletW3) : 0
+            height: (root.blurPopoutFloating) ? root.filletH3 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD4 - root.filletH4) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW4) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH4 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD4 - root.filletH4) : 0
+            width: (root.blurPopoutFloating) ? Math.min(root.currentPopW, root.filletW4) : 0
+            height: (root.blurPopoutFloating) ? root.filletH4 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD5 - root.filletH5) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW5) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH5 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD5 - root.filletH5) : 0
+            width: (root.blurPopoutFloating) ? Math.min(root.currentPopW, root.filletW5) : 0
+            height: (root.blurPopoutFloating) ? root.filletH5 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD6 - root.filletH6) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW6) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH6 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD6 - root.filletH6) : 0
+            width: (root.blurPopoutFloating) ? Math.min(root.currentPopW, root.filletW6) : 0
+            height: (root.blurPopoutFloating) ? root.filletH6 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.dockW : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD7 - root.filletH7) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? Math.min(root.currentPopW, root.filletW7) : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress <= 0.5) ? root.filletH7 : 0
+            x: (root.blurPopoutFloating) ? root.dockW : 0
+            y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height + root.filletD7 - root.filletH7) : 0
+            width: (root.blurPopoutFloating) ? Math.min(root.currentPopW, root.filletW7) : 0
+            height: (root.blurPopoutFloating) ? root.filletH7 : 0
         }
 
         // Bottom Popout Bottom-Right Concave Fillet (Frosted Glass Blur, when bottom-fused)
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.dockW + root.currentPopW) : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.height - root.borderT - root.filletD1) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletW1 : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletH1 : 0
+            x: (root.blurPopoutFused) ? (root.dockW + root.currentPopW) : 0
+            y: (root.blurPopoutFused) ? (root.height - root.borderT - root.filletD1) : 0
+            width: (root.blurPopoutFused) ? root.filletW1 : 0
+            height: (root.blurPopoutFused) ? root.filletH1 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.dockW + root.currentPopW) : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.height - root.borderT - root.filletD2) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletW2 : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletH2 : 0
+            x: (root.blurPopoutFused) ? (root.dockW + root.currentPopW) : 0
+            y: (root.blurPopoutFused) ? (root.height - root.borderT - root.filletD2) : 0
+            width: (root.blurPopoutFused) ? root.filletW2 : 0
+            height: (root.blurPopoutFused) ? root.filletH2 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.dockW + root.currentPopW) : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.height - root.borderT - root.filletD3) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletW3 : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletH3 : 0
+            x: (root.blurPopoutFused) ? (root.dockW + root.currentPopW) : 0
+            y: (root.blurPopoutFused) ? (root.height - root.borderT - root.filletD3) : 0
+            width: (root.blurPopoutFused) ? root.filletW3 : 0
+            height: (root.blurPopoutFused) ? root.filletH3 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.dockW + root.currentPopW) : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.height - root.borderT - root.filletD4) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletW4 : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletH4 : 0
+            x: (root.blurPopoutFused) ? (root.dockW + root.currentPopW) : 0
+            y: (root.blurPopoutFused) ? (root.height - root.borderT - root.filletD4) : 0
+            width: (root.blurPopoutFused) ? root.filletW4 : 0
+            height: (root.blurPopoutFused) ? root.filletH4 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.dockW + root.currentPopW) : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.height - root.borderT - root.filletD5) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletW5 : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletH5 : 0
+            x: (root.blurPopoutFused) ? (root.dockW + root.currentPopW) : 0
+            y: (root.blurPopoutFused) ? (root.height - root.borderT - root.filletD5) : 0
+            width: (root.blurPopoutFused) ? root.filletW5 : 0
+            height: (root.blurPopoutFused) ? root.filletH5 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.dockW + root.currentPopW) : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.height - root.borderT - root.filletD6) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletW6 : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletH6 : 0
+            x: (root.blurPopoutFused) ? (root.dockW + root.currentPopW) : 0
+            y: (root.blurPopoutFused) ? (root.height - root.borderT - root.filletD6) : 0
+            width: (root.blurPopoutFused) ? root.filletW6 : 0
+            height: (root.blurPopoutFused) ? root.filletH6 : 0
         }
         Region {
-            x: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.dockW + root.currentPopW) : 0
-            y: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? (root.height - root.borderT - root.filletD7) : 0
-            width: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletW7 : 0
-            height: (fusedBottomPopoutWrapper.offsetProgress > 0.001 && root.fusedProgress > 0.5) ? root.filletH7 : 0
+            x: (root.blurPopoutFused) ? (root.dockW + root.currentPopW) : 0
+            y: (root.blurPopoutFused) ? (root.height - root.borderT - root.filletD7) : 0
+            width: (root.blurPopoutFused) ? root.filletW7 : 0
+            height: (root.blurPopoutFused) ? root.filletH7 : 0
         }
 
         // Left Drawer / Context Menu (when open)
@@ -474,206 +531,224 @@ PanelWindow {
         // Right Edge Volume/Brightness Control (when open) - Precision Stepped Blur Body
         // Top-left convex corner slices
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 15))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.rightControlY : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 15) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 1 : 0
+            y: root.blurRightEdgeActive ? root.rightControlY : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 15) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 1 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 12))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 1) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 12) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 1 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + 1) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 12) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 1 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 9))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 2) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 9) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 2 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + 2) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 9) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 2 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 5))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 4) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 5) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 3 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + 4) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 5) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 3 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 3))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 7) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 3) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 3 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + 7) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 3) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 3 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 1))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 10) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 1) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 4 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + 10) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 1) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 4 : 0
         }
         // Middle full-width body
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - root.currentRightW)
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + 14) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.currentRightW + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.max(0, root.rightControlH - 28) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + 14) : 0
+            width: root.blurRightEdgeActive ? (root.currentRightW + root.borderT) : 0
+            height: root.blurRightEdgeActive ? Math.max(0, root.rightControlH - 28) : 0
         }
         // Bottom-left convex corner slices
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 1))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 14) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 1) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 4 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH - 14) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 1) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 4 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 3))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 10) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 3) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 3 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH - 10) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 3) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 3 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 5))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 7) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 5) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 3 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH - 7) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 5) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 3 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 9))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 4) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 9) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 2 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH - 4) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 9) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 2 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 12))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 2) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 12) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 1 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH - 2) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 12) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 1 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001
+            x: root.blurRightEdgeActive
                 ? (root.width - root.borderT - (root.currentRightW - 15))
                 : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH - 1) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? (Math.max(0, root.currentRightW - 15) + root.borderT) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? 1 : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH - 1) : 0
+            width: root.blurRightEdgeActive ? (Math.max(0, root.currentRightW - 15) + root.borderT) : 0
+            height: root.blurRightEdgeActive ? 1 : 0
         }
 
         // Right Edge Control Top Shoulder Fillet (Frosted Glass Stepped Slices)
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW1)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD1) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW1) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH1 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW1)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY - root.filletD1) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW1) : 0
+            height: root.blurRightEdgeActive ? root.filletH1 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW2)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD2) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW2) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH2 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW2)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY - root.filletD2) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW2) : 0
+            height: root.blurRightEdgeActive ? root.filletH2 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW3)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD3) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW3) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH3 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW3)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY - root.filletD3) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW3) : 0
+            height: root.blurRightEdgeActive ? root.filletH3 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW4)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD4) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW4) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH4 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW4)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY - root.filletD4) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW4) : 0
+            height: root.blurRightEdgeActive ? root.filletH4 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW5)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD5) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW5) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH5 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW5)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY - root.filletD5) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW5) : 0
+            height: root.blurRightEdgeActive ? root.filletH5 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW6)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD6) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW6) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH6 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW6)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY - root.filletD6) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW6) : 0
+            height: root.blurRightEdgeActive ? root.filletH6 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW7)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY - root.filletD7) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW7) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH7 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW7)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY - root.filletD7) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW7) : 0
+            height: root.blurRightEdgeActive ? root.filletH7 : 0
         }
 
         // Right Edge Control Bottom Shoulder Fillet (Frosted Glass Stepped Slices)
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW1)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD1 - root.filletH1) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW1) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH1 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW1)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH + root.filletD1 - root.filletH1) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW1) : 0
+            height: root.blurRightEdgeActive ? root.filletH1 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW2)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD2 - root.filletH2) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW2) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH2 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW2)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH + root.filletD2 - root.filletH2) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW2) : 0
+            height: root.blurRightEdgeActive ? root.filletH2 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW3)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD3 - root.filletH3) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW3) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH3 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW3)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH + root.filletD3 - root.filletH3) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW3) : 0
+            height: root.blurRightEdgeActive ? root.filletH3 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW4)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD4 - root.filletH4) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW4) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH4 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW4)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH + root.filletD4 - root.filletH4) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW4) : 0
+            height: root.blurRightEdgeActive ? root.filletH4 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW5)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD5 - root.filletH5) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW5) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH5 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW5)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH + root.filletD5 - root.filletH5) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW5) : 0
+            height: root.blurRightEdgeActive ? root.filletH5 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW6)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD6 - root.filletH6) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW6) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH6 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW6)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH + root.filletD6 - root.filletH6) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW6) : 0
+            height: root.blurRightEdgeActive ? root.filletH6 : 0
         }
         Region {
-            x: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW7)) : 0
-            y: rightEdgeControlWrapper.offsetProgress > 0.001 ? (root.rightControlY + root.rightControlH + root.filletD7 - root.filletH7) : 0
-            width: rightEdgeControlWrapper.offsetProgress > 0.001 ? Math.min(root.currentRightW, root.filletW7) : 0
-            height: rightEdgeControlWrapper.offsetProgress > 0.001 ? root.filletH7 : 0
+            x: root.blurRightEdgeActive ? (root.width - root.borderT - Math.min(root.currentRightW, root.filletW7)) : 0
+            y: root.blurRightEdgeActive ? (root.rightControlY + root.rightControlH + root.filletD7 - root.filletH7) : 0
+            width: root.blurRightEdgeActive ? Math.min(root.currentRightW, root.filletW7) : 0
+            height: root.blurRightEdgeActive ? root.filletH7 : 0
         }
 
-        // System Notifications Popup (when visible, including shoulder fillets)
+        // System Notifications Popup.
+        //
+        // Consumes the notification's own surface extents so the mask cannot
+        // overhang the glass. It previously added `filletR` to both the width and
+        // the height unconditionally, which blurred a 20px band of BARE desktop
+        // below the panel and a 20px column to its left - observable as frosted
+        // wallpaper with nothing drawn over it. The panel's real extent is:
+        //   * x: the panel's left edge, extended left only by the corner fillet
+        //        that is actually present (topLeft corner only)
+        //   * y: 0..height (the panel is flush with the screen top)
         Region {
-            x: (notifPopup.visible && !notifPopup.isDismissed) ? Math.max(0, root.width - notifPopup.width - root.filletR) : 0
+            x: (notifPopup.visible && !notifPopup.isDismissed) ? notifPopup.surfaceX : 0
             y: 0
-            width: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.width + root.filletR) : 0
-            height: (notifPopup.visible && !notifPopup.isDismissed) ? (notifPopup.height + root.filletR) : 0
+            width: (notifPopup.visible && !notifPopup.isDismissed) ? notifPopup.surfaceWidth : 0
+            height: (notifPopup.visible && !notifPopup.isDismissed) ? notifPopup.surfaceHeight : 0
+        }
+        // Shoulder stub: the concave fillet at the top-left junction is painted
+        // outside the panel rect, but only in the top `borderRounding` rows. A
+        // full-height column there would frost bare desktop below the shoulder.
+        Region {
+            x: (notifPopup.visible && !notifPopup.isDismissed) ? notifPopup.shoulderRect.x : 0
+            y: 0
+            width: (notifPopup.visible && !notifPopup.isDismissed) ? notifPopup.shoulderRect.width : 0
+            height: (notifPopup.visible && !notifPopup.isDismissed) ? notifPopup.shoulderRect.height : 0
         }
 
         // Power Confirmation Dialog Card Blur (Translucent Liquid Glass Modal)
@@ -720,11 +795,143 @@ PanelWindow {
     readonly property real filletW6: Math.round(root.filletR * 0.10)
     readonly property real filletW7: 1
 
+    // Screen-edge inner fillet: blur-mask slice profile, derived from the arc.
+    //
+    // These four fillets are concave arcs of radius `filletR` where the dock meets
+    // the top/bottom border. The compositor can only blur axis-aligned rectangles,
+    // so the arc must be approximated by stacked slices - and the mask must COVER
+    // the glass, because the glass is translucent (alpha ~0.65): any glass the mask
+    // misses shows sharp wallpaper through it.
+    //
+    // The previous profile was hand-tuned to widths 12/7/4/2/1, each sized for its
+    // slice's BOTTOM depth. Because the arc widens steeply toward the tangency, the
+    // top of every slice was left uncovered - up to 8px at the first slice - which
+    // rendered as a stepped corner. Deriving the widths from the arc equation and
+    // sizing each slice for its TOP depth makes the mask cover the glass by
+    // construction, for any configured radius.
+    //
+    // Depth fractions (fine near the tangency, where the curve changes fastest).
+    readonly property var filletProfile: {
+        const R = root.filletR;
+        const depths = [0, 1, 2, 4, 7, 11, 15, R];
+        const heights = [];
+        const widths = [];
+        for (let i = 0; i < depths.length - 1; i++) {
+            const d = depths[i];
+            const dist = Math.max(0, R - d);
+            const w = R - Math.sqrt(Math.max(0, R * R - dist * dist));
+            widths.push(Math.max(1, Math.min(R, Math.ceil(w))));
+            heights.push(depths[i + 1] - depths[i]);
+        }
+        return { widths: widths, heights: heights, depths: depths };
+    }
+
     // Dropdown Dashboard Geometry
     readonly property real dropW: Config.dashboardWidth
     readonly property real dropH: dropdownContainer.dropH
     readonly property real dropX: (root.width - root.dropW) / 2
     readonly property real currentDropH: dropdownContainer.currentDropH
+
+    // Blur-region visibility gate. The compositor keeps applying the LAST region
+    // it received, so a region collapsing through a partially-zero (degenerate)
+    // state on the animation's final frame can persist until some unrelated
+    // repaint commits the clear - which is why the blur outlives a closing
+    // drawer by up to a second. Two rules prevent it:
+    //   1. Every dimension is gated by ONE boolean, so the region is either a
+    //      valid positive-area rect or fully empty - never 980x0.
+    //   2. That boolean clears while the close animation still has frames left
+    //      (offset 0.06 leaves ~17 frames at 60Hz to flush the clear).
+    readonly property real blurRegionMinProgress: 0.06
+    readonly property bool blurRegionActive: dropdownContainer.offsetProgress > root.blurRegionMinProgress
+    // Because every dimension switches on the same frame, the region is never a
+    // degenerate strip: while active it always has positive width AND height.
+    readonly property real blurDropH: root.blurRegionActive
+        ? Math.max(1, root.currentDropH - root.filletR)
+        : 0
+
+    // Region probe (opt-in via Config.debugMode). Logs the exact rect handed to
+    // the compositor so a blur-teardown problem can be diagnosed from the shell
+    // log instead of inferred from screenshots. Costs nothing when debug is off.
+    readonly property rect dropdownBlurRect: Qt.rect(
+        root.blurRegionActive ? root.dropX : 0,
+        0,
+        root.blurRegionActive ? root.dropW : 0,
+        root.blurRegionActive ? root.blurDropH : 0)
+    onDropdownBlurRectChanged: {
+        if (typeof Config !== "undefined" && Config.debugMode) {
+            console.log("[BlurRegion] t=" + Date.now()
+                + " dropdown=" + root.dropdownBlurRect.width + "x" + root.dropdownBlurRect.height.toFixed(1)
+                + " popout=" + (root.blurPopoutActive ? "on" : "off")
+                + " rightEdge=" + (root.blurRightEdgeActive ? "on" : "off"));
+        }
+    }
+
+
+    // Same atomic-gate rule for the other drawers. Each is a separate region set
+    // with its own progress driver, and each would otherwise collapse its width
+    // and height at different offsets, leaving a degenerate region the
+    // compositor may keep applying after the drawer is gone.
+    readonly property bool blurPopoutActive: fusedBottomPopoutWrapper.offsetProgress > root.blurRegionMinProgress
+    readonly property bool blurPopoutFused: root.blurPopoutActive && root.fusedProgress > 0.5
+    readonly property bool blurPopoutFloating: root.blurPopoutActive && root.fusedProgress <= 0.5
+    readonly property bool blurRightEdgeActive: rightEdgeControlWrapper.offsetProgress > root.blurRegionMinProgress
+
+    // Blur-region audit trail (opt-in via Config.debugMode; no cost when off).
+    //
+    // The compositor blur is the UNION of every region below, so a region that is
+    // stale, mis-sized, or lingering shows as frosted glass somewhere the user
+    // never opened a drawer - and because blur can only be observed in a
+    // screenshot, an intermittent case is very hard to catch after the fact.
+    // Logging every region-driving rect makes such a case self-reporting: with
+    // debugMode on, reproduce it and read the offending rect out of the log.
+    readonly property var blurDebugRects: {
+        const app = appContextMenu;
+        const tray = trayContextMenu;
+        const popFloating = root.blurPopoutFloating;
+        const popFused = root.blurPopoutFused;
+        return [
+            { name: "dropdown", on: root.blurRegionActive,
+              x: root.dropX, y: 0, w: root.dropW, h: root.blurDropH },
+            { name: "dropdownShoulders", on: root.blurRegionActive,
+              x: root.dropX - root.filletW1, y: root.borderT,
+              w: root.filletW1 * 2, h: Math.max(0, root.currentDropH - root.borderT) },
+            { name: "popoutFloating", on: popFloating,
+              x: root.dockW, y: fusedBottomPopoutWrapper.y - root.filletR,
+              w: root.currentPopW, h: fusedBottomPopoutWrapper.height + root.filletR * 2 },
+            { name: "popoutFused", on: popFused,
+              x: root.dockW, y: fusedBottomPopoutWrapper.y,
+              w: root.currentPopW, h: Math.max(0, root.height - fusedBottomPopoutWrapper.y) },
+            { name: "notification", on: (notifPopup.visible && !notifPopup.isDismissed),
+              x: notifPopup.surfaceX, y: 0,
+              w: notifPopup.surfaceWidth, h: notifPopup.surfaceHeight },
+            { name: "appMenu", on: app.menuCardVisible,
+              x: root.dockW, y: app.menuCardY, w: app.menuCardW, h: app.menuCardH },
+            { name: "trayMenu", on: tray.menuCardVisible,
+              x: root.dockW, y: tray.menuCardY, w: tray.menuCardW, h: tray.menuCardH },
+            { name: "rightEdge", on: root.blurRightEdgeActive,
+              x: root.width - root.borderT - root.currentRightW, y: root.rightControlY - root.filletR,
+              w: root.currentRightW + root.borderT, h: root.rightControlH + root.filletR * 2 }
+        ];
+    }
+    property int _blurAuditTick: 0
+    Timer {
+        interval: 700; running: true; repeat: true
+        onTriggered: {
+            if (typeof Config === "undefined" || !Config.debugMode) return;
+            root._blurAuditTick++;
+            if (root._blurAuditTick % 3 !== 0) return;
+            const rects = root.blurDebugRects;
+            const active = [];
+            for (let i = 0; i < rects.length; i++) {
+                const r = rects[i];
+                if (r.on) {
+                    active.push(r.name + "=" + Math.round(r.x) + "," + Math.round(r.y)
+                        + " " + Math.round(r.w) + "x" + Math.round(r.h));
+                }
+            }
+            console.log("[BlurAudit] active: " + (active.length ? active.join("  ") : "(none)"));
+        }
+    }
 
     // Bottom Popout Geometry & Domain Fusion Math
     readonly property real currentPopW: (typeof fusedPopout !== "undefined" ? fusedPopout.popWidth : 280) * fusedBottomPopoutWrapper.offsetProgress
@@ -1484,6 +1691,28 @@ PanelWindow {
 
             RightEdgeControl {
                 anchors.fill: parent
+            }
+        }
+    }
+
+    // Focus restoration after the power-confirmation modal.
+    //
+    // Requesting keyboard focus on this full-screen layer surface makes KWin
+    // activate it (necessary for the modal's Enter/Escape handling), but KWin
+    // does not hand activation back when the request is withdrawn. Left alone,
+    // the compositor keeps the invisible shell surface as its active window, so
+    // the dock's active-app display freezes on a stale application. Handing
+    // activation back explicitly, once the modal is gone, closes that loop.
+    Process {
+        id: focusRestoreProc
+    }
+
+    Connections {
+        target: (typeof PowerService !== "undefined") ? PowerService : null
+        function onConfirmDialogVisibleChanged() {
+            if (!PowerService.confirmDialogVisible) {
+                focusRestoreProc.command = [Config.daemonBin, "focus", "restore"];
+                focusRestoreProc.running = true;
             }
         }
     }

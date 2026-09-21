@@ -33,7 +33,7 @@ Item {
             testRoot.activePreviewThumbnail = testRoot._previewCache[winKey];
         } else {
             testRoot.activePreviewThumbnail = "";
-            testRoot._previewCache[winKey] = "file:///tmp/caelestia_preview_" + winKey + ".png";
+            testRoot._previewCache[winKey] = "file:///tmp/astral_plasma_preview_" + winKey + ".png";
             testRoot.activePreviewThumbnail = testRoot._previewCache[winKey];
         }
     }
@@ -206,13 +206,13 @@ Item {
         }
 
         // Initial preview load: slot 0
-        bufASource = "file:///tmp/caelestia_preview_42_0.png";
+        bufASource = "file:///tmp/astral_plasma_preview_42_0.png";
         bufAOpacity = 1.0; // Ready
         assert(activeBuf === "A" && bufAOpacity === 1.0, "Initial buffer A active");
 
         // Live refresh: slot 1 arrives in background
-        onNewSourceArrived("file:///tmp/caelestia_preview_42_1.png");
-        assert(bufBSource === "file:///tmp/caelestia_preview_42_1.png", "Buffer B loading new frame");
+        onNewSourceArrived("file:///tmp/astral_plasma_preview_42_1.png");
+        assert(bufBSource === "file:///tmp/astral_plasma_preview_42_1.png", "Buffer B loading new frame");
         assert(bufAOpacity === 1.0, "Buffer A remains fully visible while Buffer B loads (no flicker)");
 
         // Buffer B completes loading
@@ -221,8 +221,8 @@ Item {
         assert(bufBOpacity === 1.0 && bufAOpacity === 0.0, "Buffer B visible, Buffer A hidden");
 
         // Next live refresh: slot 0 arrives again
-        onNewSourceArrived("file:///tmp/caelestia_preview_42_0.png");
-        assert(bufASource === "file:///tmp/caelestia_preview_42_0.png", "Buffer A loading next frame");
+        onNewSourceArrived("file:///tmp/astral_plasma_preview_42_0.png");
+        assert(bufASource === "file:///tmp/astral_plasma_preview_42_0.png", "Buffer A loading next frame");
         assert(bufBOpacity === 1.0, "Buffer B remains fully visible while Buffer A loads");
 
         // Buffer A completes loading

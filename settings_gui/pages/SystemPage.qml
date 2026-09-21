@@ -52,7 +52,7 @@ ColumnLayout {
     Text {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        text: "Caelestia respects user autonomy: systemd service files are never installed automatically without your explicit permission. You can choose whether to install or remove the Caelestia user service below."
+        text: "Astral Plasma respects user autonomy: systemd service files are never installed automatically without your explicit permission. You can choose whether to install or remove the Astral Plasma user service below."
         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
         font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodySmall) ? Theme.fontBodySmall : 13
         color: root.onSurfaceVariantColor
@@ -93,7 +93,7 @@ ColumnLayout {
             }
 
             Text {
-                text: "Unit File: ~/.config/systemd/user/caelestia.service"
+                text: "Unit File: ~/.config/systemd/user/astral-plasma.service"
                 font.family: "monospace"
                 font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodySmall) ? Theme.fontBodySmall : 13
                 color: root.onSurfaceVariantColor

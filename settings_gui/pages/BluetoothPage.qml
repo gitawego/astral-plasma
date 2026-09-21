@@ -71,7 +71,7 @@ ColumnLayout {
                     color: Colors.m3onSurface
                 }
                 Text {
-                    text: root.powered ? "Discoverable as Caelestia Desktop" : "Turned Off"
+                    text: root.powered ? "Discoverable as Astral Plasma Desktop" : "Turned Off"
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontLabelSmall
                     color: Colors.m3onSurfaceVariant

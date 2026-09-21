@@ -1,9 +1,9 @@
+use crate::domain::branding;
 use crate::domain::plasma::PlasmaStatus;
 use crate::domain::ports::{DynResult, PlasmaControlPort};
-use crate::infrastructure::plasma_adapter::{DEFAULT_WATCHDOG_PID_FILE, PlasmaAdapter};
+use crate::infrastructure::plasma_adapter::{watchdog_pid_file, PlasmaAdapter};
 use std::env;
 use std::fs;
-use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
@@ -25,7 +25,7 @@ impl<P: PlasmaControlPort> PlasmaControlUseCase<P> {
         let count = self.port.disable_panels(target)?;
 
         if let Some(pid) = monitor_pid {
-            if pid > 0 && env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" {
+            if pid > 0 && !branding::test_mode() {
                 spawn_watchdog(pid);
             }
         }
@@ -39,7 +39,7 @@ impl<P: PlasmaControlPort> PlasmaControlUseCase<P> {
 }
 
 pub fn spawn_watchdog(target_pid: u32) {
-    if target_pid == 0 || (env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" && unsafe { libc::kill(target_pid as i32, 0) != 0 }) {
+    if target_pid == 0 || (!branding::test_mode() && unsafe { libc::kill(target_pid as i32, 0) != 0 }) {
         eprintln!("[astral-plasma] spawn_watchdog: target PID {} is not running, skipping watchdog.", target_pid);
         return;
     }
@@ -70,15 +70,15 @@ pub async fn run_watchdog_loop(target_pid: u32) -> DynResult<()> {
     }
 
     // Safety check: verify target process was actually running at the start
-    if env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" {
+    if !branding::test_mode() {
         if unsafe { libc::kill(target_pid as i32, 0) != 0 } {
             eprintln!("[astral-plasma watchdog] Target PID {} is not active on startup, aborting without restore.", target_pid);
             return Ok(());
         }
     }
 
-    let pid_file = Path::new(DEFAULT_WATCHDOG_PID_FILE);
-    let _ = fs::write(pid_file, std::process::id().to_string());
+    let pid_file = watchdog_pid_file();
+    let _ = fs::write(&pid_file, std::process::id().to_string());
 
     #[cfg(unix)]
     {
@@ -108,9 +108,9 @@ pub async fn run_watchdog_loop(target_pid: u32) -> DynResult<()> {
                         break;
                     }
 
-                    // Periodically ensure no built-in panels have respawned while Caelestia is active
+                    // Periodically ensure no built-in panels have respawned while Astral Plasma is active
                     check_ticks += 1;
-                    if check_ticks % 4 == 0 && env::var("CAELESTIA_TEST_MODE").unwrap_or_default() != "1" {
+                    if check_ticks % 4 == 0 && !branding::test_mode() {
                         if let Ok(panels) = adapter.query_panels() {
                             if !panels.is_empty() {
                                 eprintln!("[astral-plasma watchdog] Detected {} respawned built-in panel(s); re-disabling...", panels.len());

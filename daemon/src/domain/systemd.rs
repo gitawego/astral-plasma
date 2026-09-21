@@ -1,3 +1,4 @@
+use crate::domain::branding;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -11,7 +12,7 @@ pub struct ServiceStatus {
 pub fn generate_unit_file_content(quickshell_bin: &str, theme_dir: &str) -> String {
     format!(
 r#"[Unit]
-Description=Caelestia Desktop Shell for KDE Plasma
+Description={}
 PartOf=graphical-session.target
 After=graphical-session.target
 
@@ -25,6 +26,6 @@ Environment=QT_QUICK_CONTROLS_STYLE=Basic
 [Install]
 WantedBy=graphical-session.target
 "#,
-        quickshell_bin, theme_dir
+        branding::SYSTEMD_DESCRIPTION, quickshell_bin, theme_dir
     )
 }
