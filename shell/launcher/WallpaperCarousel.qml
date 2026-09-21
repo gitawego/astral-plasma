@@ -14,6 +14,18 @@ Item {
     property string activeCategory: "All"
     property alias currentIndex: carouselView.currentIndex
 
+    /// Whether the focused card is inside the viewport.
+    ///
+    /// A card can be the `currentIndex` and still be scrolled out of sight,
+    /// which is what "the picker is not focusing my wallpaper" looks like on
+    /// screen.
+    readonly property bool focusedCardIsVisible: {
+        const item = carouselView.currentItem;
+        if (!item || carouselView.width <= 0) return false;
+        const left = item.x - carouselView.contentX;
+        return left < carouselView.width && (left + item.width) > 0;
+    }
+
     readonly property color colPrimary: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#cba6f7"
     readonly property color colOnPrimary: (typeof Colors !== "undefined" && Colors.onPrimary) ? Colors.onPrimary : "#11111b"
     readonly property color colSurfaceContainerHighest: (typeof Colors !== "undefined" && Colors.surfaceContainerHighest) ? Colors.surfaceContainerHighest : "#282a36"
@@ -49,25 +61,78 @@ Item {
 
     onCurrentWallpaperSourceChanged: syncWithCurrentWallpaper()
 
+    /// True while the picker is open but the view has not been laid out yet.
+    ///
+    /// The modal animates open, and positioning a list that has no size does
+    /// nothing - the focused card would then stay off-screen and no card would
+    /// look focused at all. The sync is retried as soon as the layout settles.
+    property bool pendingFocusSync: false
+
+    /// Identity of a wallpaper file.
+    ///
+    /// KDE ships a wallpaper as a package directory
+    /// (`<package>/contents/images/<resolution>.png`), so the same wallpaper can
+    /// be applied as any of several files while the picker lists only one of
+    /// them. The package directory - or, for loose images, the file name - is
+    /// what makes the applied wallpaper and its card the same wallpaper.
+    function wallpaperIdentity(path) {
+        if (!path) return "";
+        let p = String(path);
+        if (p.startsWith("file://")) p = p.substring(7);
+        p = p.replace(/\/+$/, "");
+        const parts = p.split("/").filter(part => part.length > 0);
+        if (parts.length === 0) return "";
+        const contents = parts.lastIndexOf("contents");
+        if (contents >= 2 && (parts[contents + 1] === "images" || parts[contents + 1] === "wallpaper")) {
+            return parts.slice(0, contents).join("/").toLowerCase();
+        }
+        return parts[parts.length - 1].toLowerCase();
+    }
+
     function syncWithCurrentWallpaper() {
         if (!currentWallpaperSource) return;
         const current = currentWallpaperSource;
+
+        let index = -1;
         for (let i = 0; i < root.wallpapersList.length; i++) {
             if (root.wallpapersList[i].path === current) {
-                if (carouselView.currentIndex !== i) {
-                    carouselView.currentIndex = i;
-                }
-                carouselView.positionViewAtIndex(i, ListView.Center);
-                return;
+                index = i;
+                break;
             }
+        }
+        if (index < 0) {
+            // The exact file may differ: another resolution of the same KDE
+            // wallpaper package, or a re-encoded copy of a loose image.
+            const identity = wallpaperIdentity(current);
+            for (let i = 0; i < root.wallpapersList.length; i++) {
+                if (wallpaperIdentity(root.wallpapersList[i].path) === identity) {
+                    index = i;
+                    break;
+                }
+            }
+        }
+        if (index < 0) return;
+
+        if (carouselView.currentIndex !== index) {
+            carouselView.currentIndex = index;
+        }
+        carouselView.positionViewAtIndex(index, ListView.Center);
+        if (carouselView.width > 0 && carouselView.height > 0) {
+            pendingFocusSync = false;
         }
     }
 
     onVisibleChanged: {
-        if (visible) {
-            syncWithCurrentWallpaper();
+        if (!visible) {
+            pendingFocusSync = false;
+            return;
         }
+        pendingFocusSync = true;
+        syncWithCurrentWallpaper();
     }
+
+    onWidthChanged: if (pendingFocusSync) syncWithCurrentWallpaper()
+    onHeightChanged: if (pendingFocusSync) syncWithCurrentWallpaper()
 
     Connections {
         target: (typeof WallpaperEngine !== "undefined") ? WallpaperEngine : null

@@ -153,6 +153,42 @@ Singleton {
         }
     }
 
+    /// A plasmashell restart rewrites its containment config from its own saved
+    /// state, which silently reverts the wallpaper the user picked in the
+    /// picker. The config is watched so the shell can put its own choice back
+    /// instead of letting the desktop (and the picker) drift to a wallpaper the
+    /// user never chose.
+    FileView {
+        id: plasmaConfigWatch
+        path: {
+            const home = Quickshell.env("HOME");
+            return (home && home.length > 0)
+                ? home + "/.config/plasma-org.kde.plasma.desktop-appletsrc"
+                : "";
+        }
+        watchChanges: true
+        onFileChanged: root.reconcileActiveWallpaper()
+    }
+
+    function reconcileActiveWallpaper() {
+        if (typeof Config === "undefined" || !Config.daemonBin || reconcileProc.running) {
+            return;
+        }
+        reconcileProc.command = [Config.daemonBin, "wallpaper", "reconcile"];
+        reconcileProc.running = true;
+    }
+
+    Process {
+        id: reconcileProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                // Reconciliation may have re-applied the state's wallpaper, so
+                // read the current one again instead of trusting the old value.
+                getProc.running = true;
+            }
+        }
+    }
+
     Process {
         id: setProc
     }
@@ -164,5 +200,6 @@ Singleton {
     Component.onCompleted: {
         getProc.running = true;
         listProc.running = true;
+        reconcileActiveWallpaper();
     }
 }

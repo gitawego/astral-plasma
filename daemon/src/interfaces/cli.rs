@@ -539,6 +539,13 @@ pub async fn run_cli() -> DynResult<()> {
                     let active = use_case.execute()?;
                     println!("{}", ActiveWallpaperUseCase::format(active.as_deref(), raw));
                 }
+                "reconcile" => {
+                    use crate::application::wallpaper_service::ActiveWallpaperUseCase;
+
+                    let raw = args.iter().skip(3).any(|arg| arg == "--raw");
+                    let reconciled = adapter.reconcile_active_wallpaper()?;
+                    println!("{}", ActiveWallpaperUseCase::format(reconciled.as_deref(), raw));
+                }
                 "set" => {
                     if let Some(target) = args.get(3) {
                         let path = PathBuf::from(target);

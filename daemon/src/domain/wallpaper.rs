@@ -48,6 +48,27 @@ impl ColorPalette {
     }
 }
 
+/// The package directory of a KDE wallpaper, if the file is one of its images.
+///
+/// KDE ships a wallpaper as `<package>/contents/images/<resolution>.<ext>`, so
+/// the same wallpaper exists as several resolution variants. The package
+/// directory names the wallpaper ("Air", "Altai", ...); the file name is only a
+/// resolution.
+pub fn kde_wallpaper_package(file_path: &Path) -> Option<PathBuf> {
+    let mut components = file_path.components().rev();
+    components.next()?; // the image file itself
+    let images = components.next()?.as_os_str().to_str()?;
+    if images != "images" && images != "wallpaper" {
+        return None;
+    }
+    let contents = components.next()?.as_os_str().to_str()?;
+    if contents != "contents" {
+        return None;
+    }
+    let package = components.next()?;
+    Some(PathBuf::from(package.as_os_str()))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Wallpaper {
     pub id: String,
@@ -91,10 +112,24 @@ impl Wallpaper {
             Err(_) => "General".to_string(),
         };
 
-        // If name looks like a resolution (e.g. "1920x1080", "1080x1920", "3840x2160"), use category name
-        let is_resolution_stem = name.contains('x') && name.chars().all(|c| c.is_ascii_digit() || c == 'x');
-        if is_resolution_stem && category != "General" {
-            name = category.clone();
+        // A KDE wallpaper package names the wallpaper, not the file: every
+        // image under `<package>/contents/images/` is a resolution variant of
+        // the same wallpaper. Without this, applying a different resolution
+        // than the one the scan happened to pick produces a card named
+        // "5120x2880" instead of "Air".
+        let mut category = category;
+        if let Some(package_name) = kde_wallpaper_package(file_path)
+            .and_then(|package| package.file_name().map(|name| name.to_string_lossy().to_string()))
+        {
+            category = package_name.clone();
+            name = package_name;
+        } else {
+            // If name looks like a resolution (e.g. "1920x1080", "1080x1920",
+            // "3840x2160"), use category name
+            let is_resolution_stem = name.contains('x') && name.chars().all(|c| c.is_ascii_digit() || c == 'x');
+            if is_resolution_stem && category != "General" {
+                name = category.clone();
+            }
         }
 
         let id = format!("{:x}", md5_hash(file_path.to_string_lossy().as_bytes()));

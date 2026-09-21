@@ -211,3 +211,152 @@ fn the_cli_answers_scripts_with_a_bare_path() {
         serde_json::from_str(&ActiveWallpaperUseCase::format(None, false)).unwrap();
     assert!(empty["path"].is_null(), "no wallpaper is reported as null, not as a bogus path");
 }
+
+#[test]
+fn a_kde_wallpaper_package_is_named_after_the_package() {
+    use astral_plasma::domain::wallpaper::Wallpaper;
+
+    let dir = tempdir().unwrap();
+    let images = dir.path().join("Air").join("contents").join("images");
+    fs::create_dir_all(&images).unwrap();
+    let variant = images.join("5120x2880.png");
+    fs::write(&variant, b"x").unwrap();
+
+    // Whatever scan root the file is discovered from (or applied from), the
+    // card is the wallpaper, not the resolution variant.
+    let from_parent = Wallpaper::from_file(&variant, &images, None);
+    assert_eq!(from_parent.name, "Air");
+    assert_eq!(from_parent.category, "Air");
+
+    let from_root = Wallpaper::from_file(&variant, dir.path(), None);
+    assert_eq!(from_root.name, "Air", "the scan root must not change the identity");
+
+    // Loose images keep their own name.
+    let loose = dir.path().join("Abstract.png");
+    fs::write(&loose, b"x").unwrap();
+    let loose_wall = Wallpaper::from_file(&loose, dir.path(), None);
+    assert_eq!(loose_wall.name, "Abstract");
+    assert_eq!(loose_wall.category, "General");
+}
+
+#[test]
+fn the_pickers_choice_wins_when_plasma_reverts_the_wallpaper() {
+    use astral_plasma::infrastructure::fs_wallpaper::{reconcile_decision, WallpaperReconcile};
+
+    let chosen = Path::new("/usr/share/wallpapers/Abstract.png");
+    let reverted = Path::new("/usr/share/wallpapers/Air/contents/images/5120x2880.png");
+
+    // A plasmashell restart rewrote the containment config from its own saved
+    // state: the wallpaper the user picked must go back on the desktop.
+    assert_eq!(
+        reconcile_decision(Some(reverted), Some(chosen)),
+        WallpaperReconcile::ApplyState(chosen.to_path_buf())
+    );
+
+    // The desktop has a wallpaper but the shell has no record of one (fresh
+    // install, first run): follow the desktop instead of fighting it.
+    assert_eq!(
+        reconcile_decision(Some(reverted), None),
+        WallpaperReconcile::AdoptApplied(reverted.to_path_buf())
+    );
+
+    // The shell remembers one but the desktop has none: apply it.
+    assert_eq!(
+        reconcile_decision(None, Some(chosen)),
+        WallpaperReconcile::ApplyState(chosen.to_path_buf())
+    );
+
+    // Already in agreement (and nothing to do at all).
+    assert_eq!(
+        reconcile_decision(Some(chosen), Some(chosen)),
+        WallpaperReconcile::AdoptApplied(chosen.to_path_buf())
+    );
+    assert_eq!(reconcile_decision(None, None), WallpaperReconcile::Nothing);
+}
+
+#[test]
+fn reconciling_adopts_the_desktop_wallpaper_when_the_shell_has_none() {
+    let home = tempdir().unwrap();
+    let config_dir = home.path().join(".config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    let desktop_wall = home.path().join("desktop.png");
+    fs::write(&desktop_wall, b"x").unwrap();
+    fs::write(
+        config_dir.join("plasma-org.kde.plasma.desktop-appletsrc"),
+        appletsrc(&format!("file://{}", desktop_wall.display()), None),
+    )
+    .unwrap();
+
+    let state_file = home.path().join("state.txt");
+    let adapter = FsWallpaperAdapter::with_paths(home.path().to_path_buf(), state_file.clone());
+
+    assert_eq!(
+        adapter.reconcile_active_wallpaper().unwrap(),
+        Some(desktop_wall.clone()),
+        "a session with no shell choice follows the desktop"
+    );
+    assert_eq!(
+        fs::read_to_string(&state_file).unwrap().trim(),
+        desktop_wall.to_string_lossy(),
+        "and the state file records it, so the picker focuses it"
+    );
+}
+
+#[test]
+fn the_plasma_apply_goes_through_qdbus() {
+    use astral_plasma::infrastructure::fs_wallpaper::plasma_apply_command;
+
+    let (program, args) = plasma_apply_command(Path::new("/w/x.png"));
+    assert_eq!(program, "qdbus6");
+    assert_eq!(args[0], "org.kde.plasmashell");
+    assert_eq!(args[1], "/PlasmaShell");
+    assert_eq!(args[2], "org.kde.PlasmaShell.evaluateScript");
+    assert!(
+        args[3].contains(r#"writeConfig("Image", "file:///w/x.png")"#),
+        "the script must carry the image, got: {}",
+        args[3]
+    );
+}
+
+#[test]
+fn applying_a_wallpaper_survives_a_session_without_plasma_tools() {
+    // The apply is best-effort: with no Plasma tooling around it must still
+    // record the choice and return, never abort. (It used to panic - a blocking
+    // D-Bus client started from inside the CLI's async runtime.)
+    let state_home = tempdir().unwrap();
+    let wall = state_home.path().join("wall.png");
+    fs::write(&wall, b"x").unwrap();
+
+    let output = std::process::Command::new(cli_binary())
+        .args(["wallpaper", "set", wall.to_str().unwrap()])
+        .env("PATH", "")
+        .env("HOME", state_home.path())
+        .env("XDG_STATE_HOME", state_home.path())
+        .env("XDG_CONFIG_HOME", state_home.path())
+        .output()
+        .expect("run `astral-plasma wallpaper set`");
+
+    assert!(
+        output.status.success(),
+        "applying a wallpaper must stay best-effort, got {:?}: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let recorded = fs::read_to_string(state_home.path().join("astral-plasma/wallpaper/path.txt"))
+        .expect("the state file must be written");
+    assert_eq!(recorded.trim(), wall.to_str().unwrap());
+}
+
+fn cli_binary() -> std::path::PathBuf {
+    if let Ok(exe) = std::env::var("CARGO_BIN_EXE_astral-plasma") {
+        return exe.into();
+    }
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let debug = manifest_dir.join("target/debug/astral-plasma");
+    if debug.exists() {
+        return debug;
+    }
+    manifest_dir.join("../bin/astral-plasma")
+}

@@ -61,6 +61,38 @@ pub fn desktop_wallpaper_from_appletsrc(content: &str) -> Option<PathBuf> {
         .map(|(_, path)| path.clone())
 }
 
+/// What to do when the shell's remembered wallpaper and the desktop's applied
+/// wallpaper disagree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WallpaperReconcile {
+    /// The picker's choice is authoritative: put it back on the desktop.
+    ApplyState(PathBuf),
+    /// The desktop was changed outside the shell: remember it instead of
+    /// fighting it.
+    AdoptApplied(PathBuf),
+    /// Nothing to reconcile.
+    Nothing,
+}
+
+/// Decide who wins when the two records of "the current wallpaper" disagree.
+///
+/// The state file records the wallpaper the user picked in the picker, and that
+/// choice is what the shell must keep on screen: a plasmashell restart rewrites
+/// its containment config from its own saved state and silently reverts the
+/// wallpaper, after which the picker would focus a wallpaper the user never
+/// chose. A desktop wallpaper the shell never wrote (no state at all) is adopted
+/// instead, so a fresh session follows whatever the desktop already shows.
+pub fn reconcile_decision(applied: Option<&Path>, state: Option<&Path>) -> WallpaperReconcile {
+    match (applied, state) {
+        (Some(applied), Some(state)) if applied != state => {
+            WallpaperReconcile::ApplyState(state.to_path_buf())
+        }
+        (None, Some(state)) => WallpaperReconcile::ApplyState(state.to_path_buf()),
+        (Some(applied), _) => WallpaperReconcile::AdoptApplied(applied.to_path_buf()),
+        (None, None) => WallpaperReconcile::Nothing,
+    }
+}
+
 /// The Plasma scripting call that sets the image on every desktop containment.
 ///
 /// `plasma-apply-wallpaperimage` is a thin client over this interface. Going
@@ -81,18 +113,37 @@ pub fn plasma_wallpaper_script(path: &Path) -> String {
     )
 }
 
+/// The command that asks the running Plasma shell to write the wallpaper.
+///
+/// `plasma-apply-wallpaperimage` is a thin client over this interface, and going
+/// through Plasma itself is what makes the running containment reload the
+/// wallpaper - a config write on its own can sit unapplied until plasmashell
+/// restarts. `qdbus6` is how the rest of the daemon talks to Plasma, and a
+/// subprocess is also what keeps this callable from the CLI's async runtime.
+pub fn plasma_apply_command(path: &Path) -> (String, Vec<String>) {
+    (
+        "qdbus6".to_string(),
+        vec![
+            "org.kde.plasmashell".to_string(),
+            "/PlasmaShell".to_string(),
+            "org.kde.PlasmaShell.evaluateScript".to_string(),
+            plasma_wallpaper_script(path),
+        ],
+    )
+}
+
 /// Ask the running Plasma shell to write and reload the desktop wallpaper.
 fn apply_wallpaper_via_plasma(path: &Path) -> DynResult<()> {
-    let script = plasma_wallpaper_script(path);
-    let connection = zbus::blocking::Connection::session()?;
-    let reply = connection.call_method(
-        Some("org.kde.plasmashell"),
-        "/PlasmaShell",
-        Some("org.kde.PlasmaShell"),
-        "evaluateScript",
-        &(script.as_str(),),
-    )?;
-    let _: String = reply.body().deserialize()?;
+    let (program, args) = plasma_apply_command(path);
+    let output = Command::new(&program).args(&args).output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "{program} exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        )
+        .into());
+    }
     Ok(())
 }
 
@@ -155,6 +206,35 @@ impl FsWallpaperAdapter {
         let content = fs::read_to_string(&self.state_path).ok()?;
         let trimmed = content.trim();
         (!trimmed.is_empty()).then(|| PathBuf::from(trimmed))
+    }
+
+    fn write_state(&self, path: &Path) -> DynResult<()> {
+        if let Some(parent) = self.state_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut file = File::create(&self.state_path)?;
+        writeln!(file, "{}", path.to_string_lossy())?;
+        Ok(())
+    }
+
+    /// Keep the desktop on the wallpaper the user picked.
+    ///
+    /// Returns the wallpaper that is now current.
+    pub fn reconcile_active_wallpaper(&self) -> DynResult<Option<PathBuf>> {
+        let applied = self.applied_wallpaper();
+        let state = self.state_wallpaper().filter(|path| path.exists());
+
+        match reconcile_decision(applied.as_deref(), state.as_deref()) {
+            WallpaperReconcile::ApplyState(path) => {
+                self.set_active_wallpaper(&path)?;
+                Ok(Some(path))
+            }
+            WallpaperReconcile::AdoptApplied(path) => {
+                self.write_state(&path)?;
+                Ok(Some(path))
+            }
+            WallpaperReconcile::Nothing => Ok(None),
+        }
     }
 
     fn ensure_thumbnail_for_video(&self, wallpaper: &mut Wallpaper) {
@@ -376,11 +456,7 @@ impl WallpaperPort for FsWallpaperAdapter {
     }
 
     fn set_active_wallpaper(&self, path: &Path) -> DynResult<()> {
-        if let Some(parent) = self.state_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let mut file = File::create(&self.state_path)?;
-        writeln!(file, "{}", path.to_string_lossy())?;
+        self.write_state(path)?;
 
         if !path.exists() {
             return Ok(());
@@ -391,21 +467,28 @@ impl WallpaperPort for FsWallpaperAdapter {
         // claiming a wallpaper the desktop never showed, and the picker then
         // focused that invisible wallpaper. Verify the containment really points
         // at the requested image.
-        let applied = Command::new("plasma-apply-wallpaperimage")
+        let config_updated = Command::new("plasma-apply-wallpaperimage")
             .arg(path)
             .status()
             .map(|status| status.success())
             .unwrap_or(false)
             && self.applied_wallpaper().as_deref() == Some(path);
 
-        if !applied {
-            // Fall back to Plasma's scripting interface, which writes the same
-            // containment config and makes the live desktop repaint. Best
-            // effort: on a session without plasmashell the state file (and the
-            // shell's own wallpaper layer) still carry the change.
-            if let Err(error) = apply_wallpaper_via_plasma(path) {
-                eprintln!("[wallpaper] plasma scripting fallback failed: {error}");
-            }
+        if !config_updated {
+            eprintln!(
+                "[wallpaper] plasma-apply-wallpaperimage did not record {path:?} in the containment config"
+            );
+        }
+
+        // The tool persists the containment config, but a path it accepts is not
+        // always handed to the *running* containment - a wallpaper written to the
+        // config but never applied live is exactly how the picker ended up
+        // focusing a wallpaper the desktop was not showing. Asking Plasma itself
+        // makes the live desktop repaint; the call is idempotent, so it always
+        // runs. Best effort: on a session without plasmashell the state file (and
+        // the shell's own wallpaper layer) still carry the change.
+        if let Err(error) = apply_wallpaper_via_plasma(path) {
+            eprintln!("[wallpaper] plasma scripting apply failed: {error}");
         }
 
         Ok(())

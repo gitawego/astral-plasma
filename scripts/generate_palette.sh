@@ -15,6 +15,13 @@ if [ -x "$SCRIPT_DIR/bin/astral-plasma" ]; then
     WALLPAPER=$("$SCRIPT_DIR/bin/astral-plasma" wallpaper get --raw 2>/dev/null || true)
 fi
 
+# Keep the desktop on the wallpaper the user picked in the picker: a plasmashell
+# restart rewrites its containment config from its own saved state and silently
+# reverts the wallpaper.
+if [ -x "$SCRIPT_DIR/bin/astral-plasma" ]; then
+    "$SCRIPT_DIR/bin/astral-plasma" wallpaper reconcile >/dev/null 2>&1 || true
+fi
+
 # Fallback wallpaper if none detected
 if [ -z "$WALLPAPER" ] || [ ! -f "$WALLPAPER" ]; then
     WALLPAPER="$SCRIPT_DIR/theme/assets/wallpaper.webp"
