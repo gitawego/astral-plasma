@@ -105,14 +105,16 @@ The dock (`shell/UnifiedShell.qml`) is organized into dedicated capsule pills se
      - Pinned applications (with running status dots).
      - Subtle divider line.
      - Unpinned running windows (with active left pill or running dot).
-     - A `DockScrollCapsule` that **fills the bar**: it always spans the space
-       between the active-window label (keeping a visible `listGap`) and the tray
-       allowance, with icons laid out from the top, so the dock reads as one
-       continuous bar and the app list is as large as the screen allows.
-     - Overflow is explicit: whole-item viewport snapping, a proportional
-       scrollbar thumb, directional end chevrons and wheel scrolling.
-       `dock.maxVisibleApps` (> 0) pins an exact visible count instead of the
-       automatic fill.
+     - A `DockScrollCapsule` that grows into the bar as the app count rises:
+       whole-item viewport snapping, capped by the vertical budget so it can
+       never grow over the active-window module above it (`activeWindowReserve`)
+       or the tray below, with a visible `listGap` in between.
+     - Overflow is explicit: a proportional scrollbar thumb, directional end
+       chevrons and wheel scrolling. `dock.maxVisibleApps` (> 0) pins an exact
+       visible count instead of the automatic fit.
+     - The active-window module (app icon + rotated name) lives in the middle
+       section whose height is the leftover space; the taskbar budget must reserve
+       its content or a long taskbar hides it.
    - **Divider Line**: Subtle horizontal separator.
    - **System Tray & Status Capsule**:
      - Secondary group, visually distinct from the taskbar: flatter glass

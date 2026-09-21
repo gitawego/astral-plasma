@@ -77,23 +77,6 @@ Item {
         }
     }
 
-    // Filling mode: the capsule spans the height it is granted (the dock taskbar
-    // fills the bar) even when its content is shorter.
-    DockScrollCapsule {
-        id: fillingCapsule
-        width: 48
-        itemSize: 40
-        itemSpacing: 4
-        vPad: 10
-        maxHeight: 300
-        fillHeight: true
-
-        Repeater {
-            model: 3
-            delegate: Rectangle { width: 40; height: 40 }
-        }
-    }
-
     Timer {
         interval: 50
         running: true
@@ -136,18 +119,6 @@ Item {
             "no scrollbar thumb without overflow");
         assert(fittingCapsule.moreDownItem.visible === false && fittingCapsule.moreUpItem.visible === false,
             "no end chevrons without overflow");
-
-        // ---- 3b. Filling mode -------------------------------------------
-        assert(fillingCapsule.implicitHeight === 300,
-            "a filling capsule must span the height it is granted (got "
-            + fillingCapsule.implicitHeight + ")");
-        assert(fillingCapsule.overflowing === false,
-            "three items inside a filling capsule still do not overflow");
-        assert(fillingCapsule.flickable.contentY === 0
-            && fillingCapsule.flickable.contentHeight < fillingCapsule.flickable.height,
-            "the icons start at the top of a filling capsule, not centred");
-        assert(fillingCapsule.thumbItem.visible === false,
-            "a filling capsule without overflow shows no thumb");
 
         // ---- 4. Overflow affordances ------------------------------------
         assert(overflowingCapsule.thumbItem.visible === true,

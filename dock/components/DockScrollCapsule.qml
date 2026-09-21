@@ -30,10 +30,6 @@ LiquidGlassCard {
     property int maxHeight: 0
     // 0 = derive the visible count from maxHeight; > 0 caps it explicitly.
     property int maxVisibleItems: 0
-    // When true the capsule spans the height it is granted instead of shrinking to
-    // its content: the dock's taskbar fills the bar, icons laid out from the top,
-    // and the overflow scrolls.
-    property bool fillHeight: false
     property bool subtle: false
 
     // Secondary groups render flatter and with an inner rim.
@@ -54,14 +50,10 @@ LiquidGlassCard {
     readonly property bool atTop: listFlick.contentY <= 0.5
     readonly property bool atBottom: listFlick.contentY >= root.contentHeight - root.listHeight - 0.5
 
-    // Height of exactly `visibleItemCount` whole items.
+    // Height of exactly `visibleItemCount` whole items; never taller than the
+    // granted budget, never taller than the content.
     readonly property real cappedHeight: root.vPad * 2 + root.visibleItemCount * root.stride - root.itemSpacing
-    implicitHeight: (root.maxVisibleItems > 0)
-        // An explicit cap always wins: the capsule is exactly that many items tall.
-        ? Math.min(root.naturalHeight, root.cappedHeight)
-        : ((root.fillHeight && root.maxHeight > 0)
-            ? root.maxHeight
-            : Math.min(root.naturalHeight, root.cappedHeight))
+    implicitHeight: Math.min(root.naturalHeight, root.cappedHeight)
 
     function scrollToTop() { listFlick.contentY = 0; }
     function scrollToBottom() { listFlick.contentY = Math.max(0, root.contentHeight - root.listHeight); }
@@ -92,9 +84,7 @@ LiquidGlassCard {
         Column {
             id: listColumn
             anchors.horizontalCenter: parent.horizontalCenter
-            // Filling capsules lay their icons out from the top; otherwise a list
-            // shorter than the viewport is centred.
-            y: (root.fillHeight || implicitHeight > parent.height)
+            y: implicitHeight > parent.height
                 ? 0 : Math.max(0, (parent.height - implicitHeight) / 2)
             spacing: root.itemSpacing
         }

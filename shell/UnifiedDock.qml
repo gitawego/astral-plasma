@@ -535,17 +535,24 @@ Item {
     // Visible gap between the taskbar capsule and the active-window label above it,
     // so a full list still reads as a separate module.
     readonly property real listGap: 14
+    // The active-window module (app icon + rotated name) lives in the MIDDLE
+    // section, which is anchored below the top section and whose height is the
+    // leftover space - it is not part of `topSection.implicitHeight`. Reserving
+    // its content here is what stops a long taskbar from growing over it (the
+    // reported "no more active app icon and name on the task bar").
+    readonly property real activeWindowReserve: 84
     readonly property real listBudget: Math.max(150,
-        root.height - topSection.implicitHeight - root.fixedDockHeight - root.listGap)
+        root.height - topSection.implicitHeight - root.activeWindowReserve
+            - root.fixedDockHeight - root.listGap)
     readonly property real trayMinHeight: Math.min(trayContainer.naturalHeight,
         2 * (root.iconS - 4 + 2) + 12)
     // The tray keeps its natural height (capped to a third of the budget, so a
-    // crowded tray can never squeeze the app list), and the taskbar FILLS
-    // everything else: the dock reads as one continuous bar and the app list is as
-    // large as the screen allows.
+    // crowded tray can never squeeze the app list); the taskbar takes the rest and
+    // grows into it as the app count rises.
     readonly property real trayMaxHeight: Math.max(root.trayMinHeight,
         Math.min(trayContainer.naturalHeight, root.listBudget * 0.32))
-    readonly property real appsFillHeight: Math.max(96, root.listBudget - root.trayMaxHeight)
+    readonly property real appsMaxHeight: Math.max(96,
+        Math.min(appsContainer.naturalHeight, root.listBudget - root.trayMaxHeight))
 
     // LOWER SECTION & BOTTOM SECTION
     Column {
@@ -571,11 +578,10 @@ Item {
             itemSize: root.iconS + 8
             itemSpacing: 4
             vPad: 10
-            // The taskbar fills the bar: it always spans the space granted by the
-            // budget (gap under the active-window label, tray minimum reserved),
-            // with the icons laid out from the top and scrolling when they exceed it.
-            fillHeight: true
-            maxHeight: root.appsFillHeight
+            // Grows into the bar as the app count rises (whole-item viewport,
+            // scrolling beyond), capped so it can never grow over the
+            // active-window module above it.
+            maxHeight: root.appsMaxHeight
             maxVisibleItems: Config.maxVisibleApps
 
             HoverHandler {
