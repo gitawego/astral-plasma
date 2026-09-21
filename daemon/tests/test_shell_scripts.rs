@@ -115,3 +115,24 @@ fn desktop_entries_launch_through_the_config_symlink() {
         );
     }
 }
+
+#[test]
+fn run_sh_refuses_to_start_a_second_shell() {
+    let source = read("run.sh");
+
+    // Two instances of one config fight over the screen, and `quickshell ipc`
+    // can only address one of them - so the desktop actions (launcher, exit)
+    // would reach an instance the user is not looking at.
+    assert!(
+        source.contains("quickshell ipc -p \"$DIR\" show"),
+        "run.sh must detect a shell already running for this config"
+    );
+    assert!(
+        source.contains("already running"),
+        "and it must stop instead of starting a duplicate"
+    );
+    assert!(
+        source.contains("quickshell -n -p \"$DIR\""),
+        "the shell must be launched with --no-duplicate as a second guard"
+    );
+}

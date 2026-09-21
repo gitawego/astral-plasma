@@ -31,6 +31,15 @@ echo " Safe mode: does NOT modify your existing desktop settings."
 echo " Press Ctrl+C at any time to exit safely."
 echo "=========================================================="
 
+# Refuse to start a second shell: two instances of the same config fight over
+# the screen, and `quickshell ipc` - which the desktop actions (launcher, exit,
+# dashboard) use - can only address one of them. `show` is scoped to this config
+# path, so another install's shell does not count.
+if quickshell ipc -p "$DIR" show >/dev/null 2>&1; then
+    echo "[!] Astral Plasma is already running for this config; nothing to do."
+    exit 0
+fi
+
 # Generate initial dynamic palette if needed
 bash "$DIR/scripts/generate_palette.sh" || true
 
@@ -84,7 +93,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Run quickshell and monitor process
-quickshell -p "$DIR" &
+quickshell -n -p "$DIR" &
 QS_PID=$!
 
 # Disable Plasma panels and launch watchdog monitoring Quickshell
