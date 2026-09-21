@@ -15,8 +15,8 @@ import "../../components"
 //     end chevrons, so "there is more, scroll" is visible without hovering.
 //
 // `subtle: true` renders the secondary variant used by the system-tray group
-// (flatter, no accent caustic/refraction, inner rim) so app icons and tray icons
-// are distinguishable at a glance.
+// (flatter glass: no accent caustic/refraction, smaller glyphs) so app icons and
+// tray icons are distinguishable at a glance - without drawing extra outlines.
 LiquidGlassCard {
     id: root
 
@@ -32,7 +32,7 @@ LiquidGlassCard {
     property int maxVisibleItems: 0
     property bool subtle: false
 
-    // Secondary groups render flatter and with an inner rim.
+    // Secondary groups render flatter (no accent caustic/refraction).
     showCaustic: !root.subtle
     showRefraction: !root.subtle
     elevation: root.subtle ? 3 : 6
@@ -89,18 +89,6 @@ LiquidGlassCard {
 
     function scrollToTop() { listFlick.contentY = 0; }
     function scrollToBottom() { listFlick.contentY = Math.max(0, root.contentHeight - root.listHeight); }
-
-    // Inner rim for the secondary variant (see `subtle`).
-    Rectangle {
-        anchors.fill: parent
-        anchors.margins: 3
-        radius: Math.max(0, parent.radius - 3)
-        color: "transparent"
-        visible: root.subtle
-        border.width: 1
-        border.color: (typeof Colors !== "undefined" && Colors.glassBorderSubtle)
-            ? Colors.glassBorderSubtle : Qt.rgba(1, 1, 1, 0.18)
-    }
 
     Flickable {
         id: listFlick

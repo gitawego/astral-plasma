@@ -584,6 +584,7 @@ Item {
             maxHeight: root.appsMaxHeight
             maxVisibleItems: Config.maxVisibleApps
 
+
             HoverHandler {
                 id: appsContainerHover
                 onHoveredChanged: {
@@ -931,12 +932,9 @@ Item {
                 color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock")
                     ? Colors.primary
                     : (clockHover.hovered ? Colors.glassPillHover : Colors.glassPill)
-                border.width: 1
-                border.color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clock")
-                    ? Colors.primary
-                    : (clockHover.hovered ? Colors.glassBorderSpecular : Colors.glassBorderSubtle)
+                // No border: the clock is a translucent pill, and its active state is
+                // already expressed by the fill colour.
                 Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
-                Behavior on border.color { ColorAnimation { duration: Theme.animDurationFast } }
 
                 Column {
                     id: clockCol
