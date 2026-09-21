@@ -4,6 +4,7 @@
     "position": "left",
     "width": 64,
     "iconSize": 32,
+    "maxVisibleApps": 0,
     "margin": 0,
     "exclusiveZone": true,
     "entries": [

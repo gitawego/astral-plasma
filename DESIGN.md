@@ -105,9 +105,20 @@ The dock (`shell/UnifiedShell.qml`) is organized into dedicated capsule pills se
      - Pinned applications (with running status dots).
      - Subtle divider line.
      - Unpinned running windows (with active left pill or running dot).
-     - Contained in a `Flickable` with safe `maxAppsHeight` clamping to ensure the dock never overflows regardless of window count.
+     - A `DockScrollCapsule` that **fills the bar**: it always spans the space
+       between the active-window label (keeping a visible `listGap`) and the tray
+       allowance, with icons laid out from the top, so the dock reads as one
+       continuous bar and the app list is as large as the screen allows.
+     - Overflow is explicit: whole-item viewport snapping, a proportional
+       scrollbar thumb, directional end chevrons and wheel scrolling.
+       `dock.maxVisibleApps` (> 0) pins an exact visible count instead of the
+       automatic fill.
    - **Divider Line**: Subtle horizontal separator.
    - **System Tray & Status Capsule**:
+     - Secondary group, visually distinct from the taskbar: flatter glass
+       (`subtle`), an inner rim, 62% glyph size and tighter spacing, and capped to
+       a third of the vertical budget (scrollable like the taskbar) so a crowded
+       tray can never squeeze the app list.
      - Input Method badge (`EN`, `中`, `拼`) rendered in bold high-contrast text.
      - DBus StatusNotifierItem tray icons with hover states and context menus.
      - Stacked clock (Hour over Minute in DemiBold).

@@ -523,6 +523,30 @@ Item {
         }
     }
 
+    // Vertical budget for the two scrollable capsules (taskbar, tray).
+    //
+    // The top section (launcher, workspaces, active-window label) and the fixed
+    // bottom modules (clock, status pill) are reserved FIRST, so a long taskbar or
+    // a crowded tray can never grow into them - the reported collision between the
+    // app icons and the active app name. `trayMinHeight` guarantees the tray keeps a
+    // usable window before the taskbar takes the rest of the budget.
+    readonly property real fixedDockHeight: dockClockArea.height + dockStatusPill.implicitHeight
+        + bottomCol.spacing * 3 + bottomCol.anchors.bottomMargin + 8
+    // Visible gap between the taskbar capsule and the active-window label above it,
+    // so a full list still reads as a separate module.
+    readonly property real listGap: 14
+    readonly property real listBudget: Math.max(150,
+        root.height - topSection.implicitHeight - root.fixedDockHeight - root.listGap)
+    readonly property real trayMinHeight: Math.min(trayContainer.naturalHeight,
+        2 * (root.iconS - 4 + 2) + 12)
+    // The tray keeps its natural height (capped to a third of the budget, so a
+    // crowded tray can never squeeze the app list), and the taskbar FILLS
+    // everything else: the dock reads as one continuous bar and the app list is as
+    // large as the screen allows.
+    readonly property real trayMaxHeight: Math.max(root.trayMinHeight,
+        Math.min(trayContainer.naturalHeight, root.listBudget * 0.32))
+    readonly property real appsFillHeight: Math.max(96, root.listBudget - root.trayMaxHeight)
+
     // LOWER SECTION & BOTTOM SECTION
     Column {
         id: bottomCol
@@ -532,16 +556,27 @@ Item {
         anchors.bottomMargin: 8
 
         // 1. APPS CONTAINER (Taskbar)
-        LiquidGlassCard {
+        //
+        // Scrollable and capped: the visible icons never grow past the height budget
+        // (`root.appsMaxHeight`), which reserves the top section (launcher, workspaces,
+        // active-window label) and the fixed modules below, so a long taskbar cannot
+        // collide with the active app name or the clock. Overflow shows a scrollbar
+        // thumb and end chevrons.
+        DockScrollCapsule {
             id: appsContainer
             anchors.horizontalCenter: parent.horizontalCenter
             implicitWidth: root.iconS + 16
-            readonly property int maxAppsHeight: Math.max(120, root.height - topSection.implicitHeight - 360)
-            readonly property int vPad: 10
-            implicitHeight: Math.min(appsCol.implicitHeight + vPad * 2, maxAppsHeight)
             radius: Math.round((root.iconS + 16) * 0.5)
             visible: root.taskbarList.length > 0
-            clip: true
+            itemSize: root.iconS + 8
+            itemSpacing: 4
+            vPad: 10
+            // The taskbar fills the bar: it always spans the space granted by the
+            // budget (gap under the active-window label, tray minimum reserved),
+            // with the icons laid out from the top and scrolling when they exceed it.
+            fillHeight: true
+            maxHeight: root.appsFillHeight
+            maxVisibleItems: Config.maxVisibleApps
 
             HoverHandler {
                 id: appsContainerHover
@@ -552,185 +587,166 @@ Item {
                 }
             }
 
-            Flickable {
-                id: appsFlickable
-                anchors.fill: parent
-                anchors.topMargin: appsContainer.vPad
-                anchors.bottomMargin: appsContainer.vPad
-                contentWidth: width
-                contentHeight: appsCol.implicitHeight
-                boundsBehavior: Flickable.StopAtBounds
-                clip: true
-                interactive: contentHeight > height
+            Component {
+                id: appDelegateComponent
 
-                Column {
-                    id: appsCol
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    y: Math.max(0, (parent.height - implicitHeight) / 2)
-                    spacing: 4
+                Rectangle {
+                    id: appDelegate
+                    required property var modelData
 
-                    Component {
-                        id: appDelegateComponent
+                    readonly property int itemSize: root.iconS + 8
 
-                        Rectangle {
-                            id: appDelegate
-                            required property var modelData
+                    width: itemSize
+                    height: itemSize
+                    implicitWidth: itemSize
+                    implicitHeight: itemSize
+                    radius: Math.max(8, Math.round(itemSize * 0.28))
+                    color: modelData.isActive ? Colors.primaryContainer : (appHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
 
-                            readonly property int itemSize: root.iconS + 8
+                    // Active left pill indicator
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 3
+                        height: modelData.isActive ? Math.round(root.iconS * 0.65) : 0
+                        radius: 1.5
+                        color: Colors.primary
+                        visible: modelData.isActive
 
-                            width: itemSize
-                            height: itemSize
-                            implicitWidth: itemSize
-                            implicitHeight: itemSize
-                            radius: Math.max(8, Math.round(itemSize * 0.28))
-                            color: modelData.isActive ? Colors.primaryContainer : (appHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
+                        Behavior on height {
+                            NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                        }
+                    }
 
-                            // Active left pill indicator
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.leftMargin: 2
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 3
-                                height: modelData.isActive ? Math.round(root.iconS * 0.65) : 0
-                                radius: 1.5
-                                color: Colors.primary
-                                visible: modelData.isActive
+                    // Running dot indicator
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 3
+                        height: 3
+                        radius: 1.5
+                        color: Colors.textMuted
+                        visible: modelData.isRunning && !modelData.isActive
+                    }
 
-                                Behavior on height {
-                                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                                }
+                    // App Icon
+                    Image {
+                        id: appIconImg
+                        anchors.centerIn: parent
+                        width: root.iconS
+                        height: root.iconS
+                        opacity: modelData.isRunning ? 1.0 : 0.65
+                        source: Config.iconUrl(modelData.iconName)
+                        fillMode: Image.PreserveAspectFit
+                        visible: status === Image.Ready
+                    }
+
+                    MaterialIcon {
+                        anchors.centerIn: parent
+                        text: modelData.materialIcon || "desktop_windows"
+                        size: Math.round(root.iconS * 0.82)
+                        opacity: modelData.isRunning ? 1.0 : 0.65
+                        color: modelData.isActive ? Colors.primary : Colors.onSurfaceVariant
+                        visible: !appIconImg.visible || appIconImg.status !== Image.Ready
+                    }
+
+                    MouseArea {
+                        id: appHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: Qt.PointingHandCursor
+                        onEntered: {
+                            WindowService.loadAppPreview(modelData);
+                            const mapped = appDelegate.mapToItem(null, 0, appDelegate.height / 2);
+                            const fallbackY = appsContainer.mapToItem(null, 0, appsContainer.height / 2).y;
+                            const targetCenterY = (mapped && mapped.y > 50) ? mapped.y : fallbackY;
+                            Config.openBottomPopout("app", targetCenterY);
+                        }
+                        onExited: {
+                            if (!appsContainerHover.hovered) {
+                                Config.scheduleCloseBottomPopout();
                             }
-
-                            // Running dot indicator
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.leftMargin: 2
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 3
-                                height: 3
-                                radius: 1.5
-                                color: Colors.textMuted
-                                visible: modelData.isRunning && !modelData.isActive
-                            }
-
-                            // App Icon
-                            Image {
-                                id: appIconImg
-                                anchors.centerIn: parent
-                                width: root.iconS
-                                height: root.iconS
-                                opacity: modelData.isRunning ? 1.0 : 0.65
-                                source: Config.iconUrl(modelData.iconName)
-                                fillMode: Image.PreserveAspectFit
-                                visible: status === Image.Ready
-                            }
-
-                            MaterialIcon {
-                                anchors.centerIn: parent
-                                text: modelData.materialIcon || "desktop_windows"
-                                size: Math.round(root.iconS * 0.82)
-                                opacity: modelData.isRunning ? 1.0 : 0.65
-                                color: modelData.isActive ? Colors.primary : Colors.onSurfaceVariant
-                                visible: !appIconImg.visible || appIconImg.status !== Image.Ready
-                            }
-
-                            MouseArea {
-                                id: appHover
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                cursorShape: Qt.PointingHandCursor
-                                onEntered: {
-                                    WindowService.loadAppPreview(modelData);
-                                    const mapped = appDelegate.mapToItem(null, 0, appDelegate.height / 2);
-                                    const fallbackY = appsContainer.mapToItem(null, 0, appsContainer.height / 2).y;
-                                    const targetCenterY = (mapped && mapped.y > 50) ? mapped.y : fallbackY;
-                                    Config.openBottomPopout("app", targetCenterY);
+                        }
+                        onClicked: mouse => {
+                            if (mouse.button === Qt.RightButton) {
+                                const mapped = mapToItem(null, 0, 0);
+                                root.requestContextMenu(modelData, mapped.y);
+                                Config.closeBottomPopout();
+                            } else {
+                                if (modelData.isRunning) {
+                                    WindowService.activateWindow(modelData.id);
+                                } else {
+                                    WindowService.launchApp(modelData.desktopFile || modelData.appId);
                                 }
-                                onExited: {
-                                    if (!appsContainerHover.hovered) {
-                                        Config.scheduleCloseBottomPopout();
-                                    }
-                                }
-                                onClicked: mouse => {
-                                    if (mouse.button === Qt.RightButton) {
-                                        const mapped = mapToItem(null, 0, 0);
-                                        root.requestContextMenu(modelData, mapped.y);
-                                        Config.closeBottomPopout();
-                                    } else {
-                                        if (modelData.isRunning) {
-                                            WindowService.activateWindow(modelData.id);
-                                        } else {
-                                            WindowService.launchApp(modelData.desktopFile || modelData.appId);
-                                        }
-                                        Config.closeBottomPopout();
-                                    }
-                                }
-                            }
-
-                            // Tooltip on hover (hidden when drawer is open)
-                            Rectangle {
-                                z: 100
-                                visible: appHover.containsMouse && !Config.bottomPopoutVisible
-                                anchors.left: parent.right
-                                anchors.leftMargin: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                implicitWidth: tipText.implicitWidth + 16
-                                implicitHeight: tipText.implicitHeight + 10
-                                radius: 7
-                                color: Colors.surfaceContainerHighest
-                                border.color: Colors.outlineVariant
-                                border.width: 1
-
-                                Text {
-                                    id: tipText
-                                    anchors.centerIn: parent
-                                    text: {
-                                        if (modelData.isPinned && modelData.isRunning) {
-                                            return (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : "")) + " (Pinned)";
-                                        } else if (modelData.isPinned && !modelData.isRunning) {
-                                            return modelData.appName + " (Click to launch)";
-                                        } else {
-                                            return (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : "")) + " (Running)";
-                                        }
-                                    }
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 12
-                                    color: Colors.onSurface
-                                }
+                                Config.closeBottomPopout();
                             }
                         }
                     }
 
-                    // Pinned Apps
-                    Repeater {
-                        model: root.pinnedList
-                        delegate: appDelegateComponent
-                    }
+                    // Tooltip on hover (hidden when drawer is open)
+                    Rectangle {
+                        z: 100
+                        visible: appHover.containsMouse && !Config.bottomPopoutVisible
+                        anchors.left: parent.right
+                        anchors.leftMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: tipText.implicitWidth + 16
+                        implicitHeight: tipText.implicitHeight + 10
+                        radius: 7
+                        color: Colors.surfaceContainerHighest
+                        border.color: Colors.outlineVariant
+                        border.width: 1
 
-                    // Divider between Pinned Apps and Unpinned Running Apps
-                    Item {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        implicitWidth: root.iconS + 10
-                        implicitHeight: 12
-                        visible: root.pinnedList.length > 0 && root.unpinnedList.length > 0
-
-                        Rectangle {
+                        Text {
+                            id: tipText
                             anchors.centerIn: parent
-                            width: Math.round(root.iconS * 0.65)
-                            height: 2
-                            radius: 1
-                            color: Colors.outline
-                            opacity: 0.7
+                            text: {
+                                if (modelData.isPinned && modelData.isRunning) {
+                                    return (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : "")) + " (Pinned)";
+                                } else if (modelData.isPinned && !modelData.isRunning) {
+                                    return modelData.appName + " (Click to launch)";
+                                } else {
+                                    return (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : "")) + " (Running)";
+                                }
+                            }
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            color: Colors.onSurface
                         }
-                    }
-
-                    // Unpinned Running Apps
-                    Repeater {
-                        model: root.unpinnedList
-                        delegate: appDelegateComponent
                     }
                 }
+            }
+
+            // Pinned Apps
+            Repeater {
+                model: root.pinnedList
+                delegate: appDelegateComponent
+            }
+
+            // Divider between Pinned Apps and Unpinned Running Apps
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                implicitWidth: root.iconS + 10
+                implicitHeight: 12
+                visible: root.pinnedList.length > 0 && root.unpinnedList.length > 0
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: Math.round(root.iconS * 0.65)
+                    height: 2
+                    radius: 1
+                    color: Colors.outline
+                    opacity: 0.7
+                }
+            }
+
+            // Unpinned Running Apps
+            Repeater {
+                model: root.unpinnedList
+                delegate: appDelegateComponent
             }
         }
 
@@ -752,14 +768,22 @@ Item {
         }
 
         // 2. SYSTEM TRAY ICONS CONTAINER
-        LiquidGlassCard {
+        //
+        // Secondary group: flatter glass, an inner rim and smaller icons, so tray
+        // items are visually distinct from running-app icons. Capped and scrollable
+        // like the taskbar, so a crowded tray cannot push the clock or the status
+        // pill out of the dock either.
+        DockScrollCapsule {
             id: trayContainer
             anchors.horizontalCenter: parent.horizontalCenter
-            implicitWidth: root.iconS + 16
-            readonly property int vPad: 8
-            implicitHeight: trayCol.implicitHeight + vPad * 2
-            radius: Math.round((root.iconS + 16) * 0.5)
+            implicitWidth: root.iconS + 8
+            radius: Math.round((root.iconS + 8) * 0.5)
             visible: WindowService.tray.length > 0
+            subtle: true
+            itemSize: root.iconS - 4
+            itemSpacing: 2
+            vPad: 6
+            maxHeight: root.trayMaxHeight
 
             HoverHandler {
                 id: trayContainerHover
@@ -770,119 +794,115 @@ Item {
                 }
             }
 
-            Column {
-                id: trayCol
-                anchors.centerIn: parent
-                spacing: 4
+            Repeater {
+                model: WindowService.tray
 
-                Repeater {
-                    model: WindowService.tray
+                delegate: Rectangle {
+                    id: trayDelegate
+                    required property var modelData
 
-                    delegate: Rectangle {
-                        id: trayDelegate
-                        required property var modelData
+                    readonly property bool isInputMethod: {
+                        const raw = (modelData.rawIcon || "").toLowerCase();
+                        const id = (modelData.id || "").toLowerCase();
+                        const title = (modelData.title || "").toLowerCase();
+                        return raw.includes("keyboard") || raw.includes("fcitx") || id.includes("fcitx") || id.includes("input") || title.includes("input");
+                    }
 
-                        readonly property bool isInputMethod: {
-                            const raw = (modelData.rawIcon || "").toLowerCase();
-                            const id = (modelData.id || "").toLowerCase();
-                            const title = (modelData.title || "").toLowerCase();
-                            return raw.includes("keyboard") || raw.includes("fcitx") || id.includes("fcitx") || id.includes("input") || title.includes("input");
+                    readonly property int itemSize: root.iconS - 4
+
+                    width: itemSize
+                    height: itemSize
+                    implicitWidth: itemSize
+                    implicitHeight: itemSize
+                    radius: Math.max(8, Math.round(itemSize * 0.32))
+                    color: trayHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
+
+                    Text {
+                        id: imBadgeText
+                        anchors.centerIn: parent
+                        visible: isInputMethod && !!modelData.imBadge
+                        text: modelData.imBadge || ""
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Math.max(11, Math.round(root.iconS * 0.40))
+                        font.bold: true
+                        color: (modelData.imBadge === "中" || modelData.imBadge === "拼")
+                            ? Colors.primary
+                            : (trayHover.containsMouse ? Colors.primary : Colors.textOnSurface)
+                    }
+
+                    ThemedIcon {
+                        id: trayThemedIcon
+                        anchors.centerIn: parent
+                        // Secondary group: the glyph is deliberately smaller than an
+                        // app icon, so the tray never competes with the taskbar.
+                        size: Math.round(root.iconS * 0.62)
+                        source: Config.iconUrl(modelData.rawIcon)
+                        materialIcon: modelData.materialIcon || "circle"
+                        color: trayHover.containsMouse ? Colors.primary : Colors.textOnSurface
+                        visible: !imBadgeText.visible
+                    }
+
+                    MouseArea {
+                        id: trayHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: Qt.PointingHandCursor
+                        onEntered: {
+                            if (modelData.menuPath && modelData.menuPath.length > 0) {
+                                WindowService.loadTrayMenu(modelData);
+                                const targetCenterY = trayDelegate.mapToItem(null, 0, trayDelegate.height / 2).y;
+                                Config.openBottomPopout("tray", targetCenterY);
+                            }
                         }
-
-                        readonly property int itemSize: root.iconS + 4
-
-                        width: itemSize
-                        height: itemSize
-                        implicitWidth: itemSize
-                        implicitHeight: itemSize
-                        radius: Math.max(8, Math.round(itemSize * 0.32))
-                        color: trayHover.containsMouse ? Colors.surfaceContainerHigh : "transparent"
-
-                        Text {
-                            id: imBadgeText
-                            anchors.centerIn: parent
-                            visible: isInputMethod && !!modelData.imBadge
-                            text: modelData.imBadge || ""
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Math.max(13, Math.round(root.iconS * 0.48))
-                            font.bold: true
-                            color: (modelData.imBadge === "中" || modelData.imBadge === "拼")
-                                ? Colors.primary
-                                : (trayHover.containsMouse ? Colors.primary : Colors.textOnSurface)
+                        onExited: {
+                            if (!trayContainerHover.hovered) {
+                                Config.scheduleCloseBottomPopout();
+                            }
                         }
-
-                        ThemedIcon {
-                            id: trayThemedIcon
-                            anchors.centerIn: parent
-                            size: root.iconS
-                            source: Config.iconUrl(modelData.rawIcon)
-                            materialIcon: modelData.materialIcon || "circle"
-                            color: trayHover.containsMouse ? Colors.primary : Colors.textOnSurface
-                            visible: !imBadgeText.visible
-                        }
-
-                        MouseArea {
-                            id: trayHover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            cursorShape: Qt.PointingHandCursor
-                            onEntered: {
+                        onClicked: mouse => {
+                            const targetCenterY = trayDelegate.mapToItem(null, 0, trayDelegate.height / 2).y;
+                            const globalPt = trayDelegate.mapToItem(null, mouse.x, mouse.y);
+                            if (mouse.button === Qt.RightButton) {
                                 if (modelData.menuPath && modelData.menuPath.length > 0) {
                                     WindowService.loadTrayMenu(modelData);
-                                    const targetCenterY = trayDelegate.mapToItem(null, 0, trayDelegate.height / 2).y;
                                     Config.openBottomPopout("tray", targetCenterY);
-                                }
-                            }
-                            onExited: {
-                                if (!trayContainerHover.hovered) {
-                                    Config.scheduleCloseBottomPopout();
-                                }
-                            }
-                            onClicked: mouse => {
-                                const targetCenterY = trayDelegate.mapToItem(null, 0, trayDelegate.height / 2).y;
-                                const globalPt = trayDelegate.mapToItem(null, mouse.x, mouse.y);
-                                if (mouse.button === Qt.RightButton) {
-                                    if (modelData.menuPath && modelData.menuPath.length > 0) {
-                                        WindowService.loadTrayMenu(modelData);
-                                        Config.openBottomPopout("tray", targetCenterY);
-                                    } else {
-                                        WindowService.contextMenuTray(modelData.service, modelData.path, globalPt.x, globalPt.y);
-                                    }
                                 } else {
-                                    if (modelData.itemIsMenu && modelData.menuPath && modelData.menuPath.length > 0) {
-                                        WindowService.loadTrayMenu(modelData);
-                                        Config.openBottomPopout("tray", targetCenterY);
-                                    } else {
-                                        Config.closeBottomPopout();
-                                        WindowService.activateTray(modelData.service, modelData.path, globalPt.x, globalPt.y);
-                                    }
+                                    WindowService.contextMenuTray(modelData.service, modelData.path, globalPt.x, globalPt.y);
+                                }
+                            } else {
+                                if (modelData.itemIsMenu && modelData.menuPath && modelData.menuPath.length > 0) {
+                                    WindowService.loadTrayMenu(modelData);
+                                    Config.openBottomPopout("tray", targetCenterY);
+                                } else {
+                                    Config.closeBottomPopout();
+                                    WindowService.activateTray(modelData.service, modelData.path, globalPt.x, globalPt.y);
                                 }
                             }
                         }
+                    }
 
-                        // Tooltip on hover (hidden when drawer is open)
-                        Rectangle {
-                            z: 100
-                            visible: trayHover.containsMouse && !Config.bottomPopoutVisible
-                            anchors.left: parent.right
-                            anchors.leftMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            implicitWidth: trayTipText.implicitWidth + 16
-                            implicitHeight: trayTipText.implicitHeight + 10
-                            radius: 7
-                            color: Colors.surfaceContainerHighest
-                            border.color: Colors.outlineVariant
-                            border.width: 1
+                    // Tooltip on hover (hidden when drawer is open)
+                    Rectangle {
+                        z: 100
+                        visible: trayHover.containsMouse && !Config.bottomPopoutVisible
+                        anchors.left: parent.right
+                        anchors.leftMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: trayTipText.implicitWidth + 16
+                        implicitHeight: trayTipText.implicitHeight + 10
+                        radius: 7
+                        color: Colors.surfaceContainerHighest
+                        border.color: Colors.outlineVariant
+                        border.width: 1
 
-                            Text {
-                                id: trayTipText
-                                anchors.centerIn: parent
-                                text: (modelData.title && !modelData.title.startsWith("Error")) ? modelData.title : ((modelData.id && !modelData.id.startsWith("Error")) ? modelData.id : "Application")
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 12
-                                color: Colors.onSurface
-                            }
+                        Text {
+                            id: trayTipText
+                            anchors.centerIn: parent
+                            text: (modelData.title && !modelData.title.startsWith("Error")) ? modelData.title : ((modelData.id && !modelData.id.startsWith("Error")) ? modelData.id : "Application")
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            color: Colors.onSurface
                         }
                     }
                 }
@@ -983,6 +1003,7 @@ Item {
 
         // 4. Anchored Status Icons Group Pill
         DockStatusIcons {
+            id: dockStatusPill
             anchors.horizontalCenter: parent.horizontalCenter
         }
     }

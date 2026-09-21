@@ -32,6 +32,8 @@ Singleton {
             "position": "left",
             "width": 64,
             "iconSize": 32,
+            // 0 = fit as many app icons as the dock height allows; > 0 caps them.
+            "maxVisibleApps": 0,
             "margin": 12,
             "exclusiveZone": true,
             "entries": [
@@ -95,6 +97,11 @@ Singleton {
 
     // Convenient getters
     readonly property bool dockEnabled: root.settings.dock ? (root.settings.dock.enabled ?? true) : true
+    // 0 = auto-fit the taskbar to the available height; > 0 shows at most this
+    // many app icons and scrolls the rest (see DockScrollCapsule).
+    readonly property int maxVisibleApps: (root.settings.dock && root.settings.dock.maxVisibleApps !== undefined)
+        ? root.settings.dock.maxVisibleApps : 0
+
     readonly property int dockIconSize: (root.settings.dock && root.settings.dock.iconSize !== undefined) ? root.settings.dock.iconSize : 32
     readonly property int dockStatusIconSize: (root.settings.dock && root.settings.dock.statusIconSize !== undefined)
         ? root.settings.dock.statusIconSize
@@ -304,6 +311,13 @@ Singleton {
             if (enabled && cfg.theme.mode !== "dark" && cfg.theme.mode !== "light") {
                 cfg.theme.mode = "dynamic";
             }
+        });
+    }
+
+    function setMaxVisibleApps(count) {
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            cfg.dock.maxVisibleApps = Math.max(0, Math.round(count));
         });
     }
 
