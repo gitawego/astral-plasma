@@ -1,52 +1,46 @@
-//! The Wine MPRIS bridge is a singleton bus name, and shell reloads are a
-//! normal development occurrence: the outgoing daemon may still own the name
-//! while the new one starts.
+//! The bridge must own its bus name, and only claim it when it can.
 //!
-//! zbus requests bus names with `DoNotQueue`, so a single failed request used
-//! to leave the whole session without a Wine player - the theme then silently
-//! fell back to some other MPRIS player and showed "No Media Playing".
+//! zbus requests bus names with `DoNotQueue`, so a bridge that cannot become the
+//! owner has to fail loudly. It used to report success while serving objects
+//! nobody could reach, and the shell then silently fell back to whatever other
+//! MPRIS player was around - a stale browser session, in practice.
 
-use astral_plasma::application::wine_mpris::{connect_wine_mpris_with_retry, WineMprisService};
-use std::time::Duration;
+use astral_plasma::application::wine_mpris::{WineMprisService, WINE_MPRIS_BUS_NAME};
 
 #[tokio::test]
-async fn bridge_acquires_the_name_that_a_dying_instance_still_holds() {
+async fn bridge_takes_over_a_name_a_dying_instance_released() {
     // Without a session bus there is nothing to test (headless CI).
-    if zbus::Connection::session().await.is_err() {
+    let Ok(conn) = zbus::Connection::session().await else {
+        return;
+    };
+    let proxy = zbus::fdo::DBusProxy::new(&conn).await.expect("bus proxy");
+    let name = zbus::names::BusName::try_from(WINE_MPRIS_BUS_NAME).expect("bus name");
+
+    if proxy.get_name_owner(name).await.is_ok() {
+        // A running shell already owns it; nothing to prove here.
+        eprintln!("skipping: {WINE_MPRIS_BUS_NAME} is already owned");
         return;
     }
 
     // The outgoing instance owns the name.
-    let outgoing = WineMprisService::new()
-        .await
-        .expect("first instance must obtain the free name");
+    let outgoing = WineMprisService::new().await.expect("outgoing bridge");
 
-    // It dies part-way through the incoming instance's retry window.
-    let dying = tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        drop(outgoing);
-    });
+    // A second bridge must *fail* rather than queue: the supervisor retries, and
+    // a queued bridge would look healthy while being unreachable.
+    assert!(
+        WineMprisService::new().await.is_err(),
+        "a taken name must be reported, not queued"
+    );
 
-    let incoming = connect_wine_mpris_with_retry(40, Duration::from_millis(50))
-        .await
-        .expect("the bridge must retry until the previous owner releases the name");
-
-    dying.await.unwrap();
-
-    // The recovered bridge serves the interface.
-    let media = astral_plasma::domain::wine_media::WineMediaInfo {
-        player_id: "cloudmusic".to_string(),
-        player_name: "NetEase Cloud Music (Wine)".to_string(),
-        title: "Test Track".to_string(),
-        artist: "Test Artist".to_string(),
-        is_playing: true,
-        art_url: String::new(),
-        duration_ms: 1000,
-    };
-    incoming
-        .update_media(&media)
-        .await
-        .expect("the recovered bridge must accept media updates");
+    // Once the outgoing instance goes away, the name is claimable again - which is
+    // what the supervisor does on its next tick.
+    drop(outgoing);
+    let incoming = WineMprisService::new().await;
+    assert!(
+        incoming.is_ok(),
+        "the bridge must take over a released name: {:?}",
+        incoming.err()
+    );
 }
 
 /// The bridge must own its bus name, and release it when it goes away.
