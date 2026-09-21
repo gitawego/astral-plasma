@@ -104,9 +104,7 @@ impl WatcherService {
 
         // The shell was started from the checkout (development) or from the
         // extracted package (installed); both are addressed the same way.
-        let directory = branding::repo_root_from_exe()
-            .filter(|dir| dir.join("shell.qml").is_file())
-            .unwrap_or_else(branding::default_package_dir);
+        let directory = crate::application::shell_lifecycle::shell_config_dir();
 
         let status = Command::new("quickshell")
             .arg("ipc")

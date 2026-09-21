@@ -89,6 +89,29 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "shell" => {
+            use crate::application::shell_lifecycle::quit_running_shell;
+
+            match args.get(2).map(|s| s.as_str()).unwrap_or("") {
+                "exit" => {
+                    // Quitting is the whole job: the supervisor that started the
+                    // shell restores the Plasma panels when it exits (and a
+                    // session that never disabled them has nothing to restore).
+                    if quit_running_shell() {
+                        println!(r#"{{"success":true}}"#);
+                    } else {
+                        eprintln!(
+                            "Could not reach the running shell. Start it again with ./run.sh"
+                        );
+                        std::process::exit(1);
+                    }
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma shell exit");
+                    std::process::exit(2);
+                }
+            }
+        }
         "systemd" => {
             let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
             let systemd = SystemdControlUseCase::new(SystemdAdapter::new());

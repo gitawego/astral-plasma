@@ -43,6 +43,14 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "shell"
+        // Leaving the shell: `astral-plasma shell exit` (the settings page, the
+        // launcher command and the power menu) calls this. The supervisor that
+        // started the shell restores the Plasma panels when the process exits.
+        function quit(): void { Qt.quit(); }
+    }
+
+    IpcHandler {
         target: "settings"
         function toggle(): void { Config.settingsVisible = !Config.settingsVisible; }
         function open(page: string): void {

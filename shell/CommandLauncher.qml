@@ -178,6 +178,13 @@ PanelWindow {
             description: "Jump to system configuration pages",
             icon: "settings",
             aliases: ["settings", "set", "config", "preferences"]
+        },
+        {
+            id: "exit",
+            name: "Exit Astral Plasma",
+            description: "Leave the shell and restore the Plasma desktop",
+            icon: "logout",
+            aliases: ["exit", "quit", "leave"]
         }
     ]
 
@@ -877,6 +884,12 @@ PanelWindow {
             root.activeMode = "mode";
         } else if (item.id === "settings") {
             root.activeMode = "settings";
+        } else if (item.id === "exit") {
+            // Not a mode: leaving the shell runs straight away.
+            if (typeof Config !== "undefined" && Config.exitShell) {
+                Config.exitShell();
+            }
+            root.closeLauncher();
         }
     }
 

@@ -498,6 +498,16 @@ Item {
                 }
 
                 ActionItem {
+                    icon: "exit_to_app"
+                    label: "Exit Astral Plasma"
+                    onClicked: {
+                        if (typeof Config !== "undefined" && Config.exitShell) {
+                            Config.exitShell();
+                        }
+                    }
+                }
+
+                ActionItem {
                     icon: "restart_alt"
                     label: "Restart..."
                     onClicked: PowerService.requestReboot()

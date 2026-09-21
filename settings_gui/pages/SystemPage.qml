@@ -149,6 +149,46 @@ ColumnLayout {
     Item { height: root.spaceMediumVal }
 
     Text {
+        text: "Session"
+        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
+        font.weight: Font.Bold
+        color: root.onSurfaceColor
+    }
+
+    Text {
+        Layout.fillWidth: true
+        text: "Leaving the shell restores the Plasma panels it replaced. Start it again with ./run.sh."
+        wrapMode: Text.WordWrap
+        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodySmall) ? Theme.fontBodySmall : 13
+        color: root.onSurfaceVariantColor
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: root.spaceMediumVal
+
+        PillButton {
+            id: exitShellButton
+            label: "Exit Astral Plasma"
+            iconText: "logout"
+            active: true
+            activeColor: root.errorContainerColor
+            activeTextColor: root.onErrorContainerColor
+            onClicked: {
+                if (typeof Config !== "undefined" && Config.exitShell) {
+                    Config.exitShell();
+                }
+            }
+        }
+
+        Item { Layout.fillWidth: true }
+    }
+
+    Item { height: root.spaceMediumVal }
+
+    Text {
         text: "Developer & Diagnostics"
         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
         font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21

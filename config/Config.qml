@@ -215,6 +215,17 @@ Singleton {
         }
     }
 
+    /// Leave Astral Plasma and hand the desktop back to Plasma.
+    ///
+    /// The daemon quits the shell (and falls back to killing the instance if it
+    /// is wedged); the supervisor that started the shell restores the panels.
+    function exitShell() {
+        if (typeof exitShellProc !== "undefined" && !exitShellProc.running) {
+            exitShellProc.command = [root.daemonBin, "shell", "exit"];
+            exitShellProc.running = true;
+        }
+    }
+
     function removeSystemdService() {
         if (typeof sysServiceProc !== "undefined" && !sysServiceProc.running) {
             sysServiceProc.command = [root.daemonBin, "systemd", "remove"];
@@ -708,6 +719,10 @@ Singleton {
     }
 
     // Systemd User Service Process
+    Process {
+        id: exitShellProc
+    }
+
     Process {
         id: sysServiceProc
         command: [root.daemonBin, "systemd", "status"]
