@@ -532,11 +532,12 @@ pub async fn run_cli() -> DynResult<()> {
                 }
 
                 "get" => {
-                    let active = adapter.get_active_wallpaper()?;
-                    let res = serde_json::json!({
-                        "path": active.map(|p| p.to_string_lossy().to_string()),
-                    });
-                    println!("{}", serde_json::to_string(&res)?);
+                    use crate::application::wallpaper_service::ActiveWallpaperUseCase;
+
+                    let raw = args.iter().skip(3).any(|arg| arg == "--raw");
+                    let use_case = ActiveWallpaperUseCase::new(adapter);
+                    let active = use_case.execute()?;
+                    println!("{}", ActiveWallpaperUseCase::format(active.as_deref(), raw));
                 }
                 "set" => {
                     if let Some(target) = args.get(3) {

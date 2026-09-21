@@ -41,9 +41,17 @@ Item {
         });
     }
 
+    /// The wallpaper the picker must focus: the one applied to the desktop.
+    ///
+    /// Overridable so the focus contract can be exercised without the
+    /// WallpaperEngine singleton (which talks to the daemon).
+    property string currentWallpaperSource: (typeof WallpaperEngine !== "undefined") ? WallpaperEngine.currentWallpaper : ""
+
+    onCurrentWallpaperSourceChanged: syncWithCurrentWallpaper()
+
     function syncWithCurrentWallpaper() {
-        if (typeof WallpaperEngine === "undefined" || !WallpaperEngine.currentWallpaper) return;
-        const current = WallpaperEngine.currentWallpaper;
+        if (!currentWallpaperSource) return;
+        const current = currentWallpaperSource;
         for (let i = 0; i < root.wallpapersList.length; i++) {
             if (root.wallpapersList[i].path === current) {
                 if (carouselView.currentIndex !== i) {

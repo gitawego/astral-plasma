@@ -6,6 +6,96 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const DESKTOP_CONTAINMENT_PLUGIN: &str = "org.kde.plasma.folder";
+const PANEL_CONTAINMENT_PLUGIN: &str = "org.kde.panel";
+const APPLETSRC: &str = "plasma-org.kde.plasma.desktop-appletsrc";
+
+/// Wallpaper configured for the desktop containment in KDE's appletsrc.
+///
+/// The file groups everything by containment. Panels carry their own
+/// `wallpaperplugin` - and can hold an `Image=` key - so the desktop containment
+/// (the one declaring `plugin=org.kde.plasma.folder`) is resolved first. Only
+/// when no containment declares that plugin does any non-panel containment
+/// qualify, which keeps older or minimal configs working.
+pub fn desktop_wallpaper_from_appletsrc(content: &str) -> Option<PathBuf> {
+    let mut desktops: Vec<&str> = Vec::new();
+    let mut panels: Vec<&str> = Vec::new();
+    let mut candidates: Vec<(&str, PathBuf)> = Vec::new();
+    let mut section: Vec<&str> = Vec::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(inner) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            section = inner.split("][").collect();
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let (key, value) = (key.trim(), value.trim());
+        match section.as_slice() {
+            ["Containments", id] => {
+                if key != "plugin" {
+                    continue;
+                }
+                if value == DESKTOP_CONTAINMENT_PLUGIN {
+                    desktops.push(id);
+                } else if value == PANEL_CONTAINMENT_PLUGIN {
+                    panels.push(id);
+                }
+            }
+            ["Containments", id, "Wallpaper", "org.kde.image", "General"] => {
+                if key == "Image" && !value.is_empty() {
+                    let path = value.strip_prefix("file://").unwrap_or(value);
+                    candidates.push((id, PathBuf::from(path)));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    candidates
+        .iter()
+        .find(|(id, _)| desktops.contains(id))
+        .or_else(|| candidates.iter().find(|(id, _)| !panels.contains(id)))
+        .map(|(_, path)| path.clone())
+}
+
+/// The Plasma scripting call that sets the image on every desktop containment.
+///
+/// `plasma-apply-wallpaperimage` is a thin client over this interface. Going
+/// through Plasma itself is what makes the running containment reload the
+/// wallpaper, so the desktop repaints instead of keeping the old image until
+/// plasmashell restarts. The path is emitted as a JSON string literal, which is
+/// also a valid JS literal and therefore escapes quotes and backslashes.
+pub fn plasma_wallpaper_script(path: &Path) -> String {
+    let url = format!("file://{}", path.to_string_lossy());
+    let literal = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        "var ds = desktops();\n\
+         for (var i = 0; i < ds.length; i++) {{\n\
+         \x20 ds[i].wallpaperPlugin = \"org.kde.image\";\n\
+         \x20 ds[i].currentConfigGroup = [\"Wallpaper\", \"org.kde.image\", \"General\"];\n\
+         \x20 ds[i].writeConfig(\"Image\", {literal});\n\
+         }}"
+    )
+}
+
+/// Ask the running Plasma shell to write and reload the desktop wallpaper.
+fn apply_wallpaper_via_plasma(path: &Path) -> DynResult<()> {
+    let script = plasma_wallpaper_script(path);
+    let connection = zbus::blocking::Connection::session()?;
+    let reply = connection.call_method(
+        Some("org.kde.plasmashell"),
+        "/PlasmaShell",
+        Some("org.kde.PlasmaShell"),
+        "evaluateScript",
+        &(script.as_str(),),
+    )?;
+    let _: String = reply.body().deserialize()?;
+    Ok(())
+}
+
 pub struct FsWallpaperAdapter {
     home_dir: PathBuf,
     state_path: PathBuf,
@@ -48,6 +138,23 @@ impl FsWallpaperAdapter {
             state_path,
             thumbnail_cache_dir,
         }
+    }
+
+    fn appletsrc_path(&self) -> PathBuf {
+        self.home_dir.join(".config").join(APPLETSRC)
+    }
+
+    /// The wallpaper actually applied to the desktop, if it still exists.
+    fn applied_wallpaper(&self) -> Option<PathBuf> {
+        let content = fs::read_to_string(self.appletsrc_path()).ok()?;
+        desktop_wallpaper_from_appletsrc(&content).filter(|path| path.exists())
+    }
+
+    /// The last wallpaper the shell wrote, when no Plasma desktop answers.
+    fn state_wallpaper(&self) -> Option<PathBuf> {
+        let content = fs::read_to_string(&self.state_path).ok()?;
+        let trimmed = content.trim();
+        (!trimmed.is_empty()).then(|| PathBuf::from(trimmed))
     }
 
     fn ensure_thumbnail_for_video(&self, wallpaper: &mut Wallpaper) {
@@ -193,24 +300,19 @@ impl WallpaperPort for FsWallpaperAdapter {
             }
         }
 
-        // 2. KDE Plasma desktop-appletsrc (Image=..., SlidePaths=...)
-        let appletsrc = self.home_dir.join(".config").join("plasma-org.kde.plasma.desktop-appletsrc");
+        // 2. KDE Plasma desktop-appletsrc (the applied wallpaper + SlidePaths)
+        let appletsrc = self.appletsrc_path();
         if appletsrc.is_file() {
             if let Ok(content) = fs::read_to_string(&appletsrc) {
+                if let Some(active) = desktop_wallpaper_from_appletsrc(&content) {
+                    if active.is_file() {
+                        let parent = active.parent().unwrap_or(&active).to_path_buf();
+                        add_file(&active, &parent, &mut results);
+                    }
+                }
                 for line in content.lines() {
                     let trimmed = line.trim();
-                    if let Some(val) = trimmed.strip_prefix("Image=") {
-                        let path_str = if let Some(stripped) = val.strip_prefix("file://") {
-                            stripped
-                        } else {
-                            val
-                        };
-                        let p = PathBuf::from(path_str.trim());
-                        if p.is_file() {
-                            let parent = p.parent().unwrap_or(&p);
-                            add_file(&p, parent, &mut results);
-                        }
-                    } else if let Some(val) = trimmed.strip_prefix("SlidePaths=") {
+                    if let Some(val) = trimmed.strip_prefix("SlidePaths=") {
                         for item in val.split(',') {
                             let p = PathBuf::from(item.trim());
                             if p.is_dir() {
@@ -262,36 +364,15 @@ impl WallpaperPort for FsWallpaperAdapter {
     }
 
     fn get_active_wallpaper(&self) -> DynResult<Option<PathBuf>> {
-        if self.state_path.exists() {
-            let content = fs::read_to_string(&self.state_path)?;
-            let trimmed = content.trim();
-            if !trimmed.is_empty() {
-                return Ok(Some(PathBuf::from(trimmed)));
-            }
+        // The desktop's own wallpaper is the ground truth: the picker focuses
+        // this, so it has to be what the user sees. The state file only records
+        // the last path the shell *wrote* - it drifts whenever the wallpaper is
+        // changed outside the shell, or when an apply fails - so it is the
+        // fallback.
+        if let Some(applied) = self.applied_wallpaper() {
+            return Ok(Some(applied));
         }
-
-        // Fallback: Read active wallpaper from KDE Plasma config
-        let appletsrc = self.home_dir.join(".config").join("plasma-org.kde.plasma.desktop-appletsrc");
-        if appletsrc.is_file() {
-            if let Ok(content) = fs::read_to_string(&appletsrc) {
-                for line in content.lines() {
-                    let trimmed = line.trim();
-                    if let Some(val) = trimmed.strip_prefix("Image=") {
-                        let path_str = if let Some(stripped) = val.strip_prefix("file://") {
-                            stripped
-                        } else {
-                            val
-                        };
-                        let p = PathBuf::from(path_str.trim());
-                        if p.exists() {
-                            return Ok(Some(p));
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(None)
+        Ok(self.state_wallpaper())
     }
 
     fn set_active_wallpaper(&self, path: &Path) -> DynResult<()> {
@@ -301,11 +382,30 @@ impl WallpaperPort for FsWallpaperAdapter {
         let mut file = File::create(&self.state_path)?;
         writeln!(file, "{}", path.to_string_lossy())?;
 
-        // Sync with KDE Plasma desktop if plasma-apply-wallpaperimage is available
-        if path.exists() {
-            let _ = Command::new("plasma-apply-wallpaperimage")
-                .arg(path.to_string_lossy().as_ref())
-                .spawn();
+        if !path.exists() {
+            return Ok(());
+        }
+
+        // KDE's own tool is the documented way to set the desktop wallpaper. Its
+        // result used to be ignored: an apply that failed left the state file
+        // claiming a wallpaper the desktop never showed, and the picker then
+        // focused that invisible wallpaper. Verify the containment really points
+        // at the requested image.
+        let applied = Command::new("plasma-apply-wallpaperimage")
+            .arg(path)
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+            && self.applied_wallpaper().as_deref() == Some(path);
+
+        if !applied {
+            // Fall back to Plasma's scripting interface, which writes the same
+            // containment config and makes the live desktop repaint. Best
+            // effort: on a session without plasmashell the state file (and the
+            // shell's own wallpaper layer) still carry the change.
+            if let Err(error) = apply_wallpaper_via_plasma(path) {
+                eprintln!("[wallpaper] plasma scripting fallback failed: {error}");
+            }
         }
 
         Ok(())

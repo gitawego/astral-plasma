@@ -1794,3 +1794,39 @@ remembering:
 
 Decision logic lives in pure functions (`is_wine_class`,
 `should_release_x11_focus`) with tests in `daemon/tests/test_x11_focus_handoff.rs`.
+
+---
+
+## 18. State Files Drift: The Applied Wallpaper Is The Ground Truth
+
+The wallpaper picker scrolls to `WallpaperEngine.currentWallpaper` when it opens,
+and that value came from `astral-plasma wallpaper get`, which answered from the
+shell's own state file (`$XDG_STATE_HOME/astral-plasma/wallpaper/path.txt`)
+first. That file only records the last path the shell *wrote* - it says nothing
+about what the desktop is showing. It had drifted: the state claimed
+`Abstract.png` while KDE's `plasma-org.kde.plasma.desktop-appletsrc` had no
+`Image=` key at all, so the desktop still showed Plasma's default wallpaper and
+the picker focused a wallpaper that was not on screen.
+
+Two rules follow:
+
+- **Read the applied state, not the written one.** `wallpaper get` now resolves
+  the desktop containment's own image from the appletsrc (the containment that
+  declares `plugin=org.kde.plasma.folder`; panels carry their own
+  `wallpaperplugin` and must never be mistaken for it), and only falls back to
+  the state file when no Plasma desktop answers. `scripts/generate_palette.sh`
+  reads the same value through `wallpaper get --raw` instead of parsing the
+  config a second time - the palette, the picker and the desktop then agree by
+  construction.
+- **Never fire-and-forget an apply.** `set_active_wallpaper` used to
+  `Command::spawn()` `plasma-apply-wallpaperimage` and drop the result, so a
+  failed apply was indistinguishable from a successful one. It now waits for the
+  tool, verifies the containment really points at the requested image, and falls
+  back to Plasma's scripting interface (`evaluateScript` +
+  `writeConfig("Image", ...)`, which is what makes the live containment repaint)
+  when the tool is missing or did not take effect.
+
+The same shape applies to any "current X" the shell displays: if another
+component owns the state, the shell must read it back rather than trust its own
+record. Tests: `daemon/tests/test_wallpaper_ground_truth.rs`,
+`tests/tst_wallpaper_picker_focus.qml`.

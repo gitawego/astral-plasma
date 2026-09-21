@@ -116,15 +116,15 @@ The dock (`shell/UnifiedShell.qml`) is organized into dedicated capsule pills se
        section whose height is the leftover space; the taskbar budget must reserve
        its content or a long taskbar hides it.
    - **Divider Line**: Subtle horizontal separator.
-   - **System Tray & Status Capsule**:
-     - Secondary group, visually distinct from the taskbar: flatter glass
-       (`subtle`), 62% glyph size and tighter spacing, and capped to a third of the
-       vertical budget (scrollable like the taskbar) so a crowded tray can never
-       squeeze the app list. No extra outline: the glass edge is the card's own
-       specular hairline (see LESSONS 9.1 "Clean Glass Materials").
+   - **System Tray & Status Column**:
+     - A bare icon column: no card, no rim, no fill. It reads as a secondary
+       group purely through size and spacing - glyphs at 62% with tighter gaps -
+       and is capped to a third of the vertical budget (scrollable like the
+       taskbar) so a crowded tray can never squeeze the app list.
      - Input Method badge (`EN`, `中`, `拼`) rendered in bold high-contrast text.
      - DBus StatusNotifierItem tray icons with hover states and context menus.
-     - Stacked clock (Hour over Minute in DemiBold).
+     - Stacked clock (Hour over Minute in DemiBold), drawn as bare text: no
+       capsule, border or fill of its own.
      - `DockStatusIcons` pill (Wi-Fi, Bluetooth, Battery/Power profile, Power).
 
 ### 3.2. Central Dashboard

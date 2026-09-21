@@ -5,16 +5,18 @@ set -euo pipefail
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/astral-plasma"
 mkdir -p "$CACHE_DIR"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WALLPAPER=""
 
-# Detect wallpaper from KDE Plasma config if available
-if [ -f "$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc" ]; then
-    WALLPAPER=$(grep -m 1 -E "Image=" "$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc" | cut -d '=' -f 2 | sed 's|file://||' || true)
+# The daemon answers with the wallpaper the desktop is actually showing (Plasma's
+# containment image), which is the same value the picker focuses. Parsing the
+# config here as well would duplicate that logic and drift from it.
+if [ -x "$SCRIPT_DIR/bin/astral-plasma" ]; then
+    WALLPAPER=$("$SCRIPT_DIR/bin/astral-plasma" wallpaper get --raw 2>/dev/null || true)
 fi
 
 # Fallback wallpaper if none detected
 if [ -z "$WALLPAPER" ] || [ ! -f "$WALLPAPER" ]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     WALLPAPER="$SCRIPT_DIR/theme/assets/wallpaper.webp"
 fi
 
