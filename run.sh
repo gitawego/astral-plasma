@@ -51,7 +51,10 @@ if [ -x "$DIR/bin/astral-plasma" ]; then
     BLUR_PREF=$(python3 -c "
 import json,sys
 try:
-    print(json.load(open('$DIR/config/settings.json')).get('theme',{}).get('blurStrength', 0.85))
+    import os
+    user = os.path.join(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), 'astral-plasma', 'settings.json')
+    path = user if os.path.exists(user) else '$DIR/config/settings.json'
+    print(json.load(open(path)).get('theme',{}).get('blurStrength', 0.85))
 except Exception:
     print(0.85)
 " 2>/dev/null || echo 0.85)

@@ -7,11 +7,26 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property string configPath: Quickshell.env("HOME") + "/.config/quickshell/config/settings.json"
-    readonly property string localConfigPath: Qt.resolvedUrl("./settings.json").toString().replace("file://", "")
+    // Shipped defaults: the app-folder file. Read-only at runtime - it lives in
+    // the checkout, so writing to it would mix user preferences into version
+    // control and dirty the tree on every change.
+    readonly property string defaultConfigPath: Qt.resolvedUrl("./settings.json").toString().replace("file://", "")
 
-    // Default configuration model
-    property var settings: ({
+    // Live user settings: the XDG config dir, e.g.
+    // $XDG_CONFIG_HOME/astral-plasma/settings.json (~/.config/... by default).
+    // This is the only file ever written.
+    readonly property string userConfigPath: {
+        const xdg = (typeof Quickshell !== "undefined" && Quickshell.env)
+            ? Quickshell.env("XDG_CONFIG_HOME") : "";
+        const home = (typeof Quickshell !== "undefined" && Quickshell.env)
+            ? (Quickshell.env("HOME") || "") : "";
+        const base = (xdg && xdg.length > 0) ? xdg : (home + "/.config");
+        return base + "/astral-plasma/settings.json";
+    }
+
+    // Code-level defaults. The live settings are the deep merge of these, the
+    // shipped `defaultConfigPath` file, and the user's `userConfigPath` file.
+    readonly property var defaultSettings: ({
         "dock": {
             "enabled": true,
             "position": "left",
@@ -72,6 +87,8 @@ Singleton {
         },
         "debugMode": false
     })
+
+    property var settings: root.defaultSettings
 
     // Single Debug Mode toggle (gates all debug features & freeze)
     readonly property bool debugMode: root.settings.debugMode ?? false
@@ -597,23 +614,67 @@ Singleton {
         }
     }
 
-    // Load file if exists
-    FileView {
-        id: fileView
-        path: root.localConfigPath
-        preload: true
+    // Deep merge: user values win, keys the user file does not mention fall back
+    // to the shipped defaults, so a new default key keeps working after a user
+    // file exists.
+    function mergeSettings(base, override) {
+        if (override === null || override === undefined) return base;
+        const baseIsObject = base !== null && typeof base === "object" && !Array.isArray(base);
+        const overrideIsObject = typeof override === "object" && !Array.isArray(override);
+        if (!baseIsObject || !overrideIsObject) return override;
+        const merged = Object.assign({}, base);
+        for (const key in override) {
+            merged[key] = root.mergeSettings(base[key], override[key]);
+        }
+        return merged;
+    }
 
-        onLoaded: {
-            try {
-                const textData = fileView.text();
-                if (textData && textData.trim().length > 0) {
-                    const parsed = JSON.parse(textData);
-                    // Merge with defaults
-                    root.settings = Object.assign({}, root.settings, parsed);
-                }
-            } catch (e) {
-                console.warn("[Config] Error parsing settings.json:", e);
-            }
+    function parseSettingsFile(view) {
+        try {
+            const text = view.text();
+            if (text && text.trim().length > 0) return JSON.parse(text);
+        } catch (e) {
+            console.warn("[Config] Error parsing", view.path, e);
+        }
+        return null;
+    }
+
+    // Shipped defaults in the checkout...
+    FileView {
+        id: defaultsView
+        path: root.defaultConfigPath
+        preload: true
+        onLoaded: root.applySettings()
+    }
+
+    // ...and the user's live settings.
+    FileView {
+        id: userView
+        path: root.userConfigPath
+        preload: true
+        watchChanges: true
+        onLoaded: { root.userFileResolved = true; root.userFileExists = true; root.applySettings(); }
+        onLoadFailed: { root.userFileResolved = true; root.userFileExists = false; root.applySettings(); }
+        // `fileChanged` only announces the change; reload() re-reads it.
+        onFileChanged: userView.reload()
+    }
+
+    property bool userFileResolved: false
+    property bool userFileExists: false
+
+    function applySettings() {
+        // Wait for both files: merging half of them would write a partial file.
+        if (!defaultsView.loaded || !root.userFileResolved) return;
+
+        const shipped = root.parseSettingsFile(defaultsView) || {};
+        const user = root.userFileExists ? (root.parseSettingsFile(userView) || {}) : {};
+        root.settings = root.mergeSettings(root.mergeSettings(root.defaultSettings, shipped), user);
+
+        if (!root.userFileExists) {
+            // First run (or migration from the checkout file): seed the user
+            // file, so later saves have a home and the checkout stays pristine.
+            root.userFileExists = true;
+            root.saveSettings();
         }
     }
 
@@ -625,7 +686,7 @@ Singleton {
     function saveSettings() {
         try {
             const jsonStr = JSON.stringify(root.settings, null, 2);
-            saveProcess.command = [root.daemonBin, "config", "write", root.localConfigPath, jsonStr];
+            saveProcess.command = [root.daemonBin, "config", "write", root.userConfigPath, jsonStr];
             saveProcess.running = true;
         } catch (e) {
             console.error("[Config] Failed to save settings:", e);

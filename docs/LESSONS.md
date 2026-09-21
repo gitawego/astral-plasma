@@ -902,7 +902,7 @@ when the surface commits a frame, and the final change lands as the surface is
 about to go idle, so the clear may sit uncommitted until something else dirties
 the scene. That is consistent with both traps above but is not yet proven.
 
-To confirm on a live session, set `debugMode: true` in `config/settings.json`. The
+To confirm on a live session, set `debugMode: true` in your settings file (`~/.config/astral-plasma/settings.json`, or the shipped default `config/settings.json` before the first run). The
 shell then logs the exact rect handed to the compositor on every change:
 
 ```

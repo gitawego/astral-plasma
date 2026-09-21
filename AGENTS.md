@@ -103,7 +103,8 @@ astral-plasma/
 │   └── Colors.qml            # Material Design 3 color roles & dynamic palette mappings
 ├── config/
 │   ├── Config.qml            # Reactive configuration singleton
-│   └── settings.json         # User preferences and geometry overrides
+│   └── settings.json         # Shipped default settings (live user settings:
+│                             #   ~/.config/astral-plasma/settings.json)
 └── scripts/
     ├── generate_palette.sh   # Wallpaper-based Material You color extraction via matugen
     ├── toggle_dashboard.sh   # DBus IPC script to trigger dashboard dropdown

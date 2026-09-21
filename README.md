@@ -129,7 +129,7 @@ You can trigger UI popouts and panels via Quickshell IPC commands or bind them t
 ## 🎨 Customization & Multi-Theming
 
 Configuration files are located in `config/` and `theme/`:
-- `config/settings.json`: Dock width, margin, top bar settings, enabled status icons, and dashboard tabs.
+- `config/settings.json`: shipped default settings (dock width, margin, top bar, status icons, dashboard tabs). Your live settings live in `~/.config/astral-plasma/settings.json` and are the only file the shell writes.
 - `theme/Theme.qml`: Typography scale, corner radius, borders, and shadows.
 - `theme/Colors.qml`: Active color tokens. Easily plug in new color schemes or theme profiles.
 
