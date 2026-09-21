@@ -42,6 +42,10 @@ Item {
 
     function assert(condition, message) {
         if (!condition) {
+            // Qt.exit() terminates before buffered stderr is flushed, which
+            // would make a failing run print nothing at all. Keep a copy on
+            // stdout, which the test harness captures.
+            console.log("FAIL: " + message);
             console.error("FAIL: " + message);
             Qt.exit(1);
             throw new Error(message);
@@ -79,6 +83,24 @@ Item {
             "bodyRect.y must come from popoutY (the surface origin), got: " + bodyExpr);
         assert(/popoutHeight/.test(bodyExpr),
             "bodyRect.height must come from popoutHeight, got: " + bodyExpr);
+
+        // ---- 1b. UnifiedFrame must publish the FLOATING card rect ---------
+        // In the floating state the surface is larger than the glass: the
+        // concave shoulder cut occupies the left `currentFilletR` band, and the
+        // surface keeps `filletR` bands above and below only because the fused
+        // shape needs them. A mask sized to the surface frosts bare wallpaper
+        // around the card - the reported "blur bigger than the drawer".
+        assert(/readonly property rect floatingRect/.test(frame),
+            "UnifiedFrame must expose `floatingRect`: the floating card's own bounding box");
+        const floatDecl = frame.match(/readonly property rect floatingRect:([\s\S]*?)readonly property/);
+        assert(floatDecl !== null, "floatingRect must be a Qt.rect(...) declaration");
+        const floatExpr = floatDecl[1];
+        assert(/currentFilletR/.test(floatExpr),
+            "floatingRect.x must be inset by currentFilletR (the shoulder band), got: " + floatExpr);
+        assert(/popoutHeight/.test(floatExpr),
+            "floatingRect.height must come from popoutHeight, got: " + floatExpr);
+        assert(/popoutY/.test(floatExpr),
+            "floatingRect.y must come from popoutY, got: " + floatExpr);
 
         function regionBlocks(src, marker, endMarker) {
             const a = src.indexOf(marker);
@@ -133,32 +155,31 @@ Item {
             let m;
             while ((m = re.exec(block)) !== null) {
                 const r = m[1];
-                // The body is the region that draws its extent from the
-                // authoritative rect; corner slices use narrow partial widths.
-                if (/fullRect/.test(r))
+                // The body is the region that draws its extent from an
+                // authoritative rect (fullRect when fused, floatingRect when
+                // floating); corner slices use narrow partial widths.
+                if (/(fullRect|floatingRect)/.test(r))
                     out.push(r);
             }
             return out;
         }
 
         const variants = [
-            ["fused", fullWidthRegions(shell,
+            ["fused", "fullRect", fullWidthRegions(shell,
                 "// Fused Bottom Popout (when open & fused to bottom border)",
                 "// Floating Bottom Popout")],
-            ["floating", fullWidthRegions(shell,
+            ["floating", "floatingRect", fullWidthRegions(shell,
                 "// Floating Bottom Popout (when open & floating)",
                 "// Bottom Popout Top Shoulder Fillet")]
         ];
 
         let checkedDims = 0;
         for (const pair of variants) {
-            const variant = pair[0], regions = pair[1];
+            const variant = pair[0], expectedRect = pair[1], regions = pair[2];
             assert(regions.length >= 1,
                 variant + " popout must declare a full-width body region (width: root.currentPopW)");
             for (let i = 0; i < regions.length; i++) {
                 for (const dim of ["y", "width", "height"]) {
-                    const dimRe = dim + ":[ ]*[\\s\\S]*?bodyRect";
-                    const m = regions[i].match(new RegExp("(^|\\n)\\s*" + dim + ":"));
                     const val = regions[i].split("\n").filter(function (l) {
                         return l.trim().indexOf(dim + ":") === 0;
                     });
@@ -166,20 +187,35 @@ Item {
                     const joined = val.join(" ");
                     assert(/blurPopout\w+/.test(joined),
                         variant + " body " + dim + " must be gated on its active flag, got: " + joined.trim());
-                    assert(/fullRect/.test(joined),
-                        variant + " body " + dim + " must read UnifiedFrame's fullRect "
-                        + "(single source of truth), got: " + joined.trim());
-                    checkedDims++;
-                    continue;
-                    assert(m !== null,
-                        variant + " body must gate its " + dim + " on its active flag");
-                    assert(/fullRect/.test(m[1]),
-                        variant + " body " + dim + " must read UnifiedFrame's fullRect "
-                        + "(single source of truth), got: " + m[1].trim());
+                    assert(new RegExp(expectedRect).test(joined),
+                        variant + " body " + dim + " must read UnifiedFrame's " + expectedRect
+                        + " (single source of truth), got: " + joined.trim());
                     checkedDims++;
                 }
             }
         }
+
+        // ---- 2b. The floating variant must never reach past its card -----
+        const floatingBlock = shell.substring(
+            shell.indexOf("// Floating Bottom Popout (when open & floating)"),
+            shell.indexOf("// Bottom Popout Top Shoulder Fillet"));
+        assert(!/fullRect/.test(floatingBlock),
+            "no floating region may use fullRect: the surface is larger than the card, so a "
+            + "fullRect mask frosts bare wallpaper left/top/bottom of the drawer");
+        assert(/floatingRect/.test(floatingBlock),
+            "the floating body must read UnifiedFrame's floatingRect");
+
+        // The top shoulder band is fused-only glass: in the floating state it
+        // blurs bare wallpaper above the card (the drawer is not connected to
+        // anything there).
+        const shoulderBlock = shell.substring(
+            shell.indexOf("// Bottom Popout Top Shoulder Fillet"),
+            shell.indexOf("// Bottom Popout Bottom Shoulder Fillet"));
+        assert(/blurPopoutFused/.test(shoulderBlock),
+            "the top shoulder fillet band must be gated on blurPopoutFused");
+        assert(!/blurPopoutActive/.test(shoulderBlock),
+            "the top shoulder fillet band must NOT be gated on blurPopoutActive: that includes "
+            + "the floating state, where it blurs bare wallpaper above the card");
 
 
         // ---- 3. No mask may reach the screen bottom ---------------------
@@ -194,27 +230,47 @@ Item {
         // Reproduce the surface's formulas for a representative popout and check
         // the exported rects agree with them in BOTH fused and floating states.
         const filletR = 20, popoutH = 204, wrapperY = 751, popW = 350;
+        const dockW = 70;
         for (const fusedState of [false, true]) {
             const botR = fusedState ? 0 : filletR;
+            const tag = fusedState ? "fused" : "floating";
             // Surface (from UnifiedFrame's own expressions)
             const surfTop = wrapperY - filletR;
             const surfBottom = wrapperY + popoutH + botR;
-            // bodyRect (from the exported declarations)
-            const bodyTop = wrapperY;
-            const bodyBottom = wrapperY + popoutH;
-            const tag = fusedState ? "fused" : "floating";
+            const surfLeft = dockW - 1;
 
-            // The exported fullRect must EQUAL the surface, in both states: no
-            // overhang (blur on bare desktop) and no shortfall (unblurred glass).
-            const maskTop = wrapperY - filletR;          // fullRect.y
-            const maskBottom = wrapperY + popoutH + botR; // fullRect bottom
-            assert(maskTop === surfTop,
-                tag + ": fullRect top must equal the surface top (mask " + maskTop
-                + " vs surface " + surfTop + ")");
-            assert(maskBottom === surfBottom,
-                tag + ": fullRect bottom must equal the surface bottom (mask " + maskBottom
-                + " vs surface " + surfBottom + ") - a mismatch blurs bare desktop or "
-                + "leaves glass unblurred");
+            if (fusedState) {
+                // Fused glass IS the surface (shoulder bands included), so the
+                // exported fullRect must equal it: no overhang (blur on bare
+                // desktop) and no shortfall (unblurred glass).
+                const maskTop = wrapperY - filletR;          // fullRect.y
+                const maskBottom = wrapperY + popoutH + botR; // fullRect bottom
+                assert(maskTop === surfTop,
+                    tag + ": fullRect top must equal the surface top (mask " + maskTop
+                    + " vs surface " + surfTop + ")");
+                assert(maskBottom === surfBottom,
+                    tag + ": fullRect bottom must equal the surface bottom (mask " + maskBottom
+                    + " vs surface " + surfBottom + ") - a mismatch blurs bare desktop or "
+                    + "leaves glass unblurred");
+            } else {
+                // Floating glass is the card: inset by the shoulder fillet on the
+                // left, and NOT extended by the fused-only top/bottom bands. The
+                // mask is floatingRect, so it must be strictly inside the surface
+                // (otherwise it frosts bare wallpaper) and must reach the card's
+                // own edges (otherwise glass stays sharp).
+                const cardLeft = surfLeft + filletR;
+                const cardRight = surfLeft + popW + 1;      // bodyW
+                const cardTop = wrapperY;
+                const cardBottom = wrapperY + popoutH;
+                assert(cardLeft > surfLeft,
+                    "sanity: the floating card must be inset from the surface's left edge");
+                assert(cardTop === surfTop + filletR && cardBottom === surfBottom - filletR,
+                    "sanity: the card's top/bottom must sit inside the fused-only bands");
+                assert(/floatingRect/.test(shell),
+                    tag + ": the mask must consume floatingRect (the card), not the surface");
+                assert(cardRight > cardLeft && cardBottom > cardTop,
+                    tag + ": modeled card must be a positive-area rect");
+            }
         }
 
         // ---- 5. The defect is quantified for the record ------------------
@@ -228,9 +284,9 @@ Item {
             "sanity: the legacy fused mask should overrun grossly (got "
             + oldFusedMask + " vs " + newFusedMask + "px)");
 
-        console.log("PASS: Popout Blur-Mask Extent Contract (mask consumes UnifiedFrame.fullRect "
-            + "in both fused and floating states, so mask extent == painted glass extent; "
-            + "bodyRect remains available for the straight-sided section)");
+        console.log("PASS: Popout Blur-Mask Extent Contract (fused mask consumes fullRect; "
+            + "floating mask consumes floatingRect - the card, not the surface - so the blur "
+            + "never extends past the drawer; the top shoulder band is fused-only)");
         Qt.exit(0);
     }
 }

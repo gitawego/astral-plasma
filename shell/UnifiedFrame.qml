@@ -471,6 +471,18 @@ Item {
             root.popoutY,
             sizeRounded(root.currentPopW),
             sizeRounded(root.popoutHeight))
+        // `floatingRect`: the floating card's own bounding box.
+        //
+        // While floating, the painted surface is LARGER than the glass: the left
+        // `currentFilletR` band holds the concave shoulder cut, and the top and
+        // bottom `filletR` bands exist only because the fused shape spans them.
+        // A blur mask sized to the surface would therefore frost bare wallpaper
+        // to the left, above and below the drawer.
+        readonly property rect floatingRect: Qt.rect(
+            root.dockW - 1 + sizeRounded(currentFilletR),
+            root.popoutY,
+            sizeRounded(Math.max(1, bodyW - currentFilletR)),
+            sizeRounded(root.popoutHeight))
 
         // 1A. Solid Glass Surface Fill Shape (Floating drawer with inverted shoulder fillets)
         Shape {

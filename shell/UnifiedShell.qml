@@ -302,134 +302,136 @@ PanelWindow {
         // Floating Bottom Popout (when open & floating)
         // Top-right convex corner slices (when floating)
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? fusedBottomPopoutWrapper.y : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 15) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 15) : 0
             height: (root.blurPopoutFloating) ? 1 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 1) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 12) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 12) : 0
             height: (root.blurPopoutFloating) ? 1 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 2) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 9) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 9) : 0
             height: (root.blurPopoutFloating) ? 2 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 4) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 5) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 5) : 0
             height: (root.blurPopoutFloating) ? 3 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 7) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 3) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 3) : 0
             height: (root.blurPopoutFloating) ? 3 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + 10) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 1) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 1) : 0
             height: (root.blurPopoutFloating) ? 4 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
-            // Full-height, full-width body (see the fused body's note: the mask
-            // is a union, so overlapping the staircases is harmless and the
-            // previous 14px insets left unblurred bands top and bottom).
-            // Reach past the wrapper by the shoulder radius so the concave
-            // shoulder bands are covered too.
-            // Same authoritative source as the fused body (see its note): fullRect,
-            // so the shoulder bands are covered across their whole width.
-            y: (root.blurPopoutFloating) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.y : 0
-            width: (root.blurPopoutFloating) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.width : 0
-            height: (root.blurPopoutFloating) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.height : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
+            // The floating card itself. Consumes UnifiedFrame's authoritative
+            // floatingRect: the surface is larger than the glass in this state
+            // (left band = concave shoulder cut, top/bottom bands exist for the
+            // fused shape), so a surface-sized mask frosted bare wallpaper
+            // around the drawer. The mask is a union, so overlapping the corner
+            // staircases below is harmless.
+            y: (root.blurPopoutFloating) ? desktopFrame.bottomPopoutSurfaceItem.floatingRect.y : 0
+            width: (root.blurPopoutFloating) ? desktopFrame.bottomPopoutSurfaceItem.floatingRect.width : 0
+            height: (root.blurPopoutFloating) ? desktopFrame.bottomPopoutSurfaceItem.floatingRect.height : 0
         }
         // Bottom-right convex corner slices (when floating)
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 14) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 1) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 1) : 0
             height: (root.blurPopoutFloating) ? 4 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 10) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 3) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 3) : 0
             height: (root.blurPopoutFloating) ? 3 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 7) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 5) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 5) : 0
             height: (root.blurPopoutFloating) ? 3 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 4) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 9) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 9) : 0
             height: (root.blurPopoutFloating) ? 2 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 2) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 12) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 12) : 0
             height: (root.blurPopoutFloating) ? 1 : 0
         }
         Region {
-            x: (root.blurPopoutFloating) ? root.dockW : 0
+            x: (root.blurPopoutFloating) ? root.floatingCardRect.x : 0
             y: (root.blurPopoutFloating) ? (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height - 1) : 0
-            width: (root.blurPopoutFloating) ? Math.max(0, root.currentPopW - 15) : 0
+            width: (root.blurPopoutFloating) ? Math.max(0, root.floatingCardRect.width - 15) : 0
             height: (root.blurPopoutFloating) ? 1 : 0
         }
 
-        // Bottom Popout Top Shoulder Fillet (Frosted Glass Blur)
+        // Bottom Popout Top Shoulder Fillet (Frosted Glass Blur, when bottom-fused)
+        //
+        // Fused-only: while floating, the drawer is not connected to anything
+        // above it, so this band would frost bare wallpaper over the card.
         Region {
-            x: root.blurPopoutActive ? root.dockW : 0
-            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD1) : 0
-            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW1) : 0
-            height: root.blurPopoutActive ? root.filletH1 : 0
+            x: root.blurPopoutFused ? root.dockW : 0
+            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD1) : 0
+            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW1) : 0
+            height: root.blurPopoutFused ? root.filletH1 : 0
         }
         Region {
-            x: root.blurPopoutActive ? root.dockW : 0
-            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD2) : 0
-            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW2) : 0
-            height: root.blurPopoutActive ? root.filletH2 : 0
+            x: root.blurPopoutFused ? root.dockW : 0
+            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD2) : 0
+            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW2) : 0
+            height: root.blurPopoutFused ? root.filletH2 : 0
         }
         Region {
-            x: root.blurPopoutActive ? root.dockW : 0
-            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD3) : 0
-            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW3) : 0
-            height: root.blurPopoutActive ? root.filletH3 : 0
+            x: root.blurPopoutFused ? root.dockW : 0
+            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD3) : 0
+            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW3) : 0
+            height: root.blurPopoutFused ? root.filletH3 : 0
         }
         Region {
-            x: root.blurPopoutActive ? root.dockW : 0
-            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD4) : 0
-            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW4) : 0
-            height: root.blurPopoutActive ? root.filletH4 : 0
+            x: root.blurPopoutFused ? root.dockW : 0
+            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD4) : 0
+            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW4) : 0
+            height: root.blurPopoutFused ? root.filletH4 : 0
         }
         Region {
-            x: root.blurPopoutActive ? root.dockW : 0
-            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD5) : 0
-            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW5) : 0
-            height: root.blurPopoutActive ? root.filletH5 : 0
+            x: root.blurPopoutFused ? root.dockW : 0
+            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD5) : 0
+            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW5) : 0
+            height: root.blurPopoutFused ? root.filletH5 : 0
         }
         Region {
-            x: root.blurPopoutActive ? root.dockW : 0
-            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD6) : 0
-            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW6) : 0
-            height: root.blurPopoutActive ? root.filletH6 : 0
+            x: root.blurPopoutFused ? root.dockW : 0
+            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD6) : 0
+            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW6) : 0
+            height: root.blurPopoutFused ? root.filletH6 : 0
         }
         Region {
-            x: root.blurPopoutActive ? root.dockW : 0
-            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD7) : 0
-            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW7) : 0
-            height: root.blurPopoutActive ? root.filletH7 : 0
+            x: root.blurPopoutFused ? root.dockW : 0
+            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD7) : 0
+            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW7) : 0
+            height: root.blurPopoutFused ? root.filletH7 : 0
         }
 
         // Bottom Popout Bottom Shoulder Fillet (Frosted Glass Blur, when floating)
@@ -874,6 +876,8 @@ PanelWindow {
     readonly property bool blurPopoutActive: fusedBottomPopoutWrapper.offsetProgress > root.blurRegionMinProgress
     readonly property bool blurPopoutFused: root.blurPopoutActive && root.fusedProgress > 0.5
     readonly property bool blurPopoutFloating: root.blurPopoutActive && root.fusedProgress <= 0.5
+    // The floating card's own rect (UnifiedFrame is the single source of truth).
+    readonly property rect floatingCardRect: desktopFrame.bottomPopoutSurfaceItem.floatingRect
     readonly property bool blurRightEdgeActive: rightEdgeControlWrapper.offsetProgress > root.blurRegionMinProgress
 
     // Blur-region audit trail (opt-in via Config.debugMode; no cost when off).
