@@ -17,6 +17,14 @@ Item {
     width: 800
     height: 600
 
+    function readLocalFile(relUrl) {
+        const xhr = new XMLHttpRequest();
+        const bust = (relUrl.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now() + Math.random();
+        xhr.open("GET", Qt.resolvedUrl(relUrl) + bust, false);
+        xhr.send();
+        return xhr.responseText || "";
+    }
+
     // The live case that motivated this: only NetEase Cloud Music is producing
     // sound; the Edge stream is corked (a background tab) and Haruna is muted.
     AudioStreamMatcher {
@@ -88,6 +96,17 @@ Item {
             testRoot);
         assert(!unknown.isAudible("NetEase Cloud Music (Wine)", "org.mpris.MediaPlayer2.cloudmusic"),
             "a generic stream name must not be guessed onto a player");
+
+        // The flow gate must not wait for a long hold: a pause stops the samples,
+        // which the capture reports as exact 0.0, while a quiet passage still
+        // reports some energy.
+        const media = readLocalFile("../services/MprisMedia.qml");
+        assert(/interval:\s*250/.test(media),
+            "the audio-flow gate must poll fast enough to feel immediate");
+        assert(/silentSinceMs[\s\S]{0,120}350/.test(media),
+            "a pause must be confirmed within a few frames, not seconds");
+        assert(!/2500/.test(media),
+            "the old multi-second hold is what made a pause take 2-3s to show");
 
         console.log("PASS: Audio Stream Arbitration (audible streams decide, claims do not)");
         Qt.exit(0);

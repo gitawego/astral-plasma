@@ -101,20 +101,36 @@ Singleton {
     /// keeps an uncorked, unmuted stream open, so ownership alone kept reporting
     /// "playing" long after the music stopped. The short hold keeps quiet
     /// passages from flickering.
-    property double lastAudibleMs: 0
+    property double silentSinceMs: 0
     property bool audioFlowing: false
 
     Timer {
-        interval: 500
+        interval: 250
         repeat: true
         running: true
         triggeredOnStart: true
         onTriggered: {
             const viz = (typeof AudioVisualizer !== "undefined") ? AudioVisualizer : null;
-            const active = !!viz && (viz.isStreaming || viz.active)
-                && ((viz.energy || 0) > 0.005 || (viz.beat || 0) > 0.005);
-            if (active) root.lastAudibleMs = Date.now();
-            root.audioFlowing = (Date.now() - root.lastAudibleMs) < 2500;
+            if (!viz || !(viz.isStreaming || viz.active)) {
+                root.audioFlowing = false;
+                root.silentSinceMs = 0;
+                return;
+            }
+
+            // Digital silence is exact: the capture reports a clean 0.0 when no
+            // samples flow, which is what a pause looks like. A quiet passage
+            // still reports *some* energy, so this tells the two apart without
+            // waiting for a long hold - confirmed over a few frames so a single
+            // zero cannot flicker the state.
+            const silent = (viz.energy || 0) <= 0 && (viz.beat || 0) <= 0;
+            const now = Date.now();
+            if (silent) {
+                if (root.silentSinceMs === 0) root.silentSinceMs = now;
+                if (now - root.silentSinceMs >= 350) root.audioFlowing = false;
+            } else {
+                root.silentSinceMs = 0;
+                root.audioFlowing = true;
+            }
         }
     }
 
