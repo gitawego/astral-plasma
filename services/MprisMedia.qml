@@ -94,8 +94,35 @@ Singleton {
     /// the players we know; unattributed audio (a game, a tool with a generic
     /// stream name) falls back to the players' own claims rather than reporting
     /// that nothing is playing.
+    /// Whether sound is actually flowing through the speakers right now.
+    ///
+    /// The stream list says which application *owns* a stream; the visualizer's
+    /// PCM energy says whether that stream is producing sound. A paused player
+    /// keeps an uncorked, unmuted stream open, so ownership alone kept reporting
+    /// "playing" long after the music stopped. The short hold keeps quiet
+    /// passages from flickering.
+    property double lastAudibleMs: 0
+    property bool audioFlowing: false
+
+    Timer {
+        interval: 500
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: {
+            const viz = (typeof AudioVisualizer !== "undefined") ? AudioVisualizer : null;
+            const active = !!viz && (viz.isStreaming || viz.active)
+                && ((viz.energy || 0) > 0.005 || (viz.beat || 0) > 0.005);
+            if (active) root.lastAudibleMs = Date.now();
+            root.audioFlowing = (Date.now() - root.lastAudibleMs) < 2500;
+        }
+    }
+
     readonly property bool audioArbitrationAvailable: {
         if (typeof AudioStreams === "undefined" || !AudioStreams.available) return false;
+        // Without the visualizer there is no way to tell silence from sound, so
+        // fall back to the players' own claims rather than guessing.
+        if (typeof AudioVisualizer === "undefined" || !AudioVisualizer || !AudioVisualizer.isStreaming) return false;
         if (!AudioStreams.streams || AudioStreams.streams.length === 0) return true;
         if (!players || players.length === 0) return false;
         for (let i = 0; i < players.length; i++) {
@@ -115,7 +142,7 @@ Singleton {
         // Playing for background tabs and muted videos, which is how a stale
         // browser session used to outrank the music that was actually audible.
         if (audioArbitrationAvailable) {
-            return AudioStreams.matcher.isAudible(p.identity || "", p.dbusName || "");
+            return AudioStreams.matcher.isPlaying(p.identity || "", p.dbusName || "", audioFlowing);
         }
 
         // Wine player handling: Wine emits no native DBus playback signals.
@@ -458,6 +485,12 @@ Singleton {
         } else {
             currentPosition = 0;
         }
+        // Keep the bridge's advertised state in step with the audio truth: a
+        // reload begins with the players list empty, so waiting for a transition
+        // would leave it claiming "Playing" for the rest of the session.
+        if (activePlayer && isWinePlayer(activePlayer)) {
+            WindowService.updateWinePlaybackStatus(isPlaying);
+        }
     }
 
     property string lastNotifiedTrack: ""
@@ -480,6 +513,26 @@ Singleton {
                 art
             );
         }
+    }
+
+    // Push the state once at start-up as well: a reload begins with the music
+    // already paused, so no transition would ever fire and the bridge would keep
+    // advertising "Playing" to every other MPRIS client.
+    Component.onCompleted: {
+        if (activePlayer && isWinePlayer(activePlayer)) {
+            WindowService.updateWinePlaybackStatus(isPlaying);
+        }
+    }
+
+    // The bridge advertises the Wine player's state to every MPRIS client, but our
+    // own view comes from the audio and settles a moment after start-up. Keep it
+    // in step instead of trusting a single transition (the push is idempotent: the
+    // daemon only emits a change when the value actually differs).
+    Timer {
+        interval: 5000
+        repeat: true
+        running: root.activePlayer !== null && root.isWinePlayer(root.activePlayer)
+        onTriggered: WindowService.updateWinePlaybackStatus(root.isPlaying)
     }
 
     onTitleChanged: checkTrackNotification(false)

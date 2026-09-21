@@ -91,8 +91,18 @@ Singleton {
     }
 
     function updateWinePlaybackStatus(isPlaying) {
-        activateProc.command = ["qdbus6", "org.astralplasma.WindowWatcher", "/Watcher", "org.astralplasma.WindowWatcher.UpdateWinePlaybackStatus", isPlaying ? "true" : "false"];
-        activateProc.running = true;
+        // Its own Process: sharing one with the activation calls meant a busy
+        // instance silently dropped the update, and the bridge kept advertising
+        // "Playing" after the music was paused.
+        if (winePlaybackProc.running) {
+            winePlaybackProc.running = false;
+        }
+        winePlaybackProc.command = ["qdbus6", "org.astralplasma.WindowWatcher", "/Watcher", "org.astralplasma.WindowWatcher.UpdateWinePlaybackStatus", isPlaying ? "true" : "false"];
+        winePlaybackProc.running = true;
+    }
+
+    Process {
+        id: winePlaybackProc
     }
 
     property var _trayMenuCallback: null

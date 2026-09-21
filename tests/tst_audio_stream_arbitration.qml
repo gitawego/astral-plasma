@@ -62,6 +62,15 @@ Item {
         assert(!matcher.someoneElseIsAudible("NetEase Cloud Music (Wine)", "org.mpris.MediaPlayer2.cloudmusic"),
             "and must not pause for its own stream");
 
+        // A paused player keeps its stream open (uncorked, unmuted), so ownership
+        // alone must not count as playing - the audio has to be flowing.
+        assert(!matcher.isPlaying("NetEase Cloud Music (Wine)", "org.mpris.MediaPlayer2.cloudmusic", false),
+            "a paused player must not be reported as playing");
+        assert(matcher.isPlaying("NetEase Cloud Music (Wine)", "org.mpris.MediaPlayer2.cloudmusic", true),
+            "the audible player is playing while sound is flowing");
+        assert(!matcher.isPlaying("Microsoft Edge", "org.mpris.MediaPlayer2.edge.instance3710", true),
+            "a silent session is not playing even while other audio flows");
+
         // When the audible application is a browser, the browser wins.
         const edgeAudible = Qt.createQmlObject(
             'import QtQuick; import "../components"; AudioStreamMatcher { streams: [{ name: "Microsoft Edge", binary: "msedge" }] }',

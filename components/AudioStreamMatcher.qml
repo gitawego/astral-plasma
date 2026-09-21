@@ -43,6 +43,15 @@ Item {
         return false;
     }
 
+    /// Whether a player is playing, from the sound server's point of view.
+    ///
+    /// Ownership alone is not enough: a paused player keeps its stream open
+    /// (uncorked and unmuted), so the audio has to be *flowing* as well - that is
+    /// what stops the widget from reporting "playing" forever after a pause.
+    function isPlaying(identity, busName, audioFlowing) {
+        return audioFlowing === true && isAudible(identity, busName);
+    }
+
     /// Whether the sound belongs to something other than this player.
     function someoneElseIsAudible(identity, busName) {
         if (!streams || streams.length === 0) return false;
