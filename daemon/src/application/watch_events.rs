@@ -4,7 +4,7 @@ use crate::domain::app_identity::{
 use crate::domain::branding;
 use crate::domain::meta_resolver::resolve_window_meta_with;
 use crate::domain::wine_media::parse_wine_media;
-use crate::application::wine_mpris::{connect_wine_mpris_with_retry, WineMprisService};
+use crate::application::wine_mpris::{connect_wine_mpris_with_retry_attempt, WineMprisService};
 use crate::domain::model::{
     ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowsListPayload,
 };
@@ -667,8 +667,16 @@ pub async fn run_event_daemon() -> DynResult<()> {
         let slot = Arc::clone(&wine_mpris);
         let initial = initial_wins.clone();
         tokio::spawn(async move {
-            match connect_wine_mpris_with_retry(120, Duration::from_millis(250)).await {
-                Ok(service) => {
+            // Retry forever: the bridge is how the shell sees the Wine player at
+            // all, and a start that lost a race against a previous daemon must
+            // still come back minutes later instead of being given up on.
+            let service = crate::application::retry::retry_forever(
+                Duration::from_secs(2),
+                connect_wine_mpris_with_retry_attempt,
+            )
+            .await;
+            {
+                {
                     let service = Arc::new(service);
                     for w in &initial {
                         if let Some(media) = parse_wine_media(&w.title, &w.app_id)
@@ -681,10 +689,6 @@ pub async fn run_event_daemon() -> DynResult<()> {
                     }
                     let _ = slot.set(service);
                 }
-                Err(e) => eprintln!(
-                    "[{}] Wine MPRIS bridge unavailable: {}",
-                    branding::APP_NAME, e
-                ),
             }
         });
     }
@@ -715,7 +719,9 @@ pub async fn run_event_daemon() -> DynResult<()> {
     {
         let slot = Arc::clone(&wine_mpris);
         tokio::spawn(async move {
-            use crate::application::wine_mpris::is_other_mpris_playing;
+            use crate::application::audio_streams::{another_app_owns_audio, audible_streams};
+            use crate::application::wine_mpris::WINE_MPRIS_BUS_NAME;
+
             let mut interval = tokio::time::interval(Duration::from_millis(2000));
             loop {
                 interval.tick().await;
@@ -723,8 +729,15 @@ pub async fn run_event_daemon() -> DynResult<()> {
                 let Some(mpris_audio) = slot.get() else {
                     continue;
                 };
-                if is_other_mpris_playing().await {
-                    let _ = mpris_audio.update_playback_status(false).await;
+                // The sound server decides who owns the audio. Asking the other
+                // MPRIS players (as this used to) let a browser session that
+                // merely claims Playing silence the bridge while the bridge was
+                // the one actually making sound.
+                let identity = mpris_audio.identity().await;
+                if let Ok(streams) = audible_streams() {
+                    if another_app_owns_audio(&streams, &identity, WINE_MPRIS_BUS_NAME) {
+                        let _ = mpris_audio.update_playback_status(false).await;
+                    }
                 }
             }
         });

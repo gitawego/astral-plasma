@@ -88,8 +88,35 @@ Singleton {
         return false;
     }
 
+    /// Whether the sound server's stream list can decide who is playing.
+    ///
+    /// It can when it is available *and* every audible stream belongs to one of
+    /// the players we know; unattributed audio (a game, a tool with a generic
+    /// stream name) falls back to the players' own claims rather than reporting
+    /// that nothing is playing.
+    readonly property bool audioArbitrationAvailable: {
+        if (typeof AudioStreams === "undefined" || !AudioStreams.available) return false;
+        if (!AudioStreams.streams || AudioStreams.streams.length === 0) return true;
+        if (!players || players.length === 0) return false;
+        for (let i = 0; i < players.length; i++) {
+            let p = players[i];
+            if (!p) continue;
+            if (AudioStreams.matcher.isAudible(p.identity || "", p.dbusName || "")) return true;
+        }
+        return false;
+    }
+
     function isPlayerPlaying(p) {
         if (!p) return false;
+
+        // Physical audio is the ground truth: a player that owns an application
+        // making sound is playing, and one that only *claims* Playing while
+        // another application owns the sound is not. Browsers keep reporting
+        // Playing for background tabs and muted videos, which is how a stale
+        // browser session used to outrank the music that was actually audible.
+        if (audioArbitrationAvailable) {
+            return AudioStreams.matcher.isAudible(p.identity || "", p.dbusName || "");
+        }
 
         // Wine player handling: Wine emits no native DBus playback signals.
         // When user plays/pauses inside Wine GUI, DBus playbackState remains stale.
@@ -125,6 +152,16 @@ Singleton {
         if (p.playbackState === 1) return true;
         if (typeof MprisPlaybackState !== "undefined" && p.playbackState === MprisPlaybackState.Playing) return true;
         return false;
+    }
+
+    /// A finished session: still on the bus, but with nothing to show.
+    function isPlayerStopped(p) {
+        if (!p) return true;
+        if (typeof MprisPlaybackState !== "undefined" && MprisPlaybackState.Stopped !== undefined) {
+            return p.playbackState === MprisPlaybackState.Stopped;
+        }
+        // Quickshell's enum order: Stopped = 0, Playing = 1, Paused = 2.
+        return p.playbackState === 0;
     }
 
     readonly property bool isAnyPlayerPlaying: {
@@ -259,8 +296,10 @@ Singleton {
             return;
         }
 
-        // 3. Keep current player if still active
-        if (currentPlayer) {
+        // 3. Keep the current player while it is still meaningful: present on
+        //    DBus and not a finished session. A browser session that stopped an
+        //    hour ago must not pin the widget while nothing else is playing.
+        if (currentPlayer && !isPlayerStopped(currentPlayer)) {
             let matchedCurrent = findMatchingPlayer(currentPlayer);
             if (matchedCurrent) {
                 if (currentPlayer !== matchedCurrent) currentPlayer = matchedCurrent;
@@ -268,10 +307,18 @@ Singleton {
             }
         }
 
-        // 4. Default to Cloud Music if present, else first available
+        // 4. Prefer Cloud Music, then any live session, then whatever is left.
         for (let i = 0; i < players.length; i++) {
             let p = players[i];
-            if (p && ((p.dbusName && p.dbusName.indexOf("cloudmusic") !== -1) || (p.identity && p.identity.indexOf("Cloud Music") !== -1))) {
+            if (p && !isPlayerStopped(p) && ((p.dbusName && p.dbusName.indexOf("cloudmusic") !== -1) || (p.identity && p.identity.indexOf("Cloud Music") !== -1))) {
+                currentPlayer = p;
+                return;
+            }
+        }
+
+        for (let i = 0; i < players.length; i++) {
+            let p = players[i];
+            if (p && !isPlayerStopped(p)) {
                 currentPlayer = p;
                 return;
             }

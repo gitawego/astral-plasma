@@ -12,6 +12,9 @@ use crate::domain::ports::DynResult;
 use crate::domain::wine_media::WineMediaInfo;
 use crate::infrastructure::media::registry::WinePlayerRegistry;
 
+/// The bus name the Wine player is published under.
+pub const WINE_MPRIS_BUS_NAME: &str = "org.mpris.MediaPlayer2.cloudmusic";
+
 pub struct WineMprisRoot {
     state: Arc<Mutex<WineMprisPlayerState>>,
 }
@@ -374,6 +377,11 @@ pub async fn connect_wine_mpris_with_retry(
     crate::application::retry::retry_async(attempts, delay, WineMprisService::new).await
 }
 
+/// One attempt at claiming the bridge name, for `retry_forever`.
+pub async fn connect_wine_mpris_with_retry_attempt() -> DynResult<WineMprisService> {
+    WineMprisService::new().await
+}
+
 impl WineMprisService {
     pub async fn new() -> DynResult<Self> {
         let state = Arc::new(Mutex::new(WineMprisPlayerState::default()));
@@ -385,7 +393,7 @@ impl WineMprisService {
         };
 
         let conn = Builder::session()?
-            .name("org.mpris.MediaPlayer2.cloudmusic")?
+            .name(WINE_MPRIS_BUS_NAME)?
             .serve_at("/org/mpris/MediaPlayer2", root)?
             .serve_at("/org/mpris/MediaPlayer2", player.clone())?
             .build()
@@ -542,6 +550,16 @@ impl WineMprisService {
         Ok(())
     }
 
+    /// The player name the bridge publishes, for matching it to an audio stream.
+    pub async fn identity(&self) -> String {
+        let st = self.state.lock().await;
+        if !st.player_name.is_empty() {
+            st.player_name.clone()
+        } else {
+            "NetEase Cloud Music (Wine)".to_string()
+        }
+    }
+
     pub async fn update_playback_status(&self, is_playing: bool) -> DynResult<()> {
         let changed = {
             let mut st = self.state.lock().await;
@@ -568,43 +586,6 @@ impl WineMprisService {
     }
 }
 
-/// Checks if any other MPRIS player on the session bus is currently in the "Playing" state.
-pub async fn is_other_mpris_playing() -> bool {
-    let out = match tokio::process::Command::new("busctl")
-        .args(["--user", "list", "--acquired"])
-        .output()
-        .await
-    {
-        Ok(o) => o,
-        Err(_) => return false,
-    };
-    let text = String::from_utf8_lossy(&out.stdout);
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if let Some(first) = trimmed.split_whitespace().next() {
-            if first.starts_with("org.mpris.MediaPlayer2.") && first != "org.mpris.MediaPlayer2.cloudmusic" {
-                if let Ok(prop) = tokio::process::Command::new("busctl")
-                    .args([
-                        "--user",
-                        "get-property",
-                        first,
-                        "/org/mpris/MediaPlayer2",
-                        "org.mpris.MediaPlayer2.Player",
-                        "PlaybackStatus",
-                    ])
-                    .output()
-                    .await
-                {
-                    let val = String::from_utf8_lossy(&prop.stdout);
-                    if val.contains("Playing") {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    false
-}
 
 /// Pauses any other MPRIS player currently in the Playing state on the session bus.
 pub async fn pause_other_mpris_players() {

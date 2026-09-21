@@ -89,6 +89,32 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "audio" => {
+            use crate::application::audio_streams::audible_streams;
+
+            match args.get(2).map(|s| s.as_str()).unwrap_or("streams") {
+                "streams" => {
+                    // Which applications are producing sound right now: the
+                    // ground truth for "who is playing", so a browser session
+                    // that merely claims Playing cannot outrank real audio.
+                    let streams = audible_streams()?;
+                    let payload: Vec<serde_json::Value> = streams
+                        .iter()
+                        .map(|s| {
+                            serde_json::json!({
+                                "name": s.name,
+                                "binary": s.binary,
+                            })
+                        })
+                        .collect();
+                    println!("{}", serde_json::to_string(&payload)?);
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma audio streams");
+                    std::process::exit(2);
+                }
+            }
+        }
         "shell" => {
             use crate::application::shell_lifecycle::quit_running_shell;
 

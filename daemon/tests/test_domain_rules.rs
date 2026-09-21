@@ -490,11 +490,38 @@ fn test_tray_metadata_resolution() {
     assert_eq!(m_icon, "circle");
 }
 
-#[tokio::test]
-async fn test_other_mpris_playing_query() {
-    use astral_plasma::application::wine_mpris::is_other_mpris_playing;
-    // Querying should execute cleanly without panicking
-    let _ = is_other_mpris_playing().await;
+#[test]
+fn test_another_app_owns_audio() {
+    use astral_plasma::application::audio_streams::{another_app_owns_audio, AudioStream};
+
+    let music = AudioStream {
+        name: "NetEase Cloud Music".to_string(),
+        binary: "wine-preloader".to_string(),
+    };
+    let edge = AudioStream {
+        name: "Microsoft Edge".to_string(),
+        binary: "msedge".to_string(),
+    };
+    let bus = "org.mpris.MediaPlayer2.cloudmusic";
+
+    // The bridge's own stream: it stays as the Wine player reports it.
+    assert!(!another_app_owns_audio(
+        &[music],
+        "NetEase Cloud Music (Wine)",
+        bus
+    ));
+    // Something else owns the sound: the bridge is not the one making noise.
+    assert!(another_app_owns_audio(
+        &[edge],
+        "NetEase Cloud Music (Wine)",
+        bus
+    ));
+    // Silence is not "someone else".
+    assert!(!another_app_owns_audio(
+        &[],
+        "NetEase Cloud Music (Wine)",
+        bus
+    ));
 }
 
 #[tokio::test]
