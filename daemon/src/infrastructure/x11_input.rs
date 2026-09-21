@@ -304,7 +304,7 @@ unsafe fn evaluate_candidate_window(
 }
 
 #[allow(dead_code)]
-pub unsafe fn find_wine_media_window(dpy: *mut libc::c_void, target_class: &str) -> Option<libc::c_ulong> {
+pub unsafe fn find_window_by_class(dpy: *mut libc::c_void, target_class: &str) -> Option<libc::c_ulong> {
     let root = XDefaultRootWindow(dpy);
     let net_client_list = XInternAtom(dpy, b"_NET_CLIENT_LIST\0".as_ptr() as *const libc::c_char, 0);
     let wm_class = XInternAtom(dpy, b"WM_CLASS\0".as_ptr() as *const libc::c_char, 0);
@@ -629,7 +629,7 @@ pub fn send_wine_media_action(action: WineMediaAction) -> Result<(), String> {
     unsafe {
         let dpy = XOpenDisplay(ptr::null());
         if !dpy.is_null() {
-            let win_opt = find_wine_media_window(dpy, "cloudmusic");
+            let win_opt = find_window_by_class(dpy, "cloudmusic");
             XCloseDisplay(dpy);
             if let Some(win) = win_opt {
                 return send_window_key(win, key);
@@ -638,6 +638,63 @@ pub fn send_wine_media_action(action: WineMediaAction) -> Result<(), String> {
     }
 
     send_media_key(key)
+}
+
+/// Read the icon an X11 window publishes for itself (`_NET_WM_ICON`).
+///
+/// This is the only truthful identity source for an application that ships no
+/// desktop entry (Wine reports the executable as its class), and it is what the
+/// desktop's own taskbar uses in that case. Returns the raw CARDINAL data; the
+/// caller decodes and caches it.
+pub fn read_net_wm_icon(target_class: &str) -> Option<Vec<u32>> {
+    unsafe {
+        let dpy = XOpenDisplay(ptr::null());
+        if dpy.is_null() {
+            return None;
+        }
+
+        let result = (|| {
+            let win = find_window_by_class(dpy, target_class)?;
+            let atom = XInternAtom(dpy, b"_NET_WM_ICON\0".as_ptr() as *const libc::c_char, 0);
+            let mut actual_type = 0;
+            let mut actual_format = 0;
+            let mut nitems: libc::c_ulong = 0;
+            let mut bytes_after: libc::c_ulong = 0;
+            let mut prop: *mut libc::c_uchar = ptr::null_mut();
+
+            // XA_CARDINAL = 6. The length is in 32-bit units; 256x256 icons need
+            // ~65k of them.
+            let ret = XGetWindowProperty(
+                dpy,
+                win,
+                atom,
+                0,
+                262144,
+                0,
+                6,
+                &mut actual_type,
+                &mut actual_format,
+                &mut nitems,
+                &mut bytes_after,
+                &mut prop,
+            );
+            if ret != 0 || prop.is_null() {
+                return None;
+            }
+            if actual_format != 32 || nitems == 0 {
+                XFree(prop as *mut libc::c_void);
+                return None;
+            }
+            // Format-32 properties come back as an array of `long`, not `u32`.
+            let items = std::slice::from_raw_parts(prop as *const libc::c_long, nitems as usize);
+            let data: Vec<u32> = items.iter().map(|v| *v as u32).collect();
+            XFree(prop as *mut libc::c_void);
+            Some(data)
+        })();
+
+        XCloseDisplay(dpy);
+        result
+    }
 }
 
 /// Queries cursor position (root_x, root_y) via XQueryPointer.

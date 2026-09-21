@@ -10,6 +10,7 @@ use crate::domain::model::{
 };
 use crate::domain::ports::{DynResult, TrayPort, WindowManagerPort};
 use crate::infrastructure::kwin_adapter::KWinAdapter;
+use crate::infrastructure::window_icons;
 use crate::infrastructure::tray_adapter::TrayAdapter;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -104,7 +105,13 @@ impl WatcherService {
             return;
         }
 
-        let meta = resolve_window_meta_with(Some(&shared_index()), title, cls, app, "");
+        let mut meta = resolve_window_meta_with(Some(&shared_index()), title, cls, app, "");
+        // Wine applications ship no desktop entry; the icon their own window
+        // publishes (`_NET_WM_ICON`) is the only truthful identity, and it is what
+        // the desktop's own taskbar falls back to. A desktop-entry icon wins.
+        if let Some(icon) = window_icons::resolve_window_icon(cls, &meta.icon_name) {
+            meta.icon_name = icon.to_string_lossy().to_string();
+        }
         let mut st = self.state.lock().await;
 
         let clean_wid = wid.trim_matches(|c| c == '{' || c == '}');
@@ -199,7 +206,10 @@ impl WatcherService {
                 continue;
             }
 
-            let meta = resolve_window_meta_with(Some(&index), t, c, a, "");
+            let mut meta = resolve_window_meta_with(Some(&index), t, c, a, "");
+            if let Some(icon) = window_icons::resolve_window_icon(c, &meta.icon_name) {
+                meta.icon_name = icon.to_string_lossy().to_string();
+            }
             let is_active = if !active_wid.is_empty() {
                 wid == active_wid
             } else {

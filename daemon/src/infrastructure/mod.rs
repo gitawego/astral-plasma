@@ -7,6 +7,7 @@ pub mod plasma_adapter;
 pub mod systemd_adapter;
 pub mod embedded_bundle;
 pub mod x11_input;
+pub mod window_icons;
 pub mod fs_wallpaper;
 pub mod sys_settings;
 pub mod kwin_shortcuts;
