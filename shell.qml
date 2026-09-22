@@ -59,8 +59,15 @@ ShellRoot {
         }
         function close(): void { Config.settingsVisible = false; }
         function setPage(page: string): void {
-            if (page) Config.activeSettingsPage = page;
+            Config.activeSettingsPage = page;
         }
+    }
+
+    IpcHandler {
+        target: "overview"
+        function toggle(): void { Config.toggleOverview(); }
+        function open(): void { Config.openOverview(); }
+        function close(): void { Config.closeOverview(); }
     }
 
     IpcHandler {
@@ -232,6 +239,10 @@ ShellRoot {
         id: commandLauncher
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
+
+    // Active apps overview (bare Meta key -> KWin shortcut -> daemon ShellIpc
+    // -> this IPC): fullscreen overlay with live thumbnails, primary screen.
+    ActiveAppsOverview {}
 
     // Settings GUI Window
     SettingsWindow {

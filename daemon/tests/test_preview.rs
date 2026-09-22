@@ -140,3 +140,76 @@ fn test_desktop_entry_install_and_removal_lifecycle() {
     assert!(rem2.is_ok());
     assert_eq!(rem2.unwrap(), false, "Subsequent removal must return false when file is already gone");
 }
+
+// --- Aspect preservation inside the fit box --------------------------------
+//
+// Captures are scaled into a box of (target_width x 260). Locking the width
+// and clamping the height bakes a WRONG aspect ratio into the PNG whenever the
+// source cannot fit at the requested width (portrait, square, strip-shaped
+// windows), and the overview grid then displays squashed content. Contract:
+// fit INSIDE the box, aspect preserved, for every source shape. The 260px
+// bound is pinned here because it is the documented thumbnail height ceiling.
+
+const BOX_H: u32 = 260;
+
+#[test]
+fn test_fit_box_preserves_square_aspect() {
+    let (w, h) = (500u32, 500u32);
+    let stride = w * 4;
+    let raw = vec![0u8; (stride * h) as usize];
+    let png = process_bgra_to_png(&raw, w, h, stride, 480).expect("must encode PNG");
+    let img = image::load_from_memory(&png).expect("must load PNG");
+    assert!(img.width() <= 480, "width must stay in the box, got {}", img.width());
+    assert!(img.height() <= BOX_H, "height must stay under the ceiling, got {}", img.height());
+    let aspect = img.width() as f64 / img.height() as f64;
+    assert!((aspect - 1.0).abs() < 0.02,
+        "square source must stay square, got {}x{} (aspect {:.3})", img.width(), img.height(), aspect);
+    assert!(img.width() > 200,
+        "square source must use most of the width budget, got {}", img.width());
+}
+
+#[test]
+fn test_fit_box_preserves_portrait_aspect() {
+    let (w, h) = (400u32, 800u32);
+    let stride = w * 4;
+    let raw = vec![0u8; (stride * h) as usize];
+    let png = process_bgra_to_png(&raw, w, h, stride, 480).expect("must encode PNG");
+    let img = image::load_from_memory(&png).expect("must load PNG");
+    assert!(img.width() <= 480, "width must stay in the box, got {}", img.width());
+    assert!(img.height() <= BOX_H, "height must stay under the ceiling, got {}", img.height());
+    let aspect = img.width() as f64 / img.height() as f64;
+    assert!((aspect - 0.5).abs() < 0.02,
+        "portrait source must stay 1:2, got {}x{} (aspect {:.3})", img.width(), img.height(), aspect);
+    assert_eq!(img.height(), BOX_H,
+        "portrait source must be height-bound to use the full box");
+}
+
+#[test]
+fn test_fit_box_landscape_aspect() {
+    let (w, h) = (1920u32, 1080u32);
+    let stride = w * 4;
+    let raw = vec![0u8; (stride * h) as usize];
+    let png = process_bgra_to_png(&raw, w, h, stride, 480).expect("must encode PNG");
+    let img = image::load_from_memory(&png).expect("must load PNG");
+    assert!(img.width() <= 480, "width must stay in the box, got {}", img.width());
+    assert!(img.height() <= BOX_H, "height must stay under the ceiling, got {}", img.height());
+    let aspect = img.width() as f64 / img.height() as f64;
+    assert!((aspect - (16.0 / 9.0)).abs() < 0.02,
+        "16:9 source must stay 16:9, got {}x{} (aspect {:.3})", img.width(), img.height(), aspect);
+}
+
+#[test]
+fn test_fit_box_short_window_height_not_fabricated() {
+    // A 1920x100 strip must keep its true shape: no minimum-height padding,
+    // no clamped-height squash.
+    let (w, h) = (1920u32, 100u32);
+    let stride = w * 4;
+    let raw = vec![0u8; (stride * h) as usize];
+    let png = process_bgra_to_png(&raw, w, h, stride, 320).expect("must encode PNG");
+    let img = image::load_from_memory(&png).expect("must load PNG");
+    let aspect = img.width() as f64 / img.height() as f64;
+    assert!((aspect - 19.2).abs() < 0.5,
+        "strip source must keep ~19.2:1 aspect, got {}x{} (aspect {:.3})", img.width(), img.height(), aspect);
+    assert!(img.height() < 40,
+        "height must not be fabricated up to the old 40px floor, got {}", img.height());
+}

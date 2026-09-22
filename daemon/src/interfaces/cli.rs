@@ -358,6 +358,63 @@ pub async fn run_cli() -> DynResult<()> {
                         eprintln!("Usage: astral-plasma config write <path> <content>");
                     }
                 }
+                // Durable avatar image import (Settings > Dashboard avatars):
+                // copies the picked file into the app config dir so the
+                // setting survives deletion of the original source. Prints the
+                // path Config.qml must store (the copy, or the original when
+                // the source is missing/unreadable).
+                "import-image" => {
+                    let base_dir = args
+                        .get(5)
+                        .map(|s| s.as_str().to_string())
+                        .unwrap_or_else(|| {
+                            branding::config_home()
+                                .join(branding::DATA_DIR)
+                                .to_string_lossy()
+                                .to_string()
+                        });
+                    match (args.get(3).map(|s| s.as_str()), args.get(4).map(|s| s.as_str())) {
+                        (Some(src), Some(kind)) => {
+                            match crate::infrastructure::avatar_fs::import_image(src, kind, &base_dir)
+                            {
+                                Ok(stored) => println!(
+                                    "{}",
+                                    serde_json::json!({ "success": true, "stored": stored })
+                                ),
+                                Err(e) => eprintln!("config import-image: {e}"),
+                            }
+                        }
+                        _ => {
+                            eprintln!(
+                                "Usage: astral-plasma config import-image <src> <host|media> [config_dir]"
+                            );
+                        }
+                    }
+                }
+                // Ownership-guarded cleanup of a previously imported copy when
+                // the setting is reset or its extension changed. Refuses any
+                // path this feature did not generate.
+                "forget-image" => {
+                    let base_dir = args
+                        .get(4)
+                        .map(|s| s.as_str().to_string())
+                        .unwrap_or_else(|| {
+                            branding::config_home()
+                                .join(branding::DATA_DIR)
+                                .to_string_lossy()
+                                .to_string()
+                        });
+                    match args.get(3).map(|s| s.as_str()) {
+                        Some(path) => {
+                            let removed =
+                                crate::infrastructure::avatar_fs::forget_import(path, &base_dir);
+                            println!("{}", serde_json::json!({ "success": true, "removed": removed }));
+                        }
+                        None => {
+                            eprintln!("Usage: astral-plasma config forget-image <path> [config_dir]");
+                        }
+                    }
+                }
                 _ => {
                     eprintln!("Usage: astral-plasma config write <path> <content>");
                 }
@@ -418,6 +475,39 @@ pub async fn run_cli() -> DynResult<()> {
             let launcher = LaunchAppUseCase::new(DesktopLauncherAdapter::new());
             let list = launcher.list_apps()?;
             println!("{}", serde_json::to_string(&list)?);
+        }
+        "calendar" => {
+            use crate::application::open_calendar::OpenCalendarUseCase;
+            let use_case = OpenCalendarUseCase::new();
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("open");
+            match sub {
+                "resolve" => {
+                    let candidates = use_case.resolve();
+                    let dirs = crate::infrastructure::calendar::CalendarAdapter::search_dirs();
+                    let res = serde_json::json!({
+                        "mime": crate::domain::calendar::CALENDAR_MIME,
+                        "mime_default": use_case.mime_default(),
+                        "mime_defaults": use_case.mime_defaults(),
+                        "override": use_case.override_id(),
+                        "candidates": candidates,
+                        "options": crate::infrastructure::calendar::calendar_options(&candidates, &dirs),
+                        "fallback": crate::infrastructure::calendar::FALLBACK_SETTINGS_COMMAND.join(" "),
+                        "fallback_available": use_case.fallback_available(),
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "open" => {
+                    let date = args.get(3).map(|s| s.as_str());
+                    let res = use_case.execute(date)?;
+                    println!("{}", serde_json::to_string(&res)?);
+                    if !res.success {
+                        std::process::exit(3);
+                    }
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma calendar <resolve|open [YYYY-MM-DD]>");
+                }
+            }
         }
         "workspaces" => {
             let ws_ctrl = WorkspaceControlUseCase::new(KWinAdapter::new());
@@ -755,9 +845,16 @@ fn print_usage() {
     eprintln!("  systemd <cmd>           - User-directed systemd service management: status, install, remove");
     eprintln!("  settings [toggle|open|close] - Control Settings GUI window via IPC");
     eprintln!("  config write <path> <json> - Atomic configuration file persistence");
+    eprintln!(
+        "  config import-image <src> <host|media> [config_dir] - Durable avatar import (prints stored path JSON)"
+    );
+    eprintln!(
+        "  config forget-image <path> [config_dir] - Remove an owned avatar copy (prints {{success, removed}} JSON)"
+    );
     eprintln!("  watch                   - Run event-driven background watcher");
     eprintln!("  visualizer              - Stream real-time audio spectrum & energy JSON");
     eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
+    eprintln!("  calendar <resolve|open [YYYY-MM-DD]> - Open the default calendar application");
     eprintln!("  workspaces <cmd>        - Virtual desktops: query, switch, ensure");
     eprintln!("  preview <window_id>     - Capture live window thumbnail");
     eprintln!("  desktop <install|cleanup> - Manage KWin authorization desktop entries");

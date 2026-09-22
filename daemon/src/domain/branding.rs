@@ -66,8 +66,12 @@ pub const SHORTCUT_LAUNCHER_KEY: &str = "AstralLauncher";
 pub const SHORTCUT_WALLPAPER_KEY: &str = "AstralWallpaper";
 /// Display label of the launcher shortcut.
 pub const SHORTCUT_LAUNCHER_LABEL: &str = "Astral Plasma Launcher";
-/// Display label of the wallpaper shortcut.
+/// Display label of the wallpaper picker shortcut.
 pub const SHORTCUT_WALLPAPER_LABEL: &str = "Astral Plasma Wallpaper Picker";
+/// KWin global shortcut key for the active-apps overview (bare Meta).
+pub const SHORTCUT_OVERVIEW_KEY: &str = "AstralOverview";
+/// Display label of the active-apps overview shortcut.
+pub const SHORTCUT_OVERVIEW_LABEL: &str = "Astral Plasma: Active Apps Overview";
 
 // --- Wayland -----------------------------------------------------------------
 

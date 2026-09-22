@@ -107,13 +107,15 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
         fs::create_dir_all(&backup_dir)?;
 
         let backup_path = self.backup_file_path();
-        if backup_path.exists() {
-            // Already backed up; do not overwrite pristine state
+        let existing: Option<AstralShortcutSessionBackup> = if backup_path.exists() {
+            // A session backup already exists: never overwrite recorded
+            // originals. Keys managed only after it was written (the
+            // bare-Meta overview) are merged in before returning.
             let content = fs::read_to_string(&backup_path)?;
-            if let Ok(existing) = serde_json::from_str::<AstralShortcutSessionBackup>(&content) {
-                return Ok(existing);
-            }
-        }
+            serde_json::from_str::<AstralShortcutSessionBackup>(&content).ok()
+        } else {
+            None
+        };
 
         let config_dir = self.resolve_config_dir();
         let kglobal_path = config_dir.join("kglobalshortcutsrc");
@@ -132,6 +134,7 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
         let monitored_keys = [
             ("kwin", branding::SHORTCUT_LAUNCHER_KEY),
             ("kwin", branding::SHORTCUT_WALLPAPER_KEY),
+            ("kwin", branding::SHORTCUT_OVERVIEW_KEY),
             ("services", "astral-launcher.desktop"),
             ("services", "astral-wallpaper.desktop"),
             ("plasmashell", "activate application launcher"),
@@ -187,6 +190,17 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
+
+        // Existing backup: merge in only the keys it never recorded (added to
+        // `monitored_keys` after the session started), keep every recorded
+        // original untouched, and rewrite only when something was appended.
+        if let Some(existing) = existing {
+            let (merged, changed) = crate::domain::shortcuts::merge_missing_entries(existing, affected, displaced);
+            if changed {
+                fs::write(&backup_path, serde_json::to_string_pretty(&merged)?)?;
+            }
+            return Ok(merged);
+        }
 
         let backup = AstralShortcutSessionBackup {
             timestamp,
@@ -266,6 +280,7 @@ try:
     accel = dbus.Interface(bus.get_object('org.kde.kglobalaccel', '/kglobalaccel'), 'org.kde.KGlobalAccel')
     accel.setForeignShortcut(['kwin', '{launcher}', 'default', '{launcher_label}'], [dbus.Int32(0)])
     accel.setForeignShortcut(['kwin', '{wallpaper}', 'default', '{wallpaper_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['kwin', '{overview}', 'default', '{overview_label}'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-launcher.desktop', '_launch', 'default', '{launcher_label}'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-wallpaper.desktop', '_launch', 'default', '{wallpaper_label}'], [dbus.Int32(0)])
 except Exception:
@@ -275,6 +290,8 @@ except Exception:
                 launcher_label = branding::SHORTCUT_LAUNCHER_LABEL,
                 wallpaper = branding::SHORTCUT_WALLPAPER_KEY,
                 wallpaper_label = branding::SHORTCUT_WALLPAPER_LABEL,
+                overview = branding::SHORTCUT_OVERVIEW_KEY,
+                overview_label = branding::SHORTCUT_OVERVIEW_LABEL,
             );
             let _ = Command::new("python3").args(["-c", &clear_py]).status();
         }

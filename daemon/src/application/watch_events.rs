@@ -77,6 +77,7 @@ pub fn shell_ipc_arguments(action: &str) -> Option<Vec<&'static str>> {
         "launcher.wallpaper" => Some(vec!["call", "launcher", "open", "wallpaper"]),
         "dashboard.toggle" => Some(vec!["call", "dashboard", "toggle"]),
         "settings.toggle" => Some(vec!["call", "settings", "toggle"]),
+        "overview.toggle" => Some(vec!["call", "overview", "toggle"]),
         _ => None,
     }
 }

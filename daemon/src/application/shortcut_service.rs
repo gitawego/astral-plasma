@@ -10,7 +10,11 @@ impl<P: ShortcutControlPort> ShortcutControlUseCase<P> {
         Self { port }
     }
 
-    /// Granularly snapshots only Astral-relevant shortcuts if not already backed up
+    /// Granularly snapshots only Astral-relevant shortcuts. The adapter is
+    /// ALWAYS reached: with an active backup it merges keys it only started
+    /// managing after that backup was written (never overwriting recorded
+    /// originals); with none it creates one. Gating on is_backup_active()
+    /// here silently skipped that merge.
     pub fn snapshot(&self, mode: &str) -> DynResult<()> {
         let target_key = match mode {
             "meta" | "super" => "Alt+F1",
@@ -18,13 +22,12 @@ impl<P: ShortcutControlPort> ShortcutControlUseCase<P> {
             _ => "Meta+Space",
         };
 
-        if !self.port.is_backup_active() {
-            self.port.snapshot_relevant_shortcuts(target_key)?;
-        }
+        self.port.snapshot_relevant_shortcuts(target_key)?;
         Ok(())
     }
 
-    /// Granularly snapshots only Astral-relevant shortcuts (if not already backed up) and binds this shell's shortcuts
+    /// Granularly snapshots only Astral-relevant shortcuts (merging into an
+    /// existing backup when present) and binds this shell's shortcuts
     pub fn backup_and_bind(&self, mode: &str) -> DynResult<()> {
         self.snapshot(mode)?;
         self.port.bind_shortcuts(mode)?;

@@ -36,3 +36,21 @@ registerShortcut(
         );
     }
 );
+
+// Active-apps overview: the bare Super/Meta key toggles the fullscreen
+// overview of running windows with live thumbnails (GNOME-style).
+registerShortcut(
+    "AstralOverview",
+    "Astral Plasma: Active Apps Overview",
+    "Meta",
+    function() {
+        console.info("Astral Plasma: Triggering active apps overview");
+        callDBus(
+            "org.astralplasma.WindowWatcher",
+            "/Watcher",
+            "org.astralplasma.WindowWatcher",
+            "ShellIpc",
+            "overview.toggle"
+        );
+    }
+);

@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../components"
 
 Singleton {
     id: root
@@ -62,6 +63,25 @@ Singleton {
         if (!target) return;
         activateProc.command = [root.daemonBin, "launch", target];
         activateProc.running = true;
+    }
+
+    // Dedicated process for calendar launches: sharing activateProc meant a
+    // busy activation silently dropped the calendar open request.
+    Process {
+        id: calendarProc
+    }
+
+    /// Open the system's default calendar application for `isoDate`
+    /// (`YYYY-MM-DD`). Resolution is data-driven via the XDG MIME database
+    /// (`text/calendar`) in the daemon - no application name is hardcoded.
+    /// With no date, the calendar simply opens to its own current view.
+    function openCalendar(isoDate) {
+        var cmd = [root.daemonBin, "calendar", "open"];
+        if (isoDate !== undefined && isoDate !== null && ("" + isoDate).length > 0) {
+            cmd.push("" + isoDate);
+        }
+        calendarProc.command = cmd;
+        calendarProc.running = true;
     }
 
     Process {
@@ -301,6 +321,98 @@ Singleton {
         previewCaptureProc.requestedWinKey = winKey;
         previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
         previewCaptureProc.running = true;
+    }
+
+    // ---- Active-apps overview thumbnails ---------------------------------
+    // While the overview is open, PreviewCycle rotates ONE capture at a time
+    // across every window through a single Process, so two KWin
+    // CaptureWindow calls never race. Each capture alternates that window's
+    // two slot files, so the stored URL changes on every refresh and
+    // LiveWindowThumbnail can swap buffers without a blank frame. The map is
+    // reassigned (not mutated) so delegate bindings re-evaluate.
+    property var overviewThumbnails: ({})
+    property bool overviewActive: false
+    readonly property int overviewThumbWidth: 480
+
+    PreviewCycle {
+        id: overviewCycle
+        interval: 120
+        runner: key => {
+            overviewCaptureProc.requestedWinKey = key;
+            overviewCaptureProc.command = [root.daemonBin, "preview", key, "" + root.overviewThumbWidth];
+            overviewCaptureProc.running = true;
+        }
+    }
+
+    Process {
+        id: overviewCaptureProc
+        property string requestedWinKey: ""
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const lines = this.text.trim().split("\n");
+                const outPath = lines.length > 0 ? lines[lines.length - 1].trim() : "";
+                const key = overviewCaptureProc.requestedWinKey;
+                if (outPath.startsWith("/") && key) {
+                    root._storeOverviewThumbnail(key, "file://" + outPath);
+                }
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const err = this.text.trim();
+                if (err) console.warn("Overview preview error:", err);
+            }
+        }
+        // A finished capture advances the rotation; after stop() the advance
+        // hits the inactive cycle and is ignored.
+        onExited: overviewCycle.advance()
+    }
+
+    function _storeOverviewThumbnail(key, url) {
+        const next = Object.assign({}, root.overviewThumbnails);
+        next[key] = url;
+        root.overviewThumbnails = next;
+    }
+
+    function _overviewKeys() {
+        const wins = root.windows || [];
+        const seen = {};
+        const keys = [];
+        for (let i = 0; i < wins.length; i++) {
+            const w = wins[i];
+            if (!w || w.id === undefined || w.id === null) continue;
+            const k = String(w.id);
+            if (seen[k]) continue;
+            seen[k] = true;
+            keys.push(k);
+        }
+        return keys;
+    }
+
+    /// Start (or re-target) the overview rotation for every current window.
+    function startOverviewThumbnails() {
+        root.overviewActive = true;
+        overviewCycle.items = root._overviewKeys();
+        if (!overviewCycle.active) overviewCycle.start();
+    }
+
+    /// Adopt window-list changes while open without restarting the rotation:
+    /// PreviewCycle re-reads `items` at the next wrap.
+    function refreshOverviewThumbnails() {
+        overviewCycle.items = root._overviewKeys();
+    }
+
+    function stopOverviewThumbnails() {
+        root.overviewActive = false;
+        overviewCycle.stop();
+        // An in-flight capture is left to finish (~one frame). Killing it
+        // would emit a late onExited whose advance() could race a fast reopen
+        // into a double-advance (a skipped window in the new rotation).
+    }
+
+    onWindowsChanged: {
+        if (root.overviewActive) root.refreshOverviewThumbnails();
     }
 
     function triggerTrayMenuItem(service, menuPath, itemId) {

@@ -32,8 +32,10 @@ case "$MODE" in
     "meta"|"super")
         echo "[*] Setting Astral Plasma Launcher shortcut to: Meta key (Super key alone via Alt+F1)"
         LAUNCHER_KEY="Alt+F1"
-        # Avoid conflict with default plasmashell menu
-        kwriteconfig6 --file kglobalshortcutsrc --group "plasmashell" --key "activate application launcher" "none,none,Activate Application Launcher"
+        # The launcher moves to AstralLauncher (Alt+F1) below, so plasmashell
+        # must release its binding entirely; the value is written after the
+        # case block, where the bare-Meta overview release also lives.
+        PLASMA_LAUNCHER_BIND="none,none,Activate Application Launcher"
         ;;
     "alt-space")
         echo "[*] Setting Astral Plasma Launcher shortcut to: Alt+Space"
@@ -52,6 +54,13 @@ esac
 # means neither reliably fires.
 kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralLauncher" "$LAUNCHER_KEY,none,Astral Plasma: Toggle Launcher"
 kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralWallpaper" "Meta+Shift+W,none,Astral Plasma: Open Wallpaper Picker"
+
+# The active-apps overview owns the bare Meta key. plasmashell's launcher
+# releases Meta but keeps Alt+F1, its historical secondary binding (mode
+# "meta" above overrides this to none because AstralLauncher claims Alt+F1).
+PLASMA_LAUNCHER_BIND="${PLASMA_LAUNCHER_BIND:-Alt+F1,Meta	Alt+F1,Activate Application Launcher}"
+kwriteconfig6 --file kglobalshortcutsrc --group "plasmashell" --key "activate application launcher" "$PLASMA_LAUNCHER_BIND"
+kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralOverview" "Meta,none,Astral Plasma: Active Apps Overview"
 for entry in astral-launcher.desktop astral-wallpaper.desktop; do
     kwriteconfig6 --file kglobalshortcutsrc --group "services" --group "$entry" --key "_launch" --delete 2>/dev/null || true
 done
@@ -103,6 +112,15 @@ try:
     # which runs the shell IPC.
     accel.setForeignShortcut(['kwin', 'AstralLauncher', 'default', 'Astral Plasma: Toggle Launcher'], [dbus.Int32(launcher_key)])
     accel.setForeignShortcut(['kwin', 'AstralWallpaper', 'default', 'Astral Plasma: Open Wallpaper Picker'], [dbus.Int32(wallpaper_key)])
+    # Active-apps overview: bare Meta. Qt::Key_Meta = 0x01000022 = 16777250
+    # (NOT 0x01000000) - plasmashell's own former Meta binding uses exactly
+    # this code, and a wrong code never matches a physical Super press.
+    accel.setForeignShortcut(['kwin', 'AstralOverview', 'default', 'Astral Plasma: Active Apps Overview'], [dbus.Int32(16777250)])
+    # plasmashell must RELEASE Meta in-memory as well: kwriteconfig above
+    # updates the file, but the running component keeps its old keys until
+    # something re-registers them - so the stock launcher would keep stealing
+    # every Super press.
+    accel.setForeignShortcut(['plasmashell', 'activate application launcher', 'default', 'Activate Application Launcher'], [dbus.Int32(150994992)])
 
     print("[✓] Dynamically registered in KWin compositor & KGlobalAccel")
 except Exception as e:

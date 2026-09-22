@@ -40,6 +40,11 @@ fn known_actions_map_to_the_shell_ipc_command() {
         shell_ipc_arguments("settings.toggle"),
         Some(vec!["call", "settings", "toggle"])
     );
+    assert_eq!(
+        shell_ipc_arguments("overview.toggle"),
+        Some(vec!["call", "overview", "toggle"]),
+        "Meta must toggle the active-apps overview"
+    );
 }
 
 #[test]

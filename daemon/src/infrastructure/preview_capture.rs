@@ -7,6 +7,11 @@ use std::path::{Path, PathBuf};
 use zbus::zvariant::{OwnedFd, Value};
 use zbus::Connection;
 
+/// Ceiling for thumbnail height. Captures fit INSIDE
+/// (`target_width` x `MAX_THUMB_HEIGHT`) with the aspect ratio preserved; it
+/// bounds file size and grid footprint, it never stretches content.
+pub const MAX_THUMB_HEIGHT: u32 = 260;
+
 pub fn generate_desktop_entry(exe_path: &Path) -> String {
     format!(
         "[Desktop Entry]\nVersion=1.5\nType=Application\nNoDisplay=true\nName={}\nExec={}\nX-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2,org.kde.kwin.Screenshot\nX-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstable_v1\n",
@@ -137,19 +142,23 @@ pub fn process_bgra_to_png(
         return Err("Invalid image dimensions".into());
     }
 
-    let computed_h = (target_width as u64 * height as u64) / width as u64;
-    let target_height = if height < 40 {
-        computed_h.max(1) as u32
-    } else {
-        computed_h.clamp(40, 260) as u32
-    };
-    let mut rgba_img = image::RgbaImage::new(target_width, target_height);
+    // Fit INSIDE (target_width x MAX_THUMB_HEIGHT), aspect preserved. The box
+    // is a ceiling, never a mould: locking the width and clamping the height
+    // squashed portrait/square/strip windows into the box and baked a wrong
+    // aspect ratio into the file, which the overview grid then displayed as
+    // distorted content. When height binds, the WIDTH shrinks instead.
+    let scale_w = target_width as f64 / width as f64;
+    let scale_h = MAX_THUMB_HEIGHT as f64 / height as f64;
+    let scale = scale_w.min(scale_h);
+    let tw = (((width as f64) * scale).round() as u32).clamp(1, target_width);
+    let th = (((height as f64) * scale).round() as u32).max(1);
+    let mut rgba_img = image::RgbaImage::new(tw, th);
 
-    for y in 0..target_height {
-        let src_y = ((y as u64 * height as u64) / target_height as u64).min((height - 1) as u64) as u32;
+    for y in 0..th {
+        let src_y = ((y as u64 * height as u64) / th as u64).min((height - 1) as u64) as u32;
         let row_offset = (src_y * stride) as usize;
-        for x in 0..target_width {
-            let src_x = ((x as u64 * width as u64) / target_width as u64).min((width - 1) as u64) as u32;
+        for x in 0..tw {
+            let src_x = ((x as u64 * width as u64) / tw as u64).min((width - 1) as u64) as u32;
             let px_offset = row_offset + (src_x * 4) as usize;
             if px_offset + 3 < raw.len() {
                 let b = raw[px_offset];

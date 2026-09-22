@@ -99,6 +99,9 @@
     "width": 980,
     "defaultTab": "dashboard",
     "mediaAvatar": "/home/hlu/Downloads/Gojo-Satoru-Jujutsu-Kaisen-Character.png",
+    "hostAvatar": "",
+    "hostAvatarBg": "#ffffff",
+    "hostAvatarBgOpacity": 0.2,
     "tabs": [
       {
         "id": "dashboard",

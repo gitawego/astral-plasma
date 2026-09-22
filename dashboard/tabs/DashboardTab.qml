@@ -20,6 +20,50 @@ Item {
     readonly property alias calendarCardItem: calendarCard
     readonly property alias calWidgetItem: calWidget
 
+    /// Durable avatar for the system-host card ("" = bundled default art).
+    readonly property string hostAvatarSource: root.resolveAvatarSource(Config.hostAvatar)
+    property alias hostAvatarImageItem: hostAvatarImg
+    property alias hostAvatarCircle: avatarCircle
+    property alias hostAvatarMaskItem: avatarMask
+    property alias hostAvatarArtItem: avatarArt
+    property alias hostAvatarBorderItem: avatarBorder
+
+    // Circle background: configurable color + transparency (Config defaults
+    // are white @ 0.2; literals keep the inert-harness case identical).
+    readonly property string hostAvatarBgColor: (typeof Config !== "undefined" && Config.hostAvatarBg) ? Config.hostAvatarBg : "#ffffff"
+    readonly property real hostAvatarBgOpacity: (typeof Config !== "undefined" && Config.hostAvatarBgOpacity !== undefined && !isNaN(Config.hostAvatarBgOpacity)) ? Number(Config.hostAvatarBgOpacity) : 0.2
+    readonly property color hostAvatarBackgroundColor: root.resolveAvatarBg(hostAvatarBgColor, hostAvatarBgOpacity)
+
+    /// "" -> bundled default art (relative to this file, so it resolves in
+    /// the shell and in the offscreen test harness alike); absolute path ->
+    /// file:// URL; an existing file:// URL passes through unchanged.
+    function resolveAvatarSource(configured) {
+        const p = (configured || "").trim();
+        if (p === "") return "../../theme/assets/dino.png";
+        if (p.startsWith("file://")) return p;
+        return "file://" + p;
+    }
+
+    /// Avatar-circle background from a configurable hex color + transparency.
+    /// Invalid colors fall back to white; opacity clamps to 0..1 and falls
+    /// back to the shipped default 0.2 (white @ 20%).
+    function resolveAvatarBg(colorStr, opacity) {
+        let a = Number(opacity);
+        if (isNaN(a)) a = 0.2;
+        a = Math.max(0, Math.min(1, a));
+        const digits = String(colorStr === undefined || colorStr === null ? "" : colorStr)
+            .trim().toLowerCase().replace(/^#/, "");
+        if (!/^[0-9a-f]{6}$/.test(digits)) {
+            return Qt.rgba(1, 1, 1, a);
+        }
+        const n = parseInt(digits, 16);
+        return Qt.rgba(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, a);
+    }
+
+    // Suppresses the real calendar launch in offscreen tests; the pure date
+    // computation and the dateClicked signal remain fully testable.
+    property bool testMode: false
+
     property var currentDate: new Date()
     Timer {
         interval: 1000
@@ -104,20 +148,60 @@ Item {
                         anchors.margins: 18
                         spacing: 18
 
-                        // Avatar
+                        // Avatar (durable, configurable via Settings > Dashboard)
                         Rectangle {
+                            id: avatarCircle
                             width: 64
                             height: 64
                             radius: 32
-                            color: Colors.primaryContainer
+                            color: root.hostAvatarBackgroundColor
                             clip: true
-                            border.color: Theme.borderSubtle
-                            border.width: 1
 
-                            Image {
+                            // True-circle mask (repo album-cover pattern):
+                            // Rectangle.clip only clips children to the bounding
+                            // box, which let square image corners leak over the
+                            // card - the mask clips the artwork to the radius.
+                            Rectangle {
+                                id: avatarMask
                                 anchors.fill: parent
-                                source: "../../theme/assets/dino.png"
-                                fillMode: Image.PreserveAspectCrop
+                                radius: width / 2
+                                color: "white"
+                                visible: false
+                                layer.enabled: true
+                            }
+
+                            Item {
+                                id: avatarArt
+                                anchors.fill: parent
+                                layer.enabled: true
+                                layer.effect: MultiEffect {
+                                    maskEnabled: true
+                                    maskSource: avatarMask
+                                }
+
+                                Image {
+                                    id: hostAvatarImg
+                                    anchors.fill: parent
+                                    source: root.hostAvatarSource
+                                    // CONTAIN + CENTER: the full image is always
+                                    // visible, letterboxed and centered inside the
+                                    // circle - the shell never crops or reframes;
+                                    // choosing a correctly sized image is the
+                                    // user's call. Transparent art shows the circle
+                                    // tint underneath.
+                                    fillMode: Image.PreserveAspectFit
+                                }
+                            }
+
+                            // Inner border for crisp circle definition (stacked
+                            // above the artwork, matching the album cover).
+                            Rectangle {
+                                id: avatarBorder
+                                anchors.fill: parent
+                                radius: width / 2
+                                color: "transparent"
+                                border.color: Theme.borderSubtle
+                                border.width: 1
                             }
                         }
 
@@ -216,6 +300,9 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 10
 
+                        signal dateClicked(string isoDate)
+                        property string lastClickedDate: ""
+
                         readonly property var today: new Date()
                         readonly property int currYear: today.getFullYear()
                         readonly property int currMonth: today.getMonth()
@@ -232,6 +319,54 @@ Item {
                         readonly property real headerColSpacing: colSpacing
                         readonly property real rowSpacing: 4
                         readonly property int fontSize: 13
+
+                        /// Calendar date for a grid cell, accounting for the
+                        /// leading/trailing overflow days with year rollover.
+                        /// Returns { year, month (1-12), day }.
+                        function dateForCell(cellIndex) {
+                            var y = calWidget.currYear;
+                            var m = calWidget.currMonth;
+                            var d;
+                            if (cellIndex < calWidget.startOffset) {
+                                d = calWidget.daysInPrevMonth - calWidget.startOffset + cellIndex + 1;
+                                m -= 1;
+                                if (m < 0) {
+                                    m = 11;
+                                    y -= 1;
+                                }
+                            } else if (cellIndex >= calWidget.startOffset + calWidget.daysInMonth) {
+                                d = cellIndex - calWidget.startOffset - calWidget.daysInMonth + 1;
+                                m += 1;
+                                if (m > 11) {
+                                    m = 0;
+                                    y += 1;
+                                }
+                            } else {
+                                d = cellIndex - calWidget.startOffset + 1;
+                            }
+                            return { "year": y, "month": m + 1, "day": d };
+                        }
+
+                        /// Clicked day in YYYY-MM-DD form for the daemon's
+                        /// `calendar open` command.
+                        function isoForCell(cellIndex) {
+                            var p = calWidget.dateForCell(cellIndex);
+                            function pad(n) {
+                                return (n < 10 ? "0" : "") + n;
+                            }
+                            return p.year + "-" + pad(p.month) + "-" + pad(p.day);
+                        }
+
+                        /// Open the system's default calendar application for
+                        /// the clicked cell (data-driven via XDG MIME).
+                        function openDateForCell(cellIndex) {
+                            var iso = calWidget.isoForCell(cellIndex);
+                            calWidget.lastClickedDate = iso;
+                            calWidget.dateClicked(iso);
+                            if (!root.testMode && typeof WindowService !== "undefined" && WindowService.openCalendar) {
+                                WindowService.openCalendar(iso);
+                            }
+                        }
 
                         Column {
                             anchors.centerIn: parent
@@ -295,6 +430,27 @@ Item {
                                             color: Colors.primary
                                         }
 
+                                        // Hover halo for the interactive date cell.
+                                        // Hidden on today's pill (zero-overlap partitioning:
+                                        // two translucent fills would leave a dark seam).
+                                        Rectangle {
+                                            anchors.centerIn: parent
+                                            width: 32
+                                            height: 26
+                                            radius: 13
+                                            visible: dayHover.containsMouse && !isToday
+                                            color: dayHover.pressed ? Qt.alpha(Colors.primary, 0.32)
+                                                                   : Qt.alpha(Colors.primary, 0.18)
+                                            opacity: dayHover.containsMouse ? 1.0 : 0.0
+                                            Behavior on opacity {
+                                                NumberAnimation {
+                                                    duration: Theme.animExpressiveFastEffects
+                                                    easing.type: Easing.BezierSpline
+                                                    easing.bezierCurve: Theme.curveExpressiveFastEffects
+                                                }
+                                            }
+                                        }
+
                                         Text {
                                             anchors.centerIn: parent
                                             text: dayNum
@@ -302,6 +458,16 @@ Item {
                                             font.pixelSize: calWidget.fontSize
                                             font.weight: isToday ? Font.Bold : (isCurrMonth ? Font.DemiBold : Font.Normal)
                                             color: isToday ? Colors.textOnPrimary : (isCurrMonth ? Colors.textOnSurface : Qt.alpha(Colors.textOnSurfaceVariant, 0.45))
+                                        }
+
+                                        MouseArea {
+                                            id: dayHover
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            Accessible.role: Accessible.Button
+                                            Accessible.name: "Open calendar for " + calWidget.isoForCell(index)
+                                            onClicked: calWidget.openDateForCell(index)
                                         }
                                     }
                                 }

@@ -123,6 +123,7 @@ You can trigger UI popouts and panels via Quickshell IPC commands or bind them t
 | **Close Popout** | `quickshell -p ~/.config/quickshell ipc call popout close` |
 | **Toggle Dashboard** | `~/.config/quickshell/scripts/toggle_dashboard.sh` |
 | **Toggle Settings** | `~/.config/quickshell/scripts/toggle_settings.sh` |
+| **Toggle Active Apps Overview** | `Meta` (bound by `scripts/bind_shortcuts.sh`) or `~/.config/quickshell/scripts/toggle_overview.sh` |
 
 ---
 

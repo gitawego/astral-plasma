@@ -72,7 +72,9 @@ Item {
         assert(/function\s+mergeSettings\s*\(/.test(cfg),
             "Config.qml must deep-merge the shipped defaults with the user file, so new default "
             + "keys keep working after a user file exists");
-        assert(/mergeSettings\(/.test(cfg.slice(cfg.indexOf("applySettings"), cfg.indexOf("applySettings") + 1200)),
+        // (anchored on `function applySettings` so prose mentions of the name
+        //  in comments cannot shift the window - same anchor as check 5 below)
+        assert(/mergeSettings\(/.test(cfg.slice(cfg.indexOf("function applySettings"), cfg.indexOf("function applySettings") + 1200)),
             "applySettings must apply the merge");
 
         // 4. Saving writes ONLY the user file.

@@ -1313,80 +1313,14 @@ Item {
                             color: Colors.surfaceContainer
                             clip: true
 
-                            // Double-buffered live thumbnail container to prevent flicker during updates
-                            Item {
+                            // Double-buffered live thumbnail (shared component;
+                            // the same flicker-free slot swap the drawer always
+                            // had - extracted so the overview grid reuses it).
+                            LiveWindowThumbnail {
                                 id: livePreviewBufContainer
                                 anchors.fill: parent
-
-                                readonly property string targetSource: (appSection.currentApp && appSection.isRunning) ? WindowService.activePreviewThumbnail : ""
-                                property string activeBuffer: "A"
-                                property var lastAppId: null
-                                property bool hasLoadedPreview: false
-                                readonly property bool hasImage: hasLoadedPreview || (bufA.status === Image.Ready && bufA.source !== "") || (bufB.status === Image.Ready && bufB.source !== "")
-
-                                function onTargetChanged() {
-                                    const curId = (appSection.currentApp && appSection.currentApp.id) ? appSection.currentApp.id : null;
-                                    if (curId !== lastAppId) {
-                                        lastAppId = curId;
-                                        hasLoadedPreview = false;
-                                        bufA.source = "";
-                                        bufB.source = "";
-                                        activeBuffer = "A";
-                                    }
-
-                                    if (targetSource === "") {
-                                        hasLoadedPreview = false;
-                                        bufA.source = "";
-                                        bufB.source = "";
-                                        return;
-                                    }
-
-                                    if (activeBuffer === "A") {
-                                        bufB.source = targetSource;
-                                    } else {
-                                        bufA.source = targetSource;
-                                    }
-                                }
-
-                                onTargetSourceChanged: onTargetChanged()
-
-                                Image {
-                                    id: bufA
-                                    anchors.fill: parent
-                                    fillMode: Image.PreserveAspectFit
-                                    asynchronous: true
-                                    cache: false
-                                    z: livePreviewBufContainer.activeBuffer === "A" ? 2 : 1
-                                    visible: livePreviewBufContainer.hasLoadedPreview ? (livePreviewBufContainer.activeBuffer === "A" || livePreviewBufContainer.activeBuffer === "B") : (status === Image.Ready)
-
-                                    onStatusChanged: {
-                                        if (status === Image.Ready) {
-                                            livePreviewBufContainer.hasLoadedPreview = true;
-                                            if (livePreviewBufContainer.activeBuffer === "B") {
-                                                livePreviewBufContainer.activeBuffer = "A";
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Image {
-                                    id: bufB
-                                    anchors.fill: parent
-                                    fillMode: Image.PreserveAspectFit
-                                    asynchronous: true
-                                    cache: false
-                                    z: livePreviewBufContainer.activeBuffer === "B" ? 2 : 1
-                                    visible: livePreviewBufContainer.hasLoadedPreview ? (livePreviewBufContainer.activeBuffer === "B" || livePreviewBufContainer.activeBuffer === "A") : (status === Image.Ready)
-
-                                    onStatusChanged: {
-                                        if (status === Image.Ready) {
-                                            livePreviewBufContainer.hasLoadedPreview = true;
-                                            if (livePreviewBufContainer.activeBuffer === "A") {
-                                                livePreviewBufContainer.activeBuffer = "B";
-                                            }
-                                        }
-                                    }
-                                }
+                                source: (appSection.currentApp && appSection.isRunning) ? WindowService.activePreviewThumbnail : ""
+                                identity: (appSection.currentApp && appSection.currentApp.id) ? appSection.currentApp.id : null
                             }
 
                             // Fallback placeholder / immediate skeleton preview card

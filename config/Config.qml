@@ -62,7 +62,12 @@ Singleton {
         "dashboard": {
             "enabled": true,
             "defaultTab": "dashboard",
+            // "" = follow the system's XDG MIME default for text/calendar.
+            "calendarApp": "",
             "mediaAvatar": "",
+            "hostAvatar": "",
+            "hostAvatarBg": "#ffffff",
+            "hostAvatarBgOpacity": 0.2,
             "tabs": [
                 { "id": "dashboard", "label": "Dashboard", "enabled": true },
                 { "id": "media", "label": "Media", "enabled": true },
@@ -121,6 +126,9 @@ Singleton {
     readonly property bool topBarShowWeather: true
     readonly property bool dashboardShowOnHover: root.settings.dashboard ? (root.settings.dashboard.showOnHover ?? true) : true
     readonly property int dashboardWidth: root.settings.dashboard ? (root.settings.dashboard.width ?? 980) : 980
+    // Dashboard calendar app override ("" = system default via XDG MIME)
+    readonly property string calendarApp: (root.settings.dashboard && typeof root.settings.dashboard.calendarApp === "string")
+        ? root.settings.dashboard.calendarApp : ""
     readonly property string mediaAvatar: {
         if (root.settings.dashboard && root.settings.dashboard.mediaAvatar !== undefined && root.settings.dashboard.mediaAvatar !== "") {
             return root.settings.dashboard.mediaAvatar;
@@ -129,6 +137,18 @@ Singleton {
             return root.settings.media.avatar;
         }
         return "";
+    }
+    // Dashboard system-host card avatar ("" = bundled default art). Written
+    // by setHostAvatar / the load-time migration; both durably import the
+    // file into the config dir before storing it.
+    readonly property string hostAvatar: (root.settings.dashboard && typeof root.settings.dashboard.hostAvatar === "string")
+        ? root.settings.dashboard.hostAvatar : ""
+    // Circle background for the system-host avatar (default white @ 0.2).
+    readonly property string hostAvatarBg: (root.settings.dashboard && typeof root.settings.dashboard.hostAvatarBg === "string" && root.settings.dashboard.hostAvatarBg !== "")
+        ? root.settings.dashboard.hostAvatarBg : "#ffffff"
+    readonly property real hostAvatarBgOpacity: {
+        const v = root.settings.dashboard ? Number(root.settings.dashboard.hostAvatarBgOpacity) : NaN;
+        return isNaN(v) ? 0.2 : Math.max(0, Math.min(1, v));
     }
     readonly property var disablePlasmaPanels: {
         if (!root.settings.plasma) return "all";
@@ -437,10 +457,168 @@ Singleton {
         });
     }
 
-    function setMediaAvatar(path) {
+    // ------------------------------------------------------------------
+    // Durable avatar image import (system-host card + media tab avatars)
+    // ------------------------------------------------------------------
+    // The file operations live in the daemon (`config import-image` /
+    // `config forget-image`) so they carry full unit-test coverage; Config.qml
+    // only wires them into the settings store.
+
+    /// [{ key, kind }] of dashboard settings holding a durable-imported image.
+    readonly property var dashboardAvatarFields: [
+        { "key": "mediaAvatar", "kind": "media" },
+        { "key": "hostAvatar", "kind": "host" }
+    ]
+
+    /// Guards the one-time load-time migration (applySettings can re-run).
+    property bool avatarMigrationRan: false
+
+    /// One-shot daemon call for avatar import/forget. Each call spawns its own
+    /// process, so the load-time migration and UI setters can never queue
+    /// behind each other. `doneCb` receives the daemon's `stored` path, or
+    /// `fallbackValue` when the process produced no parseable output (e.g.
+    /// binary missing) - settings then keep the original path, exactly the
+    /// pre-import behaviour.
+    Component {
+        id: avatarProcComponent
+        Process {
+            id: avatarProc
+            property var doneCb: null
+            property string fallbackValue: ""
+            stdout: StdioCollector { id: avatarProcStdout }
+            onExited: (exitCode, exitStatus) => {
+                let stored = "";
+                try {
+                    const parsed = JSON.parse(avatarProcStdout.text.trim());
+                    if (parsed && typeof parsed.stored === "string") stored = parsed.stored;
+                } catch (e) {}
+                const cb = avatarProc.doneCb;
+                if (cb) cb(stored !== "" ? stored : avatarProc.fallbackValue);
+                avatarProc.destroy();
+            }
+        }
+    }
+
+    function runAvatarProcess(command, fallbackValue, doneCb) {
+        const proc = avatarProcComponent.createObject(root, {
+            "doneCb": doneCb || null,
+            "fallbackValue": fallbackValue || ""
+        });
+        if (!proc) {
+            if (doneCb) doneCb(fallbackValue || "");
+            return;
+        }
+        proc.command = command;
+        proc.running = true;
+    }
+
+    /// Ask the daemon to durably import `srcPath` and report the path to
+    /// store. `done` always receives a readable path: the config-dir copy on
+    /// success, the original source when it could not be copied.
+    function importAvatarToConfig(srcPath, kind, done) {
+        root.runAvatarProcess([root.daemonBin, "config", "import-image", srcPath, kind], srcPath, done);
+    }
+
+    /// Persist a dashboard avatar durably. Empty `pathValue` resets to the
+    /// bundled default and asks the daemon to drop our owned copy (the daemon
+    /// re-verifies ownership - user originals are never touched).
+    function setDashboardAvatar(key, kind, pathValue) {
+        const p = (pathValue || "").trim();
+        const current = (root.settings.dashboard && root.settings.dashboard[key])
+            ? root.settings.dashboard[key]
+            : "";
+        if (p === "") {
+            root.updateSettings(cfg => {
+                if (!cfg.dashboard) cfg.dashboard = {};
+                cfg.dashboard[key] = "";
+            });
+            const previous = String(current).trim();
+            if (previous !== "") {
+                root.runAvatarProcess([root.daemonBin, "config", "forget-image", previous], "", null);
+            }
+            return;
+        }
+        root.importAvatarToConfig(p, kind, stored => {
+            let previous = "";
+            root.updateSettings(cfg => {
+                if (!cfg.dashboard) cfg.dashboard = {};
+                previous = String(cfg.dashboard[key] || "").trim();
+                cfg.dashboard[key] = stored;
+            });
+            // After a *successful* import, drop a stale owned copy (e.g. the
+            // old extension). Guarded three ways: a previous value exists,
+            // it differs from the new durable copy, and the import really
+            // produced a new copy (`stored !== pNorm` - a failed copy falls
+            // back to the normalized source and must never trigger deletion).
+            const pNorm = p.replace(/^file:\/\//, "");
+            if (previous !== "" && previous !== stored && stored !== pNorm) {
+                root.runAvatarProcess([root.daemonBin, "config", "forget-image", previous], "", null);
+            }
+        });
+    }
+
+    /// Media tab avatar (Settings > Dashboard & Widgets).
+    function setMediaAvatar(pathValue) {
+        root.setDashboardAvatar("mediaAvatar", "media", pathValue);
+    }
+
+    /// Dashboard system-host card avatar (Settings > Dashboard & Widgets).
+    function setHostAvatar(pathValue) {
+        root.setDashboardAvatar("hostAvatar", "host", pathValue);
+    }
+
+    /// Circle background color (#rrggbb) for the system-host avatar.
+    /// Garbage input is ignored (keeps the current color).
+    function setHostAvatarBgColor(colorHex) {
+        const digits = String(colorHex || "").trim().toLowerCase().replace(/^#/, "");
+        if (!/^[0-9a-f]{6}$/.test(digits)) return;
+        root.updateSettings(cfg => {
+            if (!cfg.dashboard) cfg.dashboard = {};
+            cfg.dashboard.hostAvatarBg = "#" + digits;
+        });
+    }
+
+    /// Circle background transparency (0..1, clamped).
+    function setHostAvatarBgOpacity(opacityValue) {
+        const v = Number(opacityValue);
+        if (isNaN(v)) return;
+        root.updateSettings(cfg => {
+            if (!cfg.dashboard) cfg.dashboard = {};
+            cfg.dashboard.hostAvatarBgOpacity = Math.max(0, Math.min(1, v));
+        });
+    }
+
+    /// One-time load-time migration: any avatar still pointing *outside* the
+    /// config dir (e.g. ~/Downloads) is imported into it and the stored value
+    /// rewritten to the durable copy, so the image survives deletion of the
+    /// original. The daemon import is idempotent (in-dir paths come back
+    /// unchanged); a failed copy keeps the original path and retries on the
+    /// next start.
+    function migrateAvatarPaths() {
+        if (root.avatarMigrationRan) return;
+        root.avatarMigrationRan = true;
+        if (!root.settings.dashboard) return;
+        for (const entry of root.dashboardAvatarFields) {
+            const current = String(root.settings.dashboard[entry.key] || "").trim();
+            if (current === "") continue;
+            root.importAvatarToConfig(current, entry.kind, stored => {
+                if (stored === current) return;
+                root.updateSettings(cfg => {
+                    if (!cfg.dashboard) cfg.dashboard = {};
+                    if (String(cfg.dashboard[entry.key] || "").trim() === current) {
+                        cfg.dashboard[entry.key] = stored;
+                    }
+                });
+            });
+        }
+    }
+
+    /// Pick the calendar app for dashboard date clicks.
+    /// Blank means "system default" (the XDG text/calendar handler).
+    function setCalendarApp(desktopId) {
         updateSettings(cfg => {
             if (!cfg.dashboard) cfg.dashboard = {};
-            cfg.dashboard.mediaAvatar = path;
+            cfg.dashboard.calendarApp = (desktopId || "").trim();
         });
     }
 
@@ -499,6 +677,32 @@ Singleton {
 
     function closeCommandLauncher() {
         root.commandLauncherVisible = false;
+    }
+
+    // Active-apps overview (bare Meta key -> IPC -> here). Transient by
+    // design: never persisted, so the shell can never start with the overview
+    // stuck open. Opening closes the other capture-driving overlays, exactly
+    // like the launcher does, so a single surface ever drives captures.
+    property bool overviewVisible: false
+
+    function toggleOverview() {
+        if (root.overviewVisible) {
+            root.closeOverview();
+        } else {
+            root.openOverview();
+        }
+    }
+
+    function openOverview() {
+        root.overviewVisible = true;
+        root.dashboardVisible = false;
+        // One modal at a time - openCommandLauncher does the same.
+        root.commandLauncherVisible = false;
+        root.closeBottomPopout();
+    }
+
+    function closeOverview() {
+        root.overviewVisible = false;
     }
 
     // Fused bottom popout state
@@ -701,6 +905,10 @@ Singleton {
             root.userFileExists = true;
             root.saveSettings();
         }
+
+        // One-time: durably import any avatar path that still lives outside
+        // the config dir (idempotent; see migrateAvatarPaths).
+        root.migrateAvatarPaths();
     }
 
     // Save settings back to disk
