@@ -231,9 +231,11 @@ Item {
 
                 ActionItem {
                     icon: "bluetooth"
-                    label: (Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled) ? "Turn Bluetooth Off" : "Turn Bluetooth On"
+                    label: ((typeof BluetoothService !== "undefined" && BluetoothService.powered) || (Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled)) ? "Turn Bluetooth Off" : "Turn Bluetooth On"
                     onClicked: {
-                        if (Bluetooth.defaultAdapter) {
+                        if (typeof BluetoothService !== "undefined") {
+                            BluetoothService.togglePower();
+                        } else if (Bluetooth.defaultAdapter) {
                             Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled;
                         } else {
                             Quickshell.execDetached(["bluetoothctl", "power", "toggle"]);

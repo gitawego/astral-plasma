@@ -42,12 +42,27 @@ ColumnLayout {
 
     // Bluetooth Master Power Card
     Rectangle {
+        id: masterPowerCard
         Layout.fillWidth: true
         height: 64
         radius: Theme.radiusMedium
-        color: Colors.surfaceContainer
-        border.color: Theme.borderSubtle
+        color: powerCardHover.containsMouse ? (root.powered ? Qt.alpha(Colors.primary, 0.12) : Colors.surfaceContainerHigh) : Colors.surfaceContainer
+        border.color: root.powered ? Qt.alpha(Colors.primary, 0.4) : Theme.borderSubtle
         border.width: 1
+
+        MouseArea {
+            id: powerCardHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (!root.testMode && typeof BluetoothService !== "undefined") {
+                    BluetoothService.togglePower();
+                } else {
+                    root.testPowered = !root.testPowered;
+                }
+            }
+        }
 
         RowLayout {
             anchors.fill: parent
@@ -97,18 +112,6 @@ ColumnLayout {
 
                     Behavior on x {
                         NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (!root.testMode && typeof BluetoothService !== "undefined") {
-                            BluetoothService.togglePower();
-                        } else {
-                            root.testPowered = !root.testPowered;
-                        }
                     }
                 }
             }
@@ -208,10 +211,19 @@ ColumnLayout {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (modelData.connected && modelData.disconnect) {
-                                        modelData.disconnect();
-                                    } else if (!modelData.connected && modelData.connect) {
-                                        modelData.connect();
+                                    const addr = modelData.mac || modelData.address || "";
+                                    if (modelData.connected) {
+                                        if (modelData.disconnect) {
+                                            modelData.disconnect();
+                                        } else if (typeof BluetoothService !== "undefined") {
+                                            BluetoothService.disconnectDevice(addr);
+                                        }
+                                    } else {
+                                        if (modelData.connect) {
+                                            modelData.connect();
+                                        } else if (typeof BluetoothService !== "undefined") {
+                                            BluetoothService.connectDevice(addr);
+                                        }
                                     }
                                 }
                             }
