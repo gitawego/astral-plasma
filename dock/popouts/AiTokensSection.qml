@@ -92,6 +92,14 @@ Item {
 
     readonly property var activeAccount: {
         if (!currentProvider || !currentProvider.accounts) return null;
+        const activeGemini = (typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail) ? AiTokenService.activeGeminiEmail.toLowerCase() : "";
+        if (activeGemini && (currentProvider.provider_id === "gemini" || currentProvider.provider === "gemini")) {
+            for (let i = 0; i < currentProvider.accounts.length; i++) {
+                if (currentProvider.accounts[i].identity.toLowerCase() === activeGemini || currentProvider.accounts[i].id === activeGemini) {
+                    return currentProvider.accounts[i];
+                }
+            }
+        }
         for (let i = 0; i < currentProvider.accounts.length; i++) {
             if (currentProvider.accounts[i].is_active) return currentProvider.accounts[i];
         }
@@ -367,7 +375,7 @@ Item {
                     }
 
                     Text {
-                        text: "Active in CLI: " + (root.currentProvider ? (root.currentProvider.account_email || root.currentProvider.account_name || "") : "")
+                        text: "Active in CLI: " + ((root.currentProvider && (root.currentProvider.provider_id === "gemini" || root.currentProvider.provider === "gemini") && typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail) ? AiTokenService.activeGeminiEmail : (root.currentProvider ? (root.currentProvider.account_email || root.currentProvider.account_name || "") : ""))
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
                         font.weight: Font.Medium

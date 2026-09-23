@@ -124,10 +124,6 @@ Singleton {
                 root.refresh(true);
             }
         }
-        onExited: (code, status) => {
-            root.isRefreshing = false;
-            root.refresh(true);
-        }
     }
 
     function refresh(force) {
@@ -149,6 +145,24 @@ Singleton {
 
     function switchGeminiAccount(targetIdOrEmail) {
         if (!targetIdOrEmail) return;
+        let email = "";
+        if (targetIdOrEmail.indexOf("@") !== -1) {
+            email = targetIdOrEmail;
+        } else {
+            for (let i = 0; i < root.providers.length; i++) {
+                if (root.providers[i].provider_id === "gemini" && root.providers[i].accounts) {
+                    for (let j = 0; j < root.providers[i].accounts.length; j++) {
+                        if (root.providers[i].accounts[j].id === targetIdOrEmail) {
+                            email = root.providers[i].accounts[j].identity;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if (email) {
+            root.activeGeminiEmail = email;
+        }
         switchProc.command = [root.daemonBin, "ai", "switch-account", "gemini", targetIdOrEmail];
         if (!switchProc.running) {
             switchProc.running = true;
