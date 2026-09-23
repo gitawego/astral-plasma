@@ -88,6 +88,38 @@ Item {
         ? root.providersList[activeProviderIndex]
         : null
 
+    property string selectedAccountIdentity: ""
+
+    readonly property var activeAccount: {
+        if (!currentProvider || !currentProvider.accounts) return null;
+        for (let i = 0; i < currentProvider.accounts.length; i++) {
+            if (currentProvider.accounts[i].is_active) return currentProvider.accounts[i];
+        }
+        return currentProvider.accounts.length > 0 ? currentProvider.accounts[0] : null;
+    }
+
+    readonly property var selectedAccount: {
+        if (!currentProvider || !currentProvider.accounts || currentProvider.accounts.length === 0) return null;
+        if (selectedAccountIdentity) {
+            for (let i = 0; i < currentProvider.accounts.length; i++) {
+                if (currentProvider.accounts[i].identity === selectedAccountIdentity || currentProvider.accounts[i].id === selectedAccountIdentity) {
+                    return currentProvider.accounts[i];
+                }
+            }
+        }
+        return activeAccount;
+    }
+
+    readonly property var currentWindows: {
+        if (selectedAccount && selectedAccount.windows && selectedAccount.windows.length > 0) {
+            return selectedAccount.windows;
+        }
+        if (currentProvider && currentProvider.windows && currentProvider.windows.length > 0) {
+            return currentProvider.windows;
+        }
+        return [];
+    }
+
     ColumnLayout {
         id: mainLayout
         anchors.fill: parent
@@ -321,21 +353,34 @@ Item {
                     }
                 }
 
-                // Active Account Email
-                Text {
+                // Active Account Email in CLI session
+                RowLayout {
                     visible: root.currentProvider && (root.currentProvider.account_email || root.currentProvider.account_name)
-                    text: root.currentProvider ? (root.currentProvider.account_email || root.currentProvider.account_name || "") : ""
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    color: Colors.m3onSurfaceVariant
                     Layout.fillWidth: true
-                    elide: Text.ElideRight
+                    spacing: 6
+
+                    Rectangle {
+                        width: 6
+                        height: 6
+                        radius: 3
+                        color: "#22C55E"
+                    }
+
+                    Text {
+                        text: "Active in CLI: " + (root.currentProvider ? (root.currentProvider.account_email || root.currentProvider.account_name || "") : "")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
+                        color: Colors.m3onSurfaceVariant
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
                 }
 
                 // Gemini Account Switcher (if multiple accounts exist)
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 4
+                    spacing: 5
                     visible: root.currentProvider && (root.currentProvider.provider_id === "gemini" || root.currentProvider.provider === "gemini") && root.currentProvider.accounts && root.currentProvider.accounts.length > 1
 
                     Rectangle {
@@ -345,25 +390,41 @@ Item {
                         opacity: 0.5
                     }
 
-                    Text {
-                        text: "Switch Active Account:"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        font.weight: Font.DemiBold
-                        color: Colors.m3onSurfaceVariant
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Text {
+                            text: "Configured Accounts:"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            color: Colors.m3onSurfaceVariant
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Text {
+                            text: "Click to inspect"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 9
+                            color: Colors.m3onSurfaceVariant
+                            opacity: 0.8
+                        }
                     }
 
                     Repeater {
                         model: (root.currentProvider && root.currentProvider.accounts) ? root.currentProvider.accounts : []
                         delegate: Rectangle {
                             required property var modelData
+                            readonly property bool isSelected: root.selectedAccount && (root.selectedAccount.identity === modelData.identity || root.selectedAccount.id === modelData.id)
+
                             Layout.fillWidth: true
-                            height: 26
+                            height: 28
                             radius: 6
-                            color: modelData.is_active
-                                ? Qt.alpha(Colors.primary, 0.15)
+                            color: isSelected
+                                ? Qt.alpha(Colors.primary, 0.12)
                                 : (accHover.containsMouse ? Colors.pillHover : "transparent")
-                            border.color: modelData.is_active ? Colors.primary : "transparent"
+                            border.color: isSelected ? Colors.primary : (modelData.is_active ? Qt.alpha(Colors.primary, 0.3) : "transparent")
                             border.width: 1
 
                             RowLayout {
@@ -375,15 +436,15 @@ Item {
                                 MaterialIcon {
                                     text: modelData.is_active ? "check_circle" : "account_circle"
                                     size: 14
-                                    color: modelData.is_active ? Colors.primary : Colors.m3onSurfaceVariant
+                                    color: modelData.is_active ? "#22C55E" : Colors.m3onSurfaceVariant
                                 }
 
                                 Text {
                                     text: modelData.identity || modelData.label
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 11
-                                    font.weight: modelData.is_active ? Font.Bold : Font.Normal
-                                    color: modelData.is_active ? Colors.primary : Colors.m3onSurface
+                                    font.weight: modelData.is_active ? Font.Bold : (isSelected ? Font.DemiBold : Font.Normal)
+                                    color: isSelected ? Colors.m3onSurface : (modelData.is_active ? Colors.primary : Colors.m3onSurfaceVariant)
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
                                 }
@@ -395,16 +456,37 @@ Item {
                                     font.pixelSize: 10
                                     font.weight: Font.DemiBold
                                     color: (modelData.five_hour_remaining_percent < 20)
-                                        ? "#E05353"
-                                        : ((modelData.five_hour_remaining_percent < 40) ? "#F59E0B" : Colors.m3onSurfaceVariant)
+                                        ? "#EF4444"
+                                        : ((modelData.five_hour_remaining_percent <= 50) ? "#F59E0B" : "#22C55E")
+                                }
+
+                                // Status Badge: Active pill if active, or Switch button if inactive
+                                Rectangle {
+                                    visible: modelData.is_active
+                                    height: 18
+                                    implicitWidth: activeLbl.implicitWidth + 10
+                                    radius: 4
+                                    color: Qt.alpha(Colors.primary, 0.15)
+                                    border.color: Qt.alpha(Colors.primary, 0.35)
+                                    border.width: 1
+
+                                    Text {
+                                        id: activeLbl
+                                        anchors.centerIn: parent
+                                        text: "Active"
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                        color: Colors.primary
+                                    }
                                 }
 
                                 Rectangle {
                                     visible: !modelData.is_active
                                     height: 18
-                                    implicitWidth: switchLbl.implicitWidth + 8
+                                    implicitWidth: switchLbl.implicitWidth + 10
                                     radius: 4
-                                    color: Colors.surfaceContainerHighest
+                                    color: switchMouse.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainerHigh
                                     border.color: Theme.borderSubtle
                                     border.width: 1
 
@@ -414,7 +496,20 @@ Item {
                                         text: "Switch"
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 9
+                                        font.weight: Font.DemiBold
                                         color: Colors.m3onSurface
+                                    }
+
+                                    MouseArea {
+                                        id: switchMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (typeof AiTokenService !== "undefined") {
+                                                AiTokenService.switchGeminiAccount(modelData.id || modelData.identity);
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -423,11 +518,9 @@ Item {
                                 id: accHover
                                 anchors.fill: parent
                                 hoverEnabled: true
-                                cursorShape: modelData.is_active ? Qt.ArrowCursor : Qt.PointingHandCursor
+                                cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (!modelData.is_active && typeof AiTokenService !== "undefined") {
-                                        AiTokenService.switchGeminiAccount(modelData.id || modelData.identity);
-                                    }
+                                    root.selectedAccountIdentity = modelData.identity || modelData.id;
                                 }
                             }
                         }
@@ -440,19 +533,19 @@ Item {
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 8
-            visible: root.currentProvider !== null && root.currentProvider.windows && root.currentProvider.windows.length > 0
+            visible: root.currentWindows && root.currentWindows.length > 0
 
             Repeater {
-                model: (root.currentProvider && root.currentProvider.windows) ? root.currentProvider.windows : []
+                model: root.currentWindows
                 delegate: Rectangle {
                     required property var modelData
                     Layout.fillWidth: true
                     height: 52
                     radius: Theme.radiusSmall
                     color: Colors.surfaceContainer
-                    border.color: (modelData.used_percent >= 95)
-                        ? "#E05353"
-                        : ((modelData.used_percent >= 80) ? "#F59E0B" : Theme.borderSubtle)
+                    border.color: (modelData.remaining_percent < 20)
+                        ? "#EF4444"
+                        : ((modelData.remaining_percent <= 50) ? "#F59E0B" : Theme.borderSubtle)
                     border.width: 1
 
                     ColumnLayout {
@@ -469,7 +562,7 @@ Item {
                                         case "5h": return "5-Hour Rolling Window";
                                         case "weekly": return "Weekly Limit";
                                         case "monthly": return "Monthly Limit";
-                                        default: return modelData.label + " Limit";
+                                        default: return (modelData.label.charAt(0).toUpperCase() + modelData.label.slice(1)) + " Limit";
                                     }
                                 }
                                 font.family: Theme.fontFamily
@@ -485,9 +578,9 @@ Item {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 11
                                 font.weight: Font.Bold
-                                color: (modelData.used_percent >= 95)
-                                    ? "#E05353"
-                                    : ((modelData.used_percent >= 80) ? "#F59E0B" : Colors.primary)
+                                color: (modelData.remaining_percent < 20)
+                                    ? "#EF4444"
+                                    : ((modelData.remaining_percent <= 50) ? "#F59E0B" : "#22C55E")
                             }
                         }
 
@@ -499,12 +592,12 @@ Item {
                             color: Colors.surfaceContainerHighest
 
                             Rectangle {
-                                width: Math.max(0, parent.width * (modelData.used_percent / 100.0))
+                                width: Math.max(6, Math.min(parent.width, parent.width * (modelData.remaining_percent / 100.0)))
                                 height: parent.height
                                 radius: 3
-                                color: (modelData.used_percent >= 95)
-                                    ? "#E05353"
-                                    : ((modelData.used_percent >= 80) ? "#F59E0B" : Colors.primary)
+                                color: (modelData.remaining_percent < 20)
+                                    ? "#EF4444"
+                                    : ((modelData.remaining_percent <= 50) ? "#F59E0B" : "#22C55E")
 
                                 Behavior on width {
                                     NumberAnimation { duration: Theme.animDurationNormal }
@@ -515,12 +608,45 @@ Item {
                         // Reset time
                         Text {
                             visible: modelData.reset_at !== null && modelData.reset_at !== ""
-                            text: "Resets at: " + (modelData.reset_at ? modelData.reset_at.replace("T", " ").replace("Z", "") : "")
+                            text: (modelData.reset_at && modelData.reset_at.indexOf("Total") !== -1)
+                                ? modelData.reset_at
+                                : ("Resets at: " + (modelData.reset_at ? modelData.reset_at.replace("T", " ").replace("Z", "") : ""))
                             font.family: Theme.fontFamily
                             font.pixelSize: 9
                             color: Colors.m3onSurfaceVariant
                         }
                     }
+                }
+            }
+        }
+
+        // Info card when provider has no window limits (e.g. MiniMax pay-as-you-go)
+        Rectangle {
+            Layout.fillWidth: true
+            height: 48
+            radius: Theme.radiusSmall
+            color: Colors.surfaceContainer
+            border.color: Theme.borderSubtle
+            border.width: 1
+            visible: root.currentProvider !== null && (!root.currentWindows || root.currentWindows.length === 0)
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 8
+
+                MaterialIcon {
+                    text: "check_circle"
+                    size: 16
+                    color: "#22C55E"
+                }
+
+                Text {
+                    text: "Pay-as-you-go · No quota window restrictions"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    color: Colors.m3onSurfaceVariant
+                    Layout.fillWidth: true
                 }
             }
         }

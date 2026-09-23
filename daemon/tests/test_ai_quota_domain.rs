@@ -51,6 +51,44 @@ fn test_parse_agy_quota_success() {
 }
 
 #[test]
+fn test_parse_agy_quota_with_monthly_bucket() {
+    let agy_json = r#"{
+        "groups": [
+            {
+                "displayName": "Gemini Models",
+                "buckets": [
+                    {
+                        "bucketId": "gemini-pro-5h",
+                        "remainingFraction": 0.40,
+                        "resetTime": "2026-09-23T18:00:00Z"
+                    },
+                    {
+                        "bucketId": "gemini-pro-weekly",
+                        "remainingFraction": 0.85,
+                        "resetTime": "2026-09-30T00:00:00Z"
+                    },
+                    {
+                        "bucketId": "gemini-pro-monthly",
+                        "remainingFraction": 0.95,
+                        "resetTime": "2026-10-01T00:00:00Z"
+                    }
+                ]
+            }
+        ]
+    }"#;
+
+    let res = parse_agy_quota(agy_json, Some("monthly_user@gmail.com".to_string()));
+    assert!(res.is_ok());
+    let p = res.unwrap();
+    assert_eq!(p.windows.len(), 3);
+    assert_eq!(p.windows[0].label, "5h");
+    assert_eq!(p.windows[1].label, "weekly");
+    assert_eq!(p.windows[2].label, "monthly");
+    assert_eq!(p.windows[2].remaining_percent, 95.0);
+    assert_eq!(p.windows[2].used_percent, 5.0);
+}
+
+#[test]
 fn test_parse_opencode_usage_success() {
     let opencode_json = r#"{
         "usage": {

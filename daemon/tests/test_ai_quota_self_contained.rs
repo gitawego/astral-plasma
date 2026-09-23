@@ -119,3 +119,60 @@ fn test_get_provider_api_key_resolution() {
     let k2 = adapter.get_provider_api_key("xiaomi-mimo-cn", "NON_EXISTENT_VAR_123", &["xiaomi-mimo-cn"]);
     assert_eq!(k2.as_deref(), Some("mimo_secret_456"));
 }
+
+#[test]
+fn test_stable_gemini_accounts_order_never_changes() {
+    let temp_root = TempDir::new().unwrap();
+    let config_dir = temp_root.path().join("astral-plasma");
+    let gemini_dir = config_dir.join("accounts/gemini");
+    fs::create_dir_all(&gemini_dir).unwrap();
+
+    let a1 = serde_json::json!({
+        "id": "acc_z",
+        "identity": "z_user@gmail.com",
+        "label": "Z",
+        "credential": "{}",
+        "is_active": true
+    });
+    fs::write(gemini_dir.join("acc_z.json"), a1.to_string()).unwrap();
+
+    let a2 = serde_json::json!({
+        "id": "acc_a",
+        "identity": "a_user@gmail.com",
+        "label": "A",
+        "credential": "{}",
+        "is_active": false
+    });
+    fs::write(gemini_dir.join("acc_a.json"), a2.to_string()).unwrap();
+
+    let cache_dir = temp_root.path().join("cache");
+    let adapter = AiQuotaAdapter::with_dirs(cache_dir, config_dir, None);
+
+    // Initial load: a_user must come before z_user alphabetically, regardless of is_active
+    let accs1 = adapter.load_configured_gemini_accounts(Some("z_user@gmail.com"));
+    assert_eq!(accs1[0].identity, "a_user@gmail.com");
+    assert!(!accs1[0].is_active);
+    assert_eq!(accs1[1].identity, "z_user@gmail.com");
+    assert!(accs1[1].is_active);
+
+    // After switching active to a_user: order MUST REMAIN IDENTICAL
+    let accs2 = adapter.load_configured_gemini_accounts(Some("a_user@gmail.com"));
+    assert_eq!(accs2[0].identity, "a_user@gmail.com");
+    assert!(accs2[0].is_active);
+    assert_eq!(accs2[1].identity, "z_user@gmail.com");
+    assert!(!accs2[1].is_active);
+}
+
+#[test]
+fn test_parse_minimax_status_2062_pay_as_you_go() {
+    use astral_plasma::domain::ai_quota::parse_minimax_usage;
+    let json_2062 = r#"{"model_remains":null,"base_resp":{"status_code":2062,"status_msg":"no active token plan subscription"}}"#;
+    let res = parse_minimax_usage(json_2062);
+    assert!(res.is_ok(), "Expected status 2062 to produce valid pay-as-you-go quota");
+    let quota = res.unwrap();
+    assert_eq!(quota.provider_id, "minimax-cn");
+    assert_eq!(quota.display_name, "MiniMax");
+    assert_eq!(quota.plan_type.as_deref(), Some("Pay-as-you-go"));
+    assert!(quota.is_available);
+    assert!(quota.windows.is_empty());
+}

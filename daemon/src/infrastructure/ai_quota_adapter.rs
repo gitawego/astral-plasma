@@ -1,6 +1,6 @@
 use crate::domain::ai_quota::{
-    parse_agy_quota, parse_minimax_usage, parse_opencode_usage, parse_token_tracker_quotas,
-    parse_xiaomi_usage, AiProviderQuota, AiQuotaSnapshot, ProviderAccount,
+    parse_agy_quota, parse_minimax_usage, parse_opencode_usage, parse_xiaomi_usage,
+    AiProviderQuota, AiQuotaSnapshot, ProviderAccount, QuotaWindow,
 };
 use std::fs;
 use std::io::Write;
@@ -77,10 +77,6 @@ impl AiQuotaAdapter {
         Some(home.join(".cache/astral-plasma/ai_quotas.json"))
     }
 
-    pub fn get_legacy_cache_file(&self) -> Option<PathBuf> {
-        let home = Self::get_home()?;
-        Some(home.join(".cache/token-tracker/quotas.json"))
-    }
 
     pub fn get_gemini_cli_token_file() -> Option<PathBuf> {
         let home = Self::get_home()?;
@@ -495,6 +491,7 @@ impl AiQuotaAdapter {
                                 plan_type: Some("Google AI Pro".to_string()),
                                 five_hour_remaining_percent: None,
                                 weekly_remaining_percent: None,
+                                windows: Vec::new(),
                             });
                         }
                     }
@@ -502,11 +499,47 @@ impl AiQuotaAdapter {
             }
         }
 
-        accounts.sort_by(|a, b| {
-            b.is_active
-                .cmp(&a.is_active)
-                .then_with(|| a.identity.cmp(&b.identity))
-        });
+        accounts.sort_by(|a, b| a.identity.cmp(&b.identity));
+        accounts
+    }
+
+    /// Loads all configured accounts for any provider from ~/.config/astral-plasma/accounts/<provider>/*.json
+    pub fn load_provider_accounts(&self, provider_id: &str) -> Vec<ProviderAccount> {
+        let mut accounts = Vec::new();
+        let dir = match self.get_accounts_dir_for(provider_id) {
+            Some(d) => d,
+            None => return accounts,
+        };
+        if !dir.exists() {
+            return accounts;
+        }
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                            let id = v.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
+                            let label = v.get("label").and_then(|l| l.as_str()).unwrap_or("").to_string();
+                            let identity = v.get("identity").and_then(|id| id.as_str()).unwrap_or("").to_string();
+                            let is_act = v.get("is_active").and_then(|a| a.as_bool()).unwrap_or(true);
+                            let plan_type = v.get("plan_type").and_then(|pt| pt.as_str()).map(|s| s.to_string());
+                            accounts.push(ProviderAccount {
+                                id,
+                                label,
+                                identity,
+                                is_active: is_act,
+                                plan_type,
+                                five_hour_remaining_percent: None,
+                                weekly_remaining_percent: None,
+                                windows: Vec::new(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        accounts.sort_by(|a, b| a.identity.cmp(&b.identity));
         accounts
     }
 
@@ -690,34 +723,110 @@ impl AiQuotaAdapter {
 
         if output.status.success() {
             let body = String::from_utf8_lossy(&output.stdout);
-            parse_opencode_usage(&body).ok()
-        } else {
-            None
+            if let Ok(mut quota) = parse_opencode_usage(&body) {
+                quota.accounts = self.load_provider_accounts("opencode-go");
+                return Some(quota);
+            }
         }
+        None
     }
 
     /// Queries live MiniMax coding plan remains
     fn query_minimax_quota(&self) -> Option<AiProviderQuota> {
         let key =
             self.get_provider_api_key("minimax-cn", "TOKEN_MINIMAX", &["minimax-cn", "minimax"])?;
-        let output = Command::new("curl")
-            .args([
-                "-s",
-                "-m",
-                "5",
+        let is_cookie = key.contains(';') || key.contains('=') || key.starts_with("_c_");
+
+        let mut cmd = Command::new("curl");
+        cmd.args(["-s", "-m", "5"]);
+        if is_cookie {
+            cmd.args([
                 "-H",
-                &format!("Authorization: Bearer {}", key),
-                "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
-            ])
-            .output()
-            .ok()?;
+                &format!("Cookie: {}", key),
+                "-H",
+                "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+                "-H",
+                "Referer: https://platform.minimaxi.com/",
+                "-H",
+                "Origin: https://platform.minimaxi.com",
+            ]);
+        } else {
+            cmd.args(["-H", &format!("Authorization: Bearer {}", key)]);
+        }
+        cmd.arg("https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains");
+
+        let output = cmd.output().ok()?;
+
+        let accounts = self.load_provider_accounts("minimax-cn");
+        let acc_name = accounts
+            .first()
+            .map(|a| if !a.label.is_empty() { a.label.clone() } else { a.identity.clone() });
 
         if output.status.success() {
             let body = String::from_utf8_lossy(&output.stdout);
-            parse_minimax_usage(&body).ok()
-        } else {
-            None
+            if let Ok(mut quota) = parse_minimax_usage(&body) {
+                quota.accounts = accounts;
+                if quota.account_name.is_none() {
+                    quota.account_name = acc_name;
+                }
+                return Some(quota);
+            }
         }
+
+        // If coding_plan/remains returned 2062 or no plan, try usage_summary for cookie session
+        let mut usage_text = None;
+        if is_cookie {
+            if let Ok(sum_out) = Command::new("curl")
+                .args([
+                    "-s",
+                    "-m",
+                    "5",
+                    "-H",
+                    &format!("Cookie: {}", key),
+                    "-H",
+                    "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+                    "-H",
+                    "Referer: https://platform.minimaxi.com/",
+                    "-H",
+                    "Origin: https://platform.minimaxi.com",
+                    "https://www.minimaxi.com/backend/account/token_plan/usage_summary",
+                ])
+                .output()
+            {
+                if sum_out.status.success() {
+                    let sum_body = String::from_utf8_lossy(&sum_out.stdout);
+                    if let Ok(sum_v) = serde_json::from_str::<serde_json::Value>(&sum_body) {
+                        if let Some(tokens) =
+                            sum_v.get("total_token_consumed").and_then(|t| t.as_str())
+                        {
+                            usage_text = Some(format!("Total: {} tokens", tokens));
+                        }
+                    }
+                }
+            }
+        }
+
+        Some(AiProviderQuota {
+            provider_id: "minimax-cn".to_string(),
+            display_name: "MiniMax".to_string(),
+            icon: "bolt".to_string(),
+            plan_type: Some("Pay-as-you-go".to_string()),
+            account_email: None,
+            account_name: acc_name,
+            is_available: true,
+            windows: usage_text
+                .map(|txt| {
+                    vec![QuotaWindow {
+                        label: "consumed".to_string(),
+                        used_percent: 0.0,
+                        remaining_percent: 100.0,
+                        reset_at: Some(txt),
+                    }]
+                })
+                .unwrap_or_default(),
+            accounts,
+            error_message: None,
+        })
     }
 
     /// Queries live Xiaomi MiMo coding plan remains
@@ -741,10 +850,12 @@ impl AiQuotaAdapter {
 
         if output.status.success() {
             let body = String::from_utf8_lossy(&output.stdout);
-            parse_xiaomi_usage(&body).ok()
-        } else {
-            None
+            if let Ok(mut quota) = parse_xiaomi_usage(&body) {
+                quota.accounts = self.load_provider_accounts("xiaomi-mimo-cn");
+                return Some(quota);
+            }
         }
+        None
     }
 
     /// Refreshes Gemini OAuth2 access token if needed using stored refresh_token.
@@ -1014,6 +1125,7 @@ impl AiQuotaAdapter {
             if acc.is_active {
                 acc.five_hour_remaining_percent = act_5h;
                 acc.weekly_remaining_percent = act_wk;
+                acc.windows = quota.windows.clone();
             } else {
                 let acc_file = dir.join(format!("{}.json", acc.id));
                 if let Ok(c) = fs::read_to_string(&acc_file) {
@@ -1037,6 +1149,7 @@ impl AiQuotaAdapter {
                                                 .iter()
                                                 .find(|w| w.label == "weekly")
                                                 .map(|w| w.remaining_percent);
+                                            acc.windows = other_q.windows;
                                         }
                                     }
                                 }
@@ -1132,40 +1245,6 @@ impl AiQuotaAdapter {
                 }
             }
 
-            // Fallback: check legacy cache if present
-            if let Some(legacy_cache) = self.get_legacy_cache_file() {
-                if legacy_cache.exists() {
-                    let is_fresh = fs::metadata(&legacy_cache)
-                        .and_then(|m| m.modified())
-                        .map(|mtime| {
-                            SystemTime::now()
-                                .duration_since(mtime)
-                                .unwrap_or(Duration::from_secs(9999))
-                                < Duration::from_secs(300)
-                        })
-                        .unwrap_or(false);
-
-                    if is_fresh {
-                        if let Ok(content) = fs::read_to_string(&legacy_cache) {
-                            if let Ok(mut snap) = parse_token_tracker_quotas(
-                                &content,
-                                active_gemini_email.as_deref(),
-                                warning_thr,
-                                critical_thr,
-                            ) {
-                                for p in &mut snap.providers {
-                                    if p.provider_id == "gemini" && p.accounts.is_empty() {
-                                        p.accounts = self.load_configured_gemini_accounts(
-                                            active_gemini_email.as_deref(),
-                                        );
-                                    }
-                                }
-                                return snap;
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         // 2. Autonomous querying: fetch all providers directly
@@ -1185,6 +1264,21 @@ impl AiQuotaAdapter {
 
         if let Some(xiaomi) = self.query_xiaomi_quota() {
             providers.push(xiaomi);
+        }
+
+        // Preserve any previously cached non-Gemini providers that were not fetched in this pass
+        if let Some(cache_path) = self.get_cache_file() {
+            if let Ok(content) = fs::read_to_string(&cache_path) {
+                if let Ok(prev_snap) = serde_json::from_str::<AiQuotaSnapshot>(&content) {
+                    for prev_p in prev_snap.providers {
+                        if prev_p.provider_id != "gemini"
+                            && !providers.iter().any(|p| p.provider_id == prev_p.provider_id)
+                        {
+                            providers.push(prev_p);
+                        }
+                    }
+                }
+            }
         }
 
         let now_rfc3339 = chrono_lite_rfc3339();

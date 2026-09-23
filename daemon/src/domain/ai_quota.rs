@@ -17,6 +17,8 @@ pub struct ProviderAccount {
     pub plan_type: Option<String>,
     pub five_hour_remaining_percent: Option<f64>,
     pub weekly_remaining_percent: Option<f64>,
+    #[serde(default)]
+    pub windows: Vec<QuotaWindow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -115,16 +117,26 @@ pub fn parse_agy_quota(json_str: &str, active_email: Option<String>) -> Result<A
 
     let mut windows = Vec::new();
 
-    // Prefer "Gemini Models" group
-    let gemini_group = groups.iter().find(|g| {
+    // Iterate through groups (Gemini group first, then others for any additional windows like monthly)
+    let mut ordered_groups: Vec<&serde_json::Value> = Vec::new();
+    if let Some(g_idx) = groups.iter().position(|g| {
         g.get("name")
             .or_else(|| g.get("displayName"))
             .and_then(|n| n.as_str())
             .map(|s| s.to_lowercase().contains("gemini"))
             .unwrap_or(false)
-    }).or_else(|| groups.first());
+    }) {
+        ordered_groups.push(&groups[g_idx]);
+        for (i, g) in groups.iter().enumerate() {
+            if i != g_idx {
+                ordered_groups.push(g);
+            }
+        }
+    } else {
+        ordered_groups.extend(groups.iter());
+    }
 
-    if let Some(group) = gemini_group {
+    for group in ordered_groups {
         if let Some(buckets) = group.get("buckets").and_then(|b| b.as_array()) {
             for b in buckets {
                 let win_label = match b.get("window").and_then(|w| w.as_str()) {
@@ -135,17 +147,26 @@ pub fn parse_agy_quota(json_str: &str, active_email: Option<String>) -> Result<A
                         let id = b
                             .get("id")
                             .or_else(|| b.get("bucketId"))
+                            .or_else(|| b.get("displayName"))
+                            .or_else(|| b.get("name"))
                             .and_then(|i| i.as_str())
-                            .unwrap_or("");
-                        if id.contains("5h") {
+                            .unwrap_or("")
+                            .to_lowercase();
+                        if id.contains("5h") || id.contains("5-hour") || id.contains("rolling") {
                             "5h".to_string()
                         } else if id.contains("week") {
                             "weekly".to_string()
+                        } else if id.contains("month") {
+                            "monthly".to_string()
                         } else {
                             "quota".to_string()
                         }
                     }
                 };
+
+                if windows.iter().any(|w: &QuotaWindow| w.label == win_label) {
+                    continue;
+                }
 
                 let remaining_fraction = b
                     .get("remaining_fraction")
@@ -282,6 +303,20 @@ pub fn parse_coding_plan_remains(
         .map_err(|e| format!("Invalid JSON from {}: {}", display_name, e))?;
 
     if let Some(code) = v.pointer("/base_resp/status_code").and_then(|c| c.as_i64()) {
+        if code == 2062 {
+            return Ok(AiProviderQuota {
+                provider_id: provider_id.to_string(),
+                display_name: display_name.to_string(),
+                icon: icon.to_string(),
+                plan_type: Some("Pay-as-you-go".to_string()),
+                account_email: None,
+                account_name: None,
+                is_available: true,
+                windows: Vec::new(),
+                accounts: Vec::new(),
+                error_message: None,
+            });
+        }
         if code != 0 {
             let msg = v.pointer("/base_resp/status_msg")
                 .and_then(|m| m.as_str())
@@ -443,20 +478,50 @@ pub fn parse_token_tracker_quotas(
                 let five_hr = a.get("five_hour_remaining_percent").and_then(|f| f.as_f64());
                 let weekly = a.get("weekly_remaining_percent").and_then(|w| w.as_f64());
 
-                if (is_act || is_agy) && active_acc_email.is_none() && !identity.is_empty() {
+                let is_current = if provider_id == "gemini" {
+                    if let Some(target) = active_gemini_email {
+                        identity.eq_ignore_ascii_case(target)
+                    } else {
+                        is_act || is_agy
+                    }
+                } else {
+                    is_act || is_agy
+                };
+
+                if is_current && active_acc_email.is_none() && !identity.is_empty() {
                     active_acc_email = Some(identity.clone());
+                }
+
+                let mut acc_windows = Vec::new();
+                if let Some(w_arr) = a.get("windows").and_then(|w| w.as_array()) {
+                    for win in w_arr {
+                        let label = win.get("label").and_then(|l| l.as_str()).unwrap_or("").to_string();
+                        let used_pct = win.get("used_percent").and_then(|u| u.as_f64()).unwrap_or(0.0);
+                        let rem_pct = win.get("remaining_percent").and_then(|r| r.as_f64()).unwrap_or(100.0);
+                        let reset_at = win.get("reset_at").and_then(|r| r.as_str()).map(|s| s.to_string());
+                        acc_windows.push(QuotaWindow {
+                            label,
+                            used_percent: used_pct,
+                            remaining_percent: rem_pct,
+                            reset_at,
+                        });
+                    }
+                } else if is_current && !windows.is_empty() {
+                    acc_windows = windows.clone();
                 }
 
                 accounts.push(ProviderAccount {
                     id,
                     label,
                     identity,
-                    is_active: is_act || is_agy,
+                    is_active: is_current,
                     plan_type: a.get("plan_type").and_then(|pt| pt.as_str()).map(|s| s.to_string()),
                     five_hour_remaining_percent: five_hr,
                     weekly_remaining_percent: weekly,
+                    windows: acc_windows,
                 });
             }
+            accounts.sort_by(|a, b| a.identity.cmp(&b.identity));
         }
 
         // Gemini Single Source of Truth validation:

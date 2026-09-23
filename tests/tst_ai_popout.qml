@@ -42,7 +42,9 @@ Item {
                     { id: "secondary@gmail.com", identity: "secondary@gmail.com", is_active: false }
                 ],
                 windows: [
-                    { label: "5h", used_percent: 88.0, remaining_percent: 12.0, reset_at: "in 1 hour" }
+                    { label: "5h", used_percent: 88.0, remaining_percent: 12.0, reset_at: "in 1 hour" },
+                    { label: "weekly", used_percent: 20.0, remaining_percent: 80.0, reset_at: "in 6 days" },
+                    { label: "monthly", used_percent: 10.0, remaining_percent: 90.0, reset_at: "in 25 days" }
                 ]
             },
             {
@@ -55,6 +57,17 @@ Item {
                 windows: [
                     { label: "5h", used_percent: 40.0, remaining_percent: 60.0, reset_at: "in 2 hours" }
                 ]
+            },
+            {
+                provider: "minimax-cn",
+                display_name: "MiniMax",
+                plan_type: "Pay-as-you-go",
+                is_available: true,
+                account_email: "",
+                accounts: [
+                    { id: "default", label: "Default Account", is_active: true }
+                ],
+                windows: []
             }
         ]
     }
@@ -69,15 +82,36 @@ Item {
 
         // 2. Active provider selection
         assert(aiSection.currentProvider !== null, "currentProvider must not be null");
-        assert(aiSection.currentProvider.provider === "gemini", "Gemini must be initial provider (highest quota)");
+        assert(aiSection.currentProvider.provider === "gemini", "Gemini must be initial provider");
         assert(aiSection.warningLevel === "warning", "warningLevel must be warning");
 
-        // 3. Switch active provider
+        // 3. Active account vs selected account separation
+        assert(aiSection.activeAccount !== null, "activeAccount must not be null");
+        assert(aiSection.activeAccount.identity === "gitawego@gmail.com", "Active account must be gitawego@gmail.com");
+        assert(aiSection.selectedAccount.identity === "gitawego@gmail.com", "Default selected account must be active account");
+
+        // Select secondary account to inspect
+        aiSection.selectedAccountIdentity = "secondary@gmail.com";
+        assert(aiSection.selectedAccount.identity === "secondary@gmail.com", "Selected account must now be secondary@gmail.com");
+        assert(aiSection.activeAccount.identity === "gitawego@gmail.com", "Active account must remain gitawego@gmail.com");
+
+        // 4. Monthly quota window check
+        assert(aiSection.currentWindows.length === 3, "Expected 3 quota windows for Gemini (5h, weekly, monthly)");
+        assert(aiSection.currentWindows[2].label === "monthly", "3rd window must be monthly");
+        assert(aiSection.currentWindows[2].remaining_percent === 90.0, "Monthly remaining percent must be 90.0");
+
+        // 5. Switch active provider to OpenCode
         aiSection.activeProviderIndex = 1;
         assert(aiSection.currentProvider !== null, "currentProvider must not be null after switch");
         assert(aiSection.currentProvider.provider === "opencode", "OpenCode must be active provider after switch");
 
-        // 4. Test critical warning tier
+        // 6. Switch to MiniMax pay-as-you-go provider
+        aiSection.activeProviderIndex = 2;
+        assert(aiSection.currentProvider !== null, "MiniMax must not be null");
+        assert(aiSection.currentProvider.provider === "minimax-cn", "MiniMax must be 3rd provider");
+        assert(aiSection.currentWindows.length === 0, "MiniMax pay-as-you-go should have empty windows");
+
+        // 7. Test critical warning tier
         aiSection.testWarningLevel = "critical";
         assert(aiSection.warningLevel === "critical", "warningLevel must update to critical");
 
