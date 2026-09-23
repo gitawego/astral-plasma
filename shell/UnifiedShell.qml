@@ -951,7 +951,12 @@ PanelWindow {
     // Status drawers originating from bottom dock group (Power, Battery/Profiles) or near bottom
     // clamp flush to the bottom border (root.height - root.borderT - root.popoutH) with zero gap.
     readonly property bool isPopoutFusedBottom: {
-        return Config.bottomPopoutMode === "power" || Config.bottomPopoutMode === "battery" || Config.bottomPopoutMode === "default";
+        if (Config.bottomPopoutMode === "power" || Config.bottomPopoutMode === "battery" || Config.bottomPopoutMode === "default") {
+            return true;
+        }
+        let targetCenter = Config.popoutTargetY;
+        if (targetCenter <= 0) return false;
+        return (targetCenter >= root.height - root.borderT - 180) || ((targetCenter + root.popoutH / 2) >= (root.height - root.borderT - 2));
     }
 
     readonly property real popoutHeaderCenterY: {
