@@ -155,6 +155,13 @@
   },
   "dashboardVisible": true,
   "activeDashboardTab": "dashboard",
+  "ai": {
+    "enabled": true,
+    "pollIntervalMinutes": 5,
+    "warningThresholdPercent": 80,
+    "criticalThresholdPercent": 95,
+    "dockPillMode": "dynamic"
+  },
   "media": {
     "visualizerStyle": "radial"
   }

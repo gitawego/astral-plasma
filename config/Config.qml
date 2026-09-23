@@ -92,6 +92,13 @@ Singleton {
             "blurStrength": 0.85,
             "cornerRadius": 20
         },
+        "ai": {
+            "enabled": true,
+            "pollIntervalMinutes": 5,
+            "warningThresholdPercent": 80,
+            "criticalThresholdPercent": 95,
+            "dockPillMode": "dynamic"
+        },
         "debugMode": false
     })
 
@@ -163,6 +170,13 @@ Singleton {
     }
     readonly property string plasmaBackupDir: root.settings.plasma?.backupDir ?? ""
     readonly property bool autoRestorePlasmaOnExit: root.settings.plasma?.autoRestoreOnExit ?? true
+
+    // AI Token Plan Configuration
+    readonly property bool aiEnabled: (root.settings && root.settings.ai && root.settings.ai.enabled !== undefined) ? root.settings.ai.enabled : true
+    readonly property int aiPollIntervalMinutes: (root.settings && root.settings.ai && root.settings.ai.pollIntervalMinutes) ? root.settings.ai.pollIntervalMinutes : 5
+    readonly property real aiWarningThreshold: (root.settings && root.settings.ai && root.settings.ai.warningThresholdPercent !== undefined) ? root.settings.ai.warningThresholdPercent : 80.0
+    readonly property real aiCriticalThreshold: (root.settings && root.settings.ai && root.settings.ai.criticalThresholdPercent !== undefined) ? root.settings.ai.criticalThresholdPercent : 95.0
+    readonly property string aiDockPillMode: (root.settings && root.settings.ai && root.settings.ai.dockPillMode) ? root.settings.ai.dockPillMode : "dynamic"
 
     // Theme getters
     readonly property bool isDarkMode: root.settings.theme ? (root.settings.theme.darkMode ?? (root.settings.theme.mode !== "light")) : true
@@ -325,6 +339,35 @@ Singleton {
         callback(copy);
         root.settings = copy;
         root.saveSettings();
+    }
+
+    function setAiEnabled(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.ai) cfg.ai = {};
+            cfg.ai.enabled = enabled;
+        });
+    }
+
+    function setAiDockPillMode(mode) {
+        updateSettings(cfg => {
+            if (!cfg.ai) cfg.ai = {};
+            cfg.ai.dockPillMode = mode;
+        });
+    }
+
+    function setAiThresholds(warnThr, critThr) {
+        updateSettings(cfg => {
+            if (!cfg.ai) cfg.ai = {};
+            cfg.ai.warningThresholdPercent = warnThr;
+            cfg.ai.criticalThresholdPercent = critThr;
+        });
+    }
+
+    function setAiPollInterval(minutes) {
+        updateSettings(cfg => {
+            if (!cfg.ai) cfg.ai = {};
+            cfg.ai.pollIntervalMinutes = minutes;
+        });
     }
 
     function setDarkMode(dark) {

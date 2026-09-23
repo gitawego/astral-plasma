@@ -64,6 +64,13 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "ai"
+        function refresh(): void { AiTokenService.refresh(true); }
+        function switchGemini(account: string): void { AiTokenService.switchGeminiAccount(account); }
+        function openPopout(): void { Config.openBottomPopout("ai", 400); }
+    }
+
+    IpcHandler {
         target: "overview"
         function toggle(): void { Config.toggleOverview(); }
         function open(): void { Config.openOverview(); }

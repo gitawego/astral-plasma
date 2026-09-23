@@ -14,3 +14,4 @@ pub mod system_settings;
 pub mod shortcuts;
 pub mod media;
 pub mod doctor;
+pub mod ai_quota;

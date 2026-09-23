@@ -32,6 +32,7 @@ Item {
 
     readonly property real targetPopWidth: {
         switch (root.mode) {
+            case "ai": return 320;
             case "bluetooth": return 300;
             case "network": return 300;
             case "audio": return 280;
@@ -54,6 +55,7 @@ Item {
 
     readonly property real targetContentHeight: {
         switch (root.mode) {
+            case "ai": return aiSection.implicitHeight;
             case "bluetooth": return bluetoothSection.implicitHeight;
             case "network": return networkSection.implicitHeight;
             case "audio": return audioSection.implicitHeight;
@@ -117,6 +119,26 @@ Item {
             anchors.top: parent.top
             anchors.margins: Theme.padLarge
             height: root.targetContentHeight
+
+            // ==========================================
+            // 0. AI TOKEN PLANS & QUOTAS SECTION
+            // ==========================================
+            AiTokensSection {
+                id: aiSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                readonly property bool isCurrent: root.mode === "ai"
+                visible: isCurrent
+                opacity: isCurrent ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
+            }
 
             // ==========================================
             // 1. DEFAULT STATUS / BATTERY & POWER PROFILES (Screenshot 1)

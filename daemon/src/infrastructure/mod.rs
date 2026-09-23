@@ -15,4 +15,5 @@ pub mod sys_settings;
 pub mod kwin_shortcuts;
 pub mod kwin_blur;
 pub mod media;
+pub mod ai_quota_adapter;
 

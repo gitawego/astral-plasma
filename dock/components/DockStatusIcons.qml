@@ -160,7 +160,82 @@ LiquidGlassCard {
             }
         }
 
-        // 4. Settings Button
+        // 4. AI Token Quota Pill (Dynamic)
+        Item {
+            id: aiItem
+            visible: typeof AiTokenService !== "undefined" && AiTokenService.shouldShowPill
+            implicitWidth: visible ? root.btnSize : 0
+            implicitHeight: visible ? root.btnSize : 0
+            width: implicitWidth
+            height: implicitHeight
+
+            Behavior on implicitHeight { NumberAnimation { duration: Theme.animDurationNormal } }
+            Behavior on opacity { NumberAnimation { duration: Theme.animDurationNormal } }
+            opacity: visible ? 1.0 : 0.0
+
+            Rectangle {
+                id: aiBg
+                anchors.fill: parent
+                radius: Theme.radiusFull
+
+                readonly property bool isPopActive: Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai"
+                readonly property string warn: typeof AiTokenService !== "undefined" ? AiTokenService.warningLevel : "normal"
+
+                color: isPopActive
+                    ? (warn === "critical" ? "#E05353" : (warn === "warning" ? "#F59E0B" : Colors.primary))
+                    : (warn === "critical"
+                        ? Qt.alpha("#E05353", 0.25)
+                        : (warn === "warning"
+                            ? Qt.alpha("#F59E0B", 0.20)
+                            : (aiHover.hovered ? Colors.surfaceContainerHigh : "transparent")))
+
+                border.color: isPopActive
+                    ? "transparent"
+                    : (warn === "critical"
+                        ? "#E05353"
+                        : (warn === "warning" ? "#F59E0B" : (aiHover.hovered ? Theme.borderSubtle : "transparent")))
+                border.width: (warn !== "normal") ? 1.5 : 0
+
+                SequentialAnimation on opacity {
+                    running: aiBg.warn === "critical" && !aiBg.isPopActive
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.6; duration: 650; easing.type: Easing.InOutQuad }
+                    NumberAnimation { to: 1.0; duration: 650; easing.type: Easing.InOutQuad }
+                }
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: (aiBg.warn === "critical" || aiBg.warn === "warning") ? "auto_awesome" : "psychology"
+                    size: root.iconSize
+                    color: aiBg.isPopActive
+                        ? Colors.textOnPrimary
+                        : (aiBg.warn === "critical"
+                            ? "#E05353"
+                            : (aiBg.warn === "warning" ? "#F59E0B" : Colors.textOnSurfaceVariant))
+                }
+
+                HoverHandler {
+                    id: aiHover
+                    onHoveredChanged: {
+                        if (hovered) {
+                            AiTokenService.refresh(false);
+                            Config.openBottomPopout("ai", aiItem.mapToItem(null, 0, aiItem.height / 2).y);
+                        }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        AiTokenService.refresh(false);
+                        Config.openBottomPopout("ai", aiItem.mapToItem(null, 0, aiItem.height / 2).y);
+                    }
+                }
+            }
+        }
+
+        // 5. Settings Button
         Item {
             id: settingsItem
             implicitWidth: root.btnSize

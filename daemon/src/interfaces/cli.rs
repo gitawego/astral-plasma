@@ -540,6 +540,45 @@ pub async fn run_cli() -> DynResult<()> {
             let json = metrics_ctrl.execute_json()?;
             println!("{}", json);
         }
+        "ai" => {
+            use crate::application::ai_quota_service::AiQuotaUseCase;
+            let ai_service = AiQuotaUseCase::default();
+            let sub = if args.len() >= 3 { args[2].as_str() } else { "status" };
+            match sub {
+                "status" | "quota" => {
+                    let warning_thr = args.get(3).and_then(|s| s.parse::<f64>().ok()).unwrap_or(80.0);
+                    let critical_thr = args.get(4).and_then(|s| s.parse::<f64>().ok()).unwrap_or(95.0);
+                    let snapshot = ai_service.get_status(warning_thr, critical_thr, false)?;
+                    println!("{}", serde_json::to_string(&snapshot)?);
+                }
+                "refresh" => {
+                    let warning_thr = args.get(3).and_then(|s| s.parse::<f64>().ok()).unwrap_or(80.0);
+                    let critical_thr = args.get(4).and_then(|s| s.parse::<f64>().ok()).unwrap_or(95.0);
+                    let snapshot = ai_service.get_status(warning_thr, critical_thr, true)?;
+                    println!("{}", serde_json::to_string(&snapshot)?);
+                }
+                "switch-account" | "switch" => {
+                    if args.len() >= 5 {
+                        let provider = &args[3];
+                        let account_target = &args[4];
+                        if provider == "gemini" {
+                            let switched = ai_service.switch_gemini_account(account_target)?;
+                            println!(r#"{{"success":true,"provider":"gemini","account":"{}"}}"#, switched);
+                        } else {
+                            eprintln!("Provider '{}' does not currently support multiple account switching", provider);
+                            std::process::exit(1);
+                        }
+                    } else {
+                        eprintln!("Usage: astral-plasma ai switch-account <provider> <account_id_or_email>");
+                        std::process::exit(1);
+                    }
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma ai <status|refresh|switch-account> [args...]");
+                    std::process::exit(1);
+                }
+            }
+        }
         "tray" => {
             use crate::domain::ports::TrayPort;
             let sub = if args.len() >= 3 { args[2].as_str() } else { "query" };

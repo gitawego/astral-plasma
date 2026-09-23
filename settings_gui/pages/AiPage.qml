@@ -1,0 +1,617 @@
+import QtQuick
+import QtQuick.Layouts
+import "../../theme"
+import "../../components"
+import "../../services"
+import "../../config"
+
+ColumnLayout {
+    id: root
+
+    property bool testMode: false
+    property bool testAiEnabled: true
+    property string testDockPillMode: "dynamic"
+    property real testWarningThreshold: 80
+    property real testCriticalThreshold: 95
+    property int testPollInterval: 5
+    property var testProviders: null
+
+    readonly property bool aiEnabled: testMode ? testAiEnabled : ((typeof Config !== "undefined") ? Config.aiEnabled : true)
+    readonly property string dockPillMode: testMode ? testDockPillMode : ((typeof Config !== "undefined") ? Config.aiDockPillMode : "dynamic")
+    readonly property real warningThreshold: testMode ? testWarningThreshold : ((typeof Config !== "undefined") ? Config.aiWarningThreshold : 80)
+    readonly property real criticalThreshold: testMode ? testCriticalThreshold : ((typeof Config !== "undefined") ? Config.aiCriticalThreshold : 95)
+    readonly property int pollInterval: testMode ? testPollInterval : ((typeof Config !== "undefined") ? Config.aiPollIntervalMinutes : 5)
+    readonly property var providersList: {
+        if (testMode && testProviders !== null) return testProviders;
+        if (typeof AiTokenService !== "undefined" && AiTokenService.providers) return AiTokenService.providers;
+        return [];
+    }
+
+    function setAiEnabled(v) {
+        if (testMode) {
+            testAiEnabled = v;
+        } else if (typeof Config !== "undefined") {
+            Config.setAiEnabled(v);
+        }
+    }
+
+    function setDockPillMode(m) {
+        if (testMode) {
+            testDockPillMode = m;
+        } else if (typeof Config !== "undefined") {
+            Config.setAiDockPillMode(m);
+        }
+    }
+
+    function setThresholds(warn, crit) {
+        if (testMode) {
+            testWarningThreshold = warn;
+            testCriticalThreshold = crit;
+        } else if (typeof Config !== "undefined") {
+            Config.setAiThresholds(warn, crit);
+        }
+    }
+
+    function setPollInterval(mins) {
+        if (testMode) {
+            testPollInterval = mins;
+        } else if (typeof Config !== "undefined") {
+            Config.setAiPollInterval(mins);
+        }
+    }
+
+    Layout.fillWidth: true
+    spacing: 16
+
+    // Header & Description
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 2
+
+        Text {
+            text: "AI Token Plans"
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontTitleLarge
+            font.weight: Font.Bold
+            color: Colors.m3onSurface
+        }
+
+        Text {
+            text: "Auto-discovered coding plans, quotas, and theme warning thresholds"
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontBodySmall
+            color: Colors.m3onSurfaceVariant
+        }
+    }
+
+    // Master Integration Toggle Card
+    Rectangle {
+        Layout.fillWidth: true
+        height: 64
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.padLarge
+            anchors.rightMargin: Theme.padLarge
+            spacing: Theme.spaceMedium
+
+            MaterialIcon {
+                text: "psychology"
+                size: 26
+                color: root.aiEnabled ? Colors.primary : Colors.m3onSurfaceVariant
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+
+                Text {
+                    text: "AI Quota Tracking"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+
+                Text {
+                    text: root.aiEnabled ? "Auto-discovering OpenCode, Gemini, Mimo & MiniMax" : "AI quota monitoring is disabled"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    color: Colors.m3onSurfaceVariant
+                }
+            }
+
+            // M3 Expressive Pill Switch
+            Rectangle {
+                width: 48
+                height: 26
+                radius: 13
+                color: root.aiEnabled ? Colors.primary : Colors.surfaceContainerHighest
+                border.color: root.aiEnabled ? Colors.primary : Theme.borderSubtle
+                border.width: 1
+
+                Behavior on color { ColorAnimation { duration: 150 } }
+
+                Rectangle {
+                    width: 20
+                    height: 20
+                    radius: 10
+                    color: root.aiEnabled ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: root.aiEnabled ? parent.width - width - 3 : 3
+
+                    Behavior on x {
+                        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.setAiEnabled(!root.aiEnabled);
+                    }
+                }
+            }
+        }
+    }
+
+    // Preferences & Theme Integration Card
+    Rectangle {
+        Layout.fillWidth: true
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+        implicitHeight: prefCol.implicitHeight + Theme.padLarge * 2
+
+        ColumnLayout {
+            id: prefCol
+            anchors.fill: parent
+            anchors.margins: Theme.padLarge
+            spacing: 16
+
+            Text {
+                text: "Theme & Warning Configuration"
+                font.family: Theme.fontFamily
+                font.pixelSize: 13
+                font.weight: Font.Bold
+                color: Colors.m3onSurface
+            }
+
+            // Dock Pill Display Mode
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Text {
+                    text: "Left Dock Indicator"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+
+                RowLayout {
+                    spacing: 8
+
+                    Repeater {
+                        model: [
+                            { id: "dynamic", label: "Dynamic (Active / Warning)" },
+                            { id: "always", label: "Always Visible" },
+                            { id: "never", label: "Hidden" }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            height: 32
+                            implicitWidth: modeLabel.implicitWidth + 20
+                            radius: 16
+                            color: root.dockPillMode === modelData.id ? Colors.primary : Colors.surfaceContainerHighest
+                            border.color: root.dockPillMode === modelData.id ? Colors.primary : Theme.borderSubtle
+                            border.width: 1
+
+                            Text {
+                                id: modeLabel
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: root.dockPillMode === modelData.id ? Font.Bold : Font.Normal
+                                color: root.dockPillMode === modelData.id ? Colors.textOnPrimary : Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.setDockPillMode(modelData.id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: Theme.borderSubtle
+                opacity: 0.4
+            }
+
+            // Warning Thresholds
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 16
+
+                // Warning Threshold (Amber)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    RowLayout {
+                        Text {
+                            text: "Amber Warning Threshold"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: Colors.m3onSurface
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: Math.round(root.warningThreshold) + "% used"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.Bold
+                            color: "#F59E0B"
+                        }
+                    }
+
+                    RowLayout {
+                        spacing: 6
+                        Repeater {
+                            model: [70, 75, 80, 85]
+                            delegate: Rectangle {
+                                required property int modelData
+                                height: 28
+                                Layout.fillWidth: true
+                                radius: 14
+                                color: root.warningThreshold === modelData ? Qt.alpha("#F59E0B", 0.25) : Colors.surfaceContainerHighest
+                                border.color: root.warningThreshold === modelData ? "#F59E0B" : Theme.borderSubtle
+                                border.width: 1
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData + "%"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: root.warningThreshold === modelData ? Font.Bold : Font.Normal
+                                    color: root.warningThreshold === modelData ? "#F59E0B" : Colors.m3onSurface
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.setThresholds(modelData, root.criticalThreshold);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Critical Threshold (Rose)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    RowLayout {
+                        Text {
+                            text: "Rose Critical Threshold"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: Colors.m3onSurface
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: Math.round(root.criticalThreshold) + "% used"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.Bold
+                            color: "#E05353"
+                        }
+                    }
+
+                    RowLayout {
+                        spacing: 6
+                        Repeater {
+                            model: [90, 93, 95, 98]
+                            delegate: Rectangle {
+                                required property int modelData
+                                height: 28
+                                Layout.fillWidth: true
+                                radius: 14
+                                color: root.criticalThreshold === modelData ? Qt.alpha("#E05353", 0.25) : Colors.surfaceContainerHighest
+                                border.color: root.criticalThreshold === modelData ? "#E05353" : Theme.borderSubtle
+                                border.width: 1
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData + "%"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: root.criticalThreshold === modelData ? Font.Bold : Font.Normal
+                                    color: root.criticalThreshold === modelData ? "#E05353" : Colors.m3onSurface
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.setThresholds(root.warningThreshold, modelData);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: Theme.borderSubtle
+                opacity: 0.4
+            }
+
+            // Polling Interval
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                RowLayout {
+                    Text {
+                        text: "Background Polling Cadence"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        color: Colors.m3onSurface
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: "Every " + root.pollInterval + " minutes"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.m3onSurfaceVariant
+                    }
+                }
+
+                RowLayout {
+                    spacing: 8
+                    Repeater {
+                        model: [1, 2, 5, 10, 15]
+                        delegate: Rectangle {
+                            required property int modelData
+                            height: 28
+                            implicitWidth: intervalText.implicitWidth + 20
+                            radius: 14
+                            color: root.pollInterval === modelData ? Colors.primary : Colors.surfaceContainerHighest
+                            border.color: root.pollInterval === modelData ? Colors.primary : Theme.borderSubtle
+                            border.width: 1
+
+                            Text {
+                                id: intervalText
+                                anchors.centerIn: parent
+                                text: modelData + "m"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: root.pollInterval === modelData ? Font.Bold : Font.Normal
+                                color: root.pollInterval === modelData ? Colors.textOnPrimary : Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.setPollInterval(modelData);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Detected Providers & Quotas
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 10
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            Text {
+                text: "Configured Providers & Quotas"
+                font.family: Theme.fontFamily
+                font.pixelSize: 13
+                font.weight: Font.Bold
+                color: Colors.m3onSurface
+            }
+
+            Item { Layout.fillWidth: true }
+
+            PillButton {
+                label: "Rescan All Models"
+                iconText: "refresh"
+                onClicked: {
+                    if (typeof AiTokenService !== "undefined") {
+                        AiTokenService.refresh(true);
+                    }
+                }
+            }
+        }
+
+        Repeater {
+            model: root.providersList
+            delegate: Rectangle {
+                required property var modelData
+                Layout.fillWidth: true
+                radius: Theme.radiusMedium
+                color: Colors.surfaceContainer
+                border.color: Theme.borderSubtle
+                border.width: 1
+                implicitHeight: cardContent.implicitHeight + 24
+
+                ColumnLayout {
+                    id: cardContent
+                    anchors.fill: parent
+                    anchors.margins: Theme.padLarge
+                    spacing: 12
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        MaterialIcon {
+                            text: modelData.icon || "auto_awesome"
+                            size: 20
+                            color: Colors.primary
+                        }
+
+                        Text {
+                            text: modelData.display_name
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 14
+                            font.weight: Font.Bold
+                            color: Colors.m3onSurface
+                        }
+
+                        Rectangle {
+                            visible: modelData.plan_type !== null && modelData.plan_type !== ""
+                            height: 18
+                            implicitWidth: planBadge.implicitWidth + 10
+                            radius: 9
+                            color: Qt.alpha(Colors.primary, 0.15)
+                            border.color: Qt.alpha(Colors.primary, 0.3)
+                            border.width: 1
+
+                            Text {
+                                id: planBadge
+                                anchors.centerIn: parent
+                                text: modelData.plan_type || ""
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
+                                color: Colors.primary
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        // Health badge
+                        Rectangle {
+                            height: 20
+                            implicitWidth: stText.implicitWidth + 12
+                            radius: 10
+                            color: modelData.is_available ? Qt.alpha("#10B981", 0.15) : Qt.alpha("#E05353", 0.15)
+                            border.color: modelData.is_available ? "#10B981" : "#E05353"
+                            border.width: 1
+
+                            Text {
+                                id: stText
+                                anchors.centerIn: parent
+                                text: modelData.is_available ? "Active" : "Unavailable"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                color: modelData.is_available ? "#10B981" : "#E05353"
+                            }
+                        }
+                    }
+
+                    // Account identity
+                    Text {
+                        visible: modelData.account_email !== null && modelData.account_email !== ""
+                        text: "Account: " + (modelData.account_email || "")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.m3onSurfaceVariant
+                    }
+
+                    // Windows progress list
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: modelData.windows && modelData.windows.length > 0
+
+                        Repeater {
+                            model: modelData.windows || []
+                            delegate: ColumnLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 2
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: {
+                                            switch (modelData.label) {
+                                                case "5h": return "5-Hour Rolling Limit";
+                                                case "weekly": return "Weekly Limit";
+                                                case "monthly": return "Monthly Limit";
+                                                default: return modelData.label;
+                                            }
+                                        }
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        font.weight: Font.DemiBold
+                                        color: Colors.m3onSurface
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text {
+                                        text: Math.round(modelData.remaining_percent) + "% remaining (" + Math.round(modelData.used_percent) + "% used)"
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        font.weight: Font.Bold
+                                        color: (modelData.used_percent >= root.criticalThreshold)
+                                            ? "#E05353"
+                                            : ((modelData.used_percent >= root.warningThreshold) ? "#F59E0B" : Colors.primary)
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 6
+                                    radius: 3
+                                    color: Colors.surfaceContainerHighest
+
+                                    Rectangle {
+                                        width: Math.max(0, parent.width * (modelData.used_percent / 100.0))
+                                        height: parent.height
+                                        radius: 3
+                                        color: (modelData.used_percent >= root.criticalThreshold)
+                                            ? "#E05353"
+                                            : ((modelData.used_percent >= root.warningThreshold) ? "#F59E0B" : Colors.primary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Spacer
+    Item {
+        Layout.fillWidth: true
+        height: 32
+    }
+}
