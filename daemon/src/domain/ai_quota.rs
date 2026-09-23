@@ -118,6 +118,7 @@ pub fn parse_agy_quota(json_str: &str, active_email: Option<String>) -> Result<A
     // Prefer "Gemini Models" group
     let gemini_group = groups.iter().find(|g| {
         g.get("name")
+            .or_else(|| g.get("displayName"))
             .and_then(|n| n.as_str())
             .map(|s| s.to_lowercase().contains("gemini"))
             .unwrap_or(false)
@@ -131,7 +132,11 @@ pub fn parse_agy_quota(json_str: &str, active_email: Option<String>) -> Result<A
                     Some("weekly") | Some("week") => "weekly".to_string(),
                     Some("monthly") | Some("month") => "monthly".to_string(),
                     _ => {
-                        let id = b.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                        let id = b
+                            .get("id")
+                            .or_else(|| b.get("bucketId"))
+                            .and_then(|i| i.as_str())
+                            .unwrap_or("");
                         if id.contains("5h") {
                             "5h".to_string()
                         } else if id.contains("week") {
@@ -239,7 +244,134 @@ pub fn parse_opencode_usage(json_str: &str) -> Result<AiProviderQuota, String> {
     })
 }
 
-/// Parses `quotas.json` from token-tracker cache.
+/// Converts epoch milliseconds to an RFC3339 / ISO-8601 UTC timestamp string without external dependencies.
+pub fn epoch_millis_to_rfc3339(ms: i64) -> String {
+    let secs = ms / 1000;
+    let mut days = secs / 86400;
+    let mut rem_secs = (secs % 86400) as i32;
+    if rem_secs < 0 {
+        rem_secs += 86400;
+        days -= 1;
+    }
+    let hours = rem_secs / 3600;
+    let mins = (rem_secs % 3600) / 60;
+    let s = rem_secs % 60;
+
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, hours, mins, s)
+}
+
+/// Generic parser for coding_plan/remains endpoints (MiniMax, Xiaomi MiMo).
+pub fn parse_coding_plan_remains(
+    provider_id: &str,
+    display_name: &str,
+    icon: &str,
+    json_str: &str,
+) -> Result<AiProviderQuota, String> {
+    let v: serde_json::Value = serde_json::from_str(json_str)
+        .map_err(|e| format!("Invalid JSON from {}: {}", display_name, e))?;
+
+    if let Some(code) = v.pointer("/base_resp/status_code").and_then(|c| c.as_i64()) {
+        if code != 0 {
+            let msg = v.pointer("/base_resp/status_msg")
+                .and_then(|m| m.as_str())
+                .unwrap_or("error");
+            return Err(format!("{} error (status {}): {}", display_name, code, msg));
+        }
+    }
+
+    let remains = v.get("model_remains")
+        .and_then(|m| m.as_array())
+        .ok_or_else(|| format!("Missing model_remains in {} response", display_name))?;
+
+    let primary = remains.iter().find(|m| {
+        m.get("model_name").and_then(|n| n.as_str()) == Some("general")
+            && m.get("current_interval_remaining_percent").is_some()
+    }).or_else(|| {
+        remains.iter().find(|m| m.get("current_interval_remaining_percent").is_some())
+    }).or_else(|| remains.first())
+      .ok_or_else(|| format!("No models in {} remains", display_name))?;
+
+    let mut windows = Vec::new();
+
+    if let Some(rem) = primary.get("current_interval_remaining_percent").and_then(|r| r.as_f64()) {
+        let rem_pct = rem.clamp(0.0, 100.0);
+        let used_pct = (100.0 - rem_pct).clamp(0.0, 100.0);
+        let reset_at = primary.get("end_time")
+            .and_then(|ms| ms.as_i64())
+            .map(epoch_millis_to_rfc3339);
+
+        windows.push(QuotaWindow {
+            label: "5h".to_string(),
+            used_percent: (used_pct * 10.0).round() / 10.0,
+            remaining_percent: (rem_pct * 10.0).round() / 10.0,
+            reset_at,
+        });
+    }
+
+    if let Some(rem) = primary.get("current_weekly_remaining_percent").and_then(|r| r.as_f64()) {
+        let rem_pct = rem.clamp(0.0, 100.0);
+        let used_pct = (100.0 - rem_pct).clamp(0.0, 100.0);
+        let reset_at = primary.get("weekly_end_time")
+            .and_then(|ms| ms.as_i64())
+            .map(epoch_millis_to_rfc3339);
+
+        windows.push(QuotaWindow {
+            label: "weekly".to_string(),
+            used_percent: (used_pct * 10.0).round() / 10.0,
+            remaining_percent: (rem_pct * 10.0).round() / 10.0,
+            reset_at,
+        });
+    }
+
+    if let Some(rem) = primary.get("current_monthly_remaining_percent").and_then(|r| r.as_f64()) {
+        let rem_pct = rem.clamp(0.0, 100.0);
+        let used_pct = (100.0 - rem_pct).clamp(0.0, 100.0);
+        let reset_at = primary.get("monthly_end_time")
+            .and_then(|ms| ms.as_i64())
+            .map(epoch_millis_to_rfc3339);
+
+        windows.push(QuotaWindow {
+            label: "monthly".to_string(),
+            used_percent: (used_pct * 10.0).round() / 10.0,
+            remaining_percent: (rem_pct * 10.0).round() / 10.0,
+            reset_at,
+        });
+    }
+
+    Ok(AiProviderQuota {
+        provider_id: provider_id.to_string(),
+        display_name: display_name.to_string(),
+        icon: icon.to_string(),
+        plan_type: Some("Coding Plan".to_string()),
+        account_email: None,
+        account_name: None,
+        is_available: true,
+        windows,
+        accounts: Vec::new(),
+        error_message: None,
+    })
+}
+
+pub fn parse_minimax_usage(json_str: &str) -> Result<AiProviderQuota, String> {
+    parse_coding_plan_remains("minimax-cn", "MiniMax", "bolt", json_str)
+}
+
+pub fn parse_xiaomi_usage(json_str: &str) -> Result<AiProviderQuota, String> {
+    parse_coding_plan_remains("xiaomi-mimo-cn", "Xiaomi Mimo", "smartphone", json_str)
+}
+
+/// Parses `quotas.json` from cache if present.
 /// Verifies the active Gemini account against `active_gemini_email`.
 /// If `active_gemini_email` is provided and does not match the active account in `quotas.json`,
 /// returns an Err("stale_gemini_account") so the caller can refresh Gemini with SSOT.

@@ -119,6 +119,16 @@ Item {
         "sports_esports": "󰊴",
         "insights": "󰄧",
         "smart_toy": "󰚩",
+        "auto_awesome": "󰄧",
+        "psychology": "󰧑",
+        "brain": "󰧑",
+        "token": "󰇂",
+        "tokens": "󰇂",
+        "spark": "󰄧",
+        "sparkles": "󰄧",
+        "tune": "󰔡",
+        "cloud_off": "󰅟",
+        "memory": "󰍛",
         "palette": "󰏘",
         "window": "󰖯",
         "toll": "󰇂",
@@ -170,6 +180,9 @@ Item {
         if (text && (text.startsWith("wifi") || text.startsWith("network_wifi"))) return "󰤨";
         if (text && (text.includes("refresh") || text.includes("sync"))) return "󰑓";
         if (text && text.includes("drag")) return "󰇙";
+        if (text && (text.includes("psychology") || text.includes("brain") || text === "ai")) return "󰧑";
+        if (text && (text.includes("spark") || text.includes("auto_awesome"))) return "󰄧";
+        if (text && (text.includes("token") || text.includes("toll") || text.includes("coin"))) return "󰇂";
         return "";
     }
 

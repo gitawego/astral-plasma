@@ -33,22 +33,55 @@ Item {
         return false;
     }
 
-    // Auto-select provider with the highest used percent when providers change
-    onVisibleChanged: {
-        if (visible && root.providersList.length > 0) {
-            let bestIdx = 0;
-            let maxUsed = -1;
+    function getProviderShortName(p) {
+        if (!p) return "";
+        const pid = (p.provider_id || p.provider || "").toLowerCase();
+        if (pid === "gemini") return "Gemini";
+        if (pid === "opencode-go" || pid === "opencode") return "OpenCode";
+        if (pid.indexOf("minimax") !== -1) return "MiniMax";
+        if (pid.indexOf("xiaomi") !== -1 || pid.indexOf("mimo") !== -1) return "MiMo";
+        if (pid.indexOf("deepseek") !== -1) return "DeepSeek";
+        if (pid.indexOf("claude") !== -1 || pid.indexOf("anthropic") !== -1) return "Claude";
+        if (pid.indexOf("openai") !== -1) return "OpenAI";
+        return p.display_name || pid;
+    }
+
+    function getProviderIcon(p) {
+        if (!p) return "auto_awesome";
+        const pid = (p.provider_id || p.provider || "").toLowerCase();
+        if (pid === "gemini") return "auto_awesome";
+        if (pid.indexOf("opencode") !== -1) return "terminal";
+        if (pid.indexOf("minimax") !== -1) return "bolt";
+        if (pid.indexOf("xiaomi") !== -1 || pid.indexOf("mimo") !== -1) return "smartphone";
+        if (pid.indexOf("deepseek") !== -1) return "psychology";
+        return "token";
+    }
+
+    function syncActiveTab() {
+        if (!root.providersList || root.providersList.length === 0) return;
+        const lastId = (typeof AiTokenService !== "undefined" && AiTokenService.lastActiveProviderId)
+            ? AiTokenService.lastActiveProviderId
+            : "";
+        if (lastId) {
             for (let i = 0; i < root.providersList.length; i++) {
-                const p = root.providersList[i];
-                for (let j = 0; j < (p.windows || []).length; j++) {
-                    if (p.windows[j].used_percent > maxUsed) {
-                        maxUsed = p.windows[j].used_percent;
-                        bestIdx = i;
-                    }
+                const pid = root.providersList[i].provider_id || root.providersList[i].provider;
+                if (pid === lastId) {
+                    root.activeProviderIndex = i;
+                    return;
                 }
             }
-            activeProviderIndex = bestIdx;
         }
+        if (root.activeProviderIndex >= root.providersList.length) {
+            root.activeProviderIndex = 0;
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible) syncActiveTab();
+    }
+
+    onProvidersListChanged: {
+        syncActiveTab();
     }
 
     readonly property var currentProvider: (root.providersList && root.providersList.length > activeProviderIndex)
@@ -58,7 +91,7 @@ Item {
     ColumnLayout {
         id: mainLayout
         anchors.fill: parent
-        anchors.margins: Theme.padLarge
+        anchors.margins: 0
         spacing: Theme.spaceMedium
 
         // Header: Title & Rescan
@@ -138,8 +171,9 @@ Item {
             }
         }
 
-        // Horizontal Segmented Provider Tabs
+        // Horizontal Segmented Provider Tabs (Responsive Chip Bar for 2, 3, 4, 5+ providers)
         Flickable {
+            id: providerFlickable
             Layout.fillWidth: true
             Layout.preferredHeight: 32
             visible: root.providersList.length > 1
@@ -155,6 +189,7 @@ Item {
                 Repeater {
                     model: root.providersList
                     delegate: Rectangle {
+                        id: tabChip
                         required property var modelData
                         required property int index
 
@@ -169,7 +204,7 @@ Item {
                         }
 
                         height: 28
-                        implicitWidth: tabRow.implicitWidth + 16
+                        implicitWidth: tabRow.implicitWidth + 18
                         radius: 14
                         color: isSelected
                             ? (hasWarning ? Qt.alpha("#F59E0B", 0.25) : Colors.primary)
@@ -182,10 +217,18 @@ Item {
                         RowLayout {
                             id: tabRow
                             anchors.centerIn: parent
-                            spacing: 4
+                            spacing: 5
+
+                            MaterialIcon {
+                                text: root.getProviderIcon(modelData)
+                                size: 13
+                                color: isSelected
+                                    ? (hasWarning ? "#F59E0B" : Colors.textOnPrimary)
+                                    : (tabHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant)
+                            }
 
                             Text {
-                                text: modelData.display_name
+                                text: root.getProviderShortName(modelData)
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 11
                                 font.weight: isSelected ? Font.Bold : Font.Normal
@@ -210,6 +253,10 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 root.activeProviderIndex = index;
+                                const pid = modelData.provider_id || modelData.provider;
+                                if (typeof AiTokenService !== "undefined" && pid) {
+                                    AiTokenService.lastActiveProviderId = pid;
+                                }
                             }
                         }
                     }
@@ -235,7 +282,13 @@ Item {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 6
+                    spacing: 8
+
+                    MaterialIcon {
+                        text: root.getProviderIcon(root.currentProvider)
+                        size: 16
+                        color: Colors.primary
+                    }
 
                     Text {
                         text: root.currentProvider ? root.currentProvider.display_name : ""
@@ -243,12 +296,12 @@ Item {
                         font.pixelSize: 13
                         font.weight: Font.Bold
                         color: Colors.m3onSurface
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
 
-                    Item { Layout.fillWidth: true }
-
                     Rectangle {
-                        visible: root.currentProvider && root.currentProvider.plan_type
+                        visible: root.currentProvider && !!root.currentProvider.plan_type
                         height: 18
                         implicitWidth: planText.implicitWidth + 10
                         radius: 9
@@ -283,7 +336,7 @@ Item {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 4
-                    visible: root.currentProvider && root.currentProvider.provider_id === "gemini" && root.currentProvider.accounts && root.currentProvider.accounts.length > 1
+                    visible: root.currentProvider && (root.currentProvider.provider_id === "gemini" || root.currentProvider.provider === "gemini") && root.currentProvider.accounts && root.currentProvider.accounts.length > 1
 
                     Rectangle {
                         Layout.fillWidth: true
@@ -315,9 +368,9 @@ Item {
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 6
-                                anchors.rightMargin: 6
-                                spacing: 4
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 6
 
                                 MaterialIcon {
                                     text: modelData.is_active ? "check_circle" : "account_circle"
@@ -333,6 +386,17 @@ Item {
                                     color: modelData.is_active ? Colors.primary : Colors.m3onSurface
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    visible: modelData.five_hour_remaining_percent !== null && modelData.five_hour_remaining_percent !== undefined
+                                    text: Math.round(modelData.five_hour_remaining_percent) + "%" + ((modelData.weekly_remaining_percent !== null && modelData.weekly_remaining_percent !== undefined) ? (" · " + Math.round(modelData.weekly_remaining_percent) + "%") : "")
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 10
+                                    font.weight: Font.DemiBold
+                                    color: (modelData.five_hour_remaining_percent < 20)
+                                        ? "#E05353"
+                                        : ((modelData.five_hour_remaining_percent < 40) ? "#F59E0B" : Colors.m3onSurfaceVariant)
                                 }
 
                                 Rectangle {

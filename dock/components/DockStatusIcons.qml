@@ -205,13 +205,13 @@ LiquidGlassCard {
 
                 MaterialIcon {
                     anchors.centerIn: parent
-                    text: (aiBg.warn === "critical" || aiBg.warn === "warning") ? "auto_awesome" : "psychology"
+                    text: "auto_awesome"
                     size: root.iconSize
                     color: aiBg.isPopActive
                         ? Colors.textOnPrimary
                         : (aiBg.warn === "critical"
                             ? "#E05353"
-                            : (aiBg.warn === "warning" ? "#F59E0B" : Colors.textOnSurfaceVariant))
+                            : (aiBg.warn === "warning" ? "#F59E0B" : (aiHover.hovered ? Colors.primary : Colors.textOnSurfaceVariant)))
                 }
 
                 HoverHandler {

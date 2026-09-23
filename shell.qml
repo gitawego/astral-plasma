@@ -68,6 +68,14 @@ ShellRoot {
         function refresh(): void { AiTokenService.refresh(true); }
         function switchGemini(account: string): void { AiTokenService.switchGeminiAccount(account); }
         function openPopout(): void { Config.openBottomPopout("ai", 400); }
+        function closePopout(): void { Config.closeBottomPopout(); }
+        function togglePopout(): void {
+            if (Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai") {
+                Config.closeBottomPopout();
+            } else {
+                Config.openBottomPopout("ai", 400);
+            }
+        }
     }
 
     IpcHandler {

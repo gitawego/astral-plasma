@@ -162,3 +162,149 @@ fn test_warning_level_escalation() {
     assert_eq!(snap.highest_used_percent, 96.5);
     assert_eq!(snap.lowest_remaining_percent, 3.5);
 }
+
+#[test]
+fn test_parse_minimax_usage_success() {
+    let json_data = r#"{
+        "base_resp": {
+            "status_code": 0,
+            "status_msg": "success"
+        },
+        "model_remains": [
+            {
+                "model_name": "general",
+                "end_time": 1727103728000,
+                "current_interval_remaining_percent": 85.0,
+                "current_weekly_remaining_percent": 92.5,
+                "weekly_end_time": 1727654400000,
+                "current_weekly_status": 1
+            }
+        ]
+    }"#;
+
+    let res = parse_minimax_usage(json_data);
+    assert!(res.is_ok(), "Expected parse_minimax_usage to succeed");
+    let provider = res.unwrap();
+    assert_eq!(provider.provider_id, "minimax-cn");
+    assert_eq!(provider.display_name, "MiniMax");
+    assert_eq!(provider.windows.len(), 2);
+
+    let w_5h = provider.windows.iter().find(|w| w.label == "5h").unwrap();
+    assert_eq!(w_5h.remaining_percent, 85.0);
+    assert_eq!(w_5h.used_percent, 15.0);
+    assert!(w_5h.reset_at.is_some());
+
+    let w_weekly = provider.windows.iter().find(|w| w.label == "weekly").unwrap();
+    assert_eq!(w_weekly.remaining_percent, 92.5);
+    assert_eq!(w_weekly.used_percent, 7.5);
+    assert!(w_weekly.reset_at.is_some());
+}
+
+#[test]
+fn test_parse_xiaomi_usage_success() {
+    let json_data = r#"{
+        "base_resp": {
+            "status_code": 0
+        },
+        "model_remains": [
+            {
+                "model_name": "general",
+                "end_time": 1727103728000,
+                "current_interval_remaining_percent": 60.0,
+                "current_weekly_remaining_percent": 75.0,
+                "weekly_end_time": 1727654400000
+            }
+        ]
+    }"#;
+
+    let res = parse_xiaomi_usage(json_data);
+    assert!(res.is_ok(), "Expected parse_xiaomi_usage to succeed");
+    let provider = res.unwrap();
+    assert_eq!(provider.provider_id, "xiaomi-mimo-cn");
+    assert_eq!(provider.display_name, "Xiaomi Mimo");
+    assert_eq!(provider.windows.len(), 2);
+
+    let w_5h = provider.windows.iter().find(|w| w.label == "5h").unwrap();
+    assert_eq!(w_5h.remaining_percent, 60.0);
+    assert_eq!(w_5h.used_percent, 40.0);
+
+    let w_weekly = provider.windows.iter().find(|w| w.label == "weekly").unwrap();
+    assert_eq!(w_weekly.remaining_percent, 75.0);
+    assert_eq!(w_weekly.used_percent, 25.0);
+}
+
+#[test]
+fn test_epoch_millis_to_rfc3339() {
+    // 1727103728000 is 2024-09-23T15:02:08Z
+    let ts = epoch_millis_to_rfc3339(1727103728000);
+    assert_eq!(ts, "2024-09-23T15:02:08Z");
+}
+
+#[test]
+fn test_parse_google_retrieve_user_quota_summary_direct() {
+    let google_json = r#"{
+      "groups": [
+        {
+          "buckets": [
+            {
+              "bucketId": "gemini-weekly",
+              "displayName": "Weekly Limit Remaining",
+              "window": "weekly",
+              "resetTime": "2026-09-30T06:22:36Z",
+              "description": "You have used some of your weekly limit.",
+              "remainingFraction": 0.8197143
+            },
+            {
+              "bucketId": "gemini-5h",
+              "displayName": "Five Hour Limit Remaining",
+              "window": "5h",
+              "resetTime": "2026-09-23T17:42:08Z",
+              "description": "You have used some of your 5-hour limit.",
+              "remainingFraction": 0.5200421
+            }
+          ],
+          "displayName": "Gemini Models",
+          "description": "Models within this group: Gemini Flash, Gemini Pro"
+        },
+        {
+          "buckets": [
+            {
+              "bucketId": "3p-weekly",
+              "displayName": "Weekly Limit Remaining",
+              "window": "weekly",
+              "resetTime": "2026-09-30T14:07:08Z",
+              "remainingFraction": 1
+            },
+            {
+              "bucketId": "3p-5h",
+              "displayName": "Five Hour Limit Remaining",
+              "window": "5h",
+              "resetTime": "2026-09-23T19:07:08Z",
+              "remainingFraction": 1
+            }
+          ],
+          "displayName": "Claude and GPT models",
+          "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS"
+        }
+      ]
+    }"#;
+
+    let res = parse_agy_quota(google_json, Some("gitawego@gmail.com".to_string()));
+    assert!(res.is_ok(), "Expected parse_agy_quota to succeed on Google retrieveUserQuotaSummary payload");
+    let provider = res.unwrap();
+    assert_eq!(provider.provider_id, "gemini");
+    assert_eq!(provider.account_email.as_deref(), Some("gitawego@gmail.com"));
+    assert_eq!(provider.windows.len(), 2);
+
+    let w_5h = provider.windows.iter().find(|w| w.label == "5h").unwrap();
+    assert_eq!(w_5h.remaining_percent, 52.0);
+    assert_eq!(w_5h.used_percent, 48.0);
+    assert_eq!(w_5h.reset_at.as_deref(), Some("2026-09-23T17:42:08Z"));
+
+    let w_weekly = provider.windows.iter().find(|w| w.label == "weekly").unwrap();
+    assert_eq!(w_weekly.remaining_percent, 82.0);
+    assert_eq!(w_weekly.used_percent, 18.0);
+    assert_eq!(w_weekly.reset_at.as_deref(), Some("2026-09-30T06:22:36Z"));
+}
+
+

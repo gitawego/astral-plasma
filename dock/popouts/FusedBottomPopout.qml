@@ -32,7 +32,7 @@ Item {
 
     readonly property real targetPopWidth: {
         switch (root.mode) {
-            case "ai": return 320;
+            case "ai": return 360;
             case "bluetooth": return 300;
             case "network": return 300;
             case "audio": return 280;

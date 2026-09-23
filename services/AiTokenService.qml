@@ -13,6 +13,7 @@ Singleton {
     property real lowestRemainingPercent: 100.0
     property string warningLevel: "normal" // "normal", "warning", "critical"
     property string activeGeminiEmail: ""
+    property string lastActiveProviderId: "gemini"
     property string fetchedAt: ""
     property bool isRefreshing: false
 
