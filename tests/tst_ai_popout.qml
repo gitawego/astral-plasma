@@ -1,6 +1,7 @@
 import QtQuick
 import "../theme"
 import "../components"
+import "../config"
 import "../dock/popouts"
 
 Item {
@@ -19,7 +20,7 @@ Item {
         if (!cond) {
             console.error("FAIL: " + msg);
             Qt.exit(1);
-            return false;
+            throw new Error(msg);
         }
         return true;
     }
@@ -72,6 +73,13 @@ Item {
         ]
     }
 
+    function readLocalFile(relPath) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl(relPath), false);
+        xhr.send();
+        return xhr.responseText;
+    }
+
     function runTests() {
         console.log("RUNNING: AI Popout and Section Unit Tests");
 
@@ -121,6 +129,35 @@ Item {
         assert(aiSection.currentProvider.accounts.length === 2, "Expected 2 gemini accounts in test data");
         assert(aiSection.currentProvider.accounts[0].is_active === true, "First account must be active in test model");
         assert(aiSection.currentProvider.accounts[1].is_active === false, "Second account must be inactive in test model");
+
+        // 9. Provider brand icon URL resolution & asset availability
+        const cfgSrc = readLocalFile("../config/Config.qml");
+        assert(cfgSrc.indexOf("function providerIconUrl(") !== -1, "Config.qml must define providerIconUrl()");
+        assert(cfgSrc.indexOf('"gemini"') !== -1, "Config.qml providerIconUrl must handle gemini");
+        assert(cfgSrc.indexOf('"minimax"') !== -1, "Config.qml providerIconUrl must handle minimax");
+        assert(cfgSrc.indexOf('"xiaomi"') !== -1, "Config.qml providerIconUrl must handle xiaomi");
+        assert(cfgSrc.indexOf('"deepseek"') !== -1, "Config.qml providerIconUrl must handle deepseek");
+        assert(cfgSrc.indexOf('"anthropic"') !== -1, "Config.qml providerIconUrl must handle anthropic");
+        assert(cfgSrc.indexOf('"openai"') !== -1, "Config.qml providerIconUrl must handle openai");
+        assert(cfgSrc.indexOf('"antigravity"') !== -1, "Config.qml providerIconUrl must handle antigravity");
+        assert(cfgSrc.indexOf('"../theme/assets/icons/" + name + ".svg"') !== -1, "Config.qml providerIconUrl must construct theme/assets/icons SVG URL");
+
+        assert(readLocalFile("../theme/assets/icons/gemini.svg").length > 0, "gemini.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/minimax.svg").length > 0, "minimax.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/opencode.svg").length > 0, "opencode.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/opencode-dark.svg").length > 0, "opencode-dark.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/xiaomi.svg").length > 0, "xiaomi.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/deepseek.svg").length > 0, "deepseek.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/anthropic.svg").length > 0, "anthropic.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/openai.svg").length > 0, "openai.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/ollama.svg").length > 0, "ollama.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/ollama-dark.svg").length > 0, "ollama-dark.svg must exist");
+        assert(readLocalFile("../theme/assets/icons/antigravity.svg").length > 0, "antigravity.svg must exist");
+
+        if (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function") {
+            assert(Config.providerIconUrl("gemini").indexOf("gemini.svg") !== -1, "Gemini icon URL must end with gemini.svg");
+            assert(Config.providerIconUrl("minimax-cn").indexOf("minimax.svg") !== -1, "MiniMax icon URL must end with minimax.svg");
+        }
 
         console.log("PASS: AI Popout and Section Unit Tests");
         Qt.exit(0);

@@ -9,7 +9,7 @@ Item {
     id: root
 
     implicitWidth: 320
-    implicitHeight: mainLayout.implicitHeight + Theme.padLarge * 2
+    implicitHeight: (mainLayout.implicitHeight || 0) + ((typeof Theme !== "undefined" && Theme.padLarge !== undefined) ? Theme.padLarge : 16) * 2
 
     property bool testMode: false
     property var testProviders: null
@@ -259,9 +259,10 @@ Item {
                             anchors.centerIn: parent
                             spacing: 5
 
-                            MaterialIcon {
-                                text: root.getProviderIcon(modelData)
-                                size: 13
+                            ThemedIcon {
+                                source: (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function") ? Config.providerIconUrl(modelData.provider_id || modelData.provider) : ""
+                                materialIcon: root.getProviderIcon(modelData)
+                                size: 14
                                 color: isSelected
                                     ? (hasWarning ? "#F59E0B" : Colors.textOnPrimary)
                                     : (tabHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant)
@@ -324,9 +325,10 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    MaterialIcon {
-                        text: root.getProviderIcon(root.currentProvider)
-                        size: 16
+                    ThemedIcon {
+                        source: (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function" && root.currentProvider) ? Config.providerIconUrl(root.currentProvider.provider_id || root.currentProvider.provider) : ""
+                        materialIcon: root.getProviderIcon(root.currentProvider)
+                        size: 20
                         color: Colors.primary
                     }
 

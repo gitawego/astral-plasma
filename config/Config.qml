@@ -232,6 +232,25 @@ Singleton {
         return "";
     }
 
+    // Resolves provider brand icon SVG URLs from theme/assets/icons/
+    function providerIconUrl(providerId) {
+        if (!providerId) return "";
+        const pid = String(providerId).toLowerCase().trim();
+        let name = "opencode";
+        if (pid === "gemini") name = "gemini";
+        else if (pid.indexOf("opencode") !== -1) name = root.isDarkMode ? "opencode" : "opencode-dark";
+        else if (pid.indexOf("minimax") !== -1) name = "minimax";
+        else if (pid.indexOf("xiaomi") !== -1 || pid.indexOf("mimo") !== -1) name = "xiaomi";
+        else if (pid.indexOf("deepseek") !== -1) name = "deepseek";
+        else if (pid.indexOf("anthropic") !== -1 || pid.indexOf("claude") !== -1) name = "anthropic";
+        else if (pid.indexOf("openai") !== -1) name = "openai";
+        else if (pid.indexOf("ollama") !== -1) name = root.isDarkMode ? "ollama" : "ollama-dark";
+        else if (pid.indexOf("antigravity") !== -1 || pid.indexOf("agy") !== -1) name = "antigravity";
+        else name = pid;
+
+        return Qt.resolvedUrl("../theme/assets/icons/" + name + ".svg").toString();
+    }
+
     // Systemd Service Management (Strictly Opt-in by User in Settings)
     property bool systemdServiceInstalled: false
     property bool systemdServiceActive: false

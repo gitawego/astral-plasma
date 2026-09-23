@@ -740,8 +740,9 @@ ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        MaterialIcon {
-                            text: modelData.icon || "auto_awesome"
+                        ThemedIcon {
+                            source: (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function") ? Config.providerIconUrl(modelData.provider_id || modelData.provider) : ""
+                            materialIcon: modelData.icon || "auto_awesome"
                             size: 20
                             color: Colors.primary
                         }
