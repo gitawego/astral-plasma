@@ -138,6 +138,18 @@ Item {
         "launch": "󰏌",
         "picture_in_picture": "󰹩",
         "sync": "󰑓",
+        "refresh": "󰑐",
+        "drag_indicator": "󰇙",
+        "drag_handle": "󰍜",
+        "network_wifi": "󰤨",
+        "network_wifi_3_bar": "󰤥",
+        "network_wifi_2_bar": "󰤢",
+        "network_wifi_1_bar": "󰤟",
+        "wifi_strength_4": "󰤨",
+        "wifi_strength_3": "󰤥",
+        "wifi_strength_2": "󰤢",
+        "wifi_strength_1": "󰤟",
+        "wifi_strength_0": "󰤯",
         "check": "󰄬",
         "done": "󰄬",
         "chevron_right": "󰅂",
@@ -155,7 +167,10 @@ Item {
     readonly property string displaySymbol: {
         if (symbolMap[text]) return symbolMap[text];
         if (text && text.length <= 2) return text;
-        return text ? text.charAt(0).toUpperCase() : "";
+        if (text && (text.startsWith("wifi") || text.startsWith("network_wifi"))) return "󰤨";
+        if (text && (text.includes("refresh") || text.includes("sync"))) return "󰑓";
+        if (text && text.includes("drag")) return "󰇙";
+        return "";
     }
 
     readonly property string resolvedIconUrl: root.iconName !== "" ? Config.iconUrl(root.iconName) : ""

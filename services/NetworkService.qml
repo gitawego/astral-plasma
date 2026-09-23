@@ -41,7 +41,7 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: {
                 const lines = this.text.split("\n");
-                let list = [];
+                let map = new Map();
                 let currActive = "";
                 let currSig = 0;
                 let isConn = false;
@@ -50,20 +50,45 @@ Singleton {
                     const parts = lines[i].split(":");
                     if (parts.length >= 3) {
                         const active = parts[0] === "yes";
-                        const ssid = parts[1];
+                        const ssid = parts[1] ? parts[1].trim() : "";
                         const signal = parseInt(parts[2]) || 0;
-                        const security = parts[3] || "";
+                        const security = parts[3] ? parts[3].trim() : "";
 
-                        if (ssid && ssid.length > 0) {
-                            list.push({ ssid: ssid, signal: signal, security: security, active: active });
-                            if (active) {
-                                currActive = ssid;
-                                currSig = signal;
-                                isConn = true;
+                        if (!ssid) continue;
+
+                        if (active) {
+                            currActive = ssid;
+                            currSig = signal;
+                            isConn = true;
+                        }
+
+                        if (map.has(ssid)) {
+                            const existing = map.get(ssid);
+                            existing.active = existing.active || active;
+                            if (signal > existing.signal) {
+                                existing.signal = signal;
                             }
+                            if (!existing.security && security) {
+                                existing.security = security;
+                            }
+                        } else {
+                            map.set(ssid, {
+                                ssid: ssid,
+                                signal: signal,
+                                security: security || "Open",
+                                active: active
+                            });
                         }
                     }
                 }
+
+                let list = Array.from(map.values());
+                list.sort(function(a, b) {
+                    if (a.active && !b.active) return -1;
+                    if (!a.active && b.active) return 1;
+                    return b.signal - a.signal;
+                });
+
                 root.scannedNetworks = list;
                 root.activeSsid = currActive;
                 root.signalStrength = currSig;

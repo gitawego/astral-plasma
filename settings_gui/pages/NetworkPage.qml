@@ -6,7 +6,7 @@ import "../../services"
 
 ColumnLayout {
     id: root
-    spacing: Theme.spaceLarge
+    spacing: Theme.spaceMedium
     width: parent ? parent.width : 600
 
     property bool testMode: false
@@ -42,14 +42,29 @@ ColumnLayout {
         }
     }
 
-    // Wi-Fi Master Toggle Card
+    // Wi-Fi Master Power Card
     Rectangle {
+        id: masterPowerCard
         Layout.fillWidth: true
         height: 64
         radius: Theme.radiusMedium
-        color: Colors.surfaceContainer
-        border.color: Theme.borderSubtle
+        color: powerCardHover.containsMouse ? (root.wifiEnabled ? Qt.alpha(Colors.primary, 0.12) : Colors.surfaceContainerHigh) : Colors.surfaceContainer
+        border.color: root.wifiEnabled ? Qt.alpha(Colors.primary, 0.4) : Theme.borderSubtle
         border.width: 1
+
+        MouseArea {
+            id: powerCardHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (!root.testMode && typeof NetworkService !== "undefined") {
+                    NetworkService.toggleWifi();
+                } else {
+                    root.testWifiEnabled = !root.testWifiEnabled;
+                }
+            }
+        }
 
         RowLayout {
             anchors.fill: parent
@@ -101,18 +116,6 @@ ColumnLayout {
                         NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
                     }
                 }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (!root.testMode && typeof NetworkService !== "undefined") {
-                            NetworkService.toggleWifi();
-                        } else {
-                            root.testWifiEnabled = !root.testWifiEnabled;
-                        }
-                    }
-                }
             }
         }
     }
@@ -120,11 +123,13 @@ ColumnLayout {
     // Scanned Wi-Fi Networks List
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: 8
+        spacing: 12
         visible: root.wifiEnabled
 
+        // Available Networks Header with Rescan Button
         RowLayout {
             Layout.fillWidth: true
+
             Text {
                 text: "Available Networks"
                 font.family: Theme.fontFamily
@@ -132,7 +137,9 @@ ColumnLayout {
                 font.weight: Font.DemiBold
                 color: Colors.m3onSurface
             }
+
             Item { Layout.fillWidth: true }
+
             PillButton {
                 label: "Rescan"
                 iconText: "refresh"
@@ -145,22 +152,41 @@ ColumnLayout {
             }
         }
 
+        // List of deduplicated, sorted Wi-Fi cards
         Column {
             Layout.fillWidth: true
-            spacing: 6
+            spacing: 8
 
             Repeater {
                 model: root.networksList
                 delegate: Rectangle {
+                    id: netCard
                     required property var modelData
                     required property int index
 
                     width: parent.width
-                    height: 52
-                    radius: Theme.radiusSmall
-                    color: modelData.active ? Qt.alpha(Colors.primary, 0.15) : (netRowHover.containsMouse ? Colors.pillHover : Colors.surfaceContainer)
-                    border.color: modelData.active ? Colors.primary : Theme.borderSubtle
+                    height: 56
+                    radius: Theme.radiusMedium
+                    color: modelData.active
+                        ? Qt.alpha(Colors.primary, 0.12)
+                        : (cardHover.containsMouse ? Qt.alpha(Colors.onSurface, 0.05) : Colors.surfaceContainer)
+                    border.color: modelData.active
+                        ? Colors.primary
+                        : (cardHover.containsMouse ? Qt.alpha(Colors.primary, 0.3) : Theme.borderSubtle)
                     border.width: 1
+
+                    // Full card clickable for quick connection
+                    MouseArea {
+                        id: cardHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: modelData.active ? Qt.ArrowCursor : Qt.PointingHandCursor
+                        onClicked: {
+                            if (!modelData.active && !root.testMode && typeof NetworkService !== "undefined") {
+                                NetworkService.connectToNetwork(modelData.ssid);
+                            }
+                        }
+                    }
 
                     RowLayout {
                         anchors.fill: parent
@@ -171,41 +197,80 @@ ColumnLayout {
                         MaterialIcon {
                             text: {
                                 const sig = modelData.signal || 0;
-                                if (sig > 75) return "wifi";
-                                if (sig > 45) return "network_wifi_3_bar";
+                                if (!modelData.active && sig === 0) return "wifi_off";
+                                if (sig >= 75) return "wifi";
+                                if (sig >= 50) return "network_wifi_3_bar";
+                                if (sig >= 25) return "network_wifi_2_bar";
                                 return "network_wifi_1_bar";
                             }
-                            size: 20
-                            color: modelData.active ? Colors.primary : Colors.m3onSurfaceVariant
+                            size: 22
+                            color: modelData.active ? Colors.primary : Colors.m3onSurface
                         }
 
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 1
+                            spacing: 2
+
                             Text {
                                 text: modelData.ssid || "Hidden Network"
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 13
                                 font.weight: modelData.active ? Font.Bold : Font.DemiBold
                                 color: Colors.m3onSurface
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
                             }
-                            Text {
-                                text: modelData.active ? "Connected" : (modelData.security || "Open")
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11
-                                color: modelData.active ? Colors.primary : Colors.m3onSurfaceVariant
+
+                            RowLayout {
+                                spacing: 6
+                                Text {
+                                    text: modelData.active ? "Connected" : (modelData.security || "Open")
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: modelData.active ? Font.DemiBold : Font.Normal
+                                    color: modelData.active ? Colors.primary : Colors.m3onSurfaceVariant
+                                }
+
+                                Text {
+                                    text: "•  " + (modelData.signal || 0) + "%"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    color: Colors.m3onSurfaceVariant
+                                }
                             }
                         }
 
-                        // Connect button if not currently active
+                        // Connected indicator badge
+                        RowLayout {
+                            visible: modelData.active
+                            spacing: 4
+
+                            MaterialIcon {
+                                text: "check"
+                                size: 16
+                                color: Colors.primary
+                            }
+
+                            Text {
+                                text: "Connected"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                                color: Colors.primary
+                            }
+                        }
+
+                        // Explicit Connect Button for inactive networks
                         Rectangle {
+                            id: connectBtn
                             visible: !modelData.active
                             height: 28
-                            implicitWidth: connLabel.implicitWidth + 20
+                            implicitWidth: connLabel.implicitWidth + 24
                             radius: 14
                             color: connHover.containsMouse ? Colors.primary : Colors.surfaceContainerHighest
-                            border.color: Theme.borderSubtle
+                            border.color: connHover.containsMouse ? Colors.primary : Theme.borderSubtle
                             border.width: 1
+                            z: 10
 
                             Text {
                                 id: connLabel
@@ -230,14 +295,14 @@ ColumnLayout {
                             }
                         }
                     }
-
-                    MouseArea {
-                        id: netRowHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                    }
                 }
             }
+        }
+
+        // Bottom breathing room spacer
+        Item {
+            Layout.fillWidth: true
+            height: 32
         }
     }
 }

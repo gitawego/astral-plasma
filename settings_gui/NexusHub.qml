@@ -86,10 +86,12 @@ Item {
 
         // Left Navigation Sidebar
         Rectangle {
-            Layout.preferredWidth: 220
+            Layout.preferredWidth: 250
+            Layout.minimumWidth: 250
             Layout.fillHeight: true
             color: Colors.glassCard
             radius: Theme.radiusMedium
+            clip: true
 
             ColumnLayout {
                 anchors.fill: parent
@@ -99,7 +101,8 @@ Item {
                 // Hub Header & Drag Handle
                 Item {
                     Layout.fillWidth: true
-                    height: 28
+                    height: 32
+                    clip: true
 
                     RowLayout {
                         anchors.fill: parent
@@ -107,19 +110,19 @@ Item {
 
                         MaterialIcon {
                             text: "tune"
-                            size: 24
+                            size: 22
                             color: Colors.primary
                         }
 
                         Text {
                             text: "Nexus Settings"
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontTitleMedium
+                            font.pixelSize: Theme.fontTitleSmall
                             font.weight: Font.Bold
                             color: Colors.m3onSurface
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
                         }
-
-                        Item { Layout.fillWidth: true }
 
                         MaterialIcon {
                             text: "drag_indicator"
