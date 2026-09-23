@@ -96,20 +96,46 @@ Item {
                 anchors.margins: Theme.padLarge
                 spacing: Theme.spaceMedium
 
-                // Hub Header
-                RowLayout {
-                    spacing: Theme.spaceSmall
-                    MaterialIcon {
-                        text: "tune"
-                        size: 24
-                        color: Colors.primary
+                // Hub Header & Drag Handle
+                Item {
+                    Layout.fillWidth: true
+                    height: 28
+
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: Theme.spaceSmall
+
+                        MaterialIcon {
+                            text: "tune"
+                            size: 24
+                            color: Colors.primary
+                        }
+
+                        Text {
+                            text: "Nexus Settings"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontTitleMedium
+                            font.weight: Font.Bold
+                            color: Colors.m3onSurface
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        MaterialIcon {
+                            text: "drag_indicator"
+                            size: 18
+                            color: hubHeaderHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                            opacity: hubHeaderHover.containsMouse ? 1.0 : 0.4
+                            Behavior on opacity { NumberAnimation { duration: 150 } }
+                        }
                     }
-                    Text {
-                        text: "Nexus Settings"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontTitleMedium
-                        font.weight: Font.Bold
-                        color: Colors.m3onSurface
+
+                    MouseArea {
+                        id: hubHeaderHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.OpenHandCursor
+                        acceptedButtons: Qt.NoButton
                     }
                 }
 
@@ -207,6 +233,7 @@ Item {
                         color: backHover.containsMouse ? Colors.pillHover : "transparent"
                         border.color: Theme.borderSubtle
                         border.width: 1
+                        z: 10
 
                         MaterialIcon {
                             anchors.centerIn: parent
