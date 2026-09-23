@@ -159,6 +159,14 @@ Item {
             assert(Config.providerIconUrl("minimax-cn").indexOf("minimax.svg") !== -1, "MiniMax icon URL must end with minimax.svg");
         }
 
+        // 10. Account row tabular column alignment & dedicated action bar verification
+        const aiSecSrc = readLocalFile("../dock/popouts/AiTokensSection.qml");
+        assert(aiSecSrc.indexOf("Layout.preferredWidth: 82") !== -1, "Quota percentages must have fixed preferredWidth 82 for tabular alignment");
+        assert(aiSecSrc.indexOf("horizontalAlignment: Text.AlignRight") !== -1, "Quota percentages must be right aligned");
+        assert(aiSecSrc.indexOf("Layout.preferredWidth: 44") !== -1, "Action buttons must be housed in fixed 44px container");
+        assert(aiSecSrc.indexOf("Dedicated Action Bar for Selected Account") !== -1, "AiTokensSection must have dedicated action bar for selected account");
+        assert(aiSecSrc.indexOf("text: \"Manage\"") !== -1, "AiTokensSection must provide Manage button in header");
+
         console.log("PASS: AI Popout and Section Unit Tests");
         Qt.exit(0);
     }

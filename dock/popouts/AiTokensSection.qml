@@ -402,6 +402,7 @@ Item {
 
                     RowLayout {
                         Layout.fillWidth: true
+                        spacing: 6
 
                         Text {
                             text: "Configured Accounts:"
@@ -454,6 +455,49 @@ Item {
                                 }
                             }
                         }
+
+                        // Manage in Settings button
+                        Rectangle {
+                            height: 18
+                            implicitWidth: manageAccTxt.implicitWidth + 10
+                            radius: 4
+                            color: manageAccMouse.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainerHigh
+                            border.color: manageAccMouse.containsMouse ? Colors.primary : Theme.borderSubtle
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 2
+
+                                MaterialIcon {
+                                    text: "settings"
+                                    size: 9
+                                    color: manageAccMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                                }
+
+                                Text {
+                                    id: manageAccTxt
+                                    text: "Manage"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 9
+                                    font.weight: Font.Medium
+                                    color: manageAccMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                                }
+                            }
+
+                            MouseArea {
+                                id: manageAccMouse
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                hoverEnabled: true
+                                onClicked: {
+                                    if (typeof Config !== "undefined") {
+                                        Config.activeSettingsPage = "ai";
+                                        Config.settingsVisible = true;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Repeater {
@@ -492,24 +536,27 @@ Item {
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-                                spacing: 6
+                                anchors.leftMargin: 6
+                                anchors.rightMargin: 6
+                                spacing: 5
                                 z: 1
 
                                 MaterialIcon {
                                     text: accRow.isAccountActive ? "check_circle" : "account_circle"
                                     size: 14
                                     color: accRow.isAccountActive ? "#22C55E" : Colors.m3onSurfaceVariant
+                                    Layout.preferredWidth: 14
+                                    Layout.alignment: Qt.AlignVCenter
                                 }
 
                                 Text {
                                     text: modelData.identity || modelData.label
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 11
-                                    font.weight: accRow.isAccountActive ? Font.Bold : (isSelected ? Font.DemiBold : Font.Normal)
+                                    font.weight: accRow.isAccountActive ? Font.DemiBold : Font.Normal
                                     color: isSelected ? Colors.m3onSurface : (accRow.isAccountActive ? Colors.primary : Colors.m3onSurfaceVariant)
                                     Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignVCenter
                                     elide: Text.ElideRight
                                 }
 
@@ -521,132 +568,173 @@ Item {
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 10
                                     font.weight: Font.DemiBold
+                                    horizontalAlignment: Text.AlignRight
+                                    Layout.preferredWidth: 82
+                                    Layout.alignment: Qt.AlignVCenter
                                     color: (modelData.five_hour_remaining_percent < 20)
                                         ? "#EF4444"
                                         : ((modelData.five_hour_remaining_percent <= 50) ? "#F59E0B" : "#22C55E")
                                 }
 
-                                // Status Badge: Active pill if active
-                                Rectangle {
-                                    visible: accRow.isAccountActive
-                                    height: 18
-                                    implicitWidth: activeLbl.implicitWidth + 10
-                                    radius: 4
-                                    color: Qt.alpha(Colors.primary, 0.15)
-                                    border.color: Qt.alpha(Colors.primary, 0.35)
-                                    border.width: 1
+                                // Status Badge / Switch Button: Fixed width 44px container for strict tabular alignment
+                                Item {
+                                    Layout.preferredWidth: 44
+                                    Layout.preferredHeight: 18
+                                    Layout.alignment: Qt.AlignVCenter
 
-                                    Text {
-                                        id: activeLbl
-                                        anchors.centerIn: parent
-                                        text: "Active"
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: 9
-                                        font.weight: Font.Bold
-                                        color: Colors.primary
-                                    }
-                                }
-
-                                // Switch button if inactive
-                                Rectangle {
-                                    id: switchBtn
-                                    visible: !accRow.isAccountActive
-                                    height: 18
-                                    implicitWidth: switchLbl.implicitWidth + 10
-                                    radius: 4
-                                    color: switchMouse.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainerHigh
-                                    border.color: switchMouse.containsMouse ? Colors.primary : Theme.borderSubtle
-                                    border.width: 1
-                                    z: 10
-
-                                    Text {
-                                        id: switchLbl
-                                        anchors.centerIn: parent
-                                        text: "Switch"
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: 9
-                                        font.weight: Font.DemiBold
-                                        color: switchMouse.containsMouse ? Colors.primary : Colors.m3onSurface
-                                    }
-
-                                    MouseArea {
-                                        id: switchMouse
+                                    // Active pill if active
+                                    Rectangle {
+                                        visible: accRow.isAccountActive
                                         anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: (mouse) => {
-                                            mouse.accepted = true;
-                                            root.selectedAccountIdentity = modelData.identity || modelData.id;
-                                            if (typeof AiTokenService !== "undefined") {
-                                                AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
+                                        radius: 4
+                                        color: Qt.alpha(Colors.primary, 0.15)
+                                        border.color: Qt.alpha(Colors.primary, 0.35)
+                                        border.width: 1
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "Active"
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                            color: Colors.primary
+                                        }
+                                    }
+
+                                    // Switch button if inactive
+                                    Rectangle {
+                                        id: switchBtn
+                                        visible: !accRow.isAccountActive
+                                        anchors.fill: parent
+                                        radius: 4
+                                        color: switchMouse.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainerHigh
+                                        border.color: switchMouse.containsMouse ? Colors.primary : Theme.borderSubtle
+                                        border.width: 1
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "Switch"
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 9
+                                            font.weight: Font.DemiBold
+                                            color: switchMouse.containsMouse ? Colors.primary : Colors.m3onSurface
+                                        }
+
+                                        MouseArea {
+                                            id: switchMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: (mouse) => {
+                                                mouse.accepted = true;
+                                                root.selectedAccountIdentity = modelData.identity || modelData.id;
+                                                if (typeof AiTokenService !== "undefined") {
+                                                    AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
 
-                                // Re-auth button
-                                Rectangle {
-                                    id: reauthBtn
-                                    visible: accRow.isSelected || accHover.containsMouse
-                                    height: 18
-                                    width: 18
-                                    radius: 4
-                                    color: reauthMouse.containsMouse ? Qt.alpha("#3B82F6", 0.25) : "transparent"
-                                    border.color: reauthMouse.containsMouse ? "#3B82F6" : "transparent"
-                                    border.width: 1
-                                    z: 10
+                    // Dedicated Action Bar for Selected Account (Re-auth / Remove)
+                    RowLayout {
+                        visible: root.selectedAccount !== null
+                        Layout.fillWidth: true
+                        Layout.topMargin: 2
+                        spacing: 6
 
-                                    MaterialIcon {
-                                        anchors.centerIn: parent
-                                        text: "vpn_key"
-                                        size: 10
-                                        color: reauthMouse.containsMouse ? "#3B82F6" : Colors.m3onSurfaceVariant
-                                    }
+                        Text {
+                            text: "Account: " + (root.selectedAccount ? (root.selectedAccount.identity || root.selectedAccount.label || "") : "")
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            font.weight: Font.Medium
+                            color: Colors.m3onSurfaceVariant
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
 
-                                    MouseArea {
-                                        id: reauthMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: (mouse) => {
-                                            mouse.accepted = true;
-                                            if (typeof AiTokenService !== "undefined") {
-                                                AiTokenService.loginGemini(modelData.identity || "");
-                                            }
-                                        }
-                                    }
+                        // Re-auth button
+                        Rectangle {
+                            height: 20
+                            implicitWidth: reauthRowTxt.implicitWidth + 14
+                            radius: 4
+                            color: reauthRowMouse.containsMouse ? Qt.alpha("#3B82F6", 0.25) : Qt.alpha("#3B82F6", 0.1)
+                            border.color: reauthRowMouse.containsMouse ? "#3B82F6" : Qt.alpha("#3B82F6", 0.3)
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 3
+
+                                MaterialIcon {
+                                    text: "vpn_key"
+                                    size: 10
+                                    color: "#3B82F6"
                                 }
 
-                                // Remove button
-                                Rectangle {
-                                    id: delBtn
-                                    visible: accRow.isSelected || accHover.containsMouse
-                                    height: 18
-                                    width: 18
-                                    radius: 4
-                                    color: delMouse.containsMouse ? Qt.alpha("#EF4444", 0.25) : "transparent"
-                                    border.color: delMouse.containsMouse ? "#EF4444" : "transparent"
-                                    border.width: 1
-                                    z: 10
+                                Text {
+                                    id: reauthRowTxt
+                                    text: "Re-auth"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 9
+                                    font.weight: Font.DemiBold
+                                    color: "#3B82F6"
+                                }
+                            }
 
-                                    MaterialIcon {
-                                        anchors.centerIn: parent
-                                        text: "delete_outline"
-                                        size: 11
-                                        color: delMouse.containsMouse ? "#EF4444" : Colors.m3onSurfaceVariant
+                            MouseArea {
+                                id: reauthRowMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof AiTokenService !== "undefined" && root.selectedAccount) {
+                                        AiTokenService.loginGemini(root.selectedAccount.identity || "");
                                     }
+                                }
+                            }
+                        }
 
-                                    MouseArea {
-                                        id: delMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: (mouse) => {
-                                            mouse.accepted = true;
-                                            if (typeof AiTokenService !== "undefined") {
-                                                AiTokenService.removeAccount("gemini", modelData.id || modelData.identity);
-                                            }
-                                        }
+                        // Remove button
+                        Rectangle {
+                            height: 20
+                            implicitWidth: delRowTxt.implicitWidth + 14
+                            radius: 4
+                            color: delRowMouse.containsMouse ? Qt.alpha("#EF4444", 0.25) : Qt.alpha("#EF4444", 0.1)
+                            border.color: delRowMouse.containsMouse ? "#EF4444" : Qt.alpha("#EF4444", 0.3)
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 3
+
+                                MaterialIcon {
+                                    text: "delete_outline"
+                                    size: 11
+                                    color: "#EF4444"
+                                }
+
+                                Text {
+                                    id: delRowTxt
+                                    text: "Remove"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 9
+                                    font.weight: Font.DemiBold
+                                    color: "#EF4444"
+                                }
+                            }
+
+                            MouseArea {
+                                id: delRowMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof AiTokenService !== "undefined" && root.selectedAccount) {
+                                        AiTokenService.removeAccount("gemini", root.selectedAccount.id || root.selectedAccount.identity);
                                     }
                                 }
                             }
