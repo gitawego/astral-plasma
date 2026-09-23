@@ -70,6 +70,13 @@ ShellRoot {
         target: "ai"
         function refresh(): void { AiTokenService.refresh(true); }
         function switchGemini(account: string): void { AiTokenService.switchGeminiAccount(account); }
+        function login(email: string): void { AiTokenService.loginGemini(email); }
+        function cancel(): void { AiTokenService.cancelLogin(); }
+        function selectProvider(providerId: string): void {
+            if (typeof AiTokenService !== "undefined") {
+                AiTokenService.lastActiveProviderId = providerId;
+            }
+        }
         function openPopout(y: real): void { Config.openBottomPopout("ai", (y !== undefined && y > 0) ? y : 1450); }
         function closePopout(): void { Config.closeBottomPopout(); }
         function togglePopout(): void {

@@ -159,12 +159,12 @@ Item {
             assert(Config.providerIconUrl("minimax-cn").indexOf("minimax.svg") !== -1, "MiniMax icon URL must end with minimax.svg");
         }
 
-        // 10. Account row tabular column alignment & dedicated action bar verification
+        // 10. Account row tabular column alignment & Manage button verification
         const aiSecSrc = readLocalFile("../dock/popouts/AiTokensSection.qml");
         assert(aiSecSrc.indexOf("Layout.preferredWidth: 82") !== -1, "Quota percentages must have fixed preferredWidth 82 for tabular alignment");
         assert(aiSecSrc.indexOf("horizontalAlignment: Text.AlignRight") !== -1, "Quota percentages must be right aligned");
         assert(aiSecSrc.indexOf("Layout.preferredWidth: 46") !== -1, "Action buttons must be housed in fixed 46px container");
-        assert(aiSecSrc.indexOf("Dedicated Action Bar for Selected Account") !== -1, "AiTokensSection must have dedicated action bar for selected account");
+        assert(aiSecSrc.indexOf("Manage in Settings button") !== -1, "AiTokensSection must have manage button directing to settings panel");
         assert(aiSecSrc.indexOf("ActionPill") !== -1, "AiTokensSection must use reusable ActionPill component");
 
         console.log("PASS: AI Popout and Section Unit Tests");

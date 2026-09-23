@@ -1,7 +1,8 @@
 use crate::domain::ai_quota::{
-    compute_next_monthly_reset_iso, epoch_millis_to_rfc3339, parse_agy_quota, parse_minimax_usage, parse_opencode_usage,
+    epoch_millis_to_rfc3339, parse_agy_quota, parse_minimax_usage, parse_opencode_usage,
     parse_xiaomi_usage, AiProviderQuota, AiQuotaSnapshot, ProviderAccount, QuotaWindow,
 };
+use crate::infrastructure::scanners::ToolConfigAggregator;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -20,23 +21,6 @@ impl Default for AiQuotaAdapter {
             custom_cache_dir: None,
             custom_config_dir: None,
             custom_legacy_config_dir: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct GeminiMonthlyConfig {
-    pub enabled: bool,
-    pub default_remaining_percent: f64,
-    pub reset_day: u32,
-}
-
-impl Default for GeminiMonthlyConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            default_remaining_percent: 85.0,
-            reset_day: 1,
         }
     }
 }
@@ -118,51 +102,6 @@ impl AiQuotaAdapter {
     pub fn get_credentials_file(&self) -> Option<PathBuf> {
         let cfg = self.get_config_dir()?;
         Some(cfg.join("credentials.json"))
-    }
-
-    pub fn get_gemini_monthly_config(&self) -> GeminiMonthlyConfig {
-        let mut cfg = GeminiMonthlyConfig::default();
-
-        let candidate_paths = [
-            self.get_config_dir().map(|d| d.join("settings.json")),
-            Self::get_home().map(|h| h.join(".config/astral-plasma/settings.json")),
-            Some(PathBuf::from("config/settings.json")),
-        ];
-
-        for opt_path in candidate_paths.into_iter().flatten() {
-            if opt_path.exists() {
-                if let Ok(content) = fs::read_to_string(&opt_path) {
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(ai_obj) = v.get("ai") {
-                            if let Some(e) = ai_obj.get("geminiMonthlyEnabled").and_then(|b| b.as_bool()) {
-                                cfg.enabled = e;
-                            }
-                            if let Some(r) = ai_obj.get("geminiMonthlyRemainingPercent").and_then(|n| n.as_f64()) {
-                                cfg.default_remaining_percent = r;
-                            }
-                            if let Some(d) = ai_obj.get("geminiMonthlyResetDay").and_then(|n| n.as_u64()) {
-                                cfg.reset_day = d as u32;
-                            }
-
-                            if let Some(nested) = ai_obj.get("geminiMonthlyQuota") {
-                                if let Some(e) = nested.get("enabled").and_then(|b| b.as_bool()) {
-                                    cfg.enabled = e;
-                                }
-                                if let Some(r) = nested.get("remainingPercent").and_then(|n| n.as_f64()) {
-                                    cfg.default_remaining_percent = r;
-                                }
-                                if let Some(d) = nested.get("resetDay").and_then(|n| n.as_u64()) {
-                                    cfg.reset_day = d as u32;
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        cfg
     }
 
     /// Ensures self-contained storage under ~/.config/astral-plasma/accounts/.
@@ -327,9 +266,42 @@ impl AiQuotaAdapter {
     /// If not in id_token, extracts refresh_token and matches against stored accounts.
     /// Fallback: checks ~/.gemini/antigravity-cli/antigravity-oauth-token refresh_token.
     pub fn get_active_gemini_email(&self) -> Option<String> {
-        // If not in isolated test directory, query system keyring and CLI token file
+        // If not in isolated test directory, query Cockpit, system keyring and CLI token file
         if self.custom_config_dir.is_none() {
-            // 1. Check Desktop Keyring via secret-tool
+            // 1. Check ~/.antigravity_cockpit (current_account.json and accounts.json)
+            if let Ok(home) = std::env::var("HOME") {
+                let cockpit_dir = std::path::PathBuf::from(&home).join(".antigravity_cockpit");
+                if cockpit_dir.exists() {
+                    if let Ok(curr) = fs::read_to_string(cockpit_dir.join("current_account.json")) {
+                        if let Ok(j) = serde_json::from_str::<serde_json::Value>(&curr) {
+                            if let Some(em) = j.get("email").and_then(|e| e.as_str()) {
+                                if !em.trim().is_empty() {
+                                    return Some(em.trim().to_string());
+                                }
+                            }
+                        }
+                    }
+                    if let Ok(content) = fs::read_to_string(cockpit_dir.join("accounts.json")) {
+                        if let Ok(j) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if let Some(cid) = j.get("current_account_id").and_then(|i| i.as_str()) {
+                                if let Some(arr) = j.get("accounts").and_then(|a| a.as_array()) {
+                                    for acc in arr {
+                                        if acc.get("id").and_then(|i| i.as_str()) == Some(cid) {
+                                            if let Some(em) = acc.get("email").and_then(|e| e.as_str()) {
+                                                if !em.trim().is_empty() {
+                                                    return Some(em.trim().to_string());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Check Desktop Keyring via secret-tool
             if let Ok(output) = Command::new("secret-tool")
                 .args(["lookup", "service", "gemini", "username", "antigravity"])
                 .output()
@@ -366,7 +338,7 @@ impl AiQuotaAdapter {
                 }
             }
 
-            // 2. Check ~/.gemini/antigravity-cli/antigravity-oauth-token
+            // 3. Check ~/.gemini/antigravity-cli/antigravity-oauth-token
             if let Some(token_path) = Self::get_gemini_cli_token_file() {
                 if let Ok(content) = fs::read_to_string(token_path) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -395,7 +367,7 @@ impl AiQuotaAdapter {
                 }
             }
 
-            // 3. Check ~/.gemini/jetski-standalone-oauth-token (Antigravity IDE token)
+            // 4. Check ~/.gemini/jetski-standalone-oauth-token (Antigravity IDE token)
             if let Some(token_path) = Self::get_gemini_jetski_token_file() {
                 if let Ok(content) = fs::read_to_string(token_path) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -425,7 +397,7 @@ impl AiQuotaAdapter {
             }
         }
 
-        // 3. Check .antigravity_last_active marker in accounts/gemini
+        // 5. Check .antigravity_last_active marker in accounts/gemini
         if let Some(dir) = self.get_gemini_accounts_dir() {
             let marker = dir.join(".antigravity_last_active");
             if marker.exists() {
@@ -437,7 +409,7 @@ impl AiQuotaAdapter {
                 }
             }
 
-            // 4. Check accounts/*.json for is_active == true
+            // 6. Check accounts/*.json for is_active == true
             if let Ok(entries) = fs::read_dir(&dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
@@ -692,7 +664,7 @@ impl AiQuotaAdapter {
             }
         }
 
-        let (_target_id, target_email, target_json) = target_account
+        let (target_id, target_email, mut target_json) = target_account
             .ok_or_else(|| format!("Account '{}' not found", target_id_or_email))?;
 
         let raw_cred = target_json
@@ -703,49 +675,74 @@ impl AiQuotaAdapter {
             return Err("Account has no credential stored".to_string());
         }
 
+        let target_file = dir.join(format!("{}.json", target_id));
+        let mut cred_obj: serde_json::Value =
+            serde_json::from_str(raw_cred).unwrap_or_else(|_| serde_json::json!({}));
+
+        // Refresh token if near expiry so subsequent CLI queries and quota calls are immediately authorized
+        let access_tok = Self::refresh_gemini_token(
+            &mut cred_obj,
+            Some(&target_file),
+            Some(&mut target_json),
+        )
+        .unwrap_or_else(|| {
+            cred_obj
+                .get("access_token")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string()
+        });
+
+        let refresh_tok = cred_obj
+            .get("refresh_token")
+            .and_then(|t| t.as_str())
+            .unwrap_or("");
+        let exp_ts = cred_obj.get("expires_at").and_then(|e| e.as_i64()).unwrap_or(0);
+        let expiry_str = if exp_ts > 0 {
+            epoch_millis_to_rfc3339(exp_ts * 1000)
+        } else {
+            "2030-01-01T00:00:00Z".to_string()
+        };
+
+        let token_payload = serde_json::json!({
+            "token": {
+                "access_token": access_tok,
+                "token_type": "Bearer",
+                "refresh_token": refresh_tok,
+                "expiry": expiry_str
+            },
+            "auth_method": "consumer"
+        });
+        let token_json_str = serde_json::to_string_pretty(&token_payload).unwrap_or_default();
+
         // Update Desktop Keyring and ~/.gemini/ only when NOT in test mode (no custom_config_dir)
         if self.custom_config_dir.is_none() {
-            let mut child = Command::new("secret-tool")
+            if let Ok(mut child) = Command::new("secret-tool")
                 .args(["store", "--label=gemini", "service", "gemini", "username", "antigravity"])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Failed to spawn secret-tool: {}", e))?;
-
-            if let Some(mut stdin) = child.stdin.take() {
-                let _ = stdin.write_all(raw_cred.as_bytes());
+            {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(token_json_str.as_bytes());
+                }
+                let _ = child.wait();
             }
-            let _ = child.wait();
 
             // Update ~/.gemini/antigravity-cli/antigravity-oauth-token
             if let Some(cli_token_path) = Self::get_gemini_cli_token_file() {
                 if let Some(parent) = cli_token_path.parent() {
                     let _ = fs::create_dir_all(parent);
                 }
-
-                let cred_obj: serde_json::Value =
-                    serde_json::from_str(raw_cred).unwrap_or_else(|_| serde_json::json!({}));
-                let access_tok = cred_obj.get("access_token").and_then(|t| t.as_str()).unwrap_or("");
-                let refresh_tok = cred_obj.get("refresh_token").and_then(|t| t.as_str()).unwrap_or("");
-
-                let token_payload = serde_json::json!({
-                    "token": {
-                        "access_token": access_tok,
-                        "token_type": "Bearer",
-                        "refresh_token": refresh_tok,
-                        "expiry": "2030-01-01T00:00:00Z"
-                    },
-                    "auth_method": "consumer"
-                });
-
-                if let Ok(json_str) = serde_json::to_string_pretty(&token_payload) {
-                    let _ = fs::write(&cli_token_path, &json_str);
-                    if let Some(jetski_path) = Self::get_gemini_jetski_token_file() {
-                        let _ = fs::write(&jetski_path, &json_str);
-                    }
+                let _ = fs::write(&cli_token_path, &token_json_str);
+                if let Some(jetski_path) = Self::get_gemini_jetski_token_file() {
+                    let _ = fs::write(&jetski_path, &token_json_str);
                 }
             }
+
+            // Synchronize ~/.antigravity_cockpit if present
+            Self::sync_cockpit(&target_email, &target_id);
         }
 
         // Update .antigravity_last_active marker in accounts directory
@@ -757,6 +754,73 @@ impl AiQuotaAdapter {
         }
 
         Ok(target_email)
+    }
+
+    /// Synchronizes the switched Gemini account to ~/.antigravity_cockpit configuration if present.
+    pub fn sync_cockpit(target_email: &str, target_id: &str) {
+        let home = match std::env::var("HOME") {
+            Ok(h) => h,
+            Err(_) => return,
+        };
+        let cockpit_dir = std::path::PathBuf::from(home).join(".antigravity_cockpit");
+        if !cockpit_dir.exists() {
+            return;
+        }
+
+        let accounts_json_path = cockpit_dir.join("accounts.json");
+        if let Ok(content) = fs::read_to_string(&accounts_json_path) {
+            if let Ok(mut idx) = serde_json::from_str::<serde_json::Value>(&content) {
+                let mut found_id = None;
+                if let Some(arr) = idx.get("accounts").and_then(|a| a.as_array()) {
+                    for acc in arr {
+                        let id_match = acc.get("id").and_then(|i| i.as_str()) == Some(target_id);
+                        let em_match = acc
+                            .get("email")
+                            .and_then(|e| e.as_str())
+                            .map(|e| e.eq_ignore_ascii_case(target_email))
+                            .unwrap_or(false);
+                        if id_match || em_match {
+                            found_id = acc.get("id").and_then(|i| i.as_str()).map(|s| s.to_string());
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(tid) = found_id {
+                    if let Some(obj) = idx.as_object_mut() {
+                        obj.insert("current_account_id".into(), serde_json::Value::String(tid.clone()));
+                    }
+                    if let Ok(updated) = serde_json::to_string_pretty(&idx) {
+                        let _ = fs::write(&accounts_json_path, updated);
+                    }
+
+                    for inst_file in ["instances.json", "antigravity_legacy_instances.json"] {
+                        let p = cockpit_dir.join(inst_file);
+                        if let Ok(c) = fs::read_to_string(&p) {
+                            if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&c) {
+                                if let Some(def_settings) = v.get_mut("defaultSettings").and_then(|s| s.as_object_mut()) {
+                                    def_settings.insert("bindAccountId".into(), serde_json::Value::String(tid.clone()));
+                                    if let Ok(up) = serde_json::to_string_pretty(&v) {
+                                        let _ = fs::write(&p, up);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let curr_path = cockpit_dir.join("current_account.json");
+        let now_sec = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let curr_val = serde_json::json!({
+            "email": target_email,
+            "updated_at": now_sec,
+        });
+        let _ = fs::write(curr_path, serde_json::to_string_pretty(&curr_val).unwrap_or_default());
     }
 
     /// Saves or re-authenticates a Google Gemini account from OAuth token and userinfo responses.
@@ -1365,20 +1429,23 @@ impl AiQuotaAdapter {
     }
 
     /// Resolves an API key or bearer token for a provider.
-    /// Checks environment variables -> credentials.json -> accounts/<provider>/*.json.
+    /// Checks environment variables -> tool config scanners (OMP, Pi, OpenCode, Antigravity) -> credentials.json -> accounts/<provider>/*.json.
     pub fn get_provider_api_key(
         &self,
         provider_id: &str,
         env_var: &str,
         alt_keys: &[&str],
     ) -> Option<String> {
-        if let Ok(val) = std::env::var(env_var) {
-            if !val.trim().is_empty() {
-                return Some(val.trim().to_string());
+        // 1. Direct explicit environment variable lookup
+        if !env_var.is_empty() {
+            if let Ok(val) = std::env::var(env_var) {
+                if !val.trim().is_empty() {
+                    return Some(val.trim().to_string());
+                }
             }
         }
 
-        // Check credentials.json in astral-plasma config dir
+        // 2. Check credentials.json in astral-plasma config dir
         if let Some(cred_file) = self.get_credentials_file() {
             if let Ok(content) = fs::read_to_string(&cred_file) {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -1393,7 +1460,7 @@ impl AiQuotaAdapter {
             }
         }
 
-        // Check accounts/<provider_id>/*.json
+        // 3. Check accounts/<provider_id>/*.json
         if let Some(acc_dir) = self.get_accounts_dir_for(provider_id) {
             if let Ok(entries) = fs::read_dir(acc_dir) {
                 for entry in entries.flatten() {
@@ -1407,6 +1474,31 @@ impl AiQuotaAdapter {
                         }
                     }
                 }
+            }
+        }
+
+        // 4. Candidate environment variables
+        for alt in alt_keys {
+            let alt_upper = alt.to_uppercase().replace('-', "_");
+            let candidates = [
+                format!("{}_API_KEY", alt_upper),
+                format!("{}_KEY", alt_upper),
+                format!("TOKEN_{}", alt_upper),
+            ];
+            for cand in &candidates {
+                if let Ok(val) = std::env::var(cand) {
+                    if !val.trim().is_empty() {
+                        return Some(val.trim().to_string());
+                    }
+                }
+            }
+        }
+
+        // 5. Deterministic AI agent tool config scanners (Pi, OMP, OpenCode, Antigravity)
+        let aggregator = ToolConfigAggregator::new();
+        if let Some(discovered) = aggregator.find_credential_for(provider_id, alt_keys) {
+            if !discovered.credential.trim().is_empty() {
+                return Some(discovered.credential);
             }
         }
 
@@ -1485,7 +1577,6 @@ impl AiQuotaAdapter {
         }
 
         // If coding_plan/remains returned 2062 or no plan, try usage_summary for cookie session
-        let mut usage_text = None;
         if is_cookie {
             if let Ok(sum_out) = Command::new("curl")
                 .args([
@@ -1510,34 +1601,31 @@ impl AiQuotaAdapter {
                         if let Some(tokens) =
                             sum_v.get("total_token_consumed").and_then(|t| t.as_str())
                         {
-                            usage_text = Some(format!("Total: {} tokens", tokens));
+                            return Some(AiProviderQuota {
+                                provider_id: "minimax-cn".to_string(),
+                                display_name: "MiniMax".to_string(),
+                                icon: "bolt".to_string(),
+                                plan_type: Some("Pay-as-you-go".to_string()),
+                                account_email: None,
+                                account_name: acc_name,
+                                is_available: true,
+                                windows: vec![QuotaWindow {
+                                    label: "consumed".to_string(),
+                                    used_percent: 0.0,
+                                    remaining_percent: 100.0,
+                                    reset_at: Some(format!("Total: {} tokens", tokens)),
+                                }],
+                                accounts,
+                                error_message: None,
+                            });
                         }
                     }
                 }
             }
         }
 
-        Some(AiProviderQuota {
-            provider_id: "minimax-cn".to_string(),
-            display_name: "MiniMax".to_string(),
-            icon: "bolt".to_string(),
-            plan_type: Some("Pay-as-you-go".to_string()),
-            account_email: None,
-            account_name: acc_name,
-            is_available: true,
-            windows: usage_text
-                .map(|txt| {
-                    vec![QuotaWindow {
-                        label: "consumed".to_string(),
-                        used_percent: 0.0,
-                        remaining_percent: 100.0,
-                        reset_at: Some(txt),
-                    }]
-                })
-                .unwrap_or_default(),
-            accounts,
-            error_message: None,
-        })
+        // Strictly return None if provider is not authenticated or has no valid coding plan/usage
+        None
     }
 
     /// Queries live Xiaomi MiMo coding plan remains
@@ -1826,57 +1914,22 @@ impl AiQuotaAdapter {
             quota.plan_type = Some(plan);
         }
 
-        let monthly_cfg = self.get_gemini_monthly_config();
-        let now_ms = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_millis() as i64)
-            .unwrap_or(0);
-
-        if monthly_cfg.enabled && !quota.windows.iter().any(|w| w.label == "monthly") {
-            let active_account_file = active_path.as_deref();
-            let per_acc_rem = active_account_file
-                .and_then(|p| fs::read_to_string(p).ok())
-                .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
-                .and_then(|v| v.get("monthly_remaining_percent").and_then(|n| n.as_f64()))
-                .unwrap_or(monthly_cfg.default_remaining_percent);
-
-            let reset_iso = compute_next_monthly_reset_iso(now_ms, monthly_cfg.reset_day);
-            quota.windows.push(QuotaWindow {
-                label: "monthly".to_string(),
-                used_percent: ((100.0 - per_acc_rem) * 10.0).round() / 10.0,
-                remaining_percent: (per_acc_rem * 10.0).round() / 10.0,
-                reset_at: Some(reset_iso),
-            });
-            quota.windows.sort_by_key(|w| match w.label.as_str() {
-                "5h" => 1,
-                "weekly" => 2,
-                "monthly" => 3,
-                _ => 4,
-            });
-        }
-
         let mut accounts = self.load_configured_gemini_accounts(active_identity.as_deref());
         let w_5h = quota.windows.iter().find(|w| w.label == "5h");
         let w_wk = quota.windows.iter().find(|w| w.label == "weekly");
-        let w_mo = quota.windows.iter().find(|w| w.label == "monthly");
         let act_5h = w_5h.map(|w| w.remaining_percent);
         let act_wk = w_wk.map(|w| w.remaining_percent);
-        let act_mo = w_mo.map(|w| w.remaining_percent);
 
         for acc in &mut accounts {
             if acc.is_active {
                 acc.five_hour_remaining_percent = act_5h;
                 acc.weekly_remaining_percent = act_wk;
-                acc.monthly_remaining_percent = act_mo;
+                acc.monthly_remaining_percent = None;
                 acc.windows = quota.windows.clone();
             } else {
                 let acc_file = dir.join(format!("{}.json", acc.id));
-                let mut acc_per_mo = monthly_cfg.default_remaining_percent;
                 if let Ok(c) = fs::read_to_string(&acc_file) {
                     if let Ok(mut a_val) = serde_json::from_str::<serde_json::Value>(&c) {
-                        if let Some(r) = a_val.get("monthly_remaining_percent").and_then(|n| n.as_f64()) {
-                            acc_per_mo = r;
-                        }
                         if let Some(c_str) = a_val.get("credential").and_then(|c| c.as_str()) {
                             if let Ok(mut c_json) = serde_json::from_str::<serde_json::Value>(c_str) {
                                 if let Some(tok) = Self::refresh_gemini_token(
@@ -1885,22 +1938,7 @@ impl AiQuotaAdapter {
                                     Some(&mut a_val),
                                 ) {
                                     if let Some((other_body, _)) = Self::fetch_gemini_quota_json(&tok) {
-                                        if let Ok(mut other_q) = parse_agy_quota(&other_body, Some(acc.identity.clone())) {
-                                            if monthly_cfg.enabled && !other_q.windows.iter().any(|w| w.label == "monthly") {
-                                                let reset_iso = compute_next_monthly_reset_iso(now_ms, monthly_cfg.reset_day);
-                                                other_q.windows.push(QuotaWindow {
-                                                    label: "monthly".to_string(),
-                                                    used_percent: ((100.0 - acc_per_mo) * 10.0).round() / 10.0,
-                                                    remaining_percent: (acc_per_mo * 10.0).round() / 10.0,
-                                                    reset_at: Some(reset_iso),
-                                                });
-                                                other_q.windows.sort_by_key(|w| match w.label.as_str() {
-                                                    "5h" => 1,
-                                                    "weekly" => 2,
-                                                    "monthly" => 3,
-                                                    _ => 4,
-                                                });
-                                            }
+                                        if let Ok(other_q) = parse_agy_quota(&other_body, Some(acc.identity.clone())) {
                                             acc.five_hour_remaining_percent = other_q
                                                 .windows
                                                 .iter()
@@ -1911,11 +1949,7 @@ impl AiQuotaAdapter {
                                                 .iter()
                                                 .find(|w| w.label == "weekly")
                                                 .map(|w| w.remaining_percent);
-                                            acc.monthly_remaining_percent = other_q
-                                                .windows
-                                                .iter()
-                                                .find(|w| w.label == "monthly")
-                                                .map(|w| w.remaining_percent);
+                                            acc.monthly_remaining_percent = None;
                                             acc.windows = other_q.windows;
                                         }
                                     }
@@ -1941,26 +1975,6 @@ impl AiQuotaAdapter {
         if output.status.success() {
             let body = String::from_utf8_lossy(&output.stdout);
             let mut quota = parse_agy_quota(&body, active_email.clone()).ok()?;
-            let monthly_cfg = self.get_gemini_monthly_config();
-            if monthly_cfg.enabled && !quota.windows.iter().any(|w| w.label == "monthly") {
-                let now_ms = SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0);
-                let reset_iso = compute_next_monthly_reset_iso(now_ms, monthly_cfg.reset_day);
-                quota.windows.push(QuotaWindow {
-                    label: "monthly".to_string(),
-                    used_percent: ((100.0 - monthly_cfg.default_remaining_percent) * 10.0).round() / 10.0,
-                    remaining_percent: (monthly_cfg.default_remaining_percent * 10.0).round() / 10.0,
-                    reset_at: Some(reset_iso),
-                });
-                quota.windows.sort_by_key(|w| match w.label.as_str() {
-                    "5h" => 1,
-                    "weekly" => 2,
-                    "monthly" => 3,
-                    _ => 4,
-                });
-            }
             quota.accounts = self.load_configured_gemini_accounts(active_email.as_deref());
             Some(quota)
         } else {
@@ -2016,13 +2030,6 @@ impl AiQuotaAdapter {
                                     };
 
                                 if cache_gemini_matches {
-                                    let monthly_cfg = self.get_gemini_monthly_config();
-                                    let now_ms = SystemTime::now()
-                                        .duration_since(SystemTime::UNIX_EPOCH)
-                                        .map(|d| d.as_millis() as i64)
-                                        .unwrap_or(0);
-                                    let reset_iso = compute_next_monthly_reset_iso(now_ms, monthly_cfg.reset_day);
-
                                     for p in &mut snap.providers {
                                         if p.provider_id == "gemini" {
                                             if p.accounts.is_empty() {
@@ -2030,35 +2037,11 @@ impl AiQuotaAdapter {
                                                     active_gemini_email.as_deref(),
                                                 );
                                             }
-                                            if monthly_cfg.enabled {
-                                                if let Some(w) = p.windows.iter_mut().find(|w| w.label == "monthly") {
-                                                    w.remaining_percent = (monthly_cfg.default_remaining_percent * 10.0).round() / 10.0;
-                                                    w.used_percent = ((100.0 - monthly_cfg.default_remaining_percent) * 10.0).round() / 10.0;
-                                                    w.reset_at = Some(reset_iso.clone());
-                                                } else {
-                                                    p.windows.push(QuotaWindow {
-                                                        label: "monthly".to_string(),
-                                                        used_percent: ((100.0 - monthly_cfg.default_remaining_percent) * 10.0).round() / 10.0,
-                                                        remaining_percent: (monthly_cfg.default_remaining_percent * 10.0).round() / 10.0,
-                                                        reset_at: Some(reset_iso.clone()),
-                                                    });
-                                                    p.windows.sort_by_key(|w| match w.label.as_str() {
-                                                        "5h" => 1,
-                                                        "weekly" => 2,
-                                                        "monthly" => 3,
-                                                        _ => 4,
-                                                    });
-                                                }
-                                                for acc in &mut p.accounts {
-                                                    if acc.monthly_remaining_percent.is_none() {
-                                                        acc.monthly_remaining_percent = Some(monthly_cfg.default_remaining_percent);
-                                                    }
-                                                }
-                                            } else {
-                                                p.windows.retain(|w| w.label != "monthly");
-                                                for acc in &mut p.accounts {
-                                                    acc.monthly_remaining_percent = None;
-                                                }
+                                            // Gemini has NO monthly quota: purge any synthetic monthly windows
+                                            p.windows.retain(|w| w.label != "monthly");
+                                            for acc in &mut p.accounts {
+                                                acc.monthly_remaining_percent = None;
+                                                acc.windows.retain(|w| w.label != "monthly");
                                             }
                                         }
                                     }
@@ -2070,7 +2053,6 @@ impl AiQuotaAdapter {
                     }
                 }
             }
-
         }
 
         // 2. Autonomous querying: fetch all providers directly
@@ -2092,15 +2074,19 @@ impl AiQuotaAdapter {
             providers.push(xiaomi);
         }
 
-        // Preserve any previously cached non-Gemini providers that were not fetched in this pass
-        if let Some(cache_path) = self.get_cache_file() {
-            if let Ok(content) = fs::read_to_string(&cache_path) {
-                if let Ok(prev_snap) = serde_json::from_str::<AiQuotaSnapshot>(&content) {
-                    for prev_p in prev_snap.providers {
-                        if prev_p.provider_id != "gemini"
-                            && !providers.iter().any(|p| p.provider_id == prev_p.provider_id)
-                        {
-                            providers.push(prev_p);
+        // Preserve previously cached non-Gemini providers only during soft background refresh
+        // and only if the provider's credentials are still detected
+        if !force_refresh {
+            if let Some(cache_path) = self.get_cache_file() {
+                if let Ok(content) = fs::read_to_string(&cache_path) {
+                    if let Ok(prev_snap) = serde_json::from_str::<AiQuotaSnapshot>(&content) {
+                        for prev_p in prev_snap.providers {
+                            if prev_p.provider_id != "gemini"
+                                && !providers.iter().any(|p| p.provider_id == prev_p.provider_id)
+                                && self.get_provider_api_key(&prev_p.provider_id, "", &[&prev_p.provider_id]).is_some()
+                            {
+                                providers.push(prev_p);
+                            }
                         }
                     }
                 }

@@ -40,6 +40,21 @@ Item {
         property string activeGeminiEmail: ""
         property string fetchedAt: ""
         property bool isRefreshing: false
+        property bool isAuthenticating: false
+        property string authenticatingEmail: ""
+        property string authStatusMessage: ""
+
+        function startLogin(emailHint) {
+            isAuthenticating = true;
+            authenticatingEmail = emailHint || "";
+            authStatusMessage = "Waiting for browser sign-in...";
+        }
+
+        function cancelLogin() {
+            isAuthenticating = false;
+            authenticatingEmail = "";
+            authStatusMessage = "Authentication cancelled";
+        }
 
         readonly property bool shouldShowPill: {
             if (!aiEnabled) return false;
@@ -202,6 +217,20 @@ Item {
 
         aiModel.aiDockPillMode = "always";
         assert(aiModel.shouldShowPill === true, "Pill must show when always");
+
+        // 8. Test OAuth authentication and cancelLogin flow
+        assert(!aiModel.isAuthenticating, "Must not be authenticating initially");
+        assert(aiModel.authenticatingEmail === "", "authenticatingEmail must be empty initially");
+
+        aiModel.startLogin("gitawego@gmail.com");
+        assert(aiModel.isAuthenticating === true, "isAuthenticating must be true after startLogin");
+        assert(aiModel.authenticatingEmail === "gitawego@gmail.com", "authenticatingEmail must match emailHint");
+        assert(aiModel.authStatusMessage.indexOf("Waiting") !== -1, "Status message should indicate waiting");
+
+        aiModel.cancelLogin();
+        assert(aiModel.isAuthenticating === false, "isAuthenticating must be false after cancelLogin");
+        assert(aiModel.authenticatingEmail === "", "authenticatingEmail must be empty after cancelLogin");
+        assert(aiModel.authStatusMessage.indexOf("cancelled") !== -1, "Status message should indicate cancelled");
 
         console.log("PASS: AI Token Service Unit Tests");
         Qt.exit(0);

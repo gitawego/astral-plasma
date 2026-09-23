@@ -104,6 +104,19 @@ Item {
         assert(aiPage.providersList[0].accounts[1].identity === "personal@gmail.com", "Second account identity must match");
         assert(aiPage.providersList[0].accounts[1].is_active === false, "Second account must be inactive");
 
+        // 8. Authentication and Cancel button verification
+        assert(!aiPage.isAuthenticating, "aiPage.isAuthenticating must start false");
+        assert(aiPage.authenticatingEmail === "", "aiPage.authenticatingEmail must start empty");
+
+        aiPage.testIsAuthenticating = true;
+        aiPage.testAuthenticatingEmail = "gitawego@gmail.com";
+        assert(aiPage.isAuthenticating === true, "aiPage.isAuthenticating must be true when testIsAuthenticating is set");
+        assert(aiPage.authenticatingEmail === "gitawego@gmail.com", "aiPage.authenticatingEmail must match");
+
+        aiPage.cancelAuth();
+        assert(aiPage.isAuthenticating === false, "aiPage.isAuthenticating must be false after cancelAuth()");
+        assert(aiPage.authenticatingEmail === "", "aiPage.authenticatingEmail must be empty after cancelAuth()");
+
         console.log("PASS: AI Settings Page Unit Tests");
         Qt.exit(0);
     }

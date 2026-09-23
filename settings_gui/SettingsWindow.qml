@@ -67,8 +67,8 @@ PanelWindow {
         id: dialogBox
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
-        width: 860
-        height: 580
+        width: root.width > 0 ? Math.min(1240, Math.max(940, Math.round(root.width * 0.52))) : 1100
+        height: root.height > 0 ? Math.min(860, Math.max(640, Math.round(root.height * 0.60))) : 750
         radius: Theme.radiusLarge
         color: Colors.glassSurface
         border.color: Colors.glassBorderSpecular

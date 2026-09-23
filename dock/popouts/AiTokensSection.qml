@@ -84,6 +84,13 @@ Item {
         syncActiveTab();
     }
 
+    Connections {
+        target: (typeof AiTokenService !== "undefined") ? AiTokenService : null
+        function onLastActiveProviderIdChanged() {
+            root.syncActiveTab();
+        }
+    }
+
     readonly property var currentProvider: (root.providersList && root.providersList.length > activeProviderIndex)
         ? root.providersList[activeProviderIndex]
         : null
@@ -126,6 +133,38 @@ Item {
             return currentProvider.windows;
         }
         return [];
+    }
+
+    function formatResetTime(resetAtStr) {
+        if (!resetAtStr || resetAtStr === "") return "";
+        if (resetAtStr.indexOf("Total") !== -1 || resetAtStr.indexOf("in ") === 0) {
+            return resetAtStr;
+        }
+        try {
+            const targetMs = Date.parse(resetAtStr);
+            if (isNaN(targetMs)) {
+                return "Resets at " + resetAtStr.replace("T", " ").replace("Z", "").split(".")[0];
+            }
+            const diffSec = Math.floor((targetMs - Date.now()) / 1000);
+            if (diffSec <= 0) return "Resetting soon";
+            if (diffSec < 60) return "Resets in " + diffSec + "s";
+            if (diffSec < 3600) return "Resets in " + Math.floor(diffSec / 60) + "m";
+            if (diffSec < 86400) {
+                const h = Math.floor(diffSec / 3600);
+                const m = Math.floor((diffSec % 3600) / 60);
+                return "Resets in " + h + "h " + (m < 10 ? "0" : "") + m + "m";
+            }
+            const d = Math.floor(diffSec / 86400);
+            const remH = Math.floor((diffSec % 86400) / 3600);
+            const targetDate = new Date(targetMs);
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const monthStr = months[targetDate.getMonth()];
+            const dayStr = targetDate.getDate();
+            const timeStr = (targetDate.getHours() < 10 ? "0" : "") + targetDate.getHours() + ":" + (targetDate.getMinutes() < 10 ? "0" : "") + targetDate.getMinutes();
+            return "Resets in " + d + "d " + remH + "h (" + monthStr + " " + dayStr + ", " + timeStr + ")";
+        } catch (e) {
+            return "Resets at " + resetAtStr.replace("T", " ").replace("Z", "").split(".")[0];
+        }
     }
 
     ColumnLayout {
@@ -177,8 +216,10 @@ Item {
                 width: 28
                 height: 28
                 radius: 14
-                color: rescanHover.containsMouse ? Colors.pillHover : Colors.surfaceContainerHighest
-                border.color: Theme.borderSubtle
+                color: rescanHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.16) : Qt.rgba(1.0, 1.0, 1.0, 0.06)
+                border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular)
+                    ? Qt.alpha(Colors.glassBorderSpecular, 0.25)
+                    : Qt.rgba(1.0, 1.0, 1.0, 0.12)
                 border.width: 1
 
                 MaterialIcon {
@@ -247,11 +288,11 @@ Item {
                         implicitWidth: tabRow.implicitWidth + 18
                         radius: 14
                         color: isSelected
-                            ? (hasWarning ? Qt.alpha("#F59E0B", 0.25) : Colors.primary)
-                            : (tabHover.containsMouse ? Colors.pillHover : Colors.surfaceContainer)
+                            ? (hasWarning ? Qt.alpha("#F59E0B", 0.30) : Colors.primary)
+                            : (tabHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.14) : Qt.rgba(1.0, 1.0, 1.0, 0.06))
                         border.color: isSelected
                             ? (hasWarning ? "#F59E0B" : Colors.primary)
-                            : (hasWarning ? "#F59E0B" : Theme.borderSubtle)
+                            : (tabHover.containsMouse ? Qt.alpha(Colors.glassBorderSpecular, 0.40) : Qt.rgba(1.0, 1.0, 1.0, 0.12))
                         border.width: 1
 
                         RowLayout {
@@ -305,22 +346,30 @@ Item {
             }
         }
 
-        // Provider Details & Identity
+        // =====================================================================
+        // Unified Provider Card: Combines Brand, Plan, Account, and Quotas
+        // =====================================================================
         Rectangle {
+            id: providerCard
             Layout.fillWidth: true
-            radius: Theme.radiusSmall
-            color: Colors.surfaceContainer
-            border.color: Theme.borderSubtle
+            radius: Theme.radiusMedium
+            color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                ? Qt.rgba(1.0, 1.0, 1.0, 0.05)
+                : Qt.rgba(0.0, 0.0, 0.0, 0.04)
+            border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular)
+                ? Qt.alpha(Colors.glassBorderSpecular, Colors.isDarkMode ? 0.25 : 0.40)
+                : Qt.rgba(1.0, 1.0, 1.0, 0.15)
             border.width: 1
             visible: root.currentProvider !== null
-            implicitHeight: providerInfoCol.implicitHeight + 16
+            implicitHeight: providerCardCol.implicitHeight + 24
 
             ColumnLayout {
-                id: providerInfoCol
+                id: providerCardCol
                 anchors.fill: parent
-                anchors.margins: 10
-                spacing: 8
+                anchors.margins: 12
+                spacing: 12
 
+                // 1. Provider Header
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
@@ -354,7 +403,7 @@ Item {
                     }
                 }
 
-                // Active Account Email in CLI session
+                // 2. Active Account Email in CLI session
                 RowLayout {
                     visible: root.currentProvider && (root.currentProvider.account_email || root.currentProvider.account_name)
                     Layout.fillWidth: true
@@ -364,7 +413,7 @@ Item {
                         width: 6
                         height: 6
                         radius: 3
-                        color: "#22C55E"
+                        color: "#10B981"
                     }
 
                     Text {
@@ -378,17 +427,17 @@ Item {
                     }
                 }
 
-                // Gemini Account Switcher & Manager
+                // 3. Gemini Account Switcher & Manager
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 5
+                    spacing: 6
                     visible: root.currentProvider && (root.currentProvider.provider_id === "gemini" || root.currentProvider.provider === "gemini") && root.currentProvider.accounts && root.currentProvider.accounts.length >= 1
 
                     Rectangle {
                         Layout.fillWidth: true
                         height: 1
                         color: Theme.borderSubtle
-                        opacity: 0.5
+                        opacity: 0.35
                     }
 
                     RowLayout {
@@ -404,22 +453,6 @@ Item {
                         }
 
                         Item { Layout.fillWidth: true }
-
-                        // + Add button
-                        ActionPill {
-                            icon: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "sync" : "add"
-                            text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "Signing in..." : "Add"
-                            variant: "active"
-                            fontPixelSize: 9
-                            fixedHeight: 20
-                            paddingHorizontal: 8
-                            spacing: 3
-                            onClicked: {
-                                if (typeof AiTokenService !== "undefined") {
-                                    AiTokenService.loginGemini("");
-                                }
-                            }
-                        }
 
                         // Manage in Settings button
                         ActionPill {
@@ -458,7 +491,7 @@ Item {
                             radius: 6
                             color: isSelected
                                 ? Qt.alpha(Colors.primary, 0.12)
-                                : (accHover.containsMouse ? Colors.pillHover : "transparent")
+                                : (accHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : "transparent")
                             border.color: isSelected ? Colors.primary : (isAccountActive ? Qt.alpha(Colors.primary, 0.3) : "transparent")
                             border.width: 1
 
@@ -483,7 +516,7 @@ Item {
                                 MaterialIcon {
                                     text: accRow.isAccountActive ? "check_circle" : "account_circle"
                                     size: 14
-                                    color: accRow.isAccountActive ? "#22C55E" : Colors.m3onSurfaceVariant
+                                    color: accRow.isAccountActive ? Colors.primary : Colors.m3onSurfaceVariant
                                     Layout.preferredWidth: 14
                                     Layout.alignment: Qt.AlignVCenter
                                 }
@@ -503,7 +536,6 @@ Item {
                                     visible: modelData.five_hour_remaining_percent !== null && modelData.five_hour_remaining_percent !== undefined
                                     text: Math.round(modelData.five_hour_remaining_percent) + "%"
                                         + ((modelData.weekly_remaining_percent !== null && modelData.weekly_remaining_percent !== undefined) ? (" · " + Math.round(modelData.weekly_remaining_percent) + "%") : "")
-                                        + ((modelData.monthly_remaining_percent !== null && modelData.monthly_remaining_percent !== undefined) ? (" · " + Math.round(modelData.monthly_remaining_percent) + "%") : "")
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 10
                                     font.weight: Font.DemiBold
@@ -512,7 +544,7 @@ Item {
                                     Layout.alignment: Qt.AlignVCenter
                                     color: (modelData.five_hour_remaining_percent < 20)
                                         ? "#EF4444"
-                                        : ((modelData.five_hour_remaining_percent <= 50) ? "#F59E0B" : "#22C55E")
+                                        : ((modelData.five_hour_remaining_percent <= 50) ? "#F59E0B" : Colors.primary)
                                 }
 
                                 // Status Badge / Switch Button: Fixed width 46px container for strict tabular alignment
@@ -551,178 +583,119 @@ Item {
                             }
                         }
                     }
-
-                    // Dedicated Action Bar for Selected Account (Re-auth / Remove)
-                    RowLayout {
-                        visible: root.selectedAccount !== null
-                        Layout.fillWidth: true
-                        Layout.topMargin: 2
-                        spacing: 6
-
-                        Text {
-                            text: "Account: " + (root.selectedAccount ? (root.selectedAccount.identity || root.selectedAccount.label || "") : "")
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            font.weight: Font.Medium
-                            color: Colors.m3onSurfaceVariant
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-
-                        // Re-auth button
-                        ActionPill {
-                            icon: "vpn_key"
-                            text: "Re-auth"
-                            variant: "info"
-                            fontPixelSize: 9
-                            fixedHeight: 20
-                            paddingHorizontal: 8
-                            spacing: 3
-                            onClicked: {
-                                if (typeof AiTokenService !== "undefined" && root.selectedAccount) {
-                                    AiTokenService.loginGemini(root.selectedAccount.identity || "");
-                                }
-                            }
-                        }
-
-                        // Remove button
-                        ActionPill {
-                            icon: "delete_outline"
-                            text: "Remove"
-                            variant: "danger"
-                            fontPixelSize: 9
-                            fixedHeight: 20
-                            paddingHorizontal: 8
-                            spacing: 3
-                            onClicked: {
-                                if (typeof AiTokenService !== "undefined" && root.selectedAccount) {
-                                    AiTokenService.removeAccount("gemini", root.selectedAccount.id || root.selectedAccount.identity);
-                                }
-                            }
-                        }
-                    }
                 }
-            }
-        }
 
-        // Quota Limit Progress Windows
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            visible: root.currentWindows && root.currentWindows.length > 0
-
-            Repeater {
-                model: root.currentWindows
-                delegate: Rectangle {
-                    required property var modelData
+                // 4. Subtle Hairline Divider before Quotas
+                Rectangle {
                     Layout.fillWidth: true
-                    height: 52
-                    radius: Theme.radiusSmall
-                    color: Colors.surfaceContainer
-                    border.color: (modelData.remaining_percent < 20)
-                        ? "#EF4444"
-                        : ((modelData.remaining_percent <= 50) ? "#F59E0B" : Theme.borderSubtle)
-                    border.width: 1
+                    height: 1
+                    color: Theme.borderSubtle
+                    opacity: 0.35
+                    visible: root.currentWindows && root.currentWindows.length > 0
+                }
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 4
+                // 5. Quota Limit Progress Rows (Clean, Organic, No Black Boxes!)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    visible: root.currentWindows && root.currentWindows.length > 0
 
-                        RowLayout {
+                    Repeater {
+                        model: root.currentWindows
+                        delegate: ColumnLayout {
+                            required property var modelData
                             Layout.fillWidth: true
+                            spacing: 4
 
-                            Text {
-                                text: {
-                                    switch (modelData.label) {
-                                        case "5h": return "5-Hour Rolling Window";
-                                        case "weekly": return "Weekly Limit";
-                                        case "monthly": return "Monthly Limit";
-                                        default: return (modelData.label.charAt(0).toUpperCase() + modelData.label.slice(1)) + " Limit";
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Text {
+                                    text: {
+                                        switch (modelData.label) {
+                                            case "5h": return "5-Hour Rolling Limit";
+                                            case "weekly": return "Weekly Limit";
+                                            case "monthly": return "Monthly Limit";
+                                            default: return (modelData.label.charAt(0).toUpperCase() + modelData.label.slice(1)) + " Limit";
+                                        }
+                                    }
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: Font.DemiBold
+                                    color: Colors.m3onSurface
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                Text {
+                                    text: Math.round(modelData.remaining_percent) + "% remaining"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: Font.Bold
+                                    color: (modelData.remaining_percent < 20)
+                                        ? "#EF4444"
+                                        : ((modelData.remaining_percent <= 50) ? "#F59E0B" : Colors.primary)
+                                }
+                            }
+
+                            // Sleek Level Bar Container
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 6
+                                radius: 3
+                                color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                                    ? Qt.rgba(1.0, 1.0, 1.0, 0.08)
+                                    : Qt.rgba(0.0, 0.0, 0.0, 0.06)
+
+                                Rectangle {
+                                    width: Math.max(6, Math.min(parent.width, parent.width * (modelData.remaining_percent / 100.0)))
+                                    height: parent.height
+                                    radius: 3
+                                    color: (modelData.remaining_percent < 20)
+                                        ? "#EF4444"
+                                        : ((modelData.remaining_percent <= 50) ? "#F59E0B" : Colors.primary)
+
+                                    Behavior on width {
+                                        NumberAnimation {
+                                            duration: Theme.animExpressiveDefaultSpatial
+                                            easing.type: Easing.BezierSpline
+                                            easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                                        }
                                     }
                                 }
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11
-                                font.weight: Font.DemiBold
-                                color: Colors.m3onSurface
                             }
 
-                            Item { Layout.fillWidth: true }
-
+                            // Humanized Reset Countdown
                             Text {
-                                text: Math.round(modelData.remaining_percent) + "% remaining"
+                                visible: modelData.reset_at !== null && modelData.reset_at !== ""
+                                text: root.formatResetTime(modelData.reset_at)
                                 font.family: Theme.fontFamily
-                                font.pixelSize: 11
-                                font.weight: Font.Bold
-                                color: (modelData.remaining_percent < 20)
-                                    ? "#EF4444"
-                                    : ((modelData.remaining_percent <= 50) ? "#F59E0B" : "#22C55E")
+                                font.pixelSize: 10
+                                color: Colors.m3onSurfaceVariant
                             }
-                        }
-
-                        // Progress Bar Container
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 6
-                            radius: 3
-                            color: Colors.surfaceContainerHighest
-
-                            Rectangle {
-                                width: Math.max(6, Math.min(parent.width, parent.width * (modelData.remaining_percent / 100.0)))
-                                height: parent.height
-                                radius: 3
-                                color: (modelData.remaining_percent < 20)
-                                    ? "#EF4444"
-                                    : ((modelData.remaining_percent <= 50) ? "#F59E0B" : "#22C55E")
-
-                                Behavior on width {
-                                    NumberAnimation { duration: Theme.animDurationNormal }
-                                }
-                            }
-                        }
-
-                        // Reset time
-                        Text {
-                            visible: modelData.reset_at !== null && modelData.reset_at !== ""
-                            text: (modelData.reset_at && modelData.reset_at.indexOf("Total") !== -1)
-                                ? modelData.reset_at
-                                : ("Resets at: " + (modelData.reset_at ? modelData.reset_at.replace("T", " ").replace("Z", "") : ""))
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 9
-                            color: Colors.m3onSurfaceVariant
                         }
                     }
                 }
-            }
-        }
 
-        // Info card when provider has no window limits (e.g. MiniMax pay-as-you-go)
-        Rectangle {
-            Layout.fillWidth: true
-            height: 48
-            radius: Theme.radiusSmall
-            color: Colors.surfaceContainer
-            border.color: Theme.borderSubtle
-            border.width: 1
-            visible: root.currentProvider !== null && (!root.currentWindows || root.currentWindows.length === 0)
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 10
-                spacing: 8
-
-                MaterialIcon {
-                    text: "check_circle"
-                    size: 16
-                    color: "#22C55E"
-                }
-
-                Text {
-                    text: "Pay-as-you-go · No quota window restrictions"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    color: Colors.m3onSurfaceVariant
+                // 6. Pay-as-you-go State (When provider has no quota limits)
+                RowLayout {
                     Layout.fillWidth: true
+                    spacing: 8
+                    visible: root.currentProvider !== null && (!root.currentWindows || root.currentWindows.length === 0)
+
+                    MaterialIcon {
+                        text: "verified"
+                        size: 16
+                        color: Colors.primary
+                    }
+
+                    Text {
+                        text: "Pay-as-you-go · No quota window restrictions"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.m3onSurfaceVariant
+                        Layout.fillWidth: true
+                    }
                 }
             }
         }
@@ -731,9 +704,13 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             height: 90
-            radius: Theme.radiusSmall
-            color: Colors.surfaceContainer
-            border.color: Theme.borderSubtle
+            radius: Theme.radiusMedium
+            color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                ? Qt.rgba(1.0, 1.0, 1.0, 0.05)
+                : Qt.rgba(0.0, 0.0, 0.0, 0.04)
+            border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular)
+                ? Qt.alpha(Colors.glassBorderSpecular, 0.25)
+                : Qt.rgba(1.0, 1.0, 1.0, 0.15)
             border.width: 1
             visible: !root.providersList || root.providersList.length === 0
 

@@ -17,6 +17,7 @@ Singleton {
     property string fetchedAt: ""
     property bool isRefreshing: false
     property bool isAuthenticating: false
+    property string authenticatingEmail: ""
     property string authStatusMessage: ""
     property string lastAuthError: ""
 
@@ -177,6 +178,7 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: {
                 root.isAuthenticating = false;
+                root.authenticatingEmail = "";
                 try {
                     const text = this.text.trim();
                     if (text) {
@@ -194,14 +196,33 @@ Singleton {
         }
     }
 
+    Process {
+        id: cancelProc
+    }
+
+    function cancelLogin() {
+        if (loginProc.running) {
+            loginProc.running = false;
+        }
+        root.isAuthenticating = false;
+        root.authenticatingEmail = "";
+        root.authStatusMessage = "Authentication cancelled";
+        cancelProc.command = ["pkill", "-f", "astral-plasma ai login"];
+        if (!cancelProc.running) {
+            cancelProc.running = true;
+        }
+        root.refresh(false);
+    }
+
     function loginGemini(emailHint) {
         if (root.isAuthenticating) return;
         root.isAuthenticating = true;
+        root.authenticatingEmail = (emailHint && emailHint.trim().length > 0) ? emailHint.trim() : "";
         root.authStatusMessage = "Waiting for browser sign-in...";
         root.lastAuthError = "";
         let cmd = [root.daemonBin, "ai", "login", "gemini"];
-        if (emailHint && emailHint.trim().length > 0) {
-            cmd.push(emailHint.trim());
+        if (root.authenticatingEmail.length > 0) {
+            cmd.push(root.authenticatingEmail);
         }
         loginProc.command = cmd;
         if (!loginProc.running) {

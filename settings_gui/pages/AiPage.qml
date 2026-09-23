@@ -18,6 +18,20 @@ ColumnLayout {
     property real testGeminiMonthlyRemainingPercent: 85.0
     property int testGeminiMonthlyResetDay: 1
     property var testProviders: null
+    property bool testIsAuthenticating: false
+    property string testAuthenticatingEmail: ""
+
+    readonly property bool isAuthenticating: testMode ? testIsAuthenticating : ((typeof AiTokenService !== "undefined") ? AiTokenService.isAuthenticating : false)
+    readonly property string authenticatingEmail: testMode ? testAuthenticatingEmail : ((typeof AiTokenService !== "undefined") ? AiTokenService.authenticatingEmail : "")
+
+    function cancelAuth() {
+        if (testMode) {
+            testIsAuthenticating = false;
+            testAuthenticatingEmail = "";
+        } else if (typeof AiTokenService !== "undefined") {
+            AiTokenService.cancelLogin();
+        }
+    }
 
     readonly property bool aiEnabled: testMode ? testAiEnabled : ((typeof Config !== "undefined") ? Config.aiEnabled : true)
     readonly property string dockPillMode: testMode ? testDockPillMode : ((typeof Config !== "undefined") ? Config.aiDockPillMode : "dynamic")
@@ -462,234 +476,6 @@ ColumnLayout {
         }
     }
 
-    // Gemini Monthly Quota (Config-Driven) Card
-    Rectangle {
-        Layout.fillWidth: true
-        radius: Theme.radiusMedium
-        color: Colors.surfaceContainer
-        border.color: Theme.borderSubtle
-        border.width: 1
-        implicitHeight: geminiMonthlyCol.implicitHeight + Theme.padLarge * 2
-        Layout.preferredHeight: implicitHeight
-
-        ColumnLayout {
-            id: geminiMonthlyCol
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: Theme.padLarge
-            spacing: 16
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spaceMedium
-
-                MaterialIcon {
-                    text: "calendar_month"
-                    size: 24
-                    color: root.geminiMonthlyEnabled ? Colors.primary : Colors.m3onSurfaceVariant
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-
-                    Text {
-                        text: "Gemini Monthly Quota (Config-Driven)"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 13
-                        font.weight: Font.Bold
-                        color: Colors.m3onSurface
-                    }
-
-                    Text {
-                        text: "Enables monthly quota tracking & schedule calculation for Google Gemini plans"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        color: Colors.m3onSurfaceVariant
-                    }
-                }
-
-                // Switch
-                Rectangle {
-                    width: 44
-                    height: 24
-                    radius: 12
-                    color: root.geminiMonthlyEnabled ? Colors.primary : Colors.surfaceContainerHighest
-                    border.color: root.geminiMonthlyEnabled ? Colors.primary : Theme.borderSubtle
-                    border.width: 1
-
-                    Behavior on color { ColorAnimation { duration: 150 } }
-
-                    Rectangle {
-                        width: 18
-                        height: 18
-                        radius: 9
-                        color: root.geminiMonthlyEnabled ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
-                        anchors.verticalCenter: parent.verticalCenter
-                        x: root.geminiMonthlyEnabled ? parent.width - width - 3 : 3
-
-                        Behavior on x {
-                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            root.setGeminiMonthlyEnabled(!root.geminiMonthlyEnabled);
-                        }
-                    }
-                }
-            }
-
-            // Controls visible when enabled
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 16
-                visible: root.geminiMonthlyEnabled
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 1
-                    color: Theme.borderSubtle
-                    opacity: 0.4
-                }
-
-                // Default Remaining Quota
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 6
-
-                    RowLayout {
-                        Text {
-                            text: "Default Remaining Quota"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            color: Colors.m3onSurface
-                        }
-                        Item { Layout.fillWidth: true }
-                        Text {
-                            text: Math.round(root.geminiMonthlyRemainingPercent) + "% remaining"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.Bold
-                            color: ((100.0 - root.geminiMonthlyRemainingPercent) >= root.criticalThreshold)
-                                ? "#E05353"
-                                : (((100.0 - root.geminiMonthlyRemainingPercent) >= root.warningThreshold) ? "#F59E0B" : Colors.primary)
-                        }
-                    }
-
-                    RowLayout {
-                        spacing: 6
-                        Repeater {
-                            model: [50, 65, 75, 80, 85, 90, 95]
-                            delegate: Rectangle {
-                                required property int modelData
-                                height: 28
-                                Layout.fillWidth: true
-                                radius: 14
-                                color: Math.round(root.geminiMonthlyRemainingPercent) === modelData ? Colors.primary : Colors.surfaceContainerHighest
-                                border.color: Math.round(root.geminiMonthlyRemainingPercent) === modelData ? Colors.primary : Theme.borderSubtle
-                                border.width: 1
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData + "%"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    font.weight: Math.round(root.geminiMonthlyRemainingPercent) === modelData ? Font.Bold : Font.Normal
-                                    color: Math.round(root.geminiMonthlyRemainingPercent) === modelData ? Colors.textOnPrimary : Colors.m3onSurface
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        root.setGeminiMonthlyRemainingPercent(modelData);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 1
-                    color: Theme.borderSubtle
-                    opacity: 0.4
-                }
-
-                // Monthly Reset Day
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 6
-
-                    RowLayout {
-                        Text {
-                            text: "Monthly Reset Day of Month"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            color: Colors.m3onSurface
-                        }
-                        Item { Layout.fillWidth: true }
-                        Text {
-                            text: "Day " + root.geminiMonthlyResetDay + " of every month"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 11
-                            color: Colors.m3onSurfaceVariant
-                        }
-                    }
-
-                    RowLayout {
-                        spacing: 6
-                        Repeater {
-                            model: [
-                                { day: 1, label: "1st" },
-                                { day: 5, label: "5th" },
-                                { day: 10, label: "10th" },
-                                { day: 15, label: "15th" },
-                                { day: 20, label: "20th" },
-                                { day: 25, label: "25th" },
-                                { day: 28, label: "28th" }
-                            ]
-                            delegate: Rectangle {
-                                required property var modelData
-                                height: 28
-                                Layout.fillWidth: true
-                                radius: 14
-                                color: root.geminiMonthlyResetDay === modelData.day ? Colors.primary : Colors.surfaceContainerHighest
-                                border.color: root.geminiMonthlyResetDay === modelData.day ? Colors.primary : Theme.borderSubtle
-                                border.width: 1
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    font.weight: root.geminiMonthlyResetDay === modelData.day ? Font.Bold : Font.Normal
-                                    color: root.geminiMonthlyResetDay === modelData.day ? Colors.textOnPrimary : Colors.m3onSurface
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        root.setGeminiMonthlyResetDay(modelData.day);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // Detected Providers & Quotas
     ColumnLayout {
         Layout.fillWidth: true
@@ -836,11 +622,11 @@ ColumnLayout {
 
                             // Sign In with Google Button
                             Rectangle {
-                                height: 26
-                                implicitWidth: addBtnRow.implicitWidth + 16
-                                radius: 13
-                                color: addMouse.containsMouse ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.primary, 0.1)
-                                border.color: addMouse.containsMouse ? Colors.primary : Qt.alpha(Colors.primary, 0.3)
+                                height: 28
+                                implicitWidth: addBtnRow.implicitWidth + 20
+                                radius: 14
+                                color: (!root.isAuthenticating && addMouse.containsMouse) ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.primary, 0.1)
+                                border.color: (!root.isAuthenticating && addMouse.containsMouse) ? Colors.primary : Qt.alpha(Colors.primary, 0.3)
                                 border.width: 1
 
                                 RowLayout {
@@ -849,15 +635,23 @@ ColumnLayout {
                                     spacing: 6
 
                                     MaterialIcon {
-                                        text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "sync" : "add"
-                                        size: 14
+                                        text: root.isAuthenticating ? "sync" : "add"
+                                        size: 15
                                         color: Colors.primary
+
+                                        RotationAnimation on rotation {
+                                            running: root.isAuthenticating
+                                            from: 0
+                                            to: 360
+                                            duration: 1000
+                                            loops: Animation.Infinite
+                                        }
                                     }
 
                                     Text {
-                                        text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "Signing in..." : "Sign in with Google"
+                                        text: root.isAuthenticating ? "Signing in..." : "Sign in with Google"
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: 11
+                                        font.pixelSize: 12
                                         font.weight: Font.DemiBold
                                         color: Colors.primary
                                     }
@@ -866,13 +660,31 @@ ColumnLayout {
                                 MouseArea {
                                     id: addMouse
                                     anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    hoverEnabled: true
+                                    cursorShape: root.isAuthenticating ? Qt.ArrowCursor : Qt.PointingHandCursor
+                                    hoverEnabled: !root.isAuthenticating
                                     onClicked: {
-                                        if (typeof AiTokenService !== "undefined") {
+                                        if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
                                             AiTokenService.loginGemini("");
                                         }
                                     }
+                                }
+                            }
+
+                            // Prominent Cancel Button when authenticating
+                            ActionPill {
+                                id: headerCancelBtn
+                                visible: root.isAuthenticating
+                                text: "Cancel"
+                                icon: "close"
+                                iconSize: 13
+                                variant: "danger"
+                                fixedHeight: 28
+                                pill: true
+                                fontPixelSize: 11
+                                fontWeight: Font.DemiBold
+                                paddingHorizontal: 12
+                                onClicked: {
+                                    root.cancelAuth();
                                 }
                             }
                         }
@@ -884,8 +696,8 @@ ColumnLayout {
                                 id: accDelegate
                                 required property var modelData
                                 Layout.fillWidth: true
-                                height: 38
-                                radius: 8
+                                height: 46
+                                radius: Theme.radiusSmall
                                 color: modelData.is_active ? Qt.alpha(Colors.primary, 0.08) : (accRowHover.containsMouse ? Colors.pillHover : Colors.surfaceContainerHighest)
                                 border.color: modelData.is_active ? Qt.alpha(Colors.primary, 0.3) : Theme.borderSubtle
                                 border.width: 1
@@ -900,93 +712,114 @@ ColumnLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: 12
                                     anchors.rightMargin: 12
-                                    spacing: 8
+                                    spacing: 10
 
                                     MaterialIcon {
+                                        Layout.alignment: Qt.AlignVCenter
                                         text: modelData.is_active ? "check_circle" : "account_circle"
-                                        size: 16
+                                        size: 18
                                         color: modelData.is_active ? "#10B981" : Colors.m3onSurfaceVariant
                                     }
 
                                     ColumnLayout {
-                                        spacing: 1
+                                        Layout.alignment: Qt.AlignVCenter
                                         Layout.fillWidth: true
+                                        Layout.minimumWidth: 120
+                                        Layout.maximumWidth: 99999
+                                        spacing: 2
 
                                         Text {
+                                            Layout.fillWidth: true
                                             text: modelData.identity || modelData.label
                                             font.family: Theme.fontFamily
-                                            font.pixelSize: 11
-                                            font.weight: modelData.is_active ? Font.Bold : Font.Normal
+                                            font.pixelSize: 12
+                                            font.weight: modelData.is_active ? Font.DemiBold : Font.Normal
                                             color: Colors.m3onSurface
                                             elide: Text.ElideRight
                                         }
 
                                         Text {
+                                            Layout.fillWidth: true
                                             visible: modelData.label && modelData.label !== modelData.identity
                                             text: modelData.label || ""
                                             font.family: Theme.fontFamily
-                                            font.pixelSize: 9
+                                            font.pixelSize: 10
                                             color: Colors.m3onSurfaceVariant
                                             elide: Text.ElideRight
                                         }
                                     }
 
-                                    // Active badge or Switch button
-                                    // Active badge or Switch button
-                                    ActionPill {
-                                        visible: modelData.is_active
-                                        text: "Active"
-                                        variant: "active"
-                                        pill: true
-                                        interactive: false
-                                        fontPixelSize: 9
-                                        fontWeight: Font.Bold
-                                        fixedHeight: 20
-                                        paddingHorizontal: 8
+                                    // Flexible spacer ensuring rightmost button columns lock to consistent positions
+                                    Item {
+                                        Layout.fillWidth: true
                                     }
 
+                                    // Column 1: Active Badge / Switch Button (Uniform 64px width)
                                     ActionPill {
-                                        visible: !modelData.is_active
-                                        text: "Switch"
-                                        variant: "secondary"
+                                        Layout.preferredWidth: 64
+                                        Layout.preferredHeight: 26
+                                        Layout.alignment: Qt.AlignVCenter
+                                        fixedWidth: 64
+                                        fixedHeight: 26
                                         pill: true
-                                        fontPixelSize: 9
-                                        fixedHeight: 20
-                                        paddingHorizontal: 8
+                                        variant: modelData.is_active ? "active" : "secondary"
+                                        text: modelData.is_active ? "Active" : "Switch"
+                                        interactive: !modelData.is_active && !root.isAuthenticating
+                                        opacity: (!modelData.is_active && root.isAuthenticating) ? 0.45 : 1.0
+                                        fontPixelSize: 11
+                                        fontWeight: Font.DemiBold
                                         onClicked: {
-                                            if (typeof AiTokenService !== "undefined") {
+                                            if (!modelData.is_active && !root.isAuthenticating && typeof AiTokenService !== "undefined") {
                                                 AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
                                             }
                                         }
                                     }
 
-                                    // Re-auth button
+                                    // Column 2: Re-auth / Cancel Button (Uniform 80px width)
                                     ActionPill {
-                                        icon: "vpn_key"
-                                        text: "Re-auth"
-                                        variant: "info"
+                                        readonly property bool isThisAccountAuthenticating: root.isAuthenticating && (root.authenticatingEmail && (root.authenticatingEmail.toLowerCase() === (modelData.identity || "").toLowerCase() || root.authenticatingEmail === modelData.id))
+
+                                        Layout.preferredWidth: 80
+                                        Layout.preferredHeight: 26
+                                        Layout.alignment: Qt.AlignVCenter
+                                        fixedWidth: 80
+                                        fixedHeight: 26
                                         pill: true
-                                        fontPixelSize: 9
-                                        fixedHeight: 20
-                                        paddingHorizontal: 8
-                                        spacing: 3
+                                        icon: isThisAccountAuthenticating ? "close" : "vpn_key"
+                                        iconSize: isThisAccountAuthenticating ? 13 : 12
+                                        text: isThisAccountAuthenticating ? "Cancel" : "Re-auth"
+                                        variant: isThisAccountAuthenticating ? "danger" : "info"
+                                        fontPixelSize: 11
+                                        fontWeight: Font.DemiBold
+                                        opacity: (root.isAuthenticating && !isThisAccountAuthenticating) ? 0.45 : 1.0
+                                        interactive: !root.isAuthenticating || isThisAccountAuthenticating
                                         onClicked: {
-                                            if (typeof AiTokenService !== "undefined") {
+                                            if (isThisAccountAuthenticating) {
+                                                root.cancelAuth();
+                                            } else if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
                                                 AiTokenService.loginGemini(modelData.identity);
                                             }
                                         }
                                     }
 
-                                    // Remove button
+                                    // Column 3: Remove Button (Uniform 82px width)
                                     ActionPill {
-                                        icon: "delete_outline"
-                                        variant: "danger"
+                                        Layout.preferredWidth: 82
+                                        Layout.preferredHeight: 26
+                                        Layout.alignment: Qt.AlignVCenter
+                                        fixedWidth: 82
+                                        fixedHeight: 26
                                         pill: true
-                                        fixedWidth: 20
-                                        fixedHeight: 20
+                                        icon: "delete_outline"
                                         iconSize: 13
+                                        text: "Remove"
+                                        variant: "danger"
+                                        fontPixelSize: 11
+                                        fontWeight: Font.DemiBold
+                                        opacity: root.isAuthenticating ? 0.45 : 1.0
+                                        interactive: !root.isAuthenticating
                                         onClicked: {
-                                            if (typeof AiTokenService !== "undefined") {
+                                            if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
                                                 AiTokenService.removeAccount("gemini", modelData.id || modelData.identity);
                                             }
                                         }
