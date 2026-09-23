@@ -160,7 +160,10 @@
     "pollIntervalMinutes": 5,
     "warningThresholdPercent": 80,
     "criticalThresholdPercent": 95,
-    "dockPillMode": "dynamic"
+    "dockPillMode": "dynamic",
+    "geminiMonthlyEnabled": true,
+    "geminiMonthlyRemainingPercent": 85.0,
+    "geminiMonthlyResetDay": 1
   },
   "media": {
     "visualizerStyle": "radial"

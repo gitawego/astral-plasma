@@ -177,6 +177,9 @@ Singleton {
     readonly property real aiWarningThreshold: (root.settings && root.settings.ai && root.settings.ai.warningThresholdPercent !== undefined) ? root.settings.ai.warningThresholdPercent : 80.0
     readonly property real aiCriticalThreshold: (root.settings && root.settings.ai && root.settings.ai.criticalThresholdPercent !== undefined) ? root.settings.ai.criticalThresholdPercent : 95.0
     readonly property string aiDockPillMode: (root.settings && root.settings.ai && root.settings.ai.dockPillMode) ? root.settings.ai.dockPillMode : "dynamic"
+    readonly property bool aiGeminiMonthlyEnabled: (root.settings && root.settings.ai && root.settings.ai.geminiMonthlyEnabled !== undefined) ? root.settings.ai.geminiMonthlyEnabled : true
+    readonly property real aiGeminiMonthlyRemainingPercent: (root.settings && root.settings.ai && root.settings.ai.geminiMonthlyRemainingPercent !== undefined) ? root.settings.ai.geminiMonthlyRemainingPercent : 85.0
+    readonly property int aiGeminiMonthlyResetDay: (root.settings && root.settings.ai && root.settings.ai.geminiMonthlyResetDay !== undefined) ? root.settings.ai.geminiMonthlyResetDay : 1
 
     // Theme getters
     readonly property bool isDarkMode: root.settings.theme ? (root.settings.theme.darkMode ?? (root.settings.theme.mode !== "light")) : true
@@ -367,6 +370,27 @@ Singleton {
         updateSettings(cfg => {
             if (!cfg.ai) cfg.ai = {};
             cfg.ai.pollIntervalMinutes = minutes;
+        });
+    }
+
+    function setAiGeminiMonthlyEnabled(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.ai) cfg.ai = {};
+            cfg.ai.geminiMonthlyEnabled = enabled;
+        });
+    }
+
+    function setAiGeminiMonthlyRemainingPercent(percent) {
+        updateSettings(cfg => {
+            if (!cfg.ai) cfg.ai = {};
+            cfg.ai.geminiMonthlyRemainingPercent = percent;
+        });
+    }
+
+    function setAiGeminiMonthlyResetDay(day) {
+        updateSettings(cfg => {
+            if (!cfg.ai) cfg.ai = {};
+            cfg.ai.geminiMonthlyResetDay = day;
         });
     }
 

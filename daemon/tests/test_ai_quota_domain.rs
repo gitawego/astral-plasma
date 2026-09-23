@@ -345,4 +345,18 @@ fn test_parse_google_retrieve_user_quota_summary_direct() {
     assert_eq!(w_weekly.reset_at.as_deref(), Some("2026-09-30T06:22:36Z"));
 }
 
+#[test]
+fn test_compute_next_monthly_reset_iso() {
+    // 1727103728000 is 2024-09-23T15:02:08Z
+    let now_ms = 1727103728000;
+    // Current day is 23. If reset day is 1, next reset is 2024-10-01T00:00:00Z
+    assert_eq!(compute_next_monthly_reset_iso(now_ms, 1), "2024-10-01T00:00:00Z");
+    // If reset day is 25, current day 23 < 25, next reset is 2024-09-25T00:00:00Z
+    assert_eq!(compute_next_monthly_reset_iso(now_ms, 25), "2024-09-25T00:00:00Z");
+    // Clamp to 28 (today 23 < 28, so still this month)
+    assert_eq!(compute_next_monthly_reset_iso(now_ms, 31), "2024-09-28T00:00:00Z");
+    // If reset day was 20 (today 23 >= 20, so next month)
+    assert_eq!(compute_next_monthly_reset_iso(now_ms, 20), "2024-10-20T00:00:00Z");
+}
+
 

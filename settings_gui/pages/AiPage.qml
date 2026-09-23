@@ -14,6 +14,9 @@ ColumnLayout {
     property real testWarningThreshold: 80
     property real testCriticalThreshold: 95
     property int testPollInterval: 5
+    property bool testGeminiMonthlyEnabled: true
+    property real testGeminiMonthlyRemainingPercent: 85.0
+    property int testGeminiMonthlyResetDay: 1
     property var testProviders: null
 
     readonly property bool aiEnabled: testMode ? testAiEnabled : ((typeof Config !== "undefined") ? Config.aiEnabled : true)
@@ -21,6 +24,9 @@ ColumnLayout {
     readonly property real warningThreshold: testMode ? testWarningThreshold : ((typeof Config !== "undefined") ? Config.aiWarningThreshold : 80)
     readonly property real criticalThreshold: testMode ? testCriticalThreshold : ((typeof Config !== "undefined") ? Config.aiCriticalThreshold : 95)
     readonly property int pollInterval: testMode ? testPollInterval : ((typeof Config !== "undefined") ? Config.aiPollIntervalMinutes : 5)
+    readonly property bool geminiMonthlyEnabled: testMode ? testGeminiMonthlyEnabled : ((typeof Config !== "undefined" && Config.aiGeminiMonthlyEnabled !== undefined) ? Config.aiGeminiMonthlyEnabled : true)
+    readonly property real geminiMonthlyRemainingPercent: testMode ? testGeminiMonthlyRemainingPercent : ((typeof Config !== "undefined" && Config.aiGeminiMonthlyRemainingPercent !== undefined) ? Config.aiGeminiMonthlyRemainingPercent : 85.0)
+    readonly property int geminiMonthlyResetDay: testMode ? testGeminiMonthlyResetDay : ((typeof Config !== "undefined" && Config.aiGeminiMonthlyResetDay !== undefined) ? Config.aiGeminiMonthlyResetDay : 1)
     readonly property var providersList: {
         if (testMode && testProviders !== null) return testProviders;
         if (typeof AiTokenService !== "undefined" && AiTokenService.providers) return AiTokenService.providers;
@@ -57,6 +63,30 @@ ColumnLayout {
             testPollInterval = mins;
         } else if (typeof Config !== "undefined") {
             Config.setAiPollInterval(mins);
+        }
+    }
+
+    function setGeminiMonthlyEnabled(v) {
+        if (testMode) {
+            testGeminiMonthlyEnabled = v;
+        } else if (typeof Config !== "undefined") {
+            Config.setAiGeminiMonthlyEnabled(v);
+        }
+    }
+
+    function setGeminiMonthlyRemainingPercent(p) {
+        if (testMode) {
+            testGeminiMonthlyRemainingPercent = p;
+        } else if (typeof Config !== "undefined") {
+            Config.setAiGeminiMonthlyRemainingPercent(p);
+        }
+    }
+
+    function setGeminiMonthlyResetDay(d) {
+        if (testMode) {
+            testGeminiMonthlyResetDay = d;
+        } else if (typeof Config !== "undefined") {
+            Config.setAiGeminiMonthlyResetDay(d);
         }
     }
 
@@ -168,10 +198,13 @@ ColumnLayout {
         border.color: Theme.borderSubtle
         border.width: 1
         implicitHeight: prefCol.implicitHeight + Theme.padLarge * 2
+        Layout.preferredHeight: implicitHeight
 
         ColumnLayout {
             id: prefCol
-            anchors.fill: parent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
             anchors.margins: Theme.padLarge
             spacing: 16
 
@@ -420,6 +453,234 @@ ColumnLayout {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     root.setPollInterval(modelData);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Gemini Monthly Quota (Config-Driven) Card
+    Rectangle {
+        Layout.fillWidth: true
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+        implicitHeight: geminiMonthlyCol.implicitHeight + Theme.padLarge * 2
+        Layout.preferredHeight: implicitHeight
+
+        ColumnLayout {
+            id: geminiMonthlyCol
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: Theme.padLarge
+            spacing: 16
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceMedium
+
+                MaterialIcon {
+                    text: "calendar_month"
+                    size: 24
+                    color: root.geminiMonthlyEnabled ? Colors.primary : Colors.m3onSurfaceVariant
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        text: "Gemini Monthly Quota (Config-Driven)"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 13
+                        font.weight: Font.Bold
+                        color: Colors.m3onSurface
+                    }
+
+                    Text {
+                        text: "Enables monthly quota tracking & schedule calculation for Google Gemini plans"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.m3onSurfaceVariant
+                    }
+                }
+
+                // Switch
+                Rectangle {
+                    width: 44
+                    height: 24
+                    radius: 12
+                    color: root.geminiMonthlyEnabled ? Colors.primary : Colors.surfaceContainerHighest
+                    border.color: root.geminiMonthlyEnabled ? Colors.primary : Theme.borderSubtle
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                    Rectangle {
+                        width: 18
+                        height: 18
+                        radius: 9
+                        color: root.geminiMonthlyEnabled ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: root.geminiMonthlyEnabled ? parent.width - width - 3 : 3
+
+                        Behavior on x {
+                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.setGeminiMonthlyEnabled(!root.geminiMonthlyEnabled);
+                        }
+                    }
+                }
+            }
+
+            // Controls visible when enabled
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 16
+                visible: root.geminiMonthlyEnabled
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Theme.borderSubtle
+                    opacity: 0.4
+                }
+
+                // Default Remaining Quota
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    RowLayout {
+                        Text {
+                            text: "Default Remaining Quota"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: Colors.m3onSurface
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: Math.round(root.geminiMonthlyRemainingPercent) + "% remaining"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.Bold
+                            color: ((100.0 - root.geminiMonthlyRemainingPercent) >= root.criticalThreshold)
+                                ? "#E05353"
+                                : (((100.0 - root.geminiMonthlyRemainingPercent) >= root.warningThreshold) ? "#F59E0B" : Colors.primary)
+                        }
+                    }
+
+                    RowLayout {
+                        spacing: 6
+                        Repeater {
+                            model: [50, 65, 75, 80, 85, 90, 95]
+                            delegate: Rectangle {
+                                required property int modelData
+                                height: 28
+                                Layout.fillWidth: true
+                                radius: 14
+                                color: Math.round(root.geminiMonthlyRemainingPercent) === modelData ? Colors.primary : Colors.surfaceContainerHighest
+                                border.color: Math.round(root.geminiMonthlyRemainingPercent) === modelData ? Colors.primary : Theme.borderSubtle
+                                border.width: 1
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData + "%"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: Math.round(root.geminiMonthlyRemainingPercent) === modelData ? Font.Bold : Font.Normal
+                                    color: Math.round(root.geminiMonthlyRemainingPercent) === modelData ? Colors.textOnPrimary : Colors.m3onSurface
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.setGeminiMonthlyRemainingPercent(modelData);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Theme.borderSubtle
+                    opacity: 0.4
+                }
+
+                // Monthly Reset Day
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    RowLayout {
+                        Text {
+                            text: "Monthly Reset Day of Month"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: Colors.m3onSurface
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: "Day " + root.geminiMonthlyResetDay + " of every month"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            color: Colors.m3onSurfaceVariant
+                        }
+                    }
+
+                    RowLayout {
+                        spacing: 6
+                        Repeater {
+                            model: [
+                                { day: 1, label: "1st" },
+                                { day: 5, label: "5th" },
+                                { day: 10, label: "10th" },
+                                { day: 15, label: "15th" },
+                                { day: 20, label: "20th" },
+                                { day: 25, label: "25th" },
+                                { day: 28, label: "28th" }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                height: 28
+                                Layout.fillWidth: true
+                                radius: 14
+                                color: root.geminiMonthlyResetDay === modelData.day ? Colors.primary : Colors.surfaceContainerHighest
+                                border.color: root.geminiMonthlyResetDay === modelData.day ? Colors.primary : Theme.borderSubtle
+                                border.width: 1
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: root.geminiMonthlyResetDay === modelData.day ? Font.Bold : Font.Normal
+                                    color: root.geminiMonthlyResetDay === modelData.day ? Colors.textOnPrimary : Colors.m3onSurface
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.setGeminiMonthlyResetDay(modelData.day);
+                                    }
                                 }
                             }
                         }

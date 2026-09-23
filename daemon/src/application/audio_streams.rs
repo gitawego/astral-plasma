@@ -32,7 +32,7 @@ pub fn parse_audible_streams(output: &str) -> Vec<AudioStream> {
     let mut corked = false;
     let mut muted = false;
 
-    let mut flush = |stream: &mut Option<AudioStream>, corked: &mut bool, muted: &mut bool, out: &mut Vec<AudioStream>| {
+    let flush = |stream: &mut Option<AudioStream>, corked: &mut bool, muted: &mut bool, out: &mut Vec<AudioStream>| {
         if let Some(stream) = stream.take() {
             if !*corked && !*muted && (!stream.name.is_empty() || !stream.binary.is_empty()) {
                 out.push(stream);

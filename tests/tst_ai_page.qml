@@ -76,6 +76,22 @@ Item {
         aiPage.setPollInterval(10);
         assert(aiPage.pollInterval === 10, "Poll interval must update to 10m");
 
+        // 6. Gemini Monthly Quota settings
+        assert(aiPage.geminiMonthlyEnabled === true, "Gemini monthly tracking must start enabled");
+        assert(aiPage.geminiMonthlyRemainingPercent === 85.0, "Gemini monthly remaining % must start at 85");
+        assert(aiPage.geminiMonthlyResetDay === 1, "Gemini monthly reset day must start at 1");
+
+        aiPage.setGeminiMonthlyEnabled(false);
+        assert(aiPage.geminiMonthlyEnabled === false, "Gemini monthly tracking must be disabled after toggle");
+        aiPage.setGeminiMonthlyEnabled(true);
+        assert(aiPage.geminiMonthlyEnabled === true, "Gemini monthly tracking must be re-enabled");
+
+        aiPage.setGeminiMonthlyRemainingPercent(75.0);
+        assert(aiPage.geminiMonthlyRemainingPercent === 75.0, "Gemini monthly remaining % must update to 75");
+
+        aiPage.setGeminiMonthlyResetDay(15);
+        assert(aiPage.geminiMonthlyResetDay === 15, "Gemini monthly reset day must update to 15");
+
         console.log("PASS: AI Settings Page Unit Tests");
         Qt.exit(0);
     }

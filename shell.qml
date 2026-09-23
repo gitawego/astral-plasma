@@ -61,6 +61,9 @@ ShellRoot {
         function setPage(page: string): void {
             Config.activeSettingsPage = page;
         }
+        function scroll(y: real): void {
+            settingsWindow.scrollTo(y);
+        }
     }
 
     IpcHandler {
@@ -261,6 +264,7 @@ ShellRoot {
 
     // Settings GUI Window
     SettingsWindow {
+        id: settingsWindow
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
 

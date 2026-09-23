@@ -479,7 +479,9 @@ Item {
 
                                 Text {
                                     visible: modelData.five_hour_remaining_percent !== null && modelData.five_hour_remaining_percent !== undefined
-                                    text: Math.round(modelData.five_hour_remaining_percent) + "%" + ((modelData.weekly_remaining_percent !== null && modelData.weekly_remaining_percent !== undefined) ? (" · " + Math.round(modelData.weekly_remaining_percent) + "%") : "")
+                                    text: Math.round(modelData.five_hour_remaining_percent) + "%"
+                                        + ((modelData.weekly_remaining_percent !== null && modelData.weekly_remaining_percent !== undefined) ? (" · " + Math.round(modelData.weekly_remaining_percent) + "%") : "")
+                                        + ((modelData.monthly_remaining_percent !== null && modelData.monthly_remaining_percent !== undefined) ? (" · " + Math.round(modelData.monthly_remaining_percent) + "%") : "")
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 10
                                     font.weight: Font.DemiBold

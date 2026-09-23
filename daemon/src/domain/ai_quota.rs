@@ -17,6 +17,8 @@ pub struct ProviderAccount {
     pub plan_type: Option<String>,
     pub five_hour_remaining_percent: Option<f64>,
     pub weekly_remaining_percent: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monthly_remaining_percent: Option<f64>,
     #[serde(default)]
     pub windows: Vec<QuotaWindow>,
 }
@@ -292,6 +294,33 @@ pub fn epoch_millis_to_rfc3339(ms: i64) -> String {
     format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, hours, mins, s)
 }
 
+/// Computes the next monthly reset timestamp in ISO-8601 UTC string format given epoch milliseconds and reset day of the month (1-28).
+pub fn compute_next_monthly_reset_iso(now_ms: i64, reset_day: u32) -> String {
+    let day_clamped = reset_day.clamp(1, 28);
+    let secs = now_ms / 1000;
+    let days = secs / 86400;
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let cur_d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let cur_m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let cur_y = if cur_m <= 2 { y + 1 } else { y };
+
+    let (next_y, next_m) = if cur_d < day_clamped {
+        (cur_y, cur_m)
+    } else if cur_m == 12 {
+        (cur_y + 1, 1)
+    } else {
+        (cur_y, cur_m + 1)
+    };
+
+    format!("{:04}-{:02}-{:02}T00:00:00Z", next_y, next_m, day_clamped)
+}
+
 /// Generic parser for coding_plan/remains endpoints (MiniMax, Xiaomi MiMo).
 pub fn parse_coding_plan_remains(
     provider_id: &str,
@@ -518,6 +547,7 @@ pub fn parse_token_tracker_quotas(
                     plan_type: a.get("plan_type").and_then(|pt| pt.as_str()).map(|s| s.to_string()),
                     five_hour_remaining_percent: five_hr,
                     weekly_remaining_percent: weekly,
+                    monthly_remaining_percent: None,
                     windows: acc_windows,
                 });
             }

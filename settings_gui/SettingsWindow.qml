@@ -190,8 +190,13 @@ PanelWindow {
 
         // The Modular Nexus Settings Hub
         NexusHub {
+            id: nexusHub
             anchors.fill: parent
             onCloseRequested: Config.settingsVisible = false
         }
+    }
+
+    function scrollTo(y) {
+        nexusHub.scrollTo(y);
     }
 }

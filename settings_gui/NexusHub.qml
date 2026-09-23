@@ -40,6 +40,10 @@ Item {
         }
     }
 
+    function scrollTo(y) {
+        pageFlickable.contentY = y;
+    }
+
     readonly property bool canGoBack: pageHistory.length > 0
 
     // Categories structure
@@ -272,12 +276,22 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     contentWidth: width
-                    contentHeight: pageLoader.implicitHeight
+                    contentHeight: Math.max(height, pageLoader.item ? pageLoader.item.implicitHeight : pageLoader.implicitHeight)
                     clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    WheelHandler {
+                        target: pageFlickable
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: (event) => {
+                            pageFlickable.contentY = Math.max(0, Math.min(pageFlickable.contentHeight - pageFlickable.height, pageFlickable.contentY - event.angleDelta.y));
+                        }
+                    }
 
                     Loader {
                         id: pageLoader
                         width: parent.width
+                        height: item ? item.implicitHeight : implicitHeight
                         sourceComponent: {
                             switch (root.activePage) {
                                 case "wallpaper":
@@ -295,6 +309,25 @@ Item {
                                 default: return wallpaperPageComp;
                             }
                         }
+                    }
+
+                    // Slim Material 3 Scroll Indicator
+                    Rectangle {
+                        id: scrollBarIndicator
+                        anchors.right: parent.right
+                        anchors.rightMargin: 3
+                        y: pageFlickable.contentY + (pageFlickable.contentHeight > pageFlickable.height 
+                            ? (pageFlickable.contentY / pageFlickable.contentHeight) * pageFlickable.height 
+                            : 0)
+                        width: 4
+                        height: pageFlickable.contentHeight > pageFlickable.height 
+                            ? Math.max(28, (pageFlickable.height / pageFlickable.contentHeight) * pageFlickable.height) 
+                            : 0
+                        radius: 2
+                        color: Colors.primary
+                        opacity: pageFlickable.moving || pageFlickable.contentHeight > pageFlickable.height ? 0.45 : 0.0
+                        visible: pageFlickable.contentHeight > pageFlickable.height
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
                     }
                 }
             }
