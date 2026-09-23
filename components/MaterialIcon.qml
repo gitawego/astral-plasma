@@ -10,10 +10,12 @@ Item {
     property color color: Colors.m3onSurface
     property int size: 18
 
-    implicitWidth: size
-    implicitHeight: size
-    width: size
-    height: size
+    readonly property bool hasIcon: displaySymbol !== "" || resolvedIconUrl !== ""
+    visible: hasIcon
+    implicitWidth: hasIcon ? size : 0
+    implicitHeight: hasIcon ? size : 0
+    width: hasIcon ? size : 0
+    height: hasIcon ? size : 0
 
     // Map common material names to clean symbols/unicode or Nerd Font glyphs
     readonly property var symbolMap: ({
@@ -171,7 +173,25 @@ Item {
         "radio_button_checked": "󰗌",
         "radio_button_unchecked": "󰄰",
         "check_box": "󰄲",
-        "check_box_outline_blank": "󰄱"
+        "check_box_outline_blank": "󰄱",
+        "add": "󰐕",
+        "plus": "󰐕",
+        "remove": "󰐖",
+        "minus": "󰐖",
+        "delete": "󰆴",
+        "delete_outline": "󰆴",
+        "trash": "󰆴",
+        "vpn_key": "󰌆",
+        "key": "󰌆",
+        "check_circle": "󰄳",
+        "check_circle_outline": "󰄳",
+        "account_circle": "󰀉",
+        "person": "󰀄",
+        "user": "󰀄",
+        "manage_accounts": "󰀋",
+        "edit": "󰏫",
+        "warning": "󰀦",
+        "error": "󰅚"
     })
 
     readonly property string displaySymbol: {
@@ -183,6 +203,11 @@ Item {
         if (text && (text.includes("psychology") || text.includes("brain") || text === "ai")) return "󰧑";
         if (text && (text.includes("spark") || text.includes("auto_awesome"))) return "󰄧";
         if (text && (text.includes("token") || text.includes("toll") || text.includes("coin"))) return "󰇂";
+        if (text && (text === "add" || text.includes("plus"))) return "󰐕";
+        if (text && (text.includes("key") || text.includes("vpn_key"))) return "󰌆";
+        if (text && (text.includes("delete") || text.includes("trash"))) return "󰆴";
+        if (text && (text.includes("check_circle") || text === "check")) return "󰄳";
+        if (text && (text.includes("account") || text.includes("person") || text.includes("user"))) return "󰀉";
         return "";
     }
 

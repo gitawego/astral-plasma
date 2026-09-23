@@ -342,24 +342,15 @@ Item {
                         elide: Text.ElideRight
                     }
 
-                    Rectangle {
+                    ActionPill {
                         visible: root.currentProvider && !!root.currentProvider.plan_type
-                        height: 18
-                        implicitWidth: planText.implicitWidth + 10
-                        radius: 9
-                        color: Qt.alpha(Colors.primary, 0.15)
-                        border.color: Qt.alpha(Colors.primary, 0.3)
-                        border.width: 1
-
-                        Text {
-                            id: planText
-                            anchors.centerIn: parent
-                            text: root.currentProvider ? (root.currentProvider.plan_type || "") : ""
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            font.weight: Font.DemiBold
-                            color: Colors.primary
-                        }
+                        text: root.currentProvider ? (root.currentProvider.plan_type || "") : ""
+                        variant: "active"
+                        pill: true
+                        interactive: false
+                        fontPixelSize: 10
+                        fixedHeight: 18
+                        paddingHorizontal: 8
                     }
                 }
 
@@ -415,86 +406,34 @@ Item {
                         Item { Layout.fillWidth: true }
 
                         // + Add button
-                        Rectangle {
-                            height: 18
-                            implicitWidth: addAccTxt.implicitWidth + 12
-                            radius: 4
-                            color: addAccMouse.containsMouse ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.primary, 0.1)
-                            border.color: addAccMouse.containsMouse ? Colors.primary : Qt.alpha(Colors.primary, 0.3)
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 2
-
-                                MaterialIcon {
-                                    text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "sync" : "add"
-                                    size: 10
-                                    color: Colors.primary
-                                }
-
-                                Text {
-                                    id: addAccTxt
-                                    text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "Signing in..." : "Add"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 9
-                                    font.weight: Font.Bold
-                                    color: Colors.primary
-                                }
-                            }
-
-                            MouseArea {
-                                id: addAccMouse
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                hoverEnabled: true
-                                onClicked: {
-                                    if (typeof AiTokenService !== "undefined") {
-                                        AiTokenService.loginGemini("");
-                                    }
+                        ActionPill {
+                            icon: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "sync" : "add"
+                            text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "Signing in..." : "Add"
+                            variant: "active"
+                            fontPixelSize: 9
+                            fixedHeight: 20
+                            paddingHorizontal: 8
+                            spacing: 3
+                            onClicked: {
+                                if (typeof AiTokenService !== "undefined") {
+                                    AiTokenService.loginGemini("");
                                 }
                             }
                         }
 
                         // Manage in Settings button
-                        Rectangle {
-                            height: 18
-                            implicitWidth: manageAccTxt.implicitWidth + 10
-                            radius: 4
-                            color: manageAccMouse.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainerHigh
-                            border.color: manageAccMouse.containsMouse ? Colors.primary : Theme.borderSubtle
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 2
-
-                                MaterialIcon {
-                                    text: "settings"
-                                    size: 9
-                                    color: manageAccMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
-                                }
-
-                                Text {
-                                    id: manageAccTxt
-                                    text: "Manage"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 9
-                                    font.weight: Font.Medium
-                                    color: manageAccMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
-                                }
-                            }
-
-                            MouseArea {
-                                id: manageAccMouse
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                hoverEnabled: true
-                                onClicked: {
-                                    if (typeof Config !== "undefined") {
-                                        Config.activeSettingsPage = "ai";
-                                        Config.settingsVisible = true;
-                                    }
+                        ActionPill {
+                            icon: "settings"
+                            text: "Manage"
+                            variant: "secondary"
+                            fontPixelSize: 9
+                            fixedHeight: 20
+                            paddingHorizontal: 8
+                            spacing: 3
+                            onClicked: {
+                                if (typeof Config !== "undefined") {
+                                    Config.activeSettingsPage = "ai";
+                                    Config.settingsVisible = true;
                                 }
                             }
                         }
@@ -576,61 +515,35 @@ Item {
                                         : ((modelData.five_hour_remaining_percent <= 50) ? "#F59E0B" : "#22C55E")
                                 }
 
-                                // Status Badge / Switch Button: Fixed width 44px container for strict tabular alignment
+                                // Status Badge / Switch Button: Fixed width 46px container for strict tabular alignment
                                 Item {
-                                    Layout.preferredWidth: 44
+                                    Layout.preferredWidth: 46
                                     Layout.preferredHeight: 18
                                     Layout.alignment: Qt.AlignVCenter
 
                                     // Active pill if active
-                                    Rectangle {
+                                    ActionPill {
                                         visible: accRow.isAccountActive
                                         anchors.fill: parent
-                                        radius: 4
-                                        color: Qt.alpha(Colors.primary, 0.15)
-                                        border.color: Qt.alpha(Colors.primary, 0.35)
-                                        border.width: 1
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "Active"
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 9
-                                            font.weight: Font.Bold
-                                            color: Colors.primary
-                                        }
+                                        text: "Active"
+                                        variant: "active"
+                                        fontPixelSize: 9
+                                        fontWeight: Font.Bold
+                                        interactive: false
                                     }
 
                                     // Switch button if inactive
-                                    Rectangle {
+                                    ActionPill {
                                         id: switchBtn
                                         visible: !accRow.isAccountActive
                                         anchors.fill: parent
-                                        radius: 4
-                                        color: switchMouse.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainerHigh
-                                        border.color: switchMouse.containsMouse ? Colors.primary : Theme.borderSubtle
-                                        border.width: 1
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "Switch"
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 9
-                                            font.weight: Font.DemiBold
-                                            color: switchMouse.containsMouse ? Colors.primary : Colors.m3onSurface
-                                        }
-
-                                        MouseArea {
-                                            id: switchMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: (mouse) => {
-                                                mouse.accepted = true;
-                                                root.selectedAccountIdentity = modelData.identity || modelData.id;
-                                                if (typeof AiTokenService !== "undefined") {
-                                                    AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
-                                                }
+                                        text: "Switch"
+                                        variant: "secondary"
+                                        fontPixelSize: 9
+                                        onClicked: {
+                                            root.selectedAccountIdentity = modelData.identity || modelData.id;
+                                            if (typeof AiTokenService !== "undefined") {
+                                                AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
                                             }
                                         }
                                     }
@@ -657,85 +570,33 @@ Item {
                         }
 
                         // Re-auth button
-                        Rectangle {
-                            height: 20
-                            implicitWidth: reauthRowTxt.implicitWidth + 14
-                            radius: 4
-                            color: reauthRowMouse.containsMouse ? Qt.alpha("#3B82F6", 0.25) : Qt.alpha("#3B82F6", 0.1)
-                            border.color: reauthRowMouse.containsMouse ? "#3B82F6" : Qt.alpha("#3B82F6", 0.3)
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 3
-
-                                MaterialIcon {
-                                    text: "vpn_key"
-                                    size: 10
-                                    color: "#3B82F6"
-                                }
-
-                                Text {
-                                    id: reauthRowTxt
-                                    text: "Re-auth"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 9
-                                    font.weight: Font.DemiBold
-                                    color: "#3B82F6"
-                                }
-                            }
-
-                            MouseArea {
-                                id: reauthRowMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (typeof AiTokenService !== "undefined" && root.selectedAccount) {
-                                        AiTokenService.loginGemini(root.selectedAccount.identity || "");
-                                    }
+                        ActionPill {
+                            icon: "vpn_key"
+                            text: "Re-auth"
+                            variant: "info"
+                            fontPixelSize: 9
+                            fixedHeight: 20
+                            paddingHorizontal: 8
+                            spacing: 3
+                            onClicked: {
+                                if (typeof AiTokenService !== "undefined" && root.selectedAccount) {
+                                    AiTokenService.loginGemini(root.selectedAccount.identity || "");
                                 }
                             }
                         }
 
                         // Remove button
-                        Rectangle {
-                            height: 20
-                            implicitWidth: delRowTxt.implicitWidth + 14
-                            radius: 4
-                            color: delRowMouse.containsMouse ? Qt.alpha("#EF4444", 0.25) : Qt.alpha("#EF4444", 0.1)
-                            border.color: delRowMouse.containsMouse ? "#EF4444" : Qt.alpha("#EF4444", 0.3)
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 3
-
-                                MaterialIcon {
-                                    text: "delete_outline"
-                                    size: 11
-                                    color: "#EF4444"
-                                }
-
-                                Text {
-                                    id: delRowTxt
-                                    text: "Remove"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 9
-                                    font.weight: Font.DemiBold
-                                    color: "#EF4444"
-                                }
-                            }
-
-                            MouseArea {
-                                id: delRowMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (typeof AiTokenService !== "undefined" && root.selectedAccount) {
-                                        AiTokenService.removeAccount("gemini", root.selectedAccount.id || root.selectedAccount.identity);
-                                    }
+                        ActionPill {
+                            icon: "delete_outline"
+                            text: "Remove"
+                            variant: "danger"
+                            fontPixelSize: 9
+                            fixedHeight: 20
+                            paddingHorizontal: 8
+                            spacing: 3
+                            onClicked: {
+                                if (typeof AiTokenService !== "undefined" && root.selectedAccount) {
+                                    AiTokenService.removeAccount("gemini", root.selectedAccount.id || root.selectedAccount.identity);
                                 }
                             }
                         }
