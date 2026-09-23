@@ -25,8 +25,10 @@ PanelWindow {
     }
 
     mask: Region {
-        width: Config.settingsVisible ? root.width : 0
-        height: Config.settingsVisible ? root.height : 0
+        x: dialogBox.x
+        y: dialogBox.y
+        width: Config.settingsVisible ? dialogBox.width : 0
+        height: Config.settingsVisible ? dialogBox.height : 0
     }
 
     anchors {
@@ -36,7 +38,7 @@ PanelWindow {
         right: true
     }
 
-    color: Qt.rgba(0, 0, 0, 0.15) // Soft ambient scrim
+    color: "transparent" // Non-modal floating surface allows viewing and interacting with underlying windows
 
     // User-dragged position tracking and boundary clamping
     property bool userMoved: false
@@ -59,12 +61,6 @@ PanelWindow {
 
     onWidthChanged: if (userMoved) clampPosition()
     onHeightChanged: if (userMoved) clampPosition()
-
-    // Click backdrop to close
-    MouseArea {
-        anchors.fill: parent
-        onClicked: Config.settingsVisible = false
-    }
 
     // Modal dialog box (Sculpted Liquid Glass)
     Rectangle {

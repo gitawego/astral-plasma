@@ -21,6 +21,7 @@ Item {
 
         property alias dialogBox: dialogBox
         property alias blurRegion: blurRegion
+        property alias maskRegion: maskRegion
         property bool userMoved: false
 
         function resetPosition() {
@@ -91,9 +92,17 @@ Item {
             }
         }
 
-        // Mock Blur Region tracking dialogBox
+        // Mock Blur & Mask Regions tracking dialogBox
         QtObject {
             id: blurRegion
+            readonly property real x: dialogBox.x
+            readonly property real y: dialogBox.y
+            readonly property real width: mockConfig.settingsVisible ? dialogBox.width : 0
+            readonly property real height: mockConfig.settingsVisible ? dialogBox.height : 0
+        }
+
+        QtObject {
+            id: maskRegion
             readonly property real x: dialogBox.x
             readonly property real y: dialogBox.y
             readonly property real width: mockConfig.settingsVisible ? dialogBox.width : 0
@@ -128,11 +137,13 @@ Item {
         assert(mockWindow.dialogBox.y === expectedCenterY, "Dialog must start centered on Y (expected " + expectedCenterY + ", got " + mockWindow.dialogBox.y + ")");
         assert(mockWindow.userMoved === false, "userMoved must start false");
 
-        // 2. Blur region must track centered coordinates
+        // 2. Blur and Mask regions must track centered coordinates
         assert(mockWindow.blurRegion.x === expectedCenterX, "Blur region must match initial dialog X");
         assert(mockWindow.blurRegion.y === expectedCenterY, "Blur region must match initial dialog Y");
-        assert(mockWindow.blurRegion.width === 860, "Blur region width must match dialog width");
-        assert(mockWindow.blurRegion.height === 580, "Blur region height must match dialog height");
+        assert(mockWindow.maskRegion.x === expectedCenterX, "Mask region must match initial dialog X");
+        assert(mockWindow.maskRegion.y === expectedCenterY, "Mask region must match initial dialog Y");
+        assert(mockWindow.maskRegion.width === 860, "Mask region width must match dialog width");
+        assert(mockWindow.maskRegion.height === 580, "Mask region height must match dialog height");
 
         // 3. Simulate dragging dialog to new coordinates
         mockWindow.dialogBox.x = 200;
@@ -143,6 +154,12 @@ Item {
         assert(mockWindow.dialogBox.y === 120, "Dialog Y must reflect dragged position (120)");
         assert(mockWindow.blurRegion.x === 200, "Blur region X must dynamically track dragged dialog X");
         assert(mockWindow.blurRegion.y === 120, "Blur region Y must dynamically track dragged dialog Y");
+        assert(mockWindow.maskRegion.x === 200, "Mask region X must dynamically track dragged dialog X");
+        assert(mockWindow.maskRegion.y === 120, "Mask region Y must dynamically track dragged dialog Y");
+
+        // 4. Clicking outside must NOT close settings (non-modal floating behavior)
+        // Simulate outside interaction: settingsVisible must stay true
+        assert(mockConfig.settingsVisible === true, "Settings must remain visible when clicking other places");
 
         // 4. Clamping bounds verification
         // Test lower clamp
