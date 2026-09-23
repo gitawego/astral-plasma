@@ -650,6 +650,11 @@ impl AiQuotaAdapter {
         // Update .antigravity_last_active marker in accounts directory
         let _ = fs::write(dir.join(".antigravity_last_active"), &target_email);
 
+        // Invalidate cache so next poll is forced to fetch fresh metrics for the new account
+        if let Some(cache_path) = self.get_cache_file() {
+            let _ = fs::remove_file(cache_path);
+        }
+
         Ok(target_email)
     }
 

@@ -415,8 +415,16 @@ Item {
                     Repeater {
                         model: (root.currentProvider && root.currentProvider.accounts) ? root.currentProvider.accounts : []
                         delegate: Rectangle {
+                            id: accRow
                             required property var modelData
-                            readonly property bool isSelected: root.selectedAccount && (root.selectedAccount.identity === modelData.identity || root.selectedAccount.id === modelData.id)
+
+                            readonly property bool isAccountActive: (typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail)
+                                ? (modelData.identity.toLowerCase() === AiTokenService.activeGeminiEmail.toLowerCase() || modelData.id === AiTokenService.activeGeminiEmail)
+                                : modelData.is_active
+
+                            readonly property bool isSelected: root.selectedAccount
+                                ? (root.selectedAccount.identity === modelData.identity || root.selectedAccount.id === modelData.id)
+                                : isAccountActive
 
                             Layout.fillWidth: true
                             height: 28
@@ -424,27 +432,39 @@ Item {
                             color: isSelected
                                 ? Qt.alpha(Colors.primary, 0.12)
                                 : (accHover.containsMouse ? Colors.pillHover : "transparent")
-                            border.color: isSelected ? Colors.primary : (modelData.is_active ? Qt.alpha(Colors.primary, 0.3) : "transparent")
+                            border.color: isSelected ? Colors.primary : (isAccountActive ? Qt.alpha(Colors.primary, 0.3) : "transparent")
                             border.width: 1
+
+                            // Row background click area (inspect account without switching)
+                            MouseArea {
+                                id: accHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.selectedAccountIdentity = modelData.identity || modelData.id;
+                                }
+                            }
 
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.leftMargin: 8
                                 anchors.rightMargin: 8
                                 spacing: 6
+                                z: 1
 
                                 MaterialIcon {
-                                    text: modelData.is_active ? "check_circle" : "account_circle"
+                                    text: accRow.isAccountActive ? "check_circle" : "account_circle"
                                     size: 14
-                                    color: modelData.is_active ? "#22C55E" : Colors.m3onSurfaceVariant
+                                    color: accRow.isAccountActive ? "#22C55E" : Colors.m3onSurfaceVariant
                                 }
 
                                 Text {
                                     text: modelData.identity || modelData.label
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 11
-                                    font.weight: modelData.is_active ? Font.Bold : (isSelected ? Font.DemiBold : Font.Normal)
-                                    color: isSelected ? Colors.m3onSurface : (modelData.is_active ? Colors.primary : Colors.m3onSurfaceVariant)
+                                    font.weight: accRow.isAccountActive ? Font.Bold : (isSelected ? Font.DemiBold : Font.Normal)
+                                    color: isSelected ? Colors.m3onSurface : (accRow.isAccountActive ? Colors.primary : Colors.m3onSurfaceVariant)
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
                                 }
@@ -460,9 +480,9 @@ Item {
                                         : ((modelData.five_hour_remaining_percent <= 50) ? "#F59E0B" : "#22C55E")
                                 }
 
-                                // Status Badge: Active pill if active, or Switch button if inactive
+                                // Status Badge: Active pill if active
                                 Rectangle {
-                                    visible: modelData.is_active
+                                    visible: accRow.isAccountActive
                                     height: 18
                                     implicitWidth: activeLbl.implicitWidth + 10
                                     radius: 4
@@ -481,14 +501,17 @@ Item {
                                     }
                                 }
 
+                                // Switch button if inactive
                                 Rectangle {
-                                    visible: !modelData.is_active
+                                    id: switchBtn
+                                    visible: !accRow.isAccountActive
                                     height: 18
                                     implicitWidth: switchLbl.implicitWidth + 10
                                     radius: 4
                                     color: switchMouse.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainerHigh
-                                    border.color: Theme.borderSubtle
+                                    border.color: switchMouse.containsMouse ? Colors.primary : Theme.borderSubtle
                                     border.width: 1
+                                    z: 10
 
                                     Text {
                                         id: switchLbl
@@ -497,7 +520,7 @@ Item {
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 9
                                         font.weight: Font.DemiBold
-                                        color: Colors.m3onSurface
+                                        color: switchMouse.containsMouse ? Colors.primary : Colors.m3onSurface
                                     }
 
                                     MouseArea {
@@ -505,22 +528,14 @@ Item {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
+                                        onClicked: (mouse) => {
+                                            mouse.accepted = true;
+                                            root.selectedAccountIdentity = modelData.identity || modelData.id;
                                             if (typeof AiTokenService !== "undefined") {
-                                                AiTokenService.switchGeminiAccount(modelData.id || modelData.identity);
+                                                AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
                                             }
                                         }
                                     }
-                                }
-                            }
-
-                            MouseArea {
-                                id: accHover
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.selectedAccountIdentity = modelData.identity || modelData.id;
                                 }
                             }
                         }

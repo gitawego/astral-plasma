@@ -109,8 +109,24 @@ Singleton {
         id: switchProc
         stdout: StdioCollector {
             onStreamFinished: {
+                try {
+                    const text = this.text.trim();
+                    if (text) {
+                        const res = JSON.parse(text);
+                        if (res.success && res.account) {
+                            root.activeGeminiEmail = res.account;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("AiTokenService: switch-account output parse error:", e);
+                }
+                root.isRefreshing = false;
                 root.refresh(true);
             }
+        }
+        onExited: (code, status) => {
+            root.isRefreshing = false;
+            root.refresh(true);
         }
     }
 

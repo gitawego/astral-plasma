@@ -115,6 +115,13 @@ Item {
         aiSection.testWarningLevel = "critical";
         assert(aiSection.warningLevel === "critical", "warningLevel must update to critical");
 
+        // 8. Account switching and inspect separation
+        aiSection.activeProviderIndex = 0; // Back to gemini
+        assert(aiSection.currentProvider !== null && aiSection.currentProvider.accounts !== undefined, "currentProvider must have accounts");
+        assert(aiSection.currentProvider.accounts.length === 2, "Expected 2 gemini accounts in test data");
+        assert(aiSection.currentProvider.accounts[0].is_active === true, "First account must be active in test model");
+        assert(aiSection.currentProvider.accounts[1].is_active === false, "Second account must be inactive in test model");
+
         console.log("PASS: AI Popout and Section Unit Tests");
         Qt.exit(0);
     }
