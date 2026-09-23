@@ -16,6 +16,9 @@ Singleton {
     property string lastActiveProviderId: "gemini"
     property string fetchedAt: ""
     property bool isRefreshing: false
+    property bool isAuthenticating: false
+    property string authStatusMessage: ""
+    property string lastAuthError: ""
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
     readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
@@ -166,6 +169,81 @@ Singleton {
         switchProc.command = [root.daemonBin, "ai", "switch-account", "gemini", targetIdOrEmail];
         if (!switchProc.running) {
             switchProc.running = true;
+        }
+    }
+
+    Process {
+        id: loginProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.isAuthenticating = false;
+                try {
+                    const text = this.text.trim();
+                    if (text) {
+                        const res = JSON.parse(text);
+                        if (res.success && res.identity) {
+                            root.activeGeminiEmail = res.identity;
+                            root.authStatusMessage = "Signed in: " + res.identity;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("AiTokenService: login output parse error:", e);
+                }
+                root.refresh(true);
+            }
+        }
+    }
+
+    function loginGemini(emailHint) {
+        if (root.isAuthenticating) return;
+        root.isAuthenticating = true;
+        root.authStatusMessage = "Waiting for browser sign-in...";
+        root.lastAuthError = "";
+        let cmd = [root.daemonBin, "ai", "login", "gemini"];
+        if (emailHint && emailHint.trim().length > 0) {
+            cmd.push(emailHint.trim());
+        }
+        loginProc.command = cmd;
+        if (!loginProc.running) {
+            loginProc.running = true;
+        }
+    }
+
+    Process {
+        id: removeProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.refresh(true);
+            }
+        }
+    }
+
+    function removeAccount(provider, idOrEmail) {
+        if (!provider || !idOrEmail) return;
+        removeProc.command = [root.daemonBin, "ai", "remove-account", provider, idOrEmail];
+        if (!removeProc.running) {
+            removeProc.running = true;
+        }
+    }
+
+    Process {
+        id: addProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.refresh(true);
+            }
+        }
+    }
+
+    function addAccount(provider, credential, label) {
+        if (!provider || !credential) return;
+        let cmd = [root.daemonBin, "ai", "add-account", provider, credential];
+        if (label && label.trim().length > 0) {
+            cmd.push(label.trim());
+        }
+        addProc.command = cmd;
+        if (!addProc.running) {
+            addProc.running = true;
         }
     }
 

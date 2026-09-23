@@ -573,8 +573,47 @@ pub async fn run_cli() -> DynResult<()> {
                         std::process::exit(1);
                     }
                 }
+                "login" => {
+                    let provider = args.get(3).map(|s| s.as_str()).unwrap_or("gemini");
+                    let email_hint = args.get(4).map(|s| s.as_str());
+                    if provider == "gemini" {
+                        let res = ai_service.login_gemini_oauth(email_hint)?;
+                        println!("{}", res);
+                    } else {
+                        eprintln!("Interactive OAuth login is only supported for 'gemini'");
+                        std::process::exit(1);
+                    }
+                }
+                "remove-account" | "remove" => {
+                    if args.len() >= 5 {
+                        let provider = &args[3];
+                        let target = &args[4];
+                        let res = ai_service.remove_account(provider, target)?;
+                        println!(r#"{{"success":true,"provider":"{}","removed":"{}"}}"#, provider, res);
+                    } else {
+                        eprintln!("Usage: astral-plasma ai remove-account <provider> <id_or_email>");
+                        std::process::exit(1);
+                    }
+                }
+                "add-account" | "add" => {
+                    if args.len() >= 5 {
+                        let provider = &args[3];
+                        let credential = &args[4];
+                        let label = args.get(5).map(|s| s.as_str());
+                        let id = ai_service.add_account(provider, credential, label, false)?;
+                        println!(r#"{{"success":true,"provider":"{}","account_id":"{}"}}"#, provider, id);
+                    } else {
+                        eprintln!("Usage: astral-plasma ai add-account <provider> <credential> [label]");
+                        std::process::exit(1);
+                    }
+                }
+                "list-accounts" | "accounts" => {
+                    let provider = args.get(3).map(|s| s.as_str());
+                    let list = ai_service.list_accounts(provider)?;
+                    println!("{}", serde_json::to_string_pretty(&list)?);
+                }
                 _ => {
-                    eprintln!("Usage: astral-plasma ai <status|refresh|switch-account> [args...]");
+                    eprintln!("Usage: astral-plasma ai <status|refresh|switch-account|login|remove-account|add-account|list-accounts> [args...]");
                     std::process::exit(1);
                 }
             }

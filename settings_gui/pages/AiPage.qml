@@ -801,10 +801,262 @@ ColumnLayout {
                     // Account identity
                     Text {
                         visible: modelData.account_email !== null && modelData.account_email !== ""
-                        text: "Account: " + (modelData.account_email || "")
+                        text: "Active in CLI: " + (modelData.account_email || "")
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
                         color: Colors.m3onSurfaceVariant
+                    }
+
+                    // Configured Accounts Management (Gemini & Multi-Account Providers)
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: (modelData.provider_id === "gemini" || modelData.provider === "gemini")
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 1
+                            color: Theme.borderSubtle
+                            opacity: 0.4
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Text {
+                                text: "Configured Accounts"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                color: Colors.m3onSurface
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            // Sign In with Google Button
+                            Rectangle {
+                                height: 26
+                                implicitWidth: addBtnRow.implicitWidth + 16
+                                radius: 13
+                                color: addMouse.containsMouse ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.primary, 0.1)
+                                border.color: addMouse.containsMouse ? Colors.primary : Qt.alpha(Colors.primary, 0.3)
+                                border.width: 1
+
+                                RowLayout {
+                                    id: addBtnRow
+                                    anchors.centerIn: parent
+                                    spacing: 6
+
+                                    MaterialIcon {
+                                        text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "sync" : "add"
+                                        size: 14
+                                        color: Colors.primary
+                                    }
+
+                                    Text {
+                                        text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "Signing in..." : "Sign in with Google"
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        font.weight: Font.DemiBold
+                                        color: Colors.primary
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: addMouse
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        if (typeof AiTokenService !== "undefined") {
+                                            AiTokenService.loginGemini("");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Account Items Repeater
+                        Repeater {
+                            model: modelData.accounts || []
+                            delegate: Rectangle {
+                                id: accDelegate
+                                required property var modelData
+                                Layout.fillWidth: true
+                                height: 38
+                                radius: 8
+                                color: modelData.is_active ? Qt.alpha(Colors.primary, 0.08) : (accRowHover.containsMouse ? Colors.pillHover : Colors.surfaceContainerHighest)
+                                border.color: modelData.is_active ? Qt.alpha(Colors.primary, 0.3) : Theme.borderSubtle
+                                border.width: 1
+
+                                MouseArea {
+                                    id: accRowHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
+                                    spacing: 8
+
+                                    MaterialIcon {
+                                        text: modelData.is_active ? "check_circle" : "account_circle"
+                                        size: 16
+                                        color: modelData.is_active ? "#10B981" : Colors.m3onSurfaceVariant
+                                    }
+
+                                    ColumnLayout {
+                                        spacing: 1
+                                        Layout.fillWidth: true
+
+                                        Text {
+                                            text: modelData.identity || modelData.label
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 11
+                                            font.weight: modelData.is_active ? Font.Bold : Font.Normal
+                                            color: Colors.m3onSurface
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            visible: modelData.label && modelData.label !== modelData.identity
+                                            text: modelData.label || ""
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 9
+                                            color: Colors.m3onSurfaceVariant
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    // Active badge or Switch button
+                                    Rectangle {
+                                        visible: modelData.is_active
+                                        height: 20
+                                        implicitWidth: activeTxt.implicitWidth + 12
+                                        radius: 10
+                                        color: Qt.alpha(Colors.primary, 0.15)
+                                        border.color: Qt.alpha(Colors.primary, 0.4)
+                                        border.width: 1
+
+                                        Text {
+                                            id: activeTxt
+                                            anchors.centerIn: parent
+                                            text: "Active"
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                            color: Colors.primary
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        visible: !modelData.is_active
+                                        height: 20
+                                        implicitWidth: swTxt.implicitWidth + 12
+                                        radius: 10
+                                        color: swMouse.containsMouse ? Colors.primary : Colors.surfaceContainerHigh
+                                        border.color: swMouse.containsMouse ? Colors.primary : Theme.borderSubtle
+                                        border.width: 1
+
+                                        Text {
+                                            id: swTxt
+                                            anchors.centerIn: parent
+                                            text: "Switch"
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 9
+                                            font.weight: Font.DemiBold
+                                            color: swMouse.containsMouse ? Colors.textOnPrimary : Colors.m3onSurface
+                                        }
+
+                                        MouseArea {
+                                            id: swMouse
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            hoverEnabled: true
+                                            onClicked: {
+                                                if (typeof AiTokenService !== "undefined") {
+                                                    AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Re-auth button
+                                    Rectangle {
+                                        height: 20
+                                        implicitWidth: reauthTxt.implicitWidth + 10
+                                        radius: 10
+                                        color: reauthMouse.containsMouse ? Qt.alpha("#3B82F6", 0.2) : Qt.alpha("#3B82F6", 0.08)
+                                        border.color: reauthMouse.containsMouse ? "#3B82F6" : Qt.alpha("#3B82F6", 0.3)
+                                        border.width: 1
+
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 3
+
+                                            MaterialIcon {
+                                                text: "vpn_key"
+                                                size: 10
+                                                color: "#3B82F6"
+                                            }
+
+                                            Text {
+                                                id: reauthTxt
+                                                text: "Re-auth"
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 9
+                                                font.weight: Font.DemiBold
+                                                color: "#3B82F6"
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: reauthMouse
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            hoverEnabled: true
+                                            onClicked: {
+                                                if (typeof AiTokenService !== "undefined") {
+                                                    AiTokenService.loginGemini(modelData.identity);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Remove button
+                                    Rectangle {
+                                        height: 20
+                                        width: 20
+                                        radius: 10
+                                        color: delMouse.containsMouse ? Qt.alpha("#EF4444", 0.2) : "transparent"
+                                        border.color: delMouse.containsMouse ? "#EF4444" : "transparent"
+                                        border.width: 1
+
+                                        MaterialIcon {
+                                            anchors.centerIn: parent
+                                            text: "delete_outline"
+                                            size: 13
+                                            color: delMouse.containsMouse ? "#EF4444" : Colors.m3onSurfaceVariant
+                                        }
+
+                                        MouseArea {
+                                            id: delMouse
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            hoverEnabled: true
+                                            onClicked: {
+                                                if (typeof AiTokenService !== "undefined") {
+                                                    AiTokenService.removeAccount("gemini", modelData.id || modelData.identity);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Windows progress list

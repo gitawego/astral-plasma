@@ -35,10 +35,15 @@ Item {
         testProviders: [
             {
                 provider: "gemini",
+                provider_id: "gemini",
                 display_name: "Gemini (Antigravity)",
                 plan_type: "Pro Plan",
                 is_available: true,
                 account_email: "gitawego@gmail.com",
+                accounts: [
+                    { id: "acc_1", identity: "gitawego@gmail.com", label: "Work", is_active: true },
+                    { id: "acc_2", identity: "personal@gmail.com", label: "Personal", is_active: false }
+                ],
                 windows: [
                     { label: "5h", used_percent: 85.0, remaining_percent: 15.0, reset_at: "in 1 hour" }
                 ]
@@ -91,6 +96,13 @@ Item {
 
         aiPage.setGeminiMonthlyResetDay(15);
         assert(aiPage.geminiMonthlyResetDay === 15, "Gemini monthly reset day must update to 15");
+
+        // 7. Configured Accounts verification
+        assert(aiPage.providersList[0].accounts.length === 2, "Must have 2 configured accounts");
+        assert(aiPage.providersList[0].accounts[0].identity === "gitawego@gmail.com", "First account identity must match");
+        assert(aiPage.providersList[0].accounts[0].is_active === true, "First account must be active");
+        assert(aiPage.providersList[0].accounts[1].identity === "personal@gmail.com", "Second account identity must match");
+        assert(aiPage.providersList[0].accounts[1].is_active === false, "Second account must be inactive");
 
         console.log("PASS: AI Settings Page Unit Tests");
         Qt.exit(0);

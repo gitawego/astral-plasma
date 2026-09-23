@@ -387,11 +387,11 @@ Item {
                     }
                 }
 
-                // Gemini Account Switcher (if multiple accounts exist)
+                // Gemini Account Switcher & Manager
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 5
-                    visible: root.currentProvider && (root.currentProvider.provider_id === "gemini" || root.currentProvider.provider === "gemini") && root.currentProvider.accounts && root.currentProvider.accounts.length > 1
+                    visible: root.currentProvider && (root.currentProvider.provider_id === "gemini" || root.currentProvider.provider === "gemini") && root.currentProvider.accounts && root.currentProvider.accounts.length >= 1
 
                     Rectangle {
                         Layout.fillWidth: true
@@ -413,12 +413,46 @@ Item {
 
                         Item { Layout.fillWidth: true }
 
-                        Text {
-                            text: "Click to inspect"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 9
-                            color: Colors.m3onSurfaceVariant
-                            opacity: 0.8
+                        // + Add button
+                        Rectangle {
+                            height: 18
+                            implicitWidth: addAccTxt.implicitWidth + 12
+                            radius: 4
+                            color: addAccMouse.containsMouse ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.primary, 0.1)
+                            border.color: addAccMouse.containsMouse ? Colors.primary : Qt.alpha(Colors.primary, 0.3)
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 2
+
+                                MaterialIcon {
+                                    text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "sync" : "add"
+                                    size: 10
+                                    color: Colors.primary
+                                }
+
+                                Text {
+                                    id: addAccTxt
+                                    text: (typeof AiTokenService !== "undefined" && AiTokenService.isAuthenticating) ? "Signing in..." : "Add"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    color: Colors.primary
+                                }
+                            }
+
+                            MouseArea {
+                                id: addAccMouse
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                hoverEnabled: true
+                                onClicked: {
+                                    if (typeof AiTokenService !== "undefined") {
+                                        AiTokenService.loginGemini("");
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -545,6 +579,72 @@ Item {
                                             root.selectedAccountIdentity = modelData.identity || modelData.id;
                                             if (typeof AiTokenService !== "undefined") {
                                                 AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Re-auth button
+                                Rectangle {
+                                    id: reauthBtn
+                                    visible: accRow.isSelected || accHover.containsMouse
+                                    height: 18
+                                    width: 18
+                                    radius: 4
+                                    color: reauthMouse.containsMouse ? Qt.alpha("#3B82F6", 0.25) : "transparent"
+                                    border.color: reauthMouse.containsMouse ? "#3B82F6" : "transparent"
+                                    border.width: 1
+                                    z: 10
+
+                                    MaterialIcon {
+                                        anchors.centerIn: parent
+                                        text: "vpn_key"
+                                        size: 10
+                                        color: reauthMouse.containsMouse ? "#3B82F6" : Colors.m3onSurfaceVariant
+                                    }
+
+                                    MouseArea {
+                                        id: reauthMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: (mouse) => {
+                                            mouse.accepted = true;
+                                            if (typeof AiTokenService !== "undefined") {
+                                                AiTokenService.loginGemini(modelData.identity || "");
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Remove button
+                                Rectangle {
+                                    id: delBtn
+                                    visible: accRow.isSelected || accHover.containsMouse
+                                    height: 18
+                                    width: 18
+                                    radius: 4
+                                    color: delMouse.containsMouse ? Qt.alpha("#EF4444", 0.25) : "transparent"
+                                    border.color: delMouse.containsMouse ? "#EF4444" : "transparent"
+                                    border.width: 1
+                                    z: 10
+
+                                    MaterialIcon {
+                                        anchors.centerIn: parent
+                                        text: "delete_outline"
+                                        size: 11
+                                        color: delMouse.containsMouse ? "#EF4444" : Colors.m3onSurfaceVariant
+                                    }
+
+                                    MouseArea {
+                                        id: delMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: (mouse) => {
+                                            mouse.accepted = true;
+                                            if (typeof AiTokenService !== "undefined") {
+                                                AiTokenService.removeAccount("gemini", modelData.id || modelData.identity);
                                             }
                                         }
                                     }

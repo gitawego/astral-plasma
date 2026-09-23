@@ -29,4 +29,35 @@ impl AiQuotaUseCase {
             .switch_gemini_account(target_id_or_email)
             .map_err(|e| e.into())
     }
+
+    pub fn login_gemini_oauth(&self, email_hint: Option<&str>) -> DynResult<String> {
+        self.adapter
+            .login_gemini_oauth(email_hint)
+            .map_err(|e| e.into())
+    }
+
+    pub fn remove_account(&self, provider_id: &str, target_id_or_email: &str) -> DynResult<String> {
+        self.adapter
+            .remove_account(provider_id, target_id_or_email)
+            .map_err(|e| e.into())
+    }
+
+    pub fn add_account(
+        &self,
+        provider_id: &str,
+        credential: &str,
+        label: Option<&str>,
+        is_session: bool,
+    ) -> DynResult<String> {
+        self.adapter
+            .add_account(provider_id, credential, label, is_session)
+            .map_err(|e| e.into())
+    }
+
+    pub fn list_accounts(&self, provider_id: Option<&str>) -> DynResult<serde_json::Value> {
+        self.adapter
+            .list_accounts(provider_id)
+            .map_err(|e| e.into())
+    }
 }
+
