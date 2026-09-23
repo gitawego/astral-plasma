@@ -37,7 +37,7 @@ Item {
             to: 360
             duration: 16000
             loops: Animation.Infinite
-            running: true
+            running: root.isPlaying && root.visible
             paused: !root.isPlaying
         }
 

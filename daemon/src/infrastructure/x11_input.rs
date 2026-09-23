@@ -526,6 +526,9 @@ pub fn should_release_x11_focus(focused_class: &str, active_class: &str) -> bool
 /// when [`should_release_x11_focus`] says so. Best-effort - a machine without
 /// Xwayland simply has nothing to do.
 pub fn release_stale_wine_focus(active_class: &str) -> bool {
+    if std::env::var_os("DISPLAY").is_none() {
+        return false;
+    }
     unsafe {
         let dpy = XOpenDisplay(ptr::null());
         if dpy.is_null() {

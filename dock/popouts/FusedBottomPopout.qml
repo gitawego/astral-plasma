@@ -15,12 +15,18 @@ Item {
 
     property string mode: "default" // "default", "bluetooth", "network", "audio", "power", "clock"
 
+    readonly property bool isClockActive: (typeof Config !== "undefined" ? Config.bottomPopoutVisible : true) && (root.mode === "clock" || root.mode === "time")
     property var currentDate: new Date()
     Timer {
         interval: 1000
-        running: true
+        running: root.isClockActive
         repeat: true
         triggeredOnStart: true
+        onRunningChanged: {
+            if (running) {
+                root.currentDate = new Date();
+            }
+        }
         onTriggered: root.currentDate = new Date()
     }
 

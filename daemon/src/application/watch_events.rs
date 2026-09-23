@@ -799,11 +799,15 @@ pub async fn run_event_daemon() -> DynResult<()> {
             let mut interval = tokio::time::interval(Duration::from_millis(500));
             loop {
                 interval.tick().await;
-                let active_cls = {
+                let (active_cls, has_wine) = {
                     let st = guard_state.lock().await;
-                    st.active_cls.clone()
+                    let has_wine = st.cached_windows.iter().any(|w| {
+                        crate::infrastructure::x11_input::is_wine_class(&w.app_id)
+                            || crate::infrastructure::x11_input::is_wine_class(&w.icon_name)
+                    });
+                    (st.active_cls.clone(), has_wine)
                 };
-                if active_cls.is_empty() {
+                if !has_wine || active_cls.is_empty() {
                     continue;
                 }
                 // A Wine window is active: it may keep the X11 focus.

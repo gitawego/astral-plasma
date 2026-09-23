@@ -79,19 +79,6 @@ Item {
                     radius: 1.5
                     color: Colors.primary
                     opacity: root.isPlaying ? (0.65 + barHolder.barVal * 0.35) : 0.3
-
-                    Behavior on height {
-                        NumberAnimation {
-                            duration: 75
-                            easing.type: Easing.OutQuad
-                        }
-                    }
-
-                    Behavior on opacity {
-                        NumberAnimation {
-                            duration: 200
-                        }
-                    }
                 }
             }
         }

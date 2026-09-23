@@ -72,11 +72,23 @@ Singleton {
         }
     }
 
+    readonly property bool isUiActive: (typeof Config !== "undefined")
+        ? ((Config.bottomPopoutVisible && Config.bottomPopoutMode === "network") ||
+           (Config.activePopout === "network") ||
+           (Config.settingsVisible && Config.activeSettingsPage === "network"))
+        : false
+
+    onIsUiActiveChanged: {
+        if (isUiActive && wifiEnabled) {
+            rescan();
+        }
+    }
+
     Timer {
-        interval: 5000
-        running: true
+        interval: 10000
+        running: root.wifiEnabled && root.isUiActive
         repeat: true
-        triggeredOnStart: true
+        triggeredOnStart: false
         onTriggered: {
             if (root.wifiEnabled && !nmcliStatus.running) {
                 nmcliStatus.running = true;

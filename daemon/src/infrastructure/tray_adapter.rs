@@ -2,8 +2,20 @@ use crate::domain::app_identity::{shared_index, AppIdentityIndex};
 use crate::domain::branding;
 use crate::domain::model::{TrayItem, TrayMenuItem};
 use crate::domain::ports::{DynResult, TrayPort};
-use std::process::Command;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::process::Command;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+#[derive(Clone)]
+struct CachedTrayItem {
+    item: TrayItem,
+    fetched_at: Instant,
+    is_input_method: bool,
+}
+
+static TRAY_CACHE: Mutex<Option<HashMap<String, CachedTrayItem>>> = Mutex::new(None);
 
 fn qdbus_get(svc: &str, path: &str, method: &str) -> String {
     if let Ok(out) = Command::new("qdbus6").args([svc, path, method]).output() {
@@ -527,6 +539,13 @@ impl TrayPort for TrayAdapter {
             Err(_) => return Ok(tray_items),
         };
 
+        let now = Instant::now();
+        let cache_ttl = Duration::from_secs(3);
+        let mut active_keys = HashSet::new();
+
+        let mut cache_guard = TRAY_CACHE.lock().unwrap();
+        let cache = cache_guard.get_or_insert_with(HashMap::new);
+
         for line in output.lines() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
@@ -538,6 +557,42 @@ impl TrayPort for TrayAdapter {
             } else {
                 (trimmed, "/")
             };
+
+            let key = format!("{}:{}", svc, path);
+            active_keys.insert(key.clone());
+
+            if let Some(cached) = cache.get(&key) {
+                if now.duration_since(cached.fetched_at) < cache_ttl {
+                    let mut item = cached.item.clone();
+                    if cached.is_input_method {
+                        if let Ok(cur_out) = Command::new("fcitx5-remote").arg("-n").output() {
+                            let cur_im = String::from_utf8_lossy(&cur_out.stdout).trim().to_string();
+                            let cur_lower = cur_im.to_lowercase();
+                            if cur_lower.contains("rime") {
+                                item.raw_icon = "fcitx-rime".to_string();
+                                item.material_icon = "rime".to_string();
+                                item.title = "Rime".to_string();
+                                item.im_badge = String::new();
+                            } else if cur_lower.contains("pinyin") {
+                                item.raw_icon = "fcitx-pinyin".to_string();
+                                item.material_icon = "translate".to_string();
+                                item.title = "Pinyin".to_string();
+                                item.im_badge = "拼".to_string();
+                            } else if cur_lower.contains("us") || cur_lower.contains("keyboard") {
+                                item.raw_icon = "input-keyboard".to_string();
+                                item.material_icon = "keyboard".to_string();
+                                item.title = "Input Method".to_string();
+                                item.im_badge = "EN".to_string();
+                            } else if !cur_im.is_empty() {
+                                item.title = cur_im.clone();
+                                item.im_badge = cur_im.chars().take(2).collect::<String>().to_uppercase();
+                            }
+                        }
+                    }
+                    tray_items.push(item);
+                    continue;
+                }
+            }
 
             let item_id = sni_get_str(svc, path, "Id");
             let mut item_icon = sni_get_str(svc, path, "IconName");
@@ -571,7 +626,7 @@ impl TrayPort for TrayAdapter {
 
             let mut final_id = item_id.clone();
             let mut final_title = item_title.clone();
-            let mut final_icon = item_icon.clone();
+            let final_icon = item_icon.clone();
             let mut xembed_glyph: Option<String> = None;
 
             let is_numeric = (final_id.chars().all(|c| c.is_ascii_digit()) && !final_id.is_empty()) || final_id.is_empty();
@@ -615,7 +670,8 @@ impl TrayPort for TrayAdapter {
             let mut im_badge = String::new();
 
             let id_lower = format!("{} {} {}", final_id, item_title, item_icon).to_lowercase();
-            if id_lower.contains("keyboard") || id_lower.contains("fcitx") || id_lower.contains("input") {
+            let is_im = id_lower.contains("keyboard") || id_lower.contains("fcitx") || id_lower.contains("input");
+            if is_im {
                 m_icon = "keyboard".to_string();
                 if let Ok(cur_out) = Command::new("fcitx5-remote").arg("-n").output() {
                     let cur_im = String::from_utf8_lossy(&cur_out.stdout).trim().to_string();
@@ -649,7 +705,7 @@ impl TrayPort for TrayAdapter {
                 menu_path = "/SyntheticMenu".to_string();
             }
 
-            tray_items.push(TrayItem {
+            let tray_item = TrayItem {
                 service: svc.to_string(),
                 path: path.to_string(),
                 menu_path,
@@ -659,8 +715,18 @@ impl TrayPort for TrayAdapter {
                 material_icon: m_icon,
                 raw_icon: item_icon,
                 im_badge,
+            };
+
+            cache.insert(key, CachedTrayItem {
+                item: tray_item.clone(),
+                fetched_at: now,
+                is_input_method: is_im,
             });
+
+            tray_items.push(tray_item);
         }
+
+        cache.retain(|k, _| active_keys.contains(k));
 
         Ok(tray_items)
     }

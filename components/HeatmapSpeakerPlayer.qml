@@ -41,14 +41,6 @@ Item {
         running: root.isPlaying && root.isTargetVisible && root.audioEnergy > 0.005
     }
 
-    // High-framerate render pulse to guarantee 100% fluid dynamic canvas repainting
-    Timer {
-        interval: 33 // ~30 FPS
-        running: root.isTargetVisible && root.isVisualizerActive && root.isPlaying && root.audioEnergy > 0.005
-        repeat: true
-        onTriggered: coronaCanvas.requestPaint()
-    }
-
     // ==========================================
     // 1. DYNAMIC JUMPING MUSIC DOTS & RAINBOW NOTES
     // ==========================================
@@ -365,7 +357,7 @@ Item {
                     to: 360
                     duration: 22000
                     loops: Animation.Infinite
-                    running: true
+                    running: root.isPlaying && root.isTargetVisible
                     paused: !root.isPlaying
                 }
 

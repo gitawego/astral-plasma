@@ -30,11 +30,27 @@ Singleton {
         }
     }
 
+    Component.onCompleted: {
+        if (!sysInfoProc.running) sysInfoProc.running = true;
+    }
+
+    readonly property bool isUiActive: (typeof Config !== "undefined")
+        ? (Config.dashboardVisible ||
+           (Config.bottomPopoutVisible && Config.bottomPopoutMode === "power") ||
+           (Config.settingsVisible && Config.activeSettingsPage === "system"))
+        : false
+
+    onIsUiActiveChanged: {
+        if (isUiActive && !sysInfoProc.running) {
+            sysInfoProc.running = true;
+        }
+    }
+
     Timer {
         interval: 5000
-        running: true
+        running: root.isUiActive
         repeat: true
-        triggeredOnStart: true
+        triggeredOnStart: false
         onTriggered: {
             if (!sysInfoProc.running) sysInfoProc.running = true;
         }

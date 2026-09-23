@@ -44,13 +44,23 @@ Singleton {
         }
     }
 
+    readonly property bool needsPolling: {
+        if (typeof MprisMedia === "undefined" || !MprisMedia) return true;
+        return (MprisMedia.players && MprisMedia.players.length > 0) ||
+               (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.isStreaming);
+    }
+
+    Component.onCompleted: {
+        if (!streamsProc.running) streamsProc.running = true;
+    }
+
     // A sound server stream appears and disappears with playback, so a short
     // poll keeps the arbitration honest without any event source to subscribe to.
     Timer {
         interval: 2000
         repeat: true
-        running: true
-        triggeredOnStart: true
+        running: root.needsPolling
+        triggeredOnStart: false
         onTriggered: {
             if (!streamsProc.running) streamsProc.running = true;
         }

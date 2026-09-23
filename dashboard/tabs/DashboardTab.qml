@@ -64,12 +64,19 @@ Item {
     // computation and the dateClicked signal remain fully testable.
     property bool testMode: false
 
+    readonly property bool isTargetVisible: testMode || ((typeof Config !== "undefined" ? Config.dashboardVisible : true) && visible)
+
     property var currentDate: new Date()
     Timer {
         interval: 1000
-        running: true
+        running: root.isTargetVisible
         repeat: true
         triggeredOnStart: true
+        onRunningChanged: {
+            if (running) {
+                root.currentDate = new Date();
+            }
+        }
         onTriggered: root.currentDate = new Date()
     }
 
@@ -670,7 +677,7 @@ Item {
                                     to: 360
                                     duration: 22000
                                     loops: Animation.Infinite
-                                    running: true
+                                    running: root.isTargetVisible && MprisMedia.isPlaying
                                     paused: !MprisMedia.isPlaying
                                 }
 
