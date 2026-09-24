@@ -202,11 +202,11 @@ Item {
                 implicitHeight: 34
                 implicitWidth: providerChipsRow.implicitWidth + 8
                 radius: (typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : 17
-                color: Qt.rgba(1, 1, 1, 0.05)
+                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(255, 255, 255, 0.65)
                 border.width: 1
                 border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) 
-                    ? Qt.alpha(Colors.glassBorderSpecular, 0.25)
-                    : Qt.rgba(1, 1, 1, 0.15)
+                    ? Qt.alpha(Colors.glassBorderSpecular, 0.35)
+                    : Qt.rgba(1, 1, 1, 0.20)
 
                 Row {
                     id: providerChipsRow
@@ -230,8 +230,8 @@ Item {
                                 anchors.fill: parent
                                 radius: (typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : 13
                                 color: isSelected 
-                                    ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.22)
-                                    : (isHovered ? Qt.rgba(1, 1, 1, 0.09) : "transparent")
+                                    ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.28)
+                                    : (isHovered ? Qt.rgba(255, 255, 255, 0.12) : "transparent")
                                 border.width: isSelected ? 1 : 0
                                 border.color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
 
@@ -262,6 +262,8 @@ Item {
                                         color: isSelected 
                                             ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
                                             : ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#e3e3e3")
+                                        style: Text.Outline
+                                        styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                     }
 
                                     // Compact Plan Badge
@@ -271,8 +273,8 @@ Item {
                                         implicitHeight: 15
                                         radius: (typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : 7
                                         color: isSelected 
-                                            ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.25)
-                                            : Qt.rgba(1, 1, 1, 0.08)
+                                            ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.30)
+                                            : Qt.rgba(1, 1, 1, 0.12)
 
                                         Text {
                                             id: planText
@@ -284,6 +286,8 @@ Item {
                                             color: isSelected 
                                                 ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
                                                 : ((typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0")
+                                            style: Text.Outline
+                                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                         }
                                     }
                                 }
@@ -375,6 +379,12 @@ Item {
                 Layout.fillHeight: true
                 radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
                 padding: 16
+                color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                    ? Qt.tint(Qt.rgba(0.03, 0.04, 0.07, 0.52), Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.06))
+                    : ((typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.50))
+                border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) 
+                    ? Qt.alpha(Colors.glassBorderSpecular, 0.40) 
+                    : Qt.rgba(1, 1, 1, 0.25)
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -406,7 +416,7 @@ Item {
                                 font.weight: Font.Bold
                                 color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
                                 style: Text.Outline
-                                styleColor: Colors.glassTextHalo
+                                styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                             }
 
                             Text {
@@ -414,6 +424,8 @@ Item {
                                 font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                 font.pixelSize: 10
                                 color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                style: Text.Outline
+                                styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                             }
                         }
 
@@ -453,6 +465,8 @@ Item {
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
                                     color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -465,6 +479,8 @@ Item {
                                     color: (modelData.remaining_percent < 20)
                                         ? "#EF4444"
                                         : ((modelData.remaining_percent <= 50) ? "#F59E0B" : ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"))
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                 }
                             }
 
@@ -473,7 +489,9 @@ Item {
                                 Layout.fillWidth: true
                                 height: 8
                                 radius: 4
-                                color: Qt.rgba(1, 1, 1, 0.08)
+                                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(0, 0, 0, 0.12)
+                                border.width: 1
+                                border.color: Qt.rgba(255, 255, 255, 0.08)
 
                                 Rectangle {
                                     anchors.left: parent.left
@@ -504,6 +522,8 @@ Item {
                                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                     font.pixelSize: 10
                                     color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -513,6 +533,8 @@ Item {
                                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                     font.pixelSize: 10
                                     color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                 }
                             }
                         }
@@ -533,6 +555,8 @@ Item {
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
                                 color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                                style: Text.Outline
+                                styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                             }
 
                             Item { Layout.fillWidth: true }
@@ -545,6 +569,8 @@ Item {
                                 font.pixelSize: 12
                                 font.weight: Font.Bold
                                 color: "#10B981"
+                                style: Text.Outline
+                                styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                             }
                         }
 
@@ -552,7 +578,9 @@ Item {
                             Layout.fillWidth: true
                             height: 6
                             radius: 3
-                            color: Qt.rgba(16/255, 185/255, 129/255, 0.15)
+                            color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(0, 0, 0, 0.12)
+                            border.width: 1
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
 
                             Rectangle {
                                 anchors.left: parent.left
@@ -573,6 +601,8 @@ Item {
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: 10
                             color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                            style: Text.Outline
+                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                         }
                     }
 
@@ -591,6 +621,12 @@ Item {
                 Layout.fillHeight: true
                 radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
                 padding: 16
+                color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                    ? Qt.tint(Qt.rgba(0.03, 0.04, 0.07, 0.52), Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.06))
+                    : ((typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.50))
+                border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) 
+                    ? Qt.alpha(Colors.glassBorderSpecular, 0.40) 
+                    : Qt.rgba(1, 1, 1, 0.25)
 
                 // -------------------------------------------------------------
                 // CASE A: Multi-Account Management (e.g. Gemini with 3 accounts)
@@ -617,6 +653,8 @@ Item {
                             font.pixelSize: 13
                             font.weight: Font.Bold
                             color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                            style: Text.Outline
+                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                         }
 
                         ActionPill {
@@ -663,12 +701,19 @@ Item {
                                 anchors.fill: parent
                                 radius: 8
                                 color: isAccountActive 
-                                    ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.12)
-                                    : (isHovered ? Qt.rgba(1, 1, 1, 0.06) : "transparent")
-                                border.width: isAccountActive ? 1 : (isHovered ? 1 : 0)
+                                    ? Qt.tint(
+                                        (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.40) : Qt.rgba(255, 255, 255, 0.50),
+                                        Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.22)
+                                      )
+                                    : (isHovered 
+                                        ? ((typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.40) : Qt.rgba(255, 255, 255, 0.35))
+                                        : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.25) : Qt.rgba(255, 255, 255, 0.20)))
+                                border.width: 1
                                 border.color: isAccountActive 
-                                    ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.35)
-                                    : Qt.rgba(1, 1, 1, 0.12)
+                                    ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
+                                    : (isHovered 
+                                        ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.25))
+                                        : Qt.rgba(1, 1, 1, 0.08))
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -704,6 +749,8 @@ Item {
                                         color: isAccountActive 
                                             ? ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF")
                                             : ((typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0")
+                                        style: Text.Outline
+                                        styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                         elide: Text.ElideMiddle
                                         Layout.fillWidth: true
                                     }
@@ -716,6 +763,8 @@ Item {
                                         font.pixelSize: 10
                                         font.weight: Font.DemiBold
                                         color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                        style: Text.Outline
+                                        styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                     }
 
                                     // Status Badge / Action
@@ -763,6 +812,8 @@ Item {
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: 10
                             color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                            style: Text.Outline
+                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                         }
 
                         Text {
@@ -771,6 +822,8 @@ Item {
                             font.pixelSize: 10
                             font.weight: Font.DemiBold
                             color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
+                            style: Text.Outline
+                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                         }
@@ -802,6 +855,8 @@ Item {
                             font.pixelSize: 13
                             font.weight: Font.Bold
                             color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                            style: Text.Outline
+                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                         }
 
                         Item { Layout.fillWidth: true }
@@ -828,9 +883,12 @@ Item {
                             Layout.fillWidth: true
                             height: 60
                             radius: 10
-                            color: Qt.rgba(16/255, 185/255, 129/255, 0.12)
+                            color: Qt.tint(
+                                (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.40) : Qt.rgba(255, 255, 255, 0.50),
+                                Qt.rgba(16/255, 185/255, 129/255, 0.18)
+                            )
                             border.width: 1
-                            border.color: Qt.rgba(16/255, 185/255, 129/255, 0.3)
+                            border.color: Qt.rgba(16/255, 185/255, 129/255, 0.35)
 
                             ColumnLayout {
                                 anchors.centerIn: parent
@@ -843,6 +901,8 @@ Item {
                                     font.pixelSize: 15
                                     font.weight: Font.Bold
                                     color: "#10B981"
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                     Layout.alignment: Qt.AlignHCenter
                                 }
                                 Text {
@@ -850,6 +910,8 @@ Item {
                                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                     font.pixelSize: 10
                                     color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                     Layout.alignment: Qt.AlignHCenter
                                 }
                             }
@@ -860,9 +922,12 @@ Item {
                             Layout.fillWidth: true
                             height: 60
                             radius: 10
-                            color: Qt.rgba(245/255, 158/255, 11/255, 0.12)
+                            color: Qt.tint(
+                                (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.40) : Qt.rgba(255, 255, 255, 0.50),
+                                Qt.rgba(245/255, 158/255, 11/255, 0.18)
+                            )
                             border.width: 1
-                            border.color: Qt.rgba(245/255, 158/255, 11/255, 0.3)
+                            border.color: Qt.rgba(245/255, 158/255, 11/255, 0.35)
 
                             ColumnLayout {
                                 anchors.centerIn: parent
@@ -875,6 +940,8 @@ Item {
                                     font.pixelSize: 15
                                     font.weight: Font.Bold
                                     color: "#F59E0B"
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                     Layout.alignment: Qt.AlignHCenter
                                 }
                                 Text {
@@ -882,6 +949,8 @@ Item {
                                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                     font.pixelSize: 10
                                     color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                     Layout.alignment: Qt.AlignHCenter
                                 }
                             }
@@ -892,9 +961,12 @@ Item {
                             Layout.fillWidth: true
                             height: 60
                             radius: 10
-                            color: Qt.rgba(96/255, 165/255, 250/255, 0.12)
+                            color: Qt.tint(
+                                (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.40) : Qt.rgba(255, 255, 255, 0.50),
+                                Qt.rgba(96/255, 165/255, 250/255, 0.18)
+                            )
                             border.width: 1
-                            border.color: Qt.rgba(96/255, 165/255, 250/255, 0.3)
+                            border.color: Qt.rgba(96/255, 165/255, 250/255, 0.35)
 
                             ColumnLayout {
                                 anchors.centerIn: parent
@@ -907,6 +979,8 @@ Item {
                                     font.pixelSize: 15
                                     font.weight: Font.Bold
                                     color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                     Layout.alignment: Qt.AlignHCenter
                                 }
                                 Text {
@@ -914,6 +988,8 @@ Item {
                                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                     font.pixelSize: 10
                                     color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                    style: Text.Outline
+                                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                                     Layout.alignment: Qt.AlignHCenter
                                 }
                             }
@@ -929,7 +1005,9 @@ Item {
                             Layout.fillWidth: true
                             height: 8
                             radius: 4
-                            color: Qt.rgba(245/255, 158/255, 11/255, 0.35)
+                            color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(0, 0, 0, 0.12)
+                            border.width: 1
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
 
                             Rectangle {
                                 anchors.left: parent.left
@@ -948,6 +1026,8 @@ Item {
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: 10
                             color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                            style: Text.Outline
+                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                         }
                     }
 
@@ -969,6 +1049,8 @@ Item {
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: 10
                             color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                            style: Text.Outline
+                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                         }
 
                         Text {
@@ -977,6 +1059,8 @@ Item {
                             font.pixelSize: 10
                             font.weight: Font.DemiBold
                             color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
+                            style: Text.Outline
+                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                         }
@@ -992,6 +1076,9 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: 140
             radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
+            color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                ? Qt.tint(Qt.rgba(0.03, 0.04, 0.07, 0.52), Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.06))
+                : ((typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.50))
             visible: !root.providersList || root.providersList.length === 0
             padding: 20
 
@@ -1013,6 +1100,8 @@ Item {
                     font.pixelSize: 14
                     font.weight: Font.Bold
                     color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                    style: Text.Outline
+                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                 }
 
                 Text {
@@ -1021,6 +1110,8 @@ Item {
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                     font.pixelSize: 11
                     color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                    style: Text.Outline
+                    styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
                 }
 
                 ActionPill {
