@@ -33,17 +33,26 @@ if [ -d "${TARGET}.backup" ]; then
     echo "[✓] Restored previous configuration from ${TARGET}.backup"
 fi
 
-# Remove KWin script package
+# Remove Omarchy plugin if installed
+OMARCHY_PLUGIN_DIR="$HOME/.config/omarchy/plugins/org.astralplasma.omarchy"
+if [ -d "$OMARCHY_PLUGIN_DIR" ]; then
+    rm -rf "$OMARCHY_PLUGIN_DIR"
+    echo "[✓] Removed Omarchy plugin: $OMARCHY_PLUGIN_DIR"
+fi
+
+# Remove KWin script package (if present)
 if [ -d "$DATA_HOME/kwin/scripts/astral-plasma-shortcuts" ]; then
     rm -rf "$DATA_HOME/kwin/scripts/astral-plasma-shortcuts"
     echo "[✓] Removed KWin script astral-plasma-shortcuts"
 fi
 
-# Unbind global shortcuts and drop the plugin toggle
-for key in AstralLauncher AstralWallpaper; do
-    kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "$key" --delete 2>/dev/null || true
-done
-kwriteconfig6 --file kwinrc --group "Plugins" --key "astral-plasma-shortcutsEnabled" --delete 2>/dev/null || true
+# Unbind global shortcuts and drop the plugin toggle (if KDE tools available)
+if command -v kwriteconfig6 >/dev/null 2>&1; then
+    for key in AstralLauncher AstralWallpaper AstralOverview; do
+        kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "$key" --delete 2>/dev/null || true
+    done
+    kwriteconfig6 --file kwinrc --group "Plugins" --key "astral-plasma-shortcutsEnabled" --delete 2>/dev/null || true
+fi
 
 # Remove desktop entries
 rm -f "$DATA_HOME/applications/astral-dashboard.desktop" \
@@ -51,7 +60,12 @@ rm -f "$DATA_HOME/applications/astral-dashboard.desktop" \
       "$DATA_HOME/applications/astral-launcher.desktop" \
       "$DATA_HOME/applications/astral-wallpaper.desktop" \
       "$DATA_HOME/applications/astral-plasma.desktop"
-kbuildsycoca6 2>/dev/null || true
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$DATA_HOME/applications" 2>/dev/null || true
+fi
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 2>/dev/null || true
+fi
 echo "[✓] Removed desktop shortcuts"
 
 # Clean data, cache and state

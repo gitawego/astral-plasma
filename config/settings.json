@@ -1,4 +1,16 @@
 {
+  "session": {
+    "compositor": "auto",
+    "environment": "auto",
+    "integration": "auto",
+    "restoreOnExit": true
+  },
+  "profiles": {
+    "kde": {},
+    "hyprland": {},
+    "omarchyHosted": {},
+    "hyprlandStandaloneExperimental": {}
+  },
   "dock": {
     "enabled": true,
     "position": "left",

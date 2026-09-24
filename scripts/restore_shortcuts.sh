@@ -7,7 +7,13 @@ BACKUP_FILE="$HOME/.local/share/astral-plasma/shortcuts-backup/shortcuts_backup.
 
 echo "[*] Restoring original shortcuts..."
 
-# 1. If daemon binary exists, invoke the Rust domain use case
+# 1. Clean up Hyprland keybindings file if present
+if [ -f "$HOME/.config/hypr/astral-binds.conf" ]; then
+    rm -f "$HOME/.config/hypr/astral-binds.conf"
+    echo "[✓] Removed Hyprland shortcuts file ~/.config/hypr/astral-binds.conf"
+fi
+
+# 2. If daemon binary exists, invoke the Rust domain use case
 if [ -x "$DIR/bin/astral-plasma" ]; then
     if "$DIR/bin/astral-plasma" shortcuts restore 2>/dev/null; then
         echo "[✓] Shortcuts restored via astral-plasma domain service."

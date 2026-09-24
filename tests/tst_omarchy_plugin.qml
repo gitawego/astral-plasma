@@ -102,6 +102,8 @@ Item {
         const barSrc = readLocalFile("../omarchy/Bar.qml");
         assert(barSrc.length > 0, "omarchy/Bar.qml must exist and have content");
         assert(barSrc.indexOf("RowLayout") !== -1, "Bar.qml must provide layout for bar components");
+        assert(barSrc.indexOf("mode") !== -1, "Bar.qml must provide mode property for widget vs complete bar");
+        assert(barSrc.indexOf("DockStatusIcons") !== -1, "Bar.qml must include DockStatusIcons in complete mode");
 
         // 4. Verify Facade behavior under Omarchy profile
         facade.applySnapshot({

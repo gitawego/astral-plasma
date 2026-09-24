@@ -9,7 +9,13 @@ import "../dock/components"
 Item {
     id: root
 
-    implicitWidth: 48
+    // "widget" = compact capsule widget embedded in existing Omarchy bar
+    // "complete" = full desktop bar providing launcher, active window, clock, and status
+    property string mode: (Config.settings.omarchy && Config.settings.omarchy.barMode)
+        ? Config.settings.omarchy.barMode
+        : ((parent && parent.width > 300) ? "complete" : "widget")
+
+    implicitWidth: mode === "complete" ? (parent ? parent.width : 400) : 180
     implicitHeight: parent ? parent.height : 48
 
     RowLayout {
@@ -31,6 +37,11 @@ Item {
         DockClock {
             Layout.preferredWidth: 48
             Layout.preferredHeight: 36
+            Layout.alignment: Qt.AlignVCenter
+        }
+
+        DockStatusIcons {
+            visible: root.mode === "complete"
             Layout.alignment: Qt.AlignVCenter
         }
     }

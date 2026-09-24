@@ -27,6 +27,18 @@ Singleton {
     // Code-level defaults. The live settings are the deep merge of these, the
     // shipped `defaultConfigPath` file, and the user's `userConfigPath` file.
     readonly property var defaultSettings: ({
+        "session": {
+            "compositor": "auto",
+            "environment": "auto",
+            "integration": "auto",
+            "restoreOnExit": true
+        },
+        "profiles": {
+            "kde": {},
+            "hyprland": {},
+            "omarchyHosted": {},
+            "hyprlandStandaloneExperimental": {}
+        },
         "dock": {
             "enabled": true,
             "position": "left",
@@ -170,6 +182,13 @@ Singleton {
     }
     readonly property string plasmaBackupDir: root.settings.plasma?.backupDir ?? ""
     readonly property bool autoRestorePlasmaOnExit: root.settings.plasma?.autoRestoreOnExit ?? true
+
+    // Session and profile settings
+    readonly property string sessionCompositor: root.settings.session?.compositor ?? "auto"
+    readonly property string sessionEnvironment: root.settings.session?.environment ?? "auto"
+    readonly property string sessionIntegration: root.settings.session?.integration ?? "auto"
+    readonly property bool sessionRestoreOnExit: root.settings.session?.restoreOnExit ?? true
+    readonly property var sessionProfiles: root.settings.profiles ?? ({})
 
     // AI Token Plan Configuration
     readonly property bool aiEnabled: (root.settings && root.settings.ai && root.settings.ai.enabled !== undefined) ? root.settings.ai.enabled : true

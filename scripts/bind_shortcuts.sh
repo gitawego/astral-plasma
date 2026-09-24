@@ -41,8 +41,29 @@ case "$MODE" in
         echo "[*] Setting Astral Plasma Launcher shortcut to: Alt+Space"
         LAUNCHER_KEY="Alt+Space"
         ;;
+    "hyprland")
+        mkdir -p "$HOME/.config/hypr"
+        HYPR_BINDS_FILE="$HOME/.config/hypr/astral-binds.conf"
+        cat << 'HYPREOF' > "$HYPR_BINDS_FILE"
+# Astral Plasma Hyprland Keybindings
+# Add the following line to your ~/.config/hypr/hyprland.conf:
+# source = ~/.config/hypr/astral-binds.conf
+
+$mainMod = SUPER
+
+bind = $mainMod, SPACE, exec, quickshell ipc call launcher open apps
+bind = $mainMod, TAB, exec, quickshell ipc call overview toggle
+bind = $mainMod, D, exec, quickshell ipc call dashboard toggle
+bind = $mainMod, COMMA, exec, quickshell ipc call settings toggle
+bind = $mainMod SHIFT, W, exec, quickshell ipc call wallpaper open
+HYPREOF
+        echo "[✓] Generated Hyprland keybindings file: $HYPR_BINDS_FILE"
+        echo "[*] Include it in your ~/.config/hypr/hyprland.conf with:"
+        echo "    source = ~/.config/hypr/astral-binds.conf"
+        exit 0
+        ;;
     *)
-        echo "Usage: $0 [meta-space | meta | alt-space]"
+        echo "Usage: $0 [meta-space | meta | alt-space | hyprland]"
         exit 1
         ;;
 esac

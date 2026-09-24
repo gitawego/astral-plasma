@@ -237,3 +237,20 @@ fn test_desktop_session_port_contract() {
         .unwrap();
     assert_eq!(res_bad.status, ActionStatus::Unsupported);
 }
+
+#[test]
+fn test_desktop_factory_detection() {
+    use astral_plasma::infrastructure::desktop_factory::{
+        detect_compositor, detect_profile, CompositorKind, EnvironmentProfile,
+    };
+
+    let comp = detect_compositor();
+    let prof = detect_profile();
+    assert!(comp == CompositorKind::KWin || comp == CompositorKind::Hyprland);
+    assert!(
+        prof == EnvironmentProfile::Kde
+            || prof == EnvironmentProfile::Hyprland
+            || prof == EnvironmentProfile::Omarchy
+    );
+}
+

@@ -1094,8 +1094,10 @@ async fn run_self_contained_app() -> DynResult<()> {
 
     let is_kwin = crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin;
 
-    // Register desktop authorization entry with notification
-    let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
+    // Register desktop authorization entry with notification (only under KWin)
+    if is_kwin {
+        let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
+    }
 
     // 2. Start API server in background task
     tokio::spawn(async move {
