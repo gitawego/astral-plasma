@@ -252,12 +252,18 @@ for (var i = 0; i < wins.length; i++) {{
 
 impl WorkspacePort for KWinAdapter {
     fn query_desktops(&self) -> DynResult<(String, u32, Vec<Desktop>)> {
-        let out = Command::new("qdbus6")
+        let out = match Command::new("qdbus6")
             .args(["--literal", "org.kde.KWin", "/VirtualDesktopManager", "org.kde.KWin.VirtualDesktopManager.desktops"])
-            .output()?;
-        let curr_out = Command::new("qdbus6")
+            .output() {
+                Ok(o) if o.status.success() => o,
+                _ => return Ok((String::new(), 0, Vec::new())),
+            };
+        let curr_out = match Command::new("qdbus6")
             .args(["org.kde.KWin", "/VirtualDesktopManager", "org.kde.KWin.VirtualDesktopManager.current"])
-            .output()?;
+            .output() {
+                Ok(o) if o.status.success() => o,
+                _ => return Ok((String::new(), 0, Vec::new())),
+            };
 
         let out_str = String::from_utf8_lossy(&out.stdout);
         let curr = String::from_utf8_lossy(&curr_out.stdout).trim().to_string();
