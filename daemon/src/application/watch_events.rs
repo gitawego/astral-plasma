@@ -3,8 +3,7 @@ use crate::domain::app_identity::{
 };
 use crate::domain::branding;
 use crate::domain::meta_resolver::resolve_window_meta_with;
-use crate::domain::wine_media::parse_wine_media;
-use crate::application::wine_mpris::{WineMprisService, WineMprisSlot, WINE_MPRIS_BUS_NAME};
+use crate::application::wine_mpris::{parse_wine_media, WineMprisService, WineMprisSlot, WINE_MPRIS_BUS_NAME};
 use crate::domain::model::{
     ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowsListPayload,
 };

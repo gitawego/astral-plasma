@@ -510,19 +510,20 @@ pub async fn run_cli() -> DynResult<()> {
         }
         "session" => {
             let session_port = crate::infrastructure::desktop_factory::create_desktop_session_port();
+            let coordinator = crate::application::desktop_session_coordinator::DesktopSessionCoordinator::new(session_port);
             let sub = if args.len() >= 3 { args[2].as_str() } else { "snapshot" };
             match sub {
                 "snapshot" => {
-                    let snap = session_port.get_snapshot()?;
-                    println!("{}", serde_json::to_string(&snap)?);
+                    let json = coordinator.get_snapshot_json()?;
+                    println!("{}", json);
                 }
                 "capabilities" => {
-                    let caps = session_port.get_capabilities()?;
-                    println!("{}", serde_json::to_string(&caps)?);
+                    let json = coordinator.get_capabilities_json()?;
+                    println!("{}", json);
                 }
                 _ => {
-                    let snap = session_port.get_snapshot()?;
-                    println!("{}", serde_json::to_string(&snap)?);
+                    let json = coordinator.get_snapshot_json()?;
+                    println!("{}", json);
                 }
             }
         }
