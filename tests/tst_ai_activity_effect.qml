@@ -243,6 +243,16 @@ Item {
             "MatrixBorderEffect timers must strictly run only when active for 0% idle CPU");
         assert(/bottomAmbientGlow/.test(matrixSrc),
             "MatrixBorderEffect must declare background growing lighting for ambient bloom");
+        assert(/width:\s*Math\.min\(220/.test(matrixSrc),
+            "MatrixBorderEffect ambient glow width must be restrained (clamped to max 220px to avoid invading running apps)");
+        assert(/height:\s*Math\.min\(160/.test(matrixSrc),
+            "MatrixBorderEffect ambient glow height must be restrained (clamped to max 160px)");
+        assert(/color:\s*root\.safeAlpha\(root\.brandColor,\s*0\.10\s*\*/.test(matrixSrc),
+            "MatrixBorderEffect ambient glow max alpha must be restrained to <= 0.10 using brandColor");
+        assert(/id:\s*dataPacket\b/.test(matrixSrc) && /id:\s*dataPacketSecondary\b/.test(matrixSrc),
+            "MatrixBorderEffect must preserve horizontal lead and secondary electric pulse data packets");
+        assert(/id:\s*dataPacketVertical\b/.test(matrixSrc) && /id:\s*dataPacketVerticalSecondary\b/.test(matrixSrc),
+            "MatrixBorderEffect must preserve vertical lead and secondary electric pulse data packets");
         assert(/fusedCornerNexus/.test(matrixSrc),
             "MatrixBorderEffect must declare fusedCornerNexus for seamless corner fillet integration");
         assert(/primaryBrandColor/.test(matrixSrc) && /secondaryBrandColor/.test(matrixSrc),

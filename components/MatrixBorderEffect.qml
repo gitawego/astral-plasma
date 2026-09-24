@@ -112,14 +112,14 @@ Item {
     opacity: growthProgress
 
     // =========================================================================
-    // 1. BACKGROUND GROWING LIGHTING (Smooth 2D Optical Bloom into wallpaper)
+    // 1. BACKGROUND GROWING LIGHTING (Subtle Optical Bloom Contained to Frame Rim)
     // =========================================================================
     Item {
         id: bottomAmbientGlow
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        width: Math.min(720, Math.max(380, 420 + root.rpm * 24))
-        height: Math.min(520, Math.max(240, 260 + root.rpm * 18))
+        width: Math.min(220, Math.max(120, 140 + root.rpm * 4))
+        height: Math.min(160, Math.max(90, 100 + root.rpm * 3))
         z: 0
 
         RadialGradient {
@@ -130,9 +130,9 @@ Item {
             verticalRadius: height
 
             gradient: Gradient {
-                GradientStop { position: 0.0; color: root.safeAlpha(root.energizedColor, 0.36 * (0.6 + 0.4 * root.pulse) * root.growthProgress) }
-                GradientStop { position: 0.22; color: root.safeAlpha(root.brandColor, 0.18 * root.intensity * root.growthProgress) }
-                GradientStop { position: 0.55; color: root.safeAlpha(root.brandColor, 0.06 * root.intensity * root.growthProgress) }
+                GradientStop { position: 0.0; color: root.safeAlpha(root.brandColor, 0.10 * (0.6 + 0.4 * root.pulse) * root.growthProgress) }
+                GradientStop { position: 0.35; color: root.safeAlpha(root.brandColor, 0.04 * root.intensity * root.growthProgress) }
+                GradientStop { position: 0.70; color: root.safeAlpha(root.brandColor, 0.01 * root.intensity * root.growthProgress) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
         }
@@ -175,7 +175,7 @@ Item {
             // Continuous Specular Arc Stroke (1px hairline curving from bottom to right)
             ShapePath {
                 fillColor: "transparent"
-                strokeColor: Qt.lighter(root.energizedColor, 1.40)
+                strokeColor: Qt.lighter(root.energizedColor, 1.20)
                 strokeWidth: 1
                 capStyle: ShapePath.FlatCap
                 startX: root.cornerFilletR; startY: 0
@@ -194,9 +194,9 @@ Item {
                 strokeColor: {
                     const p1 = Math.max(0.0, Math.sin(Math.max(0.0, root.currentTravelProgress - 0.70) / 0.30 * Math.PI));
                     const p2 = Math.max(0.0, Math.sin(Math.max(0.0, ((root.currentTravelProgress + 0.50) % 1.0) - 0.70) / 0.30 * Math.PI));
-                    return root.safeAlpha("#FFFFFF", Math.max(p1, p2) * 0.95);
+                    return root.safeAlpha(root.energizedColor, Math.max(p1, p2) * 0.60);
                 }
-                strokeWidth: 2.0
+                strokeWidth: 1.2
                 capStyle: ShapePath.RoundCap
                 startX: root.cornerFilletR; startY: 0
                 PathArc {
@@ -263,8 +263,8 @@ Item {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
                 GradientStop { position: 0.20; color: root.safeAlpha(root.brandColor, 0.35 * root.intensity) }
-                GradientStop { position: 0.65; color: root.safeAlpha(root.energizedColor, 0.85) }
-                GradientStop { position: 1.0; color: Qt.lighter(root.energizedColor, 1.40) }
+                GradientStop { position: 0.65; color: root.safeAlpha(root.energizedColor, 0.70) }
+                GradientStop { position: 1.0; color: root.safeAlpha(root.energizedColor, 0.85) }
             }
         }
 
@@ -620,8 +620,8 @@ Item {
                 orientation: Gradient.Vertical
                 GradientStop { position: 0.0; color: "transparent" }
                 GradientStop { position: 0.25; color: root.safeAlpha(root.brandColor, 0.35 * root.intensity) }
-                GradientStop { position: 0.70; color: root.safeAlpha(root.energizedColor, 0.85) }
-                GradientStop { position: 1.0; color: Qt.lighter(root.energizedColor, 1.40) }
+                GradientStop { position: 0.70; color: root.safeAlpha(root.energizedColor, 0.70) }
+                GradientStop { position: 1.0; color: root.safeAlpha(root.energizedColor, 0.85) }
             }
         }
 

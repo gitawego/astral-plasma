@@ -18,12 +18,29 @@ Item {
         spacing: Theme.spaceSmall
 
         // App Icon
-        MaterialIcon {
+        Item {
             anchors.horizontalCenter: parent.horizontalCenter
-            iconName: WindowService.appId ? WindowService.appId : "application-default-icon"
-            text: "desktop"
-            size: 18
-            color: Colors.primary
+            width: 18
+            height: 18
+
+            Image {
+                id: activeIconImg
+                anchors.centerIn: parent
+                width: 18
+                height: 18
+                source: Config.iconUrl(WindowService.appId)
+                fillMode: Image.PreserveAspectFit
+                visible: status === Image.Ready
+            }
+
+            MaterialIcon {
+                anchors.centerIn: parent
+                iconName: activeIconImg.visible ? "" : (WindowService.appId ? WindowService.appId : "")
+                text: WindowService.materialIcon || "desktop_windows"
+                size: 18
+                color: Colors.primary
+                visible: !activeIconImg.visible || activeIconImg.status !== Image.Ready
+            }
         }
 
         // Rotated Vertical Title matching Screenshot 2 & 3

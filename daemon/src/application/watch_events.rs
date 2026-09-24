@@ -747,6 +747,40 @@ pub async fn run_event_daemon() -> DynResult<()> {
         })
         .await?;
 
+    // D-Bus name health monitor: if this daemon process ever loses ownership of
+    // the WindowWatcher bus name (e.g. during a session reset or restart race),
+    // exit cleanly so the parent supervisor (Quickshell Process) can restart a fresh daemon.
+    {
+        let conn = _conn.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(3));
+            loop {
+                interval.tick().await;
+                let Ok(proxy) = zbus::fdo::DBusProxy::new(&conn).await else {
+                    continue;
+                };
+                let Ok(name) = zbus::names::BusName::try_from(branding::DBUS_WATCHER_NAME) else {
+                    continue;
+                };
+                let is_owner = match proxy.get_name_owner(name).await {
+                    Ok(owner) => conn
+                        .unique_name()
+                        .map(|unique| owner.as_str() == unique.as_str())
+                        .unwrap_or(false),
+                    Err(_) => false,
+                };
+                if !is_owner {
+                    eprintln!(
+                        "[{}] Lost D-Bus name {}, terminating to allow supervisor restart",
+                        branding::APP_NAME,
+                        branding::DBUS_WATCHER_NAME
+                    );
+                    std::process::exit(0);
+                }
+            }
+        });
+    }
+
     {
         let slot = Arc::clone(&wine_mpris);
         tokio::spawn(async move {
@@ -786,6 +820,30 @@ pub async fn run_event_daemon() -> DynResult<()> {
         let _ = Command::new("qdbus6")
             .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
             .output();
+
+        // KWin Script Watchdog: if KWin restarts or script is unloaded, restore it
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                let is_loaded = Command::new("qdbus6")
+                    .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.isScriptLoaded", KWIN_SCRIPT_NAME])
+                    .output()
+                    .map(|out| String::from_utf8_lossy(&out.stdout).trim() == "true")
+                    .unwrap_or(false);
+
+                if !is_loaded {
+                    let script_file = branding::tmp_file("kwin_watcher.js");
+                    let _ = fs::write(&script_file, get_kwin_watcher_script());
+                    let _ = Command::new("qdbus6")
+                        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
+                        .output();
+                    let _ = Command::new("qdbus6")
+                        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
+                        .output();
+                }
+            }
+        });
     } else {
         let h_state = Arc::clone(&state);
         let h_wm = Arc::clone(&wm);
