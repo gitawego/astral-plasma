@@ -2,9 +2,13 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 Singleton {
     id: root
+
+    readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
+    readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
 
     // Session status
     property string profile: "kde" // "kde" | "hyprland" | "omarchy"
@@ -25,6 +29,44 @@ Singleton {
     property string activeIconName: ""
     property string activeMaterialIcon: ""
     property bool hasMaximizedWindow: false
+
+    Process {
+        id: initSnapshotProc
+        command: [root.daemonBin, "session", "snapshot"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const snap = JSON.parse(this.text.trim());
+                    root.applySnapshot(snap);
+                } catch (e) {}
+            }
+        }
+    }
+
+    function refresh() {
+        if (!initSnapshotProc.running) {
+            initSnapshotProc.running = true;
+        }
+    }
+
+    function switchWorkspace(id) {
+        if (typeof KWinWorkspaces !== "undefined") {
+            KWinWorkspaces.switchTo(id);
+        }
+    }
+
+    function activateWindow(id) {
+        if (typeof WindowService !== "undefined") {
+            WindowService.activateWindow(id);
+        }
+    }
+
+    function closeWindow(id) {
+        if (typeof WindowService !== "undefined") {
+            WindowService.closeWindow(id);
+        }
+    }
 
     function isCapabilityAvailable(name) {
         if (!capabilities || !capabilities[name]) return false;

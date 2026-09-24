@@ -20,4 +20,5 @@ pub mod scanners;
 pub mod token_cache_analytics;
 pub mod ai_activity_monitor;
 pub mod desktop_factory;
+pub mod hyprland_adapter;
 

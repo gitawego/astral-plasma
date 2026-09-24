@@ -775,17 +775,25 @@ pub async fn run_event_daemon() -> DynResult<()> {
         });
     }
 
-    // Install and start KWin script
-    cleanup_kwin_script();
-    let script_file = branding::tmp_file("kwin_watcher.js");
-    fs::write(&script_file, get_kwin_watcher_script())?;
+    // Compositor-specific window event watcher
+    if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
+        cleanup_kwin_script();
+        let script_file = branding::tmp_file("kwin_watcher.js");
+        fs::write(&script_file, get_kwin_watcher_script())?;
 
-    let _ = Command::new("qdbus6")
-        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
-        .output();
-    let _ = Command::new("qdbus6")
-        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
-        .output();
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
+            .output();
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
+            .output();
+    } else {
+        let h_state = Arc::clone(&state);
+        let h_wm = Arc::clone(&wm);
+        std::thread::spawn(move || {
+            run_hyprland_socket_watcher_sync(h_state, h_wm);
+        });
+    }
 
     // Xwayland focus guard.
     //
@@ -854,7 +862,9 @@ pub async fn run_event_daemon() -> DynResult<()> {
         loop {
             match stdin.read(&mut buf).await {
                 Ok(0) | Err(_) => {
-                    cleanup_kwin_script();
+                    if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
+                        cleanup_kwin_script();
+                    }
                     std::process::exit(0);
                 }
                 _ => {}
@@ -865,9 +875,89 @@ pub async fn run_event_daemon() -> DynResult<()> {
     // Handle termination signals
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
-            cleanup_kwin_script();
+            if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
+                cleanup_kwin_script();
+            }
         }
     }
 
     Ok(())
+}
+
+fn run_hyprland_socket_watcher_sync(
+    state: Arc<Mutex<DaemonState>>,
+    wm: Arc<dyn WindowManagerPort>,
+) {
+    let adapter = crate::infrastructure::hyprland_adapter::HyprlandAdapter::new();
+    let Some(socket_dir) = adapter.resolve_socket_dir() else {
+        eprintln!("[hyprland-watcher] could not resolve Hyprland socket directory");
+        return;
+    };
+    let socket_path = socket_dir.join(".socket2.sock");
+
+    loop {
+        match std::os::unix::net::UnixStream::connect(&socket_path) {
+            Ok(stream) => {
+                let mut reader = std::io::BufReader::new(stream);
+                let mut line = String::new();
+                use std::io::BufRead;
+                while let Ok(n) = reader.read_line(&mut line) {
+                    if n == 0 {
+                        break; // EOF, socket closed
+                    }
+                    let trimmed = line.trim();
+                    let should_refresh = trimmed.starts_with("activewindow>>")
+                        || trimmed.starts_with("activewindowv2>>")
+                        || trimmed.starts_with("openwindow>>")
+                        || trimmed.starts_with("closewindow>>")
+                        || trimmed.starts_with("movewindow>>")
+                        || trimmed.starts_with("windowtitle>>")
+                        || trimmed.starts_with("windowtitlev2>>")
+                        || trimmed.starts_with("fullscreen>>")
+                        || trimmed.starts_with("changefloatingmode>>")
+                        || trimmed.starts_with("workspace>>")
+                        || trimmed.starts_with("focusedmon>>");
+
+                    if should_refresh {
+                        if let Ok((windows, active)) = wm.query_windows() {
+                            let mut st = state.blocking_lock();
+                            st.cached_windows = windows.clone();
+                            if let Some(act) = &active {
+                                st.active_title = act.app_name.clone();
+                                st.active_material_icon = act.material_icon.clone();
+                                st.active_icon_name = act.icon_name.clone();
+                                st.active_app_id = act.app_id.clone();
+                                st.active_id = act.id.clone();
+                            } else {
+                                st.active_title = "Desktop".to_string();
+                                st.active_material_icon = "desktop_windows".to_string();
+                                st.active_icon_name = String::new();
+                                st.active_app_id = String::new();
+                                st.active_id = String::new();
+                            }
+                            let has_max = st.cached_windows.iter().any(|w| w.is_maximized || w.is_fullscreen);
+                            let payload = ActiveWindowPayload {
+                                msg_type: "active".to_string(),
+                                active_title: st.active_title.clone(),
+                                active_material_icon: st.active_material_icon.clone(),
+                                active_icon_name: st.active_icon_name.clone(),
+                                active_app_id: st.active_app_id.clone(),
+                                active_id: st.active_id.clone(),
+                                windows: st.cached_windows.clone(),
+                                has_maximized_window: has_max,
+                            };
+                            if let Ok(serialized) = serde_json::to_string(&payload) {
+                                println!("{}", serialized);
+                            }
+                        }
+                    }
+                    line.clear();
+                }
+            }
+            Err(e) => {
+                eprintln!("[hyprland-watcher] failed to connect to .socket2.sock: {e}, retrying...");
+            }
+        }
+        std::thread::sleep(Duration::from_millis(1000));
+    }
 }

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "org.astralplasma.omarchy",
+  "name": "Astral Plasma for Omarchy",
+  "version": "1.0.0",
+  "kinds": ["service", "bar"],
+  "entryPoints": {
+    "service": "Service.qml",
+    "bar": "Bar.qml"
+  },
+  "keepLoaded": true
+}

@@ -1,4 +1,5 @@
 use crate::domain::ports::{DesktopSessionPort, WindowManagerPort, WorkspacePort};
+use crate::infrastructure::hyprland_adapter::HyprlandAdapter;
 use crate::infrastructure::kwin_adapter::KWinAdapter;
 use std::sync::Arc;
 
@@ -36,20 +37,20 @@ pub fn detect_profile() -> EnvironmentProfile {
 pub fn create_desktop_session_port() -> Arc<dyn DesktopSessionPort> {
     match detect_compositor() {
         CompositorKind::KWin => Arc::new(KWinAdapter::new()),
-        CompositorKind::Hyprland => Arc::new(KWinAdapter::new()),
+        CompositorKind::Hyprland => Arc::new(HyprlandAdapter::new()),
     }
 }
 
 pub fn create_window_manager_port() -> Arc<dyn WindowManagerPort> {
     match detect_compositor() {
         CompositorKind::KWin => Arc::new(KWinAdapter::new()),
-        CompositorKind::Hyprland => Arc::new(KWinAdapter::new()),
+        CompositorKind::Hyprland => Arc::new(HyprlandAdapter::new()),
     }
 }
 
 pub fn create_workspace_port() -> Arc<dyn WorkspacePort> {
     match detect_compositor() {
         CompositorKind::KWin => Arc::new(KWinAdapter::new()),
-        CompositorKind::Hyprland => Arc::new(KWinAdapter::new()),
+        CompositorKind::Hyprland => Arc::new(HyprlandAdapter::new()),
     }
 }

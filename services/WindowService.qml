@@ -458,6 +458,15 @@ Singleton {
                     if (data.hasMaximizedWindow !== undefined) root.hasMaximizedWindow = Boolean(data.hasMaximizedWindow);
                     if (data.windows) root.windows = data.windows;
                     if (data.tray) root.tray = data.tray;
+
+                    if (typeof DesktopSessionFacade !== "undefined") {
+                        DesktopSessionFacade.activeTitle = root.activeTitle;
+                        DesktopSessionFacade.activeMaterialIcon = root.activeMaterialIcon;
+                        DesktopSessionFacade.activeIconName = root.activeIconName;
+                        DesktopSessionFacade.activeAppId = root.activeAppId;
+                        DesktopSessionFacade.hasMaximizedWindow = root.hasMaximizedWindow;
+                        if (data.windows) DesktopSessionFacade.windows = data.windows;
+                    }
                 } catch (e) {
                     console.warn("WindowService parse error:", e);
                 }

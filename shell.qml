@@ -361,7 +361,7 @@ ShellRoot {
         if (Config.debugMode) {
             console.log("[shell.qml] onCompleted, disablePlasmaPanels:", Config.disablePlasmaPanels, "daemonBin:", Config.daemonBin, "pid:", Quickshell.processId);
         }
-        if (Config.disablePlasmaPanels) {
+        if (Config.disablePlasmaPanels && DesktopSessionFacade.profile === "kde") {
             const target = (typeof Config.disablePlasmaPanels === "string") ? Config.disablePlasmaPanels : "all";
             Quickshell.execDetached([Config.daemonBin, "plasma", "disable", target, "" + Quickshell.processId]);
         }
@@ -371,7 +371,7 @@ ShellRoot {
         if (Config.debugMode) {
             console.log("[shell.qml] onDestruction, autoRestorePlasmaOnExit:", Config.autoRestorePlasmaOnExit);
         }
-        if (Config.autoRestorePlasmaOnExit) {
+        if (Config.autoRestorePlasmaOnExit && DesktopSessionFacade.profile === "kde") {
             Quickshell.execDetached([Config.daemonBin, "plasma", "restore"]);
         }
     }
