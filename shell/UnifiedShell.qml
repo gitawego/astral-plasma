@@ -1343,6 +1343,7 @@ PanelWindow {
         recentTokens: (typeof AiActivityService !== "undefined") ? AiActivityService.recentTokens : 0.0
         intensity: (typeof AiActivityService !== "undefined") ? AiActivityService.intensity : 0.0
         modelDisplayName: (typeof AiActivityService !== "undefined") ? AiActivityService.displayName : ""
+        activeAgents: (typeof AiActivityService !== "undefined" && AiActivityService.activeAgents) ? AiActivityService.activeAgents : []
     }
 
     // 6. LEFT DOCK CONTENT

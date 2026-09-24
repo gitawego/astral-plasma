@@ -46,6 +46,7 @@ Item {
         property bool isActive: false
         property real intensity: 0.0
         property real requestRate: 0.0
+        property var activeAgents: []
 
         readonly property int pulseDuration: Math.max(900, Math.min(2600, 2400 - Math.round(activityModel.requestRate * 180)))
         readonly property bool effectEnabled: (typeof Config !== "undefined" && Config.modelActivityEffect !== undefined)
@@ -62,6 +63,7 @@ Item {
             if (data.is_active !== undefined) activityModel.isActive = Boolean(data.is_active);
             if (data.intensity !== undefined) activityModel.intensity = Number(data.intensity);
             if (data.request_rate !== undefined) activityModel.requestRate = Number(data.request_rate);
+            if (data.active_agents !== undefined) activityModel.activeAgents = data.active_agents;
         }
     }
 
@@ -165,6 +167,34 @@ Item {
         assert(activityModel.brandIcon === "cloud", "brandIcon should remember last active model");
         assert(Qt.colorEqual(activityModel.brandColor, "#F59E0B"), "brandColor should remember last active model color");
 
+        // ---- 5b. Multi-Agent Concurrency Ingestion ----
+        activityModel.applyActivity({
+            is_active: true,
+            active_agents: [
+                {
+                    tool_source: "gemini",
+                    model_id: "gemini-3.8-flash",
+                    display_name: "Gemini Flash 3.8",
+                    brand_color: "#818CF8",
+                    brand_icon: "auto_awesome",
+                    request_rate_rpm: 28.0,
+                    recent_tokens: 14000
+                },
+                {
+                    tool_source: "claude",
+                    model_id: "claude-3-7-sonnet",
+                    display_name: "Claude 3.7 Sonnet",
+                    brand_color: "#D97706",
+                    brand_icon: "psychology",
+                    request_rate_rpm: 15.0,
+                    recent_tokens: 8500
+                }
+            ]
+        });
+        assert(activityModel.activeAgents.length === 2, "activityModel must track 2 active agents concurrently");
+        assert(activityModel.activeAgents[0].display_name === "Gemini Flash 3.8", "Agent 1 must be Gemini Flash 3.8");
+        assert(activityModel.activeAgents[1].display_name === "Claude 3.7 Sonnet", "Agent 2 must be Claude 3.7 Sonnet");
+
         // ---- 6. Source Contract: services/AiActivityService.qml ----
         const serviceSrc = readLocalFile("../services/AiActivityService.qml");
         assert(serviceSrc.length > 500, "AiActivityService.qml must be readable");
@@ -173,6 +203,10 @@ Item {
             "AiActivityService must query daemonBin ['ai', 'activity'] on startup");
         assert(/applyActivity\(data\)/.test(serviceSrc),
             "AiActivityService must implement applyActivity");
+        assert(/property\s+var\s+activeAgents:/.test(serviceSrc),
+            "AiActivityService must declare activeAgents list for multi-agent support");
+        assert(/Math\.max\(1350,\s*Math\.min\(3200/.test(serviceSrc),
+            "AiActivityService must use slowed down travel duration (1350ms to 3200ms)");
 
         // ---- 7. Source Contract: dock/components/DockStatusIcons.qml ----
         const dockSrc = readLocalFile("../dock/components/DockStatusIcons.qml");
@@ -191,6 +225,10 @@ Item {
             "MatrixBorderEffect must declare background growing lighting for ambient bloom");
         assert(/fusedCornerNexus/.test(matrixSrc),
             "MatrixBorderEffect must declare fusedCornerNexus for seamless corner fillet integration");
+        assert(/primaryBrandColor/.test(matrixSrc) && /secondaryBrandColor/.test(matrixSrc),
+            "MatrixBorderEffect must declare primaryBrandColor and secondaryBrandColor for multi-agent conduits");
+        assert(/Math\.max\(1350,\s*Math\.min\(3200/.test(matrixSrc),
+            "MatrixBorderEffect must use slowed down electric pulses (1350ms to 3200ms)");
 
         // ---- 9. Source Contract: shell/UnifiedShell.qml ----
         const shellSrc = readLocalFile("../shell/UnifiedShell.qml");
@@ -199,6 +237,8 @@ Item {
             "UnifiedShell must declare aiMatrixBorderEffect for Matrix border streaming effect");
         assert(/active:\s*\(typeof Config !== "undefined"/.test(shellSrc),
             "UnifiedShell aiMatrixBorderEffect must bind active state to Config and AiActivityService");
+        assert(/activeAgents:\s*\(typeof AiActivityService !== "undefined"/.test(shellSrc),
+            "UnifiedShell aiMatrixBorderEffect must bind activeAgents to AiActivityService");
 
         // ---- 10. Source Contract: services/WindowService.qml event routing ----
         const winServiceSrc = readLocalFile("../services/WindowService.qml");

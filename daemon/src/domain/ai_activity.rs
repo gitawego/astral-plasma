@@ -10,6 +10,24 @@ pub struct AiAgentIdentity {
     pub brand_icon: String,
 }
 
+/// Clean domain model representing an individual active agent slot when multiple agents run concurrently.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ActiveAgentSlot {
+    pub tool_source: String,
+    pub model_id: String,
+    pub display_name: String,
+    pub brand_color: String,
+    pub brand_icon: String,
+    #[serde(default)]
+    pub request_rate_rpm: f64,
+    #[serde(default)]
+    pub token_rate_tpm: f64,
+    #[serde(default)]
+    pub recent_tokens: u64,
+    #[serde(default)]
+    pub last_event_epoch_ms: u64,
+}
+
 /// Instantaneous activity state emitted by the monitoring engine.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AiActivityState {
@@ -22,6 +40,8 @@ pub struct AiActivityState {
     #[serde(default)]
     pub recent_tokens: u64,    // Total tokens in rolling window
     pub last_event_epoch_ms: u64,
+    #[serde(default)]
+    pub active_agents: Vec<ActiveAgentSlot>,
 }
 
 impl Default for AiActivityState {
@@ -40,6 +60,7 @@ impl Default for AiActivityState {
             token_rate_tpm: 0.0,
             recent_tokens: 0,
             last_event_epoch_ms: 0,
+            active_agents: Vec::new(),
         }
     }
 }

@@ -587,6 +587,7 @@ pub async fn run_cli() -> DynResult<()> {
                         "request_rate": state.request_rate_rpm,
                         "token_rate": state.token_rate_tpm,
                         "recent_tokens": state.recent_tokens,
+                        "active_agents": state.active_agents,
                     }))?);
                 }
                 "refresh" => {

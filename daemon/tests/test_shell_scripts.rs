@@ -11,7 +11,7 @@
 //!
 //! Every script must therefore resolve symlinks (`pwd -P`) before using `-p`.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

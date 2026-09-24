@@ -7,12 +7,22 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
+/// Track state for an individual agent tool during concurrent execution.
+#[derive(Debug, Clone)]
+pub struct AgentTrack {
+    pub identity: crate::domain::ai_activity::AiAgentIdentity,
+    pub recent_events_window: Vec<u64>,
+    pub recent_tokens_window: Vec<(u64, u64)>,
+    pub last_event_epoch_ms: u64,
+}
+
 /// Tail reader that extracts the most recent model identifier in <0.1ms without loading entire files.
 pub struct AiActivityMonitor {
     pub state: Arc<RwLock<AiActivityState>>,
     watch_descriptors: Arc<RwLock<HashMap<i32, PathBuf>>>,
     recent_events_window: Arc<RwLock<Vec<u64>>>,
     recent_tokens_window: Arc<RwLock<Vec<(u64, u64)>>>,
+    agent_tracks: Arc<RwLock<HashMap<String, AgentTrack>>>,
 }
 
 impl Default for AiActivityMonitor {
@@ -28,6 +38,7 @@ impl AiActivityMonitor {
             watch_descriptors: Arc::new(RwLock::new(HashMap::new())),
             recent_events_window: Arc::new(RwLock::new(Vec::new())),
             recent_tokens_window: Arc::new(RwLock::new(Vec::new())),
+            agent_tracks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -45,13 +56,13 @@ impl AiActivityMonitor {
         let now_ms = current_epoch_ms();
         let identity = resolve_model_metadata(raw_model, tool_source);
 
-        // Update rolling request rate window
+        // Update global rolling request rate window
         let mut window = self.recent_events_window.write().await;
         window.retain(|&t| now_ms.saturating_sub(t) < 60_000); // 60s rolling window
         window.push(now_ms);
         let rpm = window.len() as f64;
 
-        // Update rolling tokens window
+        // Update global rolling tokens window
         let mut tok_window = self.recent_tokens_window.write().await;
         tok_window.retain(|&(t, _)| now_ms.saturating_sub(t) < 60_000);
         if let Some(tok) = tokens {
@@ -62,6 +73,49 @@ impl AiActivityMonitor {
         let total_tokens: u64 = tok_window.iter().map(|&(_, cnt)| cnt).sum();
         let tpm = total_tokens as f64;
 
+        // Update per-agent track
+        let key = identity.tool_source.clone();
+        let mut tracks = self.agent_tracks.write().await;
+        let track = tracks.entry(key).or_insert_with(|| AgentTrack {
+            identity: identity.clone(),
+            recent_events_window: Vec::new(),
+            recent_tokens_window: Vec::new(),
+            last_event_epoch_ms: now_ms,
+        });
+        track.identity = identity.clone();
+        track.recent_events_window.retain(|&t| now_ms.saturating_sub(t) < 60_000);
+        track.recent_events_window.push(now_ms);
+        track.recent_tokens_window.retain(|&(t, _)| now_ms.saturating_sub(t) < 60_000);
+        if let Some(tok) = tokens {
+            if tok > 0 {
+                track.recent_tokens_window.push((now_ms, tok));
+            }
+        }
+        track.last_event_epoch_ms = now_ms;
+
+        // Build active_agents list for any track active within 12s
+        let mut active_slots = Vec::new();
+        for (_, t) in tracks.iter_mut() {
+            t.recent_events_window.retain(|&ev| now_ms.saturating_sub(ev) < 60_000);
+            t.recent_tokens_window.retain(|&(ev, _)| now_ms.saturating_sub(ev) < 60_000);
+            let agent_tokens: u64 = t.recent_tokens_window.iter().map(|&(_, c)| c).sum();
+            if now_ms.saturating_sub(t.last_event_epoch_ms) < 12_000 {
+                active_slots.push(crate::domain::ai_activity::ActiveAgentSlot {
+                    tool_source: t.identity.tool_source.clone(),
+                    model_id: t.identity.model_id.clone(),
+                    display_name: t.identity.display_name.clone(),
+                    brand_color: t.identity.brand_color.clone(),
+                    brand_icon: t.identity.brand_icon.clone(),
+                    request_rate_rpm: t.recent_events_window.len() as f64,
+                    token_rate_tpm: agent_tokens as f64,
+                    recent_tokens: agent_tokens,
+                    last_event_epoch_ms: t.last_event_epoch_ms,
+                });
+            }
+        }
+        // Sort with most recently active first
+        active_slots.sort_by(|a, b| b.last_event_epoch_ms.cmp(&a.last_event_epoch_ms));
+
         let mut st = self.state.write().await;
         st.identity = identity;
         st.is_active = true;
@@ -70,6 +124,7 @@ impl AiActivityMonitor {
         st.token_rate_tpm = tpm;
         st.recent_tokens = total_tokens;
         st.last_event_epoch_ms = now_ms;
+        st.active_agents = active_slots;
     }
 
     /// Advances activity decay math. Returns `true` if state transitioned from active to inactive.
@@ -83,7 +138,7 @@ impl AiActivityMonitor {
 
         let elapsed = now_ms.saturating_sub(st.last_event_epoch_ms);
 
-        // Decay rolling windows
+        // Decay global rolling windows
         let mut window = self.recent_events_window.write().await;
         window.retain(|&t| now_ms.saturating_sub(t) < 60_000);
         st.request_rate_rpm = window.len() as f64;
@@ -94,8 +149,36 @@ impl AiActivityMonitor {
         st.token_rate_tpm = total_tokens as f64;
         st.recent_tokens = total_tokens;
 
-        if elapsed > 6000 {
-            // Exponential decay after 6s idle
+        // Decay per-agent tracks
+        let mut tracks = self.agent_tracks.write().await;
+        let mut active_slots = Vec::new();
+        tracks.retain(|_, t| {
+            t.recent_events_window.retain(|&ev| now_ms.saturating_sub(ev) < 60_000);
+            t.recent_tokens_window.retain(|&(ev, _)| now_ms.saturating_sub(ev) < 60_000);
+            now_ms.saturating_sub(t.last_event_epoch_ms) < 30_000
+        });
+
+        for (_, t) in tracks.iter() {
+            if now_ms.saturating_sub(t.last_event_epoch_ms) < 12_000 {
+                let agent_tokens: u64 = t.recent_tokens_window.iter().map(|&(_, c)| c).sum();
+                active_slots.push(crate::domain::ai_activity::ActiveAgentSlot {
+                    tool_source: t.identity.tool_source.clone(),
+                    model_id: t.identity.model_id.clone(),
+                    display_name: t.identity.display_name.clone(),
+                    brand_color: t.identity.brand_color.clone(),
+                    brand_icon: t.identity.brand_icon.clone(),
+                    request_rate_rpm: t.recent_events_window.len() as f64,
+                    token_rate_tpm: agent_tokens as f64,
+                    recent_tokens: agent_tokens,
+                    last_event_epoch_ms: t.last_event_epoch_ms,
+                });
+            }
+        }
+        active_slots.sort_by(|a, b| b.last_event_epoch_ms.cmp(&a.last_event_epoch_ms));
+        st.active_agents = active_slots.clone();
+
+        if active_slots.is_empty() && elapsed > 6000 {
+            // Exponential decay after 6s idle when no agents are active
             st.intensity *= 0.50;
             if st.intensity < 0.05 {
                 st.intensity = 0.0;
@@ -103,6 +186,7 @@ impl AiActivityMonitor {
                 st.request_rate_rpm = 0.0;
                 st.token_rate_tpm = 0.0;
                 st.recent_tokens = 0;
+                st.active_agents.clear();
                 return true; // Transitioned to inactive
             }
         }
@@ -632,6 +716,7 @@ pub fn emit_activity_payload(st: &AiActivityState) {
         "request_rate": st.request_rate_rpm,
         "token_rate": st.token_rate_tpm,
         "recent_tokens": st.recent_tokens,
+        "active_agents": st.active_agents,
     });
     if let Ok(s) = serde_json::to_string(&payload) {
         println!("{}", s);

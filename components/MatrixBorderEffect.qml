@@ -16,11 +16,23 @@ Item {
     property real recentTokens: 0.0
     property real intensity: 0.0
     property string modelDisplayName: ""
+    property var activeAgents: []
+
+    readonly property var primaryAgent: (activeAgents && activeAgents.length > 0) ? activeAgents[0] : null
+    readonly property var secondaryAgent: (activeAgents && activeAgents.length > 1) ? activeAgents[1] : null
+
+    readonly property color primaryBrandColor: (primaryAgent && primaryAgent.brand_color)
+        ? primaryAgent.brand_color
+        : root.brandColor
+
+    readonly property color secondaryBrandColor: (secondaryAgent && secondaryAgent.brand_color)
+        ? secondaryAgent.brand_color
+        : Qt.tint(root.energizedColor, Qt.rgba(0.40, 0.90, 1.0, 0.25))
 
     // Frame geometry
     property real borderT: 14
     property real cornerFilletR: 20
-    property real bottomWidth: Math.min(680, Math.max(380, 420 + rpm * 24))
+    property real bottomWidth: Math.min(760, Math.max(380, 420 + (root.activeAgents && root.activeAgents.length > 1 ? 160 : 0) + rpm * 20))
     property real rightHeight: Math.min(480, Math.max(220, 240 + rpm * 18))
 
     // Helper to clamp alpha strictly between 0.0 and 1.0 to prevent Qt setAlphaF warnings
@@ -31,9 +43,9 @@ Item {
     // Combined throughput load from request rate (RPM) and token processing rate
     readonly property real throughputLoad: Math.max(0.0, root.rpm + (root.tokenRate / 2500.0) + Math.min(15.0, root.recentTokens / 2000.0))
 
-    // Velocity modulation: higher throughput load accelerates electric travel duration (850ms to 2400ms)
-    // Clamped between 850ms (dynamic high-speed surge) and 2400ms (calm glide) to ensure crisp visual tracking without strobe flicker
-    readonly property int currentTravelDuration: Math.max(850, Math.min(2400, Math.round(2400.0 / (1.0 + 0.08 * throughputLoad))))
+    // Velocity modulation: slowed down slightly for smooth, elegant, and trackable motion (1350ms to 3200ms)
+    // Ensures crisp visual tracking without strobe flicker
+    readonly property int currentTravelDuration: Math.max(1350, Math.min(3200, Math.round(3200.0 / (1.0 + 0.045 * throughputLoad))))
 
     // Electric packet length elongates with higher velocity/momentum (48px to 96px)
     readonly property real packetLength: Math.min(96, Math.max(48, 48 + throughputLoad * 1.5))
@@ -41,11 +53,11 @@ Item {
     // Energized color modulation based on throughput load
     readonly property color energizedColor: {
         if (throughputLoad >= 8.0) {
-            return Qt.lighter(brandColor, 1.40);
+            return Qt.lighter(primaryBrandColor, 1.40);
         } else if (throughputLoad >= 3.0) {
-            return Qt.lighter(brandColor, 1.20);
+            return Qt.lighter(primaryBrandColor, 1.20);
         } else {
-            return brandColor;
+            return primaryBrandColor;
         }
     }
 
@@ -66,12 +78,12 @@ Item {
         loops: Animation.Infinite
         NumberAnimation {
             to: 1.0
-            duration: Math.max(500, Math.min(2200, Math.round(2000.0 / (1.0 + 0.15 * root.throughputLoad))))
+            duration: Math.max(750, Math.min(2600, Math.round(2400.0 / (1.0 + 0.08 * root.throughputLoad))))
             easing.type: Easing.InOutSine
         }
         NumberAnimation {
             to: 0.0
-            duration: Math.max(500, Math.min(2200, Math.round(2000.0 / (1.0 + 0.15 * root.throughputLoad))))
+            duration: Math.max(750, Math.min(2600, Math.round(2400.0 / (1.0 + 0.08 * root.throughputLoad))))
             easing.type: Easing.InOutSine
         }
     }
@@ -195,6 +207,25 @@ Item {
                     direction: PathArc.Clockwise
                 }
             }
+
+            // Prismatic chromatic corona halo when multiple agents converge at the nexus
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: {
+                    const p2 = Math.max(0.0, Math.sin(Math.max(0.0, ((root.currentTravelProgress + 0.50) % 1.0) - 0.70) / 0.30 * Math.PI));
+                    return root.safeAlpha(root.secondaryBrandColor, p2 * 0.75);
+                }
+                strokeWidth: 3.5
+                capStyle: ShapePath.RoundCap
+                startX: root.cornerFilletR; startY: 0
+                PathArc {
+                    x: 0
+                    y: root.cornerFilletR
+                    radiusX: root.cornerFilletR
+                    radiusY: root.cornerFilletR
+                    direction: PathArc.Clockwise
+                }
+            }
         }
     }
 
@@ -267,16 +298,16 @@ Item {
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.20; color: root.safeAlpha(root.accentColor, 0.80) }
+                GradientStop { position: 0.20; color: root.safeAlpha(root.primaryBrandColor, 0.85) }
                 GradientStop { position: 0.50; color: "#FFFFFF" }
-                GradientStop { position: 0.80; color: root.safeAlpha(root.accentColor, 0.80) }
+                GradientStop { position: 0.80; color: root.safeAlpha(root.primaryBrandColor, 0.85) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
 
             x: Math.round(root.currentTravelProgress * (bottomBorderSection.width - width))
         }
 
-        // Interleaved trailing secondary electric pulse (ensures continuous electrical flow)
+        // Interleaved trailing secondary electric pulse (ensures continuous multi-agent electrical flow)
         Rectangle {
             id: dataPacketSecondary
             y: -1
@@ -288,9 +319,9 @@ Item {
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.25; color: root.safeAlpha(root.accentColor, 0.65) }
-                GradientStop { position: 0.50; color: Qt.lighter(root.accentColor, 1.30) }
-                GradientStop { position: 0.75; color: root.safeAlpha(root.accentColor, 0.65) }
+                GradientStop { position: 0.25; color: root.safeAlpha(root.secondaryBrandColor, 0.75) }
+                GradientStop { position: 0.50; color: (root.activeAgents && root.activeAgents.length > 1) ? "#FFFFFF" : Qt.lighter(root.secondaryBrandColor, 1.30) }
+                GradientStop { position: 0.75; color: root.safeAlpha(root.secondaryBrandColor, 0.75) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
 
@@ -351,35 +382,124 @@ Item {
                         color: Qt.lighter(root.energizedColor, 1.35)
                     }
 
-                    // Stacked Token Glyphs
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "\uf51e" // FontAwesome / Material stacked tokens
-                        font.family: "Material Symbols Outlined, Font Awesome 6 Free, sans-serif"
-                        font.pixelSize: 10
-                        color: root.energizedColor
-                        scale: 0.92 + (root.pulse * 0.16)
+                    // --- Multi-Agent Mode (2 or more active agents) ---
+                    Repeater {
+                        model: (root.activeAgents && root.activeAgents.length > 1) ? root.activeAgents.slice(0, 2) : []
+                        delegate: Row {
+                            spacing: 3
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            readonly property var agentInfo: modelData || (root.activeAgents ? root.activeAgents[index] : null)
+
+                            // Separator between multiple agents
+                            Text {
+                                visible: index > 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "│"
+                                font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
+                                font.pixelSize: 8
+                                font.bold: true
+                                color: root.safeAlpha("#FFFFFF", 0.45)
+                            }
+
+                            // Agent Token Glyph
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "\uf51e"
+                                font.family: "Material Symbols Outlined, Font Awesome 6 Free, sans-serif"
+                                font.pixelSize: 10
+                                color: (agentInfo && agentInfo.brand_color) ? agentInfo.brand_color : root.energizedColor
+                                scale: 0.92 + (root.pulse * 0.16)
+                            }
+
+                            // Agent Display Name
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: {
+                                    if (!agentInfo) return "Gemini Flash 3.8";
+                                    const name = agentInfo.display_name;
+                                    if (name && name !== "AI Agent") {
+                                        if (name === "Gemini Flash") return "Gemini Flash 3.8";
+                                        if (name === "Gemini Pro") return "Gemini Pro 3.8";
+                                        return name;
+                                    }
+                                    return "Gemini Flash 3.8";
+                                }
+                                font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
+                                font.pixelSize: 9
+                                font.bold: true
+                                font.letterSpacing: 0.2
+                                color: (agentInfo && agentInfo.brand_color) ? Qt.lighter(agentInfo.brand_color, 1.25) : "#FFFFFF"
+                                style: Text.Outline
+                                styleColor: Qt.rgba(0.0, 0.0, 0.0, 0.60)
+                            }
+
+                            // Individual agent token pill if >= 1k
+                            Text {
+                                visible: agentInfo && agentInfo.recent_tokens >= 1000
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: {
+                                    if (agentInfo && agentInfo.recent_tokens >= 1000) {
+                                        const k = (agentInfo.recent_tokens / 1000).toFixed(agentInfo.recent_tokens >= 10000 ? 0 : 1);
+                                        return "(" + k + "k)";
+                                    }
+                                    return "";
+                                }
+                                font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
+                                font.pixelSize: 8
+                                font.bold: true
+                                color: root.safeAlpha("#FFFFFF", 0.70)
+                            }
+                        }
                     }
 
-                    // Active Model Code Name with Version (e.g. Gemini Flash 3.8)
+                    // Multi-agent overflow badge (+N if > 2 agents)
                     Text {
+                        visible: root.activeAgents && root.activeAgents.length > 2
                         anchors.verticalCenter: parent.verticalCenter
-                        text: {
-                            const name = root.modelDisplayName;
-                            if (name && name !== "AI Agent") {
-                                if (name === "Gemini Flash") return "Gemini Flash 3.8";
-                                if (name === "Gemini Pro") return "Gemini Pro 3.8";
-                                return name;
-                            }
-                            return "Gemini Flash 3.8";
-                        }
+                        text: "+" + (root.activeAgents.length - 2)
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
-                        font.pixelSize: 9
+                        font.pixelSize: 8
                         font.bold: true
-                        font.letterSpacing: 0.3
-                        color: "#FFFFFF"
-                        style: Text.Outline
-                        styleColor: Qt.rgba(0.0, 0.0, 0.0, 0.60)
+                        color: Qt.lighter(root.accentColor, 1.30)
+                    }
+
+                    // --- Single-Agent Mode (1 agent or default) ---
+                    Row {
+                        visible: !root.activeAgents || root.activeAgents.length <= 1
+                        spacing: 4
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        // Stacked Token Glyphs
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "\uf51e" // FontAwesome / Material stacked tokens
+                            font.family: "Material Symbols Outlined, Font Awesome 6 Free, sans-serif"
+                            font.pixelSize: 10
+                            color: root.energizedColor
+                            scale: 0.92 + (root.pulse * 0.16)
+                        }
+
+                        // Active Model Code Name with Version (e.g. Gemini Flash 3.8)
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: {
+                                const name = root.modelDisplayName;
+                                if (name && name !== "AI Agent") {
+                                    if (name === "Gemini Flash") return "Gemini Flash 3.8";
+                                    if (name === "Gemini Pro") return "Gemini Pro 3.8";
+                                    return name;
+                                }
+                                return "Gemini Flash 3.8";
+                            }
+                            font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
+                            font.pixelSize: 9
+                            font.bold: true
+                            font.letterSpacing: 0.3
+                            color: "#FFFFFF"
+                            style: Text.Outline
+                            styleColor: Qt.rgba(0.0, 0.0, 0.0, 0.60)
+                        }
                     }
 
                     Text {
@@ -421,21 +541,21 @@ Item {
                         Rectangle {
                             width: 2
                             height: Math.min(7, Math.max(2, 3 + Math.round(4 * Math.abs(Math.sin(root.pulse * Math.PI)) * Math.min(1.2, Math.max(0.6, root.throughputLoad * 0.20)))))
-                            color: root.energizedColor
+                            color: root.primaryBrandColor
                             radius: 0.5
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Rectangle {
                             width: 2
                             height: Math.min(7, Math.max(2, 4 + Math.round(5 * Math.abs(Math.cos(root.pulse * Math.PI)) * Math.min(1.2, Math.max(0.6, root.throughputLoad * 0.20)))))
-                            color: root.accentColor
+                            color: root.secondaryBrandColor
                             radius: 0.5
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Rectangle {
                             width: 2
                             height: Math.min(7, Math.max(2, 3 + Math.round(4 * Math.abs(Math.sin((root.pulse + 0.5) * Math.PI)) * Math.min(1.2, Math.max(0.6, root.throughputLoad * 0.20)))))
-                            color: root.energizedColor
+                            color: root.primaryBrandColor
                             radius: 0.5
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -535,16 +655,16 @@ Item {
             gradient: Gradient {
                 orientation: Gradient.Vertical
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.20; color: root.safeAlpha(root.accentColor, 0.80) }
+                GradientStop { position: 0.20; color: root.safeAlpha(root.primaryBrandColor, 0.85) }
                 GradientStop { position: 0.50; color: "#FFFFFF" }
-                GradientStop { position: 0.80; color: root.safeAlpha(root.accentColor, 0.80) }
+                GradientStop { position: 0.80; color: root.safeAlpha(root.primaryBrandColor, 0.85) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
 
             y: Math.round(root.currentTravelProgress * (rightBorderSection.height - height))
         }
 
-        // Interleaved trailing secondary vertical electric pulse (ensures continuous electrical flow)
+        // Interleaved trailing secondary vertical electric pulse (ensures continuous multi-agent electrical flow)
         Rectangle {
             id: dataPacketVerticalSecondary
             x: -1
@@ -556,9 +676,9 @@ Item {
             gradient: Gradient {
                 orientation: Gradient.Vertical
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.25; color: root.safeAlpha(root.accentColor, 0.65) }
-                GradientStop { position: 0.50; color: Qt.lighter(root.accentColor, 1.30) }
-                GradientStop { position: 0.75; color: root.safeAlpha(root.accentColor, 0.65) }
+                GradientStop { position: 0.25; color: root.safeAlpha(root.secondaryBrandColor, 0.75) }
+                GradientStop { position: 0.50; color: (root.activeAgents && root.activeAgents.length > 1) ? "#FFFFFF" : Qt.lighter(root.secondaryBrandColor, 1.30) }
+                GradientStop { position: 0.75; color: root.safeAlpha(root.secondaryBrandColor, 0.75) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
 

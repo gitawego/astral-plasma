@@ -337,3 +337,61 @@ fn test_opencode_log_is_ignored_and_does_not_trigger_mimo() {
     // find_latest_session_file MUST NOT select opencode.log
     assert!(AiActivityMonitor::find_latest_session_file(temp_home.path()).is_none());
 }
+
+#[tokio::test]
+async fn test_multi_agent_concurrency_tracking() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    let monitor = AiActivityMonitor::new();
+
+    // 1. Record Gemini activity
+    monitor.record_activity_with_tokens("gemini-3.8-flash", "antigravity", Some(12000)).await;
+    let st1 = monitor.get_state().await;
+    assert!(st1.is_active);
+    assert_eq!(st1.active_agents.len(), 1);
+    assert_eq!(st1.active_agents[0].tool_source, "gemini");
+    assert_eq!(st1.active_agents[0].display_name, "Gemini Flash 3.8");
+    assert_eq!(st1.active_agents[0].brand_color, "#818CF8");
+    assert_eq!(st1.active_agents[0].recent_tokens, 12000);
+
+    // Ensure distinct epoch milliseconds for chronological ordering
+    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+
+    // 2. Concurrently record Claude Code activity
+    monitor.record_activity_with_tokens("claude-3-7-sonnet", "claude", Some(6500)).await;
+    let st2 = monitor.get_state().await;
+    assert!(st2.is_active);
+    assert_eq!(st2.active_agents.len(), 2, "Both Gemini and Claude must be tracked concurrently in active_agents");
+
+    // Most recent agent is first
+    assert_eq!(st2.active_agents[0].tool_source, "claude");
+    assert_eq!(st2.active_agents[0].display_name, "Claude 3.7 Sonnet");
+    assert_eq!(st2.active_agents[0].brand_color, "#D97706");
+    assert_eq!(st2.active_agents[0].recent_tokens, 6500);
+
+    assert_eq!(st2.active_agents[1].tool_source, "gemini");
+    assert_eq!(st2.active_agents[1].display_name, "Gemini Flash 3.8");
+    assert_eq!(st2.active_agents[1].brand_color, "#818CF8");
+    assert_eq!(st2.active_agents[1].recent_tokens, 12000);
+
+    // Aggregate tokens and request rates reflect combined load
+    assert_eq!(st2.recent_tokens, 18500);
+    assert_eq!(st2.request_rate_rpm, 2.0);
+}
+
+#[tokio::test]
+async fn test_multi_agent_decay_prunes_inactive_agent_first() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    let monitor = AiActivityMonitor::new();
+
+    monitor.record_activity_with_tokens("gemini-3.8-flash", "antigravity", Some(5000)).await;
+    monitor.record_activity_with_tokens("claude-3-7-sonnet", "claude", Some(3000)).await;
+
+    let st = monitor.get_state().await;
+    assert_eq!(st.active_agents.len(), 2);
+
+    // If no decay interval exceeded, tick_decay returns false and retains active agents
+    let transitioned = monitor.tick_decay().await;
+    assert!(!transitioned);
+    let st2 = monitor.get_state().await;
+    assert_eq!(st2.active_agents.len(), 2);
+}

@@ -102,6 +102,44 @@ ShellRoot {
                 });
             }
         }
+        function triggerMultiActivity(agent1: string, model1: string, name1: string, color1: string, tokens1: real, agent2: string, model2: string, name2: string, color2: string, tokens2: real, rate: real): void {
+            if (typeof AiActivityService !== "undefined") {
+                AiActivityService.applyActivity({
+                    agent: agent1,
+                    model: model1,
+                    display_name: name1,
+                    brand_color: color1,
+                    brand_icon: "token",
+                    is_active: true,
+                    intensity: 1.0,
+                    request_rate: (rate !== undefined) ? rate : 2.0,
+                    token_rate: (tokens1 + tokens2),
+                    recent_tokens: (tokens1 + tokens2),
+                    active_agents: [
+                        {
+                            tool_source: agent1,
+                            model_id: model1,
+                            display_name: name1,
+                            brand_color: color1,
+                            brand_icon: "auto_awesome",
+                            request_rate_rpm: (rate !== undefined) ? rate / 2 : 1.0,
+                            token_rate_tpm: tokens1,
+                            recent_tokens: tokens1
+                        },
+                        {
+                            tool_source: agent2,
+                            model_id: model2,
+                            display_name: name2,
+                            brand_color: color2,
+                            brand_icon: "psychology",
+                            request_rate_rpm: (rate !== undefined) ? rate / 2 : 1.0,
+                            token_rate_tpm: tokens2,
+                            recent_tokens: tokens2
+                        }
+                    ]
+                });
+            }
+        }
         function clearActivity(): void {
             if (typeof AiActivityService !== "undefined") {
                 AiActivityService.applyActivity({
@@ -122,9 +160,14 @@ ShellRoot {
         property real tokenRate: (typeof AiActivityService !== "undefined") ? AiActivityService.tokenRate : 0.0
         property real recentTokens: (typeof AiActivityService !== "undefined") ? AiActivityService.recentTokens : 0.0
         property real throughputLoad: (typeof AiActivityService !== "undefined") ? AiActivityService.throughputLoad : 0.0
-        property int currentTravelDuration: (typeof AiActivityService !== "undefined") ? AiActivityService.currentTravelDuration : 2400
-        property int pulseDuration: (typeof AiActivityService !== "undefined") ? AiActivityService.pulseDuration : 2000
+        property int currentTravelDuration: (typeof AiActivityService !== "undefined") ? AiActivityService.currentTravelDuration : 3200
+        property int pulseDuration: (typeof AiActivityService !== "undefined") ? AiActivityService.pulseDuration : 2400
         property real packetLength: (typeof AiActivityService !== "undefined") ? AiActivityService.packetLength : 48.0
+        property int activeAgentsCount: (typeof AiActivityService !== "undefined" && AiActivityService.activeAgents) ? AiActivityService.activeAgents.length : 0
+        property string activeAgentsSummary: {
+            if (typeof AiActivityService === "undefined" || !AiActivityService.activeAgents) return "";
+            return AiActivityService.activeAgents.map(function(a) { return a.display_name; }).join(", ");
+        }
     }
 
     IpcHandler {

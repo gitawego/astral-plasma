@@ -19,15 +19,19 @@ Singleton {
     property real requestRate: 0.0
     property real tokenRate: 0.0
     property real recentTokens: 0.0
+    property var activeAgents: []
+
+    readonly property var primaryAgent: (activeAgents && activeAgents.length > 0) ? activeAgents[0] : null
+    readonly property var secondaryAgent: (activeAgents && activeAgents.length > 1) ? activeAgents[1] : null
 
     // Combined throughput load from request rate (RPM) and token processing rate
     readonly property real throughputLoad: Math.max(0.0, root.requestRate + (root.tokenRate / 2500.0) + Math.min(15.0, root.recentTokens / 2000.0))
 
-    // Velocity modulation: higher throughput load accelerates electric travel duration (850ms to 2400ms)
-    readonly property int currentTravelDuration: Math.max(850, Math.min(2400, Math.round(2400.0 / (1.0 + 0.08 * throughputLoad))))
+    // Velocity modulation: slowed down slightly for smooth, elegant, and trackable motion (1350ms to 3200ms)
+    readonly property int currentTravelDuration: Math.max(1350, Math.min(3200, Math.round(3200.0 / (1.0 + 0.045 * throughputLoad))))
 
-    // Breathing pulse duration modulated by throughput: faster for high RPM/tokens (500ms to 2000ms)
-    readonly property int pulseDuration: Math.max(500, Math.min(2200, Math.round(2000.0 / (1.0 + 0.15 * throughputLoad))))
+    // Breathing pulse duration modulated by throughput: faster for high RPM/tokens (750ms to 2600ms)
+    readonly property int pulseDuration: Math.max(750, Math.min(2600, Math.round(2400.0 / (1.0 + 0.08 * throughputLoad))))
 
     // Electric packet length elongates with higher velocity/momentum (48px to 96px)
     readonly property real packetLength: Math.min(96, Math.max(48, 48 + throughputLoad * 1.5))
@@ -69,6 +73,9 @@ Singleton {
             root.isActive = false;
             root.intensity = 0.0;
             root.requestRate = 0.0;
+            root.tokenRate = 0.0;
+            root.recentTokens = 0.0;
+            root.activeAgents = [];
         }
     }
 
@@ -84,6 +91,9 @@ Singleton {
         if (data.request_rate !== undefined) root.requestRate = Number(data.request_rate);
         if (data.token_rate !== undefined) root.tokenRate = Number(data.token_rate);
         if (data.recent_tokens !== undefined) root.recentTokens = Number(data.recent_tokens);
+        if (data.active_agents !== undefined && Array.isArray(data.active_agents)) {
+            root.activeAgents = data.active_agents;
+        }
 
         if (root.isActive) {
             autoDecayWatchdog.restart();
