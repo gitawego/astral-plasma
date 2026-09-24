@@ -8,14 +8,14 @@ Item {
     width: 600
     height: 600
 
-    property string gojoPath: "/home/hlu/Downloads/Gojo-Satoru-Jujutsu-Kaisen-Character.png"
+    property string sampleImage: Qt.resolvedUrl("../theme/assets/dino.png").toString()
     property string sampleVideo: "/home/hlu/Downloads/soramane.mp4"
 
     MediaAvatar {
         id: testAvatar
         width: 140
         height: 140
-        source: testRoot.gojoPath
+        source: testRoot.sampleImage
         isPlaying: true
     }
 
@@ -60,10 +60,10 @@ Item {
         assert(testAvatar.normalizeUrl("").length > 0, "empty path must resolve to default asset");
         console.log("PASS: Path normalization verified");
 
-        // 3. User Gojo PNG test
-        assert(testAvatar.activeMediaType === "image", "Gojo avatar must have activeMediaType == 'image'");
-        assert(testAvatar.effectiveSource.indexOf("Gojo-Satoru-Jujutsu-Kaisen-Character.png") !== -1, "effectiveSource must contain Gojo filename");
-        console.log("PASS: Gojo PNG source binding verified");
+        // 3. User image test
+        assert(testAvatar.activeMediaType === "image", "Image avatar must have activeMediaType == 'image'");
+        assert(testAvatar.effectiveSource.indexOf("dino.png") !== -1, "effectiveSource must contain dino filename");
+        console.log("PASS: Image source binding verified");
 
         // 4. Video configuration & strictly muted audio
         testAvatar.source = testRoot.sampleVideo;
@@ -103,8 +103,8 @@ Item {
         assert(testAvatar.isFallbackActive === true, "validateMediaSource retains fallback if file still missing");
         console.log("PASS: validateMediaSource verified");
 
-        // 8. Restore valid Gojo
-        testAvatar.source = testRoot.gojoPath;
+        // 8. Restore valid image
+        testAvatar.source = testRoot.sampleImage;
         stepTimer.triggered.disconnect(runPart3);
         stepTimer.triggered.connect(runPart4);
         stepTimer.restart();
@@ -112,7 +112,7 @@ Item {
 
     function runPart4() {
         console.log("RUNNING: MediaAvatar QML Tests - Part 4 (Restoration)");
-        assert(testAvatar.isFallbackActive === false, "Restoring valid Gojo clears fallback flag");
+        assert(testAvatar.isFallbackActive === false, "Restoring valid image clears fallback flag");
         assert(testAvatar.activeMediaType === "image", "Valid source restores image type");
         console.log("PASS: Source restoration verified");
 
