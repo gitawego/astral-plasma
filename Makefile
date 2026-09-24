@@ -3,7 +3,7 @@ BIN_DIR = bin
 TARGET = $(BIN_DIR)/astral-plasma
 DAEMON_DIR = daemon
 
-.PHONY: all build release debug test test-rust test-qml doctor run stop restore clean install help
+.PHONY: all build release debug test test-rust test-qml doctor run stop restore clean install changelog release-tag help
 
 all: build
 
@@ -15,6 +15,8 @@ help:
 	@echo "  make test        - Run all tests (Rust unit tests + QML integration tests)"
 	@echo "  make test-rust   - Run only Rust unit tests"
 	@echo "  make test-qml    - Run only QML test suites"
+	@echo "  make changelog   - Generate changelog preview from git history"
+	@echo "  make release-tag - Trigger automated release (e.g. make release-tag VERSION=0.2.0)"
 	@echo "  make run         - Run theme (auto-restores original top panel on exit)"
 	@echo "  make stop        - Stop theme and restore original top panel"
 	@echo "  make restore     - Restore original KDE Plasma top panel"
@@ -41,6 +43,12 @@ test-rust:
 
 test-qml:
 	bash tests/run_qml_tests.sh
+
+changelog:
+	@bash scripts/generate_changelog.sh
+
+release-tag:
+	@bash scripts/release.sh $(VERSION)
 
 doctor: build
 	./$(TARGET) doctor

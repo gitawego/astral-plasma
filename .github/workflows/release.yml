@@ -1,0 +1,218 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.2.0 or v0.2.0)'
+        required: true
+        type: string
+      draft:
+        description: 'Publish as draft release'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Publish as prerelease'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      draft: ${{ steps.meta.outputs.draft }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version, tag, and metadata
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="${TAG#v}"
+            DRAFT="false"
+            PRERELEASE="false"
+          else
+            INPUT_VER="${{ github.event.inputs.version }}"
+            VERSION="${INPUT_VER#v}"
+            TAG="v${VERSION}"
+            DRAFT="${{ github.event.inputs.draft }}"
+            PRERELEASE="${{ github.event.inputs.prerelease }}"
+
+            # If tag does not exist on remote, create and push it
+            if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "[*] Creating and pushing tag $TAG..."
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git tag -a "$TAG" -m "Release $TAG"
+              git push origin "$TAG"
+            fi
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "draft=${DRAFT}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+          echo "[✓] Tag: $TAG (Version: $VERSION, Draft: $DRAFT, Prerelease: $PRERELEASE)"
+
+      - name: Generate Changelog
+        run: |
+          chmod +x scripts/generate_changelog.sh
+          ./scripts/generate_changelog.sh "" "${{ steps.meta.outputs.tag }}" > CHANGELOG_RELEASE.md
+          cat CHANGELOG_RELEASE.md
+
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG_RELEASE.md
+
+  build:
+    name: Build (${{ matrix.arch }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            arch: x86_64
+            strip_cmd: strip
+          - target: aarch64-unknown-linux-gnu
+            arch: aarch64
+            strip_cmd: aarch64-linux-gnu-strip
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install aarch64 cross-compilation toolchain
+        if: matrix.arch == 'aarch64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry & index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            daemon/target/
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('daemon/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target }}-
+
+      - name: Build release binary
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: |
+          cargo build --release --target ${{ matrix.target }} --manifest-path daemon/Cargo.toml
+
+      - name: Strip & package artifacts
+        run: |
+          BIN_SRC="daemon/target/${{ matrix.target }}/release/astral-plasma"
+          ${{ matrix.strip_cmd }} "$BIN_SRC"
+
+          mkdir -p dist
+
+          # 1. Raw standalone executable
+          cp "$BIN_SRC" "dist/astral-plasma-linux-${{ matrix.arch }}"
+          chmod +x "dist/astral-plasma-linux-${{ matrix.arch }}"
+
+          # 2. Complete distribution archive
+          PKG_NAME="astral-plasma-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}"
+          mkdir -p "${PKG_NAME}/bin"
+          cp "$BIN_SRC" "${PKG_NAME}/bin/astral-plasma"
+          cp README.md LICENSE DESIGN.md install.sh uninstall.sh "${PKG_NAME}/"
+          tar -czvf "dist/${PKG_NAME}.tar.gz" "${PKG_NAME}"
+
+          # 3. Checksums for this architecture
+          cd dist
+          sha256sum "${PKG_NAME}.tar.gz" "astral-plasma-linux-${{ matrix.arch }}" > "checksums-${{ matrix.arch }}.txt"
+          cat "checksums-${{ matrix.arch }}.txt"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.arch }}
+          path: dist/*
+
+  publish:
+    name: Publish Release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download changelog artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: build-*
+          path: downloaded_artifacts
+
+      - name: Consolidate distribution assets & checksums
+        run: |
+          mkdir -p release_assets
+          find downloaded_artifacts -type f \( -name "*.tar.gz" -o -name "astral-plasma-linux-*" \) -exec cp {} release_assets/ \;
+          
+          # Consolidate checksums
+          cd release_assets
+          sha256sum * > SHA256SUMS.txt
+          echo "=== SHA256 Checksums ==="
+          cat SHA256SUMS.txt
+
+      - name: Create or update GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          IS_DRAFT: ${{ needs.prepare.outputs.draft }}
+          IS_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          FLAGS=""
+          if [ "$IS_DRAFT" = "true" ]; then
+            FLAGS="$FLAGS --draft"
+          fi
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            FLAGS="$FLAGS --prerelease"
+          fi
+
+          echo "[*] Creating GitHub Release for $TAG..."
+          gh release create "$TAG" \
+            --title "Astral Plasma $TAG" \
+            --notes-file CHANGELOG_RELEASE.md \
+            $FLAGS \
+            release_assets/* || {
+              echo "[!] Release may already exist, uploading assets to existing release..."
+              gh release upload "$TAG" --clobber release_assets/*
+            }
+
+          echo "[✓] Release $TAG published successfully!"

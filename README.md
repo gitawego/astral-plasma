@@ -156,6 +156,22 @@ Launch anytime via `quickshell` (or the installed desktop entries).
 ```
 Zero-residue cleanup: stops the shell, removes the user service, restores the config backup, removes the KWin script package, unbinds shortcuts, and clears data/cache/state.
 
+### 5. Automated Releases & Pre-built Binaries (x64 / ARM64)
+Astral Plasma includes an automated multi-architecture release pipeline built on GitHub Actions:
+- **Supported Architectures**: `x86_64` (Intel/AMD) and `aarch64` (ARM64 / Raspberry Pi / Asahi Linux).
+- **Trigger via Local Project CLI**:
+  ```bash
+  # Check test gate, preview changelog, bump version, tag, and trigger GitHub Actions release:
+  ./scripts/release.sh 0.2.0
+  # Or increment patch/minor automatically:
+  ./scripts/release.sh --patch
+  # Or via Makefile:
+  make release-tag VERSION=0.2.0
+  ```
+- **Trigger via GitHub Actions Web UI**:
+  Go to the **Actions** tab -> **Release** -> **Run workflow** -> Enter version tag (e.g. `v0.2.0`).
+- Releases automatically generate a formatted Conventional Commits changelog, compile stripped binaries for both architectures, calculate cryptographic checksums (`SHA256SUMS.txt`), and publish GitHub Releases with downloadable archives and standalone binaries.
+
 ---
 
 ## ⌨️ IPC & Shortcuts
