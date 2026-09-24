@@ -8,7 +8,6 @@ use crate::application::workspace_control::WorkspaceControlUseCase;
 use crate::domain::branding;
 use crate::domain::ports::DynResult;
 use crate::infrastructure::embedded_bundle::{extract_embedded_theme, get_default_package_dir};
-use crate::infrastructure::kwin_adapter::KWinAdapter;
 use crate::infrastructure::launcher::DesktopLauncherAdapter;
 use crate::infrastructure::plasma_adapter::PlasmaAdapter;
 use crate::infrastructure::proc_metrics::ProcMetricsAdapter;
@@ -455,13 +454,13 @@ pub async fn run_cli() -> DynResult<()> {
         }
         "activate" => {
             if args.len() >= 3 {
-                let win_ctrl = WindowControlUseCase::new(KWinAdapter::new());
+                let win_ctrl = WindowControlUseCase::new(crate::infrastructure::desktop_factory::create_window_manager_port());
                 win_ctrl.activate(&args[2])?;
             }
         }
         "close" => {
             if args.len() >= 3 {
-                let win_ctrl = WindowControlUseCase::new(KWinAdapter::new());
+                let win_ctrl = WindowControlUseCase::new(crate::infrastructure::desktop_factory::create_window_manager_port());
                 win_ctrl.close(&args[2])?;
             }
         }
@@ -509,8 +508,26 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "session" => {
+            let session_port = crate::infrastructure::desktop_factory::create_desktop_session_port();
+            let sub = if args.len() >= 3 { args[2].as_str() } else { "snapshot" };
+            match sub {
+                "snapshot" => {
+                    let snap = session_port.get_snapshot()?;
+                    println!("{}", serde_json::to_string(&snap)?);
+                }
+                "capabilities" => {
+                    let caps = session_port.get_capabilities()?;
+                    println!("{}", serde_json::to_string(&caps)?);
+                }
+                _ => {
+                    let snap = session_port.get_snapshot()?;
+                    println!("{}", serde_json::to_string(&snap)?);
+                }
+            }
+        }
         "workspaces" => {
-            let ws_ctrl = WorkspaceControlUseCase::new(KWinAdapter::new());
+            let ws_ctrl = WorkspaceControlUseCase::new(crate::infrastructure::desktop_factory::create_workspace_port());
             let sub = if args.len() >= 3 { args[2].as_str() } else { "query" };
             match sub {
                 "query" => {

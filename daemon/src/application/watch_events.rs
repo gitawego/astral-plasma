@@ -9,7 +9,6 @@ use crate::domain::model::{
     ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowsListPayload,
 };
 use crate::domain::ports::{DynResult, TrayPort, WindowManagerPort};
-use crate::infrastructure::kwin_adapter::KWinAdapter;
 use crate::infrastructure::window_icons;
 use crate::infrastructure::tray_adapter::TrayAdapter;
 use serde_json::Value;
@@ -329,8 +328,8 @@ impl WatcherService {
     }
 
     async fn window_list_changed(&self) {
-        let kwin = KWinAdapter::new();
-        let query_res = kwin.query_windows();
+        let wm = crate::infrastructure::desktop_factory::create_window_manager_port();
+        let query_res = wm.query_windows();
         if let Ok((windows, active_opt)) = query_res {
             let mut st = self.state.lock().await;
             st.cached_windows = windows.clone();
@@ -622,14 +621,16 @@ pub async fn run_event_daemon() -> DynResult<()> {
     unsafe {
         libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
     }
-    cleanup_kwin_script();
+    if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
+        cleanup_kwin_script();
+    }
 
     let state = Arc::new(Mutex::new(DaemonState::default()));
-    let kwin = KWinAdapter::new();
+    let wm = crate::infrastructure::desktop_factory::create_window_manager_port();
     let tray_adapter = TrayAdapter::new();
 
     // Query initial state
-    let (initial_wins, initial_active) = kwin.query_windows().unwrap_or_default();
+    let (initial_wins, initial_active) = wm.query_windows().unwrap_or_default();
     let initial_tray = tray_adapter.query_tray().unwrap_or_default();
 
     {

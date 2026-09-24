@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowMeta {
@@ -142,3 +143,125 @@ pub struct TrayPayload {
     pub msg_type: String,
     pub tray: Vec<TrayItem>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionConnectionState {
+    Starting,
+    Connected,
+    Degraded,
+    Disconnected,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OutputGeometry {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Output {
+    pub id: String,
+    pub name: String,
+    pub geometry: OutputGeometry,
+    pub scale: f64,
+    #[serde(rename = "refreshRate")]
+    pub refresh_rate: f64,
+    pub focused: bool,
+    pub primary: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub index: u32,
+    #[serde(rename = "outputId", default, skip_serializing_if = "Option::is_none")]
+    pub output_id: Option<String>,
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Capability {
+    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserIntent {
+    #[serde(rename = "requestId")]
+    pub request_id: String,
+    pub kind: String,
+    #[serde(default)]
+    pub target: serde_json::Value,
+    #[serde(default)]
+    pub parameters: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ActionStatus {
+    Applied,
+    Pending,
+    Unsupported,
+    PermissionDenied,
+    Unavailable,
+    Invalid,
+    Stale,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActionResult {
+    #[serde(rename = "requestId")]
+    pub request_id: String,
+    pub status: ActionStatus,
+    #[serde(rename = "messageKey")]
+    pub message_key: String,
+    #[serde(default)]
+    pub details: serde_json::Value,
+    pub revision: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DesktopSessionSnapshot {
+    #[serde(rename = "schemaVersion")]
+    pub schema_version: u32,
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub revision: u64,
+    pub connection: SessionConnectionState,
+    pub profile: String,
+    #[serde(rename = "focusedOutputId", default, skip_serializing_if = "Option::is_none")]
+    pub focused_output_id: Option<String>,
+    #[serde(default)]
+    pub outputs: Vec<Output>,
+    #[serde(default)]
+    pub workspaces: Vec<Workspace>,
+    #[serde(default)]
+    pub windows: Vec<Window>,
+    #[serde(default)]
+    pub capabilities: HashMap<String, Capability>,
+    #[serde(rename = "lastUpdated")]
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum DesktopEvent {
+    SessionConnectionChanged { state: SessionConnectionState },
+    WorkspaceActivated { id: String, output_id: Option<String> },
+    WindowFocused { id: String },
+    WindowListChanged { windows: Vec<Window> },
+    OutputChanged { output: Output },
+    ShellSurfaceVisibilityChanged { surface_id: String, visible: bool },
+    CapabilityChanged { capabilities: HashMap<String, Capability> },
+    ActionCompleted { result: ActionResult },
+}
+

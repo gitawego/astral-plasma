@@ -5,7 +5,6 @@ use crate::application::systemd_service::SystemdControlUseCase;
 use crate::application::window_control::WindowControlUseCase;
 use crate::application::workspace_control::WorkspaceControlUseCase;
 use crate::domain::ports::DynResult;
-use crate::infrastructure::kwin_adapter::KWinAdapter;
 use crate::infrastructure::launcher::DesktopLauncherAdapter;
 use crate::infrastructure::plasma_adapter::PlasmaAdapter;
 use crate::infrastructure::proc_metrics::ProcMetricsAdapter;
@@ -129,7 +128,7 @@ pub async fn dispatch_http_request(req: &str) -> (u16, String) {
         }
 
         ("GET", "/api/workspaces") => {
-            let use_case = WorkspaceControlUseCase::new(KWinAdapter::new());
+            let use_case = WorkspaceControlUseCase::new(crate::infrastructure::desktop_factory::create_workspace_port());
             match use_case.query_json() {
                 Ok(json) => (200, json),
                 Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
@@ -139,7 +138,7 @@ pub async fn dispatch_http_request(req: &str) -> (u16, String) {
         ("POST", "/api/workspaces/switch") => {
             let parsed: Value = serde_json::from_str(body).unwrap_or(Value::Null);
             let id = parsed.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let use_case = WorkspaceControlUseCase::new(KWinAdapter::new());
+            let use_case = WorkspaceControlUseCase::new(crate::infrastructure::desktop_factory::create_workspace_port());
             match use_case.switch(id) {
                 Ok(_) => (200, r#"{"success":true}"#.to_string()),
                 Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
@@ -200,7 +199,7 @@ pub async fn dispatch_http_request(req: &str) -> (u16, String) {
         ("POST", "/api/window/activate") => {
             let parsed: Value = serde_json::from_str(body).unwrap_or(Value::Null);
             let wid = parsed.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let use_case = WindowControlUseCase::new(KWinAdapter::new());
+            let use_case = WindowControlUseCase::new(crate::infrastructure::desktop_factory::create_window_manager_port());
             match use_case.activate(wid) {
                 Ok(_) => (200, r#"{"success":true}"#.to_string()),
                 Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
@@ -210,7 +209,7 @@ pub async fn dispatch_http_request(req: &str) -> (u16, String) {
         ("POST", "/api/window/close") => {
             let parsed: Value = serde_json::from_str(body).unwrap_or(Value::Null);
             let wid = parsed.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let use_case = WindowControlUseCase::new(KWinAdapter::new());
+            let use_case = WindowControlUseCase::new(crate::infrastructure::desktop_factory::create_window_manager_port());
             match use_case.close(wid) {
                 Ok(_) => (200, r#"{"success":true}"#.to_string()),
                 Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),

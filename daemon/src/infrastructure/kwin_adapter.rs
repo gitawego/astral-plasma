@@ -2,7 +2,10 @@ use crate::domain::app_identity::shared_index;
 use crate::domain::branding;
 use crate::domain::meta_resolver::resolve_window_meta_with;
 use crate::domain::model::{Desktop, Window};
-use crate::domain::ports::{DynResult, WindowManagerPort, WorkspacePort};
+use crate::domain::ports::{
+    CompositorEffectsPort, DesktopSessionPort, DynResult, FocusPort, WindowManagerPort,
+    WorkspacePort,
+};
 use crate::domain::sys_parser::parse_kwin_desktops;
 use regex::Regex;
 use serde_json::Value;
@@ -291,3 +294,190 @@ impl WorkspacePort for KWinAdapter {
         Ok(())
     }
 }
+
+impl FocusPort for KWinAdapter {
+    fn restore_focus(&self) -> DynResult<()> {
+        let script = r#"
+var wins = workspace.windowList();
+for (var i = 0; i < wins.length; i++) {
+    var w = wins[i];
+    if (w.normalWindow && w.caption && w.resourceClass !== 'quickshell') {
+        workspace.activeWindow = w;
+        break;
+    }
+}
+"#;
+        let script_file = branding::tmp_file("kwin_focus_restore.js");
+        fs::write(&script_file, script)?;
+        let num_out = Command::new("qdbus6")
+            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy()])
+            .output()?;
+        let num = String::from_utf8_lossy(&num_out.stdout).trim().to_string();
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", &format!("/Scripting/Script{}", num), "org.kde.kwin.Script.run"])
+            .output();
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", &format!("/Scripting/Script{}", num), "org.kde.kwin.Script.stop"])
+            .output();
+        Ok(())
+    }
+
+    fn can_restore_focus(&self) -> bool {
+        true
+    }
+}
+
+impl CompositorEffectsPort for KWinAdapter {
+    fn is_blur_supported(&self) -> bool {
+        true
+    }
+
+    fn blur_mode(&self) -> String {
+        "kwin_blurRegion".to_string()
+    }
+}
+
+impl DesktopSessionPort for KWinAdapter {
+    fn get_snapshot(&self) -> DynResult<crate::domain::model::DesktopSessionSnapshot> {
+        let (windows, _) = self.query_windows()?;
+        let (_, _, desktops) = self.query_desktops().unwrap_or_else(|_| (String::new(), 0, Vec::new()));
+        let workspaces = desktops.into_iter().map(|d| crate::domain::model::Workspace {
+            id: d.id,
+            name: d.name,
+            index: d.index,
+            output_id: None,
+            active: d.active,
+        }).collect();
+
+        let mut capabilities = HashMap::new();
+        capabilities.insert("workspaceSwitch".to_string(), crate::domain::model::Capability {
+            available: true,
+            mode: Some("virtual_desktops".to_string()),
+            reason: None,
+            owner: Some("kwin".to_string()),
+        });
+        capabilities.insert("backgroundBlur".to_string(), crate::domain::model::Capability {
+            available: true,
+            mode: Some("kwin_blurRegion".to_string()),
+            reason: None,
+            owner: Some("kwin".to_string()),
+        });
+        capabilities.insert("focusRestore".to_string(), crate::domain::model::Capability {
+            available: true,
+            mode: Some("kwin_scripting".to_string()),
+            reason: None,
+            owner: Some("kwin".to_string()),
+        });
+        capabilities.insert("windowPreview".to_string(), crate::domain::model::Capability {
+            available: true,
+            mode: Some("ScreenShot2".to_string()),
+            reason: None,
+            owner: Some("kwin".to_string()),
+        });
+
+        Ok(crate::domain::model::DesktopSessionSnapshot {
+            schema_version: 1,
+            session_id: "kde-kwin".to_string(),
+            revision: 1,
+            connection: crate::domain::model::SessionConnectionState::Connected,
+            profile: "kde".to_string(),
+            focused_output_id: None,
+            outputs: vec![],
+            workspaces,
+            windows,
+            capabilities,
+            last_updated: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
+        })
+    }
+
+    fn get_capabilities(&self) -> DynResult<HashMap<String, crate::domain::model::Capability>> {
+        let snap = self.get_snapshot()?;
+        Ok(snap.capabilities)
+    }
+
+    fn execute_intent(&self, intent: crate::domain::model::UserIntent) -> DynResult<crate::domain::model::ActionResult> {
+        match intent.kind.as_str() {
+            "activate-window" => {
+                if let Some(id) = intent.target.get("windowId").and_then(|v| v.as_str()) {
+                    self.activate_window(id)?;
+                    Ok(crate::domain::model::ActionResult {
+                        request_id: intent.request_id,
+                        status: crate::domain::model::ActionStatus::Applied,
+                        message_key: "window-activated".to_string(),
+                        details: serde_json::json!({ "windowId": id }),
+                        revision: 1,
+                    })
+                } else {
+                    Ok(crate::domain::model::ActionResult {
+                        request_id: intent.request_id,
+                        status: crate::domain::model::ActionStatus::Invalid,
+                        message_key: "missing-window-id".to_string(),
+                        details: serde_json::json!({}),
+                        revision: 1,
+                    })
+                }
+            }
+            "close-window" => {
+                if let Some(id) = intent.target.get("windowId").and_then(|v| v.as_str()) {
+                    self.close_window(id)?;
+                    Ok(crate::domain::model::ActionResult {
+                        request_id: intent.request_id,
+                        status: crate::domain::model::ActionStatus::Applied,
+                        message_key: "window-closed".to_string(),
+                        details: serde_json::json!({ "windowId": id }),
+                        revision: 1,
+                    })
+                } else {
+                    Ok(crate::domain::model::ActionResult {
+                        request_id: intent.request_id,
+                        status: crate::domain::model::ActionStatus::Invalid,
+                        message_key: "missing-window-id".to_string(),
+                        details: serde_json::json!({}),
+                        revision: 1,
+                    })
+                }
+            }
+            "switch-workspace" => {
+                if let Some(id) = intent.target.get("workspaceId").and_then(|v| v.as_str()) {
+                    self.switch_to(id)?;
+                    Ok(crate::domain::model::ActionResult {
+                        request_id: intent.request_id,
+                        status: crate::domain::model::ActionStatus::Applied,
+                        message_key: "workspace-switched".to_string(),
+                        details: serde_json::json!({ "workspaceId": id }),
+                        revision: 1,
+                    })
+                } else {
+                    Ok(crate::domain::model::ActionResult {
+                        request_id: intent.request_id,
+                        status: crate::domain::model::ActionStatus::Invalid,
+                        message_key: "missing-workspace-id".to_string(),
+                        details: serde_json::json!({}),
+                        revision: 1,
+                    })
+                }
+            }
+            "restore-focus" => {
+                self.restore_focus()?;
+                Ok(crate::domain::model::ActionResult {
+                    request_id: intent.request_id,
+                    status: crate::domain::model::ActionStatus::Applied,
+                    message_key: "focus-restored".to_string(),
+                    details: serde_json::json!({}),
+                    revision: 1,
+                })
+            }
+            _ => Ok(crate::domain::model::ActionResult {
+                request_id: intent.request_id,
+                status: crate::domain::model::ActionStatus::Unsupported,
+                message_key: "unsupported-intent".to_string(),
+                details: serde_json::json!({ "kind": intent.kind }),
+                revision: 1,
+            }),
+        }
+    }
+}
+
