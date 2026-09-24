@@ -557,8 +557,8 @@ pub async fn run_cli() -> DynResult<()> {
                     if let Some(home) = std::env::var("HOME").ok().map(std::path::PathBuf::from) {
                         let active_files = AiActivityMonitor::scan_all_active_session_files(&home, ACTIVE_AGENT_WINDOW_MS);
                         for f in active_files {
-                            if let Some((m, t, tok)) = AiActivityMonitor::parse_model_and_tokens_from_file(&f.path) {
-                                monitor.record_activity_with_tokens(&m, &t, tok).await;
+                            if let Some((m, t, tok, is_completed)) = AiActivityMonitor::parse_model_tokens_and_status_from_file(&f.path) {
+                                monitor.record_activity_full(&m, &t, tok, is_completed).await;
                             }
                         }
 
@@ -569,7 +569,8 @@ pub async fn run_cli() -> DynResult<()> {
                                 .as_millis() as u64;
                             let is_recent = now_ms.saturating_sub(time_updated) < ACTIVE_AGENT_WINDOW_MS;
                             if is_recent {
-                                monitor.record_activity_with_tokens(&model, "opencode", Some(tokens)).await;
+                                let is_completed = now_ms.saturating_sub(time_updated) >= 4_000;
+                                monitor.record_activity_full(&model, "opencode", Some(tokens), is_completed).await;
                             } else if monitor.state.read().await.last_event_epoch_ms < time_updated && monitor.get_state().await.active_agents.is_empty() {
                                 let mut st = monitor.state.write().await;
                                 st.identity = crate::domain::ai_activity::resolve_model_metadata(&model, "opencode");

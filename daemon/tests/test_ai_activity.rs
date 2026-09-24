@@ -563,3 +563,90 @@ async fn test_concurrent_multi_agent_three_tools_simultaneous() {
     assert_eq!(st3.recent_tokens, 15500);
 }
 
+#[test]
+fn test_check_turn_completed_antigravity() {
+    use astral_plasma::infrastructure::ai_activity_monitor::check_turn_completed_from_tail;
+
+    // 1. Tool call in-flight
+    let tail_tool = r#"
+{"step_index":100,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","tool_calls":[{"name":"view_file","args":{}}]}
+"#;
+    assert!(!check_turn_completed_from_tail(tail_tool, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"));
+
+    // 2. Final response to user (no tool calls)
+    let tail_done = r#"
+{"step_index":101,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE"}
+"#;
+    assert!(check_turn_completed_from_tail(tail_done, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"));
+
+    // 3. User input received (new turn started)
+    let tail_user = r#"
+{"step_index":101,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE"}
+{"step_index":102,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE"}
+"#;
+    assert!(!check_turn_completed_from_tail(tail_user, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"));
+}
+
+#[test]
+fn test_check_turn_completed_claude() {
+    use astral_plasma::infrastructure::ai_activity_monitor::check_turn_completed_from_tail;
+
+    let tail_tool = r#"{"type":"message","message":{"role":"assistant","stop_reason":"tool_use"}}"#;
+    assert!(!check_turn_completed_from_tail(tail_tool, "/home/hlu/.claude/projects/test.jsonl"));
+
+    let tail_done = r#"{"type":"message","message":{"role":"assistant","stop_reason":"end_turn"}}"#;
+    assert!(check_turn_completed_from_tail(tail_done, "/home/hlu/.claude/projects/test.jsonl"));
+}
+
+#[test]
+fn test_check_turn_completed_codex() {
+    use astral_plasma::infrastructure::ai_activity_monitor::check_turn_completed_from_tail;
+
+    let tail_tool = r#"{"type":"event_msg","payload":{"type":"tool_call","finish_reason":"tool_calls"}}"#;
+    assert!(!check_turn_completed_from_tail(tail_tool, "/home/hlu/.codex/sessions/test.jsonl"));
+
+    let tail_done = r#"{"type":"event_msg","payload":{"type":"task_complete"}}"#;
+    assert!(check_turn_completed_from_tail(tail_done, "/home/hlu/.codex/sessions/test.jsonl"));
+}
+
+#[tokio::test]
+async fn test_turn_completion_decays_promptly() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    let monitor = AiActivityMonitor::new();
+
+    // 1. Record completed turn
+    monitor.record_activity_full("gemini-flash-3.8", "antigravity", Some(500), true).await;
+    let st1 = monitor.get_state().await;
+    assert!(st1.is_active);
+    assert_eq!(st1.active_agents.len(), 1);
+
+    // 2. Immediately after turn completion, it stays active for the 4s window
+    let _ = monitor.tick_decay().await;
+    let st2 = monitor.get_state().await;
+    assert_eq!(st2.active_agents.len(), 1);
+
+    // 3. Fast-forward past the 4s completion window by updating last_event_epoch_ms
+    {
+        let mut tracks = monitor.agent_tracks_for_test().await;
+        for (_, t) in tracks.iter_mut() {
+            t.last_event_epoch_ms = t.last_event_epoch_ms.saturating_sub(4500);
+        }
+    }
+
+    // Next tick prunes active_slots and initiates exponential decay immediately
+    let transitioned = monitor.tick_decay().await;
+    assert!(transitioned);
+    let st3 = monitor.get_state().await;
+    assert_eq!(st3.active_agents.len(), 0, "Agent must be pruned from active_agents after 4s completion window");
+    assert!(st3.intensity < 1.0, "Intensity must immediately begin decaying");
+
+    // Advance decay ticks until intensity < 0.05
+    for _ in 0..10 {
+        monitor.tick_decay().await;
+    }
+    let st_final = monitor.get_state().await;
+    assert!(!st_final.is_active, "Monitor must smoothly transition to inactive in sub-10s instead of hanging for 1 minute");
+    assert_eq!(st_final.intensity, 0.0);
+}
+
+

@@ -7,8 +7,10 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
-pub const ACTIVE_AGENT_WINDOW_MS: u64 = 35_000; // 35s active window (sustains active state during reasoning and tool execution)
-pub const TRACK_RETENTION_MS: u64 = 120_000;    // 120s track retention for rolling metrics
+pub const IN_FLIGHT_WINDOW_MS: u64 = 25_000;   // 25s active window during in-flight reasoning and tool execution
+pub const COMPLETED_WINDOW_MS: u64 = 4_000;    // 4s active window after turn completion (shows completion state, then promptly decays)
+pub const ACTIVE_AGENT_WINDOW_MS: u64 = 25_000; // alias for in-flight / active sessions scan
+pub const TRACK_RETENTION_MS: u64 = 120_000;   // 120s track retention for rolling metrics
 
 /// Track state for an individual agent tool during concurrent execution.
 #[derive(Debug, Clone)]
@@ -17,15 +19,16 @@ pub struct AgentTrack {
     pub recent_events_window: Vec<u64>,
     pub recent_tokens_window: Vec<(u64, u64)>,
     pub last_event_epoch_ms: u64,
+    pub is_turn_completed: bool,
 }
 
 /// Tail reader that extracts the most recent model identifier in <0.1ms without loading entire files.
 pub struct AiActivityMonitor {
     pub state: Arc<RwLock<AiActivityState>>,
+    pub agent_tracks: Arc<RwLock<HashMap<String, AgentTrack>>>,
     watch_descriptors: Arc<RwLock<HashMap<i32, PathBuf>>>,
     recent_events_window: Arc<RwLock<Vec<u64>>>,
     recent_tokens_window: Arc<RwLock<Vec<(u64, u64)>>>,
-    agent_tracks: Arc<RwLock<HashMap<String, AgentTrack>>>,
 }
 
 impl Default for AiActivityMonitor {
@@ -38,10 +41,10 @@ impl AiActivityMonitor {
     pub fn new() -> Self {
         Self {
             state: Arc::new(RwLock::new(AiActivityState::default())),
+            agent_tracks: Arc::new(RwLock::new(HashMap::new())),
             watch_descriptors: Arc::new(RwLock::new(HashMap::new())),
             recent_events_window: Arc::new(RwLock::new(Vec::new())),
             recent_tokens_window: Arc::new(RwLock::new(Vec::new())),
-            agent_tracks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -49,13 +52,22 @@ impl AiActivityMonitor {
         self.state.read().await.clone()
     }
 
+    pub async fn agent_tracks_for_test(&self) -> tokio::sync::RwLockWriteGuard<'_, HashMap<String, AgentTrack>> {
+        self.agent_tracks.write().await
+    }
+
     /// Records a new request event for the specified model and tool, updating activity metrics.
     pub async fn record_activity(&self, raw_model: &str, tool_source: &str) {
-        self.record_activity_with_tokens(raw_model, tool_source, None).await;
+        self.record_activity_full(raw_model, tool_source, None, false).await;
     }
 
     /// Records a new request event with optional token quantity, updating RPM and TPM metrics.
     pub async fn record_activity_with_tokens(&self, raw_model: &str, tool_source: &str, tokens: Option<u64>) {
+        self.record_activity_full(raw_model, tool_source, tokens, false).await;
+    }
+
+    /// Records a new request event with token quantity and turn completion status.
+    pub async fn record_activity_full(&self, raw_model: &str, tool_source: &str, tokens: Option<u64>, is_completed: bool) {
         let now_ms = current_epoch_ms();
         let identity = resolve_model_metadata(raw_model, tool_source);
 
@@ -84,8 +96,10 @@ impl AiActivityMonitor {
             recent_events_window: Vec::new(),
             recent_tokens_window: Vec::new(),
             last_event_epoch_ms: now_ms,
+            is_turn_completed: false,
         });
         track.identity = identity.clone();
+        track.is_turn_completed = is_completed;
         track.recent_events_window.retain(|&t| now_ms.saturating_sub(t) < 60_000);
         track.recent_events_window.push(now_ms);
         track.recent_tokens_window.retain(|&(t, _)| now_ms.saturating_sub(t) < 60_000);
@@ -96,13 +110,14 @@ impl AiActivityMonitor {
         }
         track.last_event_epoch_ms = now_ms;
 
-        // Build active_agents list for any track active within the ACTIVE_AGENT_WINDOW_MS
+        // Build active_agents list based on in-flight or completed window
         let mut active_slots = Vec::new();
         for (_, t) in tracks.iter_mut() {
             t.recent_events_window.retain(|&ev| now_ms.saturating_sub(ev) < 60_000);
             t.recent_tokens_window.retain(|&(ev, _)| now_ms.saturating_sub(ev) < 60_000);
             let agent_tokens: u64 = t.recent_tokens_window.iter().map(|&(_, c)| c).sum();
-            if now_ms.saturating_sub(t.last_event_epoch_ms) < ACTIVE_AGENT_WINDOW_MS {
+            let window = if t.is_turn_completed { COMPLETED_WINDOW_MS } else { IN_FLIGHT_WINDOW_MS };
+            if now_ms.saturating_sub(t.last_event_epoch_ms) < window {
                 active_slots.push(crate::domain::ai_activity::ActiveAgentSlot {
                     tool_source: t.identity.tool_source.clone(),
                     model_id: t.identity.model_id.clone(),
@@ -139,7 +154,7 @@ impl AiActivityMonitor {
             return false;
         }
 
-        let elapsed = now_ms.saturating_sub(st.last_event_epoch_ms);
+        let _elapsed = now_ms.saturating_sub(st.last_event_epoch_ms);
 
         // Decay global rolling windows
         let mut window = self.recent_events_window.write().await;
@@ -162,7 +177,8 @@ impl AiActivityMonitor {
         });
 
         for (_, t) in tracks.iter() {
-            if now_ms.saturating_sub(t.last_event_epoch_ms) < ACTIVE_AGENT_WINDOW_MS {
+            let window = if t.is_turn_completed { COMPLETED_WINDOW_MS } else { IN_FLIGHT_WINDOW_MS };
+            if now_ms.saturating_sub(t.last_event_epoch_ms) < window {
                 let agent_tokens: u64 = t.recent_tokens_window.iter().map(|&(_, c)| c).sum();
                 active_slots.push(crate::domain::ai_activity::ActiveAgentSlot {
                     tool_source: t.identity.tool_source.clone(),
@@ -181,9 +197,9 @@ impl AiActivityMonitor {
         let active_slots_changed = st.active_agents != active_slots;
         st.active_agents = active_slots.clone();
 
-        if active_slots.is_empty() && elapsed > 15_000 {
-            // Exponential decay after 15s idle when no agents are active
-            st.intensity *= 0.50;
+        if active_slots.is_empty() {
+            // Immediate smooth exponential decay when no agents are active
+            st.intensity *= 0.70;
             if st.intensity < 0.05 {
                 st.intensity = 0.0;
                 st.is_active = false;
@@ -193,6 +209,7 @@ impl AiActivityMonitor {
                 st.active_agents.clear();
                 return true; // Transitioned to inactive
             }
+            return true; // Intensity changed during decay
         }
         active_slots_changed
     }
@@ -310,6 +327,11 @@ impl AiActivityMonitor {
 
     /// Comprehensive file parser: extracts active model, provider, and recent token throughput.
     pub fn parse_model_and_tokens_from_file(path: &Path) -> Option<(String, String, Option<u64>)> {
+        Self::parse_model_tokens_and_status_from_file(path).map(|(m, t, tok, _)| (m, t, tok))
+    }
+
+    /// Extended file parser: extracts active model, provider, recent tokens, and turn completion status.
+    pub fn parse_model_tokens_and_status_from_file(path: &Path) -> Option<(String, String, Option<u64>, bool)> {
         let path_hint = path.to_string_lossy();
         if path_hint.ends_with(".log")
             || path_hint.ends_with(".db")
@@ -325,9 +347,10 @@ impl AiActivityMonitor {
 
         let tail = Self::read_tail_string(path, 32768);
         let tokens = tail.as_deref().and_then(extract_tokens_from_tail);
+        let is_completed = tail.as_deref().map(|t| check_turn_completed_from_tail(t, &path_hint)).unwrap_or(false);
 
         let (model, tool) = Self::parse_model_from_file(path)?;
-        Some((model, tool, tokens))
+        Some((model, tool, tokens, is_completed))
     }
 
     /// Extracts the most recent model identifier from the tail of a session or log file.
@@ -676,7 +699,8 @@ impl AiActivityMonitor {
                                                     last_seen_opencode_time = time_updated;
                                                     last_seen_opencode_tokens = tokens;
                                                     let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                                                    self.record_activity_with_tokens(&model, "opencode", Some(reported)).await;
+                                                    let is_completed = now_epoch.saturating_sub(time_updated) >= 4_000;
+                                                    self.record_activity_full(&model, "opencode", Some(reported), is_completed).await;
                                                     let curr = self.get_state().await;
                                                     emit_activity_payload(&curr);
                                                 }
@@ -693,8 +717,8 @@ impl AiActivityMonitor {
                                             .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < ACTIVE_AGENT_WINDOW_MS)
                                             .unwrap_or(false);
                                         if is_fresh {
-                                            if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&full_path) {
-                                                self.record_activity_with_tokens(&model, &tool, tokens).await;
+                                            if let Some((model, tool, tokens, is_completed)) = Self::parse_model_tokens_and_status_from_file(&full_path) {
+                                                self.record_activity_full(&model, &tool, tokens, is_completed).await;
                                                 let curr = self.get_state().await;
                                                 emit_activity_payload(&curr);
                                             }
@@ -719,8 +743,8 @@ impl AiActivityMonitor {
                         };
                         if is_new_event {
                             seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
-                            if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&file_info.path) {
-                                self.record_activity_with_tokens(&model, &tool, tokens).await;
+                            if let Some((model, tool, tokens, is_completed)) = Self::parse_model_tokens_and_status_from_file(&file_info.path) {
+                                self.record_activity_full(&model, &tool, tokens, is_completed).await;
                                 should_emit = true;
                             }
                         }
@@ -747,7 +771,8 @@ impl AiActivityMonitor {
                                         last_seen_opencode_time = time_updated;
                                         last_seen_opencode_tokens = tokens;
                                         let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                                        self.record_activity_with_tokens(&model, "opencode", Some(reported)).await;
+                                        let is_completed = now_epoch.saturating_sub(time_updated) >= 4_000;
+                                        self.record_activity_full(&model, "opencode", Some(reported), is_completed).await;
                                         should_emit = true;
                                     }
                                 }
@@ -1055,6 +1080,104 @@ where
             }
         }
     }
+}
+
+/// Helper to determine if an AI agent has completed its current turn / message to the user.
+pub fn check_turn_completed_from_tail(tail: &str, path_hint: &str) -> bool {
+    let lower_hint = path_hint.to_lowercase();
+
+    // 1. Antigravity transcript: check for final PLANNER_RESPONSE with no tool calls
+    if lower_hint.contains("antigravity") {
+        for line in tail.lines().rev() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                let src = v.get("source").and_then(|s| s.as_str()).unwrap_or("");
+                if typ == "USER_INPUT" {
+                    return false; // User just asked, agent is in-flight
+                }
+                if typ == "PLANNER_RESPONSE" || (src == "MODEL" && typ == "GENERIC") {
+                    let has_tools = v.get("tool_calls")
+                        .and_then(|tc| tc.as_array())
+                        .map(|a| !a.is_empty())
+                        .unwrap_or(false);
+                    if has_tools {
+                        return false; // Tool call in progress
+                    }
+                    if typ == "PLANNER_RESPONSE" {
+                        return true; // Final response with no tool calls -> turn complete!
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // 2. Claude Code & Desktop
+    if lower_hint.contains("claude") {
+        for line in tail.lines().rev() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                let msg = v.get("message");
+                let stop_reason = v.get("stop_reason")
+                    .or_else(|| msg.and_then(|m| m.get("stop_reason")))
+                    .and_then(|s| s.as_str());
+                if let Some(reason) = stop_reason {
+                    if reason == "end_turn" || reason == "stop" {
+                        return true;
+                    } else if reason == "tool_use" {
+                        return false;
+                    }
+                }
+                let role = v.get("role")
+                    .or_else(|| msg.and_then(|m| m.get("role")))
+                    .and_then(|r| r.as_str());
+                if role == Some("user") {
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+
+    // 3. OpenAI / Codex
+    if lower_hint.contains("codex") {
+        for line in tail.lines().rev() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                if typ == "task_complete" || typ == "turn_complete" {
+                    return true;
+                }
+                if let Some(payload) = v.get("payload") {
+                    let p_type = payload.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                    if p_type == "task_complete" || p_type == "turn_complete" {
+                        return true;
+                    }
+                }
+                let finish_reason = v.get("finish_reason")
+                    .or_else(|| v.get("payload").and_then(|p| p.get("finish_reason")))
+                    .and_then(|f| f.as_str());
+                if finish_reason == Some("stop") {
+                    return true;
+                } else if finish_reason == Some("tool_calls") {
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+
+    false
 }
 
 /// Helper to extract token usage from a JSON line (supports pi, omp, claude, codex, openai formats).
