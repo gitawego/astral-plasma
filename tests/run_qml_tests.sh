@@ -13,7 +13,7 @@ export QML_XHR_ALLOW_FILE_READ=1
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 python3 - "$DIR" << 'EOF'
-import os, sys, subprocess, concurrent.futures
+import os, sys, subprocess, concurrent.futures, shutil
 
 dir_path = sys.argv[1]
 qml_files = sorted([os.path.join(dir_path, f) for f in os.listdir(dir_path) if f.startswith("tst_") and f.endswith(".qml")])
@@ -24,10 +24,24 @@ env = os.environ.copy()
 env["QT_ASSUME_STDERR_HAS_CONSOLE"] = "1"
 env["QML_XHR_ALLOW_FILE_READ"] = "1"
 
+# Dynamically locate qml runner
+qml_bin = os.environ.get("QML_BIN")
+if not qml_bin:
+    for candidate in ["qml6", "qml", "/usr/lib/qt6/bin/qml", "/usr/lib/qt6/bin/qml6", "/usr/bin/qml6", "/usr/bin/qml"]:
+        if shutil.which(candidate) or os.path.exists(candidate):
+            qml_bin = candidate
+            break
+
+if not qml_bin:
+    print("Error: Could not locate 'qml6' or 'qml' binary. Please ensure Qt 6 QML runtime is installed.", file=sys.stderr)
+    sys.exit(1)
+
+print(f"Using QML binary: {qml_bin}")
+
 def run_test(path):
     name = os.path.basename(path)
     try:
-        res = subprocess.run(["qml6", "-platform", "offscreen", path], capture_output=True, text=True, env=env, timeout=20)
+        res = subprocess.run([qml_bin, "-platform", "offscreen", path], capture_output=True, text=True, env=env, timeout=20)
         output = (res.stdout or "") + (res.stderr or "")
         passed = (res.returncode == 0) and ("PASS:" in output)
         return name, passed, output, res.returncode

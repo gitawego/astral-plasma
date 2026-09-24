@@ -127,5 +127,10 @@ fn test_live_diagnostics_collection() {
     assert!(qs_check.is_some(), "Quickshell check must exist");
     let qs = qs_check.unwrap();
     assert_eq!(qs.required, true);
-    assert!(qs.installed);
+    let expected_installed = std::process::Command::new("which")
+        .arg("quickshell")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    assert_eq!(qs.installed, expected_installed);
 }

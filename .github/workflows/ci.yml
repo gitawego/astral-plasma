@@ -72,23 +72,30 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            qml-qt6 \
             qt6-declarative-dev \
             qt6-declarative-dev-tools \
+            qml6-module-qtquick \
             qml6-module-qtquick-controls \
             qml6-module-qtquick-layouts \
             qml6-module-qtquick-shapes \
+            qml6-module-qtquick-templates \
+            qml6-module-qtquick-window \
+            qml6-module-qtquick-dialogs \
+            qml6-module-qtquick-effects \
+            qml6-module-qt5compat-graphicaleffects \
             qml6-module-qtmultimedia \
             python3
-          # Ensure qml6 command is found in PATH
-          if ! command -v qml6 >/dev/null 2>&1; then
-            for p in /usr/lib/qt6/bin/qml /usr/lib/qt6/bin/qml6; do
-              if [ -f "$p" ]; then
-                sudo ln -sf "$p" /usr/local/bin/qml6
-                break
-              fi
-            done
-          fi
-          command -v qml6 || true
+          # Ensure qml6 and qml commands are found in PATH
+          for p in /usr/lib/qt6/bin/qml /usr/lib/qt6/bin/qml6 /usr/bin/qml; do
+            if [ -f "$p" ]; then
+              sudo ln -sf "$p" /usr/local/bin/qml6
+              sudo ln -sf "$p" /usr/local/bin/qml
+              break
+            fi
+          done
+          which qml6 || true
+          which qml || true
 
       - name: Run 82 QML test suites (offscreen)
         run: |
