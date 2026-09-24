@@ -97,7 +97,7 @@ Item {
 
         // 2. AiTab implicit dimensions
         assert(aiTab.implicitWidth >= 680, "AiTab implicitWidth should be at least 680, got: " + aiTab.implicitWidth);
-        assert(aiTab.implicitHeight >= 320, "AiTab implicitHeight should be at least 320, got: " + aiTab.implicitHeight);
+        assert(aiTab.implicitHeight >= 300, "AiTab implicitHeight should be at least 300, got: " + aiTab.implicitHeight);
 
         // 3. Provider list & initial provider selection
         assert(aiTab.providersList.length === 3, "AiTab providersList should have 3 providers");

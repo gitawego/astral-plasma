@@ -9,7 +9,7 @@ Item {
     id: root
 
     implicitWidth: 940
-    implicitHeight: 410
+    implicitHeight: 310
 
     property bool testMode: false
     property var testProviders: null
@@ -70,10 +70,10 @@ Item {
         if (!p) return "Config";
         const pid = (p.provider_id || p.provider || "").toLowerCase();
         if (pid === "gemini") return "Antigravity Cockpit & Keyring";
-        if (pid === "minimax-cn") return "Pi Agent (~/.pi/agent/auth.json)";
-        if (pid === "opencode-go" || pid === "opencode") return "Pi / OpenCode (~/.config/opencode)";
+        if (pid === "minimax-cn") return "Pi Agent Sessions";
+        if (pid === "opencode-go" || pid === "opencode") return "OpenCode & Pi Sessions";
         if (pid.indexOf("mimo") !== -1 || pid.indexOf("xiaomi") !== -1) return "OMP Agent (~/.omp/agent)";
-        return "Local Agent Tool Scanner";
+        return "Agent Tool Scanner";
     }
 
     function syncActiveTab() {
@@ -187,100 +187,150 @@ Item {
     ColumnLayout {
         id: mainLayout
         anchors.fill: parent
-        spacing: Theme.spaceMedium
+        spacing: (typeof Theme !== "undefined" && Theme.spaceMedium) ? Theme.spaceMedium : 12
 
         // =====================================================================
-        // 1. TOP OVERVIEW & ACTION BAR
+        // 1. UNIFIED TOP NAVIGATION & TELEMETRY BAR (Hero Segmented Control)
         // =====================================================================
         RowLayout {
             Layout.fillWidth: true
-            spacing: 12
+            implicitHeight: 36
+            spacing: 10
 
-            // Title & Status
-            RowLayout {
-                spacing: 8
-                MaterialIcon {
-                    text: "auto_awesome"
-                    size: 22
-                    color: (root.warningLevel === "critical")
-                        ? "#E05353"
-                        : ((root.warningLevel === "warning") ? "#F59E0B" : Colors.primary)
-                }
+            // Fluid Segmented Provider Capsule Bar
+            Rectangle {
+                implicitHeight: 34
+                implicitWidth: providerChipsRow.implicitWidth + 8
+                radius: (typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : 17
+                color: Qt.rgba(1, 1, 1, 0.05)
+                border.width: 1
+                border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) 
+                    ? Qt.alpha(Colors.glassBorderSpecular, 0.25)
+                    : Qt.rgba(1, 1, 1, 0.15)
 
-                ColumnLayout {
-                    spacing: 1
-                    Text {
-                        text: "AI Quotas & Model Center"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontTitleSmall
-                        font.weight: Font.Bold
-                        color: Colors.m3onSurface
-                        style: Text.Outline
-                        styleColor: Colors.glassTextHalo
-                    }
-                    Text {
-                        text: (root.providersList.length > 0)
-                            ? (root.providersList.length + " Active Models Detected · " + (root.warningLevel === "normal" ? "All Limits Healthy" : (root.warningLevel === "warning" ? "Quota Warning (>= 80%)" : "Critical Quota Alert (>= 95%)")))
-                            : "No AI Providers Detected"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        color: (root.warningLevel === "critical")
-                            ? "#E05353"
-                            : ((root.warningLevel === "warning") ? "#F59E0B" : Colors.m3onSurfaceVariant)
+                Row {
+                    id: providerChipsRow
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 4
+                    spacing: 4
+
+                    Repeater {
+                        model: root.providersList
+
+                        Item {
+                            id: chipDelegate
+                            width: chipContent.implicitWidth + 20
+                            height: 26
+
+                            readonly property bool isSelected: index === root.activeProviderIndex
+                            readonly property bool isHovered: chipMouse.containsMouse
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: (typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : 13
+                                color: isSelected 
+                                    ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.22)
+                                    : (isHovered ? Qt.rgba(1, 1, 1, 0.09) : "transparent")
+                                border.width: isSelected ? 1 : 0
+                                border.color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
+
+                                Behavior on color { ColorAnimation { duration: (typeof Theme !== "undefined") ? Theme.animExpressiveFastEffects : 150 } }
+                                Behavior on border.color { ColorAnimation { duration: (typeof Theme !== "undefined") ? Theme.animExpressiveFastEffects : 150 } }
+
+                                RowLayout {
+                                    id: chipContent
+                                    anchors.centerIn: parent
+                                    spacing: 6
+
+                                    ThemedIcon {
+                                        source: (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function")
+                                            ? Config.providerIconUrl(modelData.provider_id || modelData.provider)
+                                            : ""
+                                        materialIcon: root.getProviderIcon(modelData)
+                                        size: 15
+                                        color: isSelected 
+                                            ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
+                                            : ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#e3e3e3")
+                                    }
+
+                                    Text {
+                                        text: root.getProviderShortName(modelData)
+                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                        font.pixelSize: 12
+                                        font.weight: isSelected ? Font.Bold : Font.DemiBold
+                                        color: isSelected 
+                                            ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
+                                            : ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#e3e3e3")
+                                    }
+
+                                    // Compact Plan Badge
+                                    Rectangle {
+                                        visible: !!modelData.plan_type
+                                        implicitWidth: planText.implicitWidth + 8
+                                        implicitHeight: 15
+                                        radius: (typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : 7
+                                        color: isSelected 
+                                            ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.25)
+                                            : Qt.rgba(1, 1, 1, 0.08)
+
+                                        Text {
+                                            id: planText
+                                            anchors.centerIn: parent
+                                            text: modelData.plan_type ? modelData.plan_type.replace("Google AI ", "").replace(" Plan", "") : ""
+                                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                            color: isSelected 
+                                                ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
+                                                : ((typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0")
+                                        }
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: chipMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.activeProviderIndex = index;
+                                    const pid = modelData.provider_id || modelData.provider;
+                                    if (typeof AiTokenService !== "undefined" && pid) {
+                                        AiTokenService.lastActiveProviderId = pid;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             Item { Layout.fillWidth: true }
 
-            // Active CLI Account Pill
-            ActionPill {
-                visible: !!(typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail)
-                icon: "check_circle"
-                text: "CLI: " + ((typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail) ? AiTokenService.activeGeminiEmail : "")
-                variant: "active"
-                pill: true
-                interactive: false
-                fontPixelSize: 10
-                fixedHeight: 24
-                paddingHorizontal: 10
-            }
-
-            // Lowest Constraint Pill
-            ActionPill {
-                visible: (typeof AiTokenService !== "undefined" && AiTokenService.lowestRemainingPercent !== undefined && root.providersList.length > 0)
-                icon: "timelapse"
-                text: "Lowest: " + Math.round((typeof AiTokenService !== "undefined" ? AiTokenService.lowestRemainingPercent : 100)) + "% Remaining"
-                variant: ((typeof AiTokenService !== "undefined" && AiTokenService.lowestRemainingPercent < 20) ? "danger" : ((typeof AiTokenService !== "undefined" && AiTokenService.lowestRemainingPercent <= 50) ? "secondary" : "info"))
-                pill: true
-                interactive: false
-                fontPixelSize: 10
-                fixedHeight: 24
-                paddingHorizontal: 10
-            }
-
-            // Token Cache Hit Rate Pill
+            // Global Prompt Cache Hit Rate Pill
             ActionPill {
                 visible: (typeof AiTokenService !== "undefined" && AiTokenService.cacheHitRate > 0)
                 icon: "bolt"
-                text: "Cache Hit: " + Math.round((typeof AiTokenService !== "undefined" ? AiTokenService.cacheHitRate : 0)) + "% (" + root.formatTokenCount((typeof AiTokenService !== "undefined" && AiTokenService.totalCachedTokens) ? AiTokenService.totalCachedTokens : 0) + " saved)"
+                text: Math.round((typeof AiTokenService !== "undefined" ? AiTokenService.cacheHitRate : 0)) + "% Cache Hit (" + root.formatTokenCount((typeof AiTokenService !== "undefined" && AiTokenService.totalCachedTokens) ? AiTokenService.totalCachedTokens : 0) + " saved)"
                 variant: "active"
                 pill: true
                 interactive: false
                 fontPixelSize: 10
-                fixedHeight: 24
+                fixedHeight: 26
                 paddingHorizontal: 10
             }
 
-            // Force Refresh Button
-            ActionPill {
-                id: refreshActionBtn
-                icon: "refresh"
-                text: root.isRefreshing ? "Syncing..." : "Sync"
-                variant: "secondary"
-                fontPixelSize: 10
-                fixedHeight: 24
-                paddingHorizontal: 10
+            // Sync Refresh Button
+            LiquidGlassButton {
+                implicitWidth: 30
+                implicitHeight: 30
+                paddingHorizontal: 0
+                paddingVertical: 0
+                iconText: "refresh"
+                iconSize: 15
+                elevation: 2
                 onClicked: {
                     if (typeof AiTokenService !== "undefined") {
                         AiTokenService.refresh(true);
@@ -288,16 +338,18 @@ Item {
                 }
             }
 
-            // Manage in Settings Shortcut
-            ActionPill {
-                icon: "settings"
-                text: "Manage"
-                variant: "primary"
-                fontPixelSize: 10
-                fixedHeight: 24
-                paddingHorizontal: 12
+            // AI Settings Button
+            LiquidGlassButton {
+                implicitWidth: 30
+                implicitHeight: 30
+                paddingHorizontal: 0
+                paddingVertical: 0
+                iconText: "settings"
+                iconSize: 15
+                elevation: 2
                 onClicked: {
                     if (typeof Config !== "undefined") {
+                        Config.dashboardVisible = false;
                         Config.openSettings("ai");
                     }
                 }
@@ -305,128 +357,31 @@ Item {
         }
 
         // =====================================================================
-        // 2. RESPONSIVE PROVIDER CHIPS (Horizontal Segmented Tabs)
-        // =====================================================================
-        Row {
-            Layout.fillWidth: true
-            spacing: 8
-            visible: root.providersList.length > 0
-
-            Repeater {
-                model: root.providersList
-                delegate: Rectangle {
-                    id: chipDelegate
-                    required property var modelData
-                    required property int index
-
-                    readonly property bool isSelected: root.activeProviderIndex === index
-                    readonly property bool hasWarning: {
-                        for (let i = 0; i < (modelData.windows || []).length; i++) {
-                            if (modelData.windows[i].used_percent >= (typeof Config !== "undefined" ? Config.aiWarningThreshold : 80)) {
-                                return true;
-                            }
-                        }
-                        return false;
-                    }
-
-                    height: 32
-                    implicitWidth: chipRow.implicitWidth + 24
-                    radius: Theme.radiusMedium
-                    color: isSelected
-                        ? (hasWarning ? Qt.alpha("#F59E0B", 0.28) : Qt.alpha(Colors.primary, 0.22))
-                        : (chipHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.12) : Qt.rgba(1.0, 1.0, 1.0, 0.05))
-                    border.color: isSelected
-                        ? (hasWarning ? "#F59E0B" : Colors.primary)
-                        : (chipHover.containsMouse ? Qt.alpha(Colors.glassBorderSpecular, 0.45) : Qt.rgba(1.0, 1.0, 1.0, 0.12))
-                    border.width: isSelected ? 1.5 : 1
-
-                    Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
-                    Behavior on border.color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
-
-                    RowLayout {
-                        id: chipRow
-                        anchors.centerIn: parent
-                        spacing: 6
-
-                        ThemedIcon {
-                            source: (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function")
-                                ? Config.providerIconUrl(modelData.provider_id || modelData.provider)
-                                : ""
-                            materialIcon: root.getProviderIcon(modelData)
-                            size: 16
-                            color: isSelected ? Colors.primary : Colors.m3onSurfaceVariant
-                        }
-
-                        Text {
-                            text: root.getProviderShortName(modelData)
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: isSelected ? Font.Bold : Font.DemiBold
-                            color: isSelected ? Colors.primary : Colors.m3onSurface
-                        }
-
-                        ActionPill {
-                            visible: !!modelData.plan_type
-                            text: modelData.plan_type || ""
-                            variant: isSelected ? "active" : "secondary"
-                            pill: true
-                            interactive: false
-                            fontPixelSize: 9
-                            fixedHeight: 18
-                            paddingHorizontal: 6
-                        }
-
-                        Rectangle {
-                            visible: hasWarning
-                            width: 7
-                            height: 7
-                            radius: 3.5
-                            color: "#F59E0B"
-                        }
-                    }
-
-                    MouseArea {
-                        id: chipHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            root.activeProviderIndex = index;
-                            const pid = modelData.provider_id || modelData.provider;
-                            if (typeof AiTokenService !== "undefined" && pid) {
-                                AiTokenService.lastActiveProviderId = pid;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // =====================================================================
-        // 3. MAIN DUAL-COLUMN BODY
+        // 2. MAIN BENTO GRID (Dual-Card Surface)
         // =====================================================================
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: Theme.spaceMedium
+            spacing: (typeof Theme !== "undefined" && Theme.spaceMedium) ? Theme.spaceMedium : 12
             visible: root.currentProvider !== null
 
             // -----------------------------------------------------------------
-            // LEFT COLUMN: Primary Provider Quota Details & Gauges (~58% width)
+            // LEFT CARD: Primary Model Quota & Limits (~56% width)
             // -----------------------------------------------------------------
             Card {
                 Layout.fillWidth: true
-                Layout.preferredWidth: 540
+                Layout.preferredWidth: 520
                 Layout.minimumWidth: 460
                 Layout.fillHeight: true
-                radius: Theme.radiusGlassCard
+                radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
                 padding: 16
 
                 ColumnLayout {
                     anchors.fill: parent
-                    spacing: 14
+                    anchors.margins: 14
+                    spacing: 10
 
-                    // Provider Header Bar
+                    // Card Header: Provider Identity & Origin
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 10
@@ -436,8 +391,8 @@ Item {
                                 ? Config.providerIconUrl(root.currentProvider.provider_id || root.currentProvider.provider)
                                 : ""
                             materialIcon: root.getProviderIcon(root.currentProvider)
-                            size: 26
-                            color: Colors.primary
+                            size: 24
+                            color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
                         }
 
                         ColumnLayout {
@@ -446,236 +401,178 @@ Item {
 
                             Text {
                                 text: root.currentProvider ? root.currentProvider.display_name : ""
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontTitleSmall
+                                font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                font.pixelSize: 14
                                 font.weight: Font.Bold
-                                color: Colors.m3onSurface
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
+                                color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                                style: Text.Outline
+                                styleColor: Colors.glassTextHalo
                             }
 
-                            RowLayout {
-                                spacing: 6
-                                Text {
-                                    text: root.getProviderDiscoverySource(root.currentProvider)
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 10
-                                    color: Colors.m3onSurfaceVariant
-                                }
+                            Text {
+                                text: root.getProviderDiscoverySource(root.currentProvider)
+                                font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                font.pixelSize: 10
+                                color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
                             }
                         }
 
+                        // Plan Type Pill
                         ActionPill {
-                            visible: root.currentProvider && !!root.currentProvider.plan_type
-                            text: root.currentProvider ? (root.currentProvider.plan_type || "") : ""
-                            variant: "active"
-                            pill: true
-                            interactive: false
+                            visible: !!(root.currentProvider && root.currentProvider.plan_type)
+                            text: (root.currentProvider && root.currentProvider.plan_type) ? root.currentProvider.plan_type : ""
+                            variant: "secondary"
                             fontPixelSize: 10
                             fixedHeight: 22
                             paddingHorizontal: 10
+                            interactive: false
                         }
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 1
-                        color: Theme.borderSubtle
-                        opacity: 0.35
+                    // Quota Limit Windows Repeater
+                    Repeater {
+                        model: root.currentWindows
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            // Top: Label & Remaining %
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Text {
+                                    text: {
+                                        const l = (modelData.label || "").toLowerCase();
+                                        if (l === "5h") return "5-Hour Rolling Limit";
+                                        if (l === "weekly") return "Weekly Limit";
+                                        if (l === "monthly") return "Monthly Limit";
+                                        return modelData.label + " Limit";
+                                    }
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                Text {
+                                    text: Math.round(modelData.remaining_percent) + "% Remaining"
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 12
+                                    font.weight: Font.Bold
+                                    color: (modelData.remaining_percent < 20)
+                                        ? "#EF4444"
+                                        : ((modelData.remaining_percent <= 50) ? "#F59E0B" : ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"))
+                                }
+                            }
+
+                            // Middle: Sleek Rounded Level Bar
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 8
+                                radius: 4
+                                color: Qt.rgba(1, 1, 1, 0.08)
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: Math.max(4, parent.width * Math.min(1.0, Math.max(0.0, modelData.remaining_percent / 100.0)))
+                                    radius: 4
+                                    color: (modelData.remaining_percent < 20)
+                                        ? "#EF4444"
+                                        : ((modelData.remaining_percent <= 50) ? "#F59E0B" : ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"))
+
+                                    Behavior on width {
+                                        NumberAnimation {
+                                            duration: (typeof Theme !== "undefined") ? Theme.animExpressiveFastSpatial : 350
+                                            easing.type: Easing.BezierSpline
+                                            easing.bezierCurve: (typeof Theme !== "undefined" && Theme.curveExpressiveFastSpatial) ? Theme.curveExpressiveFastSpatial : [0.42, 1.67, 0.21, 0.9, 1.0, 1.0]
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Bottom: Humanized Reset Time & Used %
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Text {
+                                    text: root.formatResetTime(modelData.reset_at)
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 10
+                                    color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                Text {
+                                    text: Math.round(modelData.used_percent) + "% used"
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 10
+                                    color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                }
+                            }
+                        }
                     }
 
-                    // Provider Cache Hit Rate Performance Row
-                    RowLayout {
-                        visible: root.currentProvider && root.currentProvider.cache_stats && root.currentProvider.cache_stats.total_prompt_tokens > 0
+                    // Prompt Cache Efficiency Strip (when provider has cache_stats)
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: 4
+                        visible: root.currentProvider && root.currentProvider.cache_stats
 
-                        Rectangle {
-                            width: 24
-                            height: 24
-                            radius: 12
-                            color: Qt.alpha("#10B981", 0.15)
-                            border.color: Qt.alpha("#10B981", 0.35)
-                            border.width: 1
+                        RowLayout {
+                            Layout.fillWidth: true
 
-                            MaterialIcon {
-                                anchors.centerIn: parent
-                                text: "bolt"
-                                size: 14
+                            Text {
+                                text: "Prompt Cache Efficiency"
+                                font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            Text {
+                                text: (root.currentProvider && root.currentProvider.cache_stats)
+                                    ? (root.currentProvider.cache_stats.cache_hit_rate_percent.toFixed(1) + "% Hit Rate")
+                                    : ""
+                                font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
                                 color: "#10B981"
                             }
                         }
 
-                        ColumnLayout {
-                            spacing: 2
+                        Rectangle {
                             Layout.fillWidth: true
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Text {
-                                    text: "Prompt Cache Efficiency"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    font.weight: Font.DemiBold
-                                    color: Colors.m3onSurface
-                                }
-                                Item { Layout.fillWidth: true }
-                                Text {
-                                    text: (root.currentProvider && root.currentProvider.cache_stats)
-                                        ? (root.currentProvider.cache_stats.cache_hit_rate_percent.toFixed(1) + "% hit rate (" + root.formatTokenCount(root.currentProvider.cache_stats.cached_tokens) + " tokens saved)")
-                                        : ""
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    font.weight: Font.Bold
-                                    color: "#10B981"
-                                }
-                            }
+                            height: 6
+                            radius: 3
+                            color: Qt.rgba(16/255, 185/255, 129/255, 0.15)
 
                             Rectangle {
-                                Layout.fillWidth: true
-                                height: 4
-                                radius: 2
-                                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : Qt.rgba(0.0, 0.0, 0.0, 0.06)
-
-                                Rectangle {
-                                    width: parent.width * Math.min(1.0, Math.max(0.0, (root.currentProvider && root.currentProvider.cache_stats) ? (root.currentProvider.cache_stats.cache_hit_rate_percent / 100.0) : 0.0))
-                                    height: parent.height
-                                    radius: 2
-                                    color: "#10B981"
-
-                                    Behavior on width {
-                                        NumberAnimation {
-                                            duration: Theme.animExpressiveDefaultSpatial
-                                            easing.type: Easing.BezierSpline
-                                            easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
-                                        }
-                                    }
-                                }
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: (root.currentProvider && root.currentProvider.cache_stats)
+                                    ? Math.max(4, parent.width * Math.min(1.0, root.currentProvider.cache_stats.cache_hit_rate_percent / 100.0))
+                                    : 0
+                                radius: 3
+                                color: "#10B981"
                             }
                         }
-                    }
 
-                    // Quota Limit Windows (Rolling 5h, Weekly, Monthly)
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 12
-                        visible: root.currentWindows && root.currentWindows.length > 0
-
-                        Repeater {
-                            model: root.currentWindows
-                            delegate: ColumnLayout {
-                                required property var modelData
-                                Layout.fillWidth: true
-                                spacing: 4
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-
-                                    Text {
-                                        text: {
-                                            switch (modelData.label) {
-                                                case "5h": return "5-Hour Rolling Limit";
-                                                case "weekly": return "Weekly Limit";
-                                                case "monthly": return "Monthly Limit";
-                                                default: return (modelData.label.charAt(0).toUpperCase() + modelData.label.slice(1)) + " Limit";
-                                            }
-                                        }
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
-                                        color: Colors.m3onSurface
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-
-                                    Text {
-                                        text: Math.round(modelData.remaining_percent) + "% remaining"
-                                            + (modelData.used_percent !== undefined ? (" (" + Math.round(modelData.used_percent) + "% used)") : "")
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: 11
-                                        font.weight: Font.Bold
-                                        color: (modelData.remaining_percent < 20)
-                                            ? "#EF4444"
-                                            : ((modelData.remaining_percent <= 50) ? "#F59E0B" : Colors.primary)
-                                    }
-                                }
-
-                                // Level Bar Gauge
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    height: 8
-                                    radius: 4
-                                    color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                                        ? Qt.rgba(1.0, 1.0, 1.0, 0.08)
-                                        : Qt.rgba(0.0, 0.0, 0.0, 0.06)
-
-                                    Rectangle {
-                                        width: Math.max(8, Math.min(parent.width, parent.width * (modelData.remaining_percent / 100.0)))
-                                        height: parent.height
-                                        radius: 4
-                                        color: (modelData.remaining_percent < 20)
-                                            ? "#EF4444"
-                                            : ((modelData.remaining_percent <= 50) ? "#F59E0B" : Colors.primary)
-
-                                        Behavior on width {
-                                            NumberAnimation {
-                                                duration: Theme.animExpressiveDefaultSpatial
-                                                easing.type: Easing.BezierSpline
-                                                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Reset Countdown
-                                RowLayout {
-                                    spacing: 4
-                                    visible: modelData.reset_at !== null && modelData.reset_at !== ""
-
-                                    MaterialIcon {
-                                        text: "schedule"
-                                        size: 12
-                                        color: Colors.m3onSurfaceVariant
-                                    }
-
-                                    Text {
-                                        text: root.formatResetTime(modelData.reset_at)
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: 10
-                                        color: Colors.m3onSurfaceVariant
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Pay-as-you-go State
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: root.currentProvider !== null && (!root.currentWindows || root.currentWindows.length === 0)
-
-                        MaterialIcon {
-                            text: "verified"
-                            size: 20
-                            color: Colors.primary
-                        }
-
-                        ColumnLayout {
-                            spacing: 2
-                            Text {
-                                text: "Pay-as-you-go / On-Demand Access"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
-                                color: Colors.m3onSurface
-                            }
-                            Text {
-                                text: "No rolling quota window restrictions. Requests route directly to model endpoints."
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 10
-                                color: Colors.m3onSurfaceVariant
-                            }
+                        Text {
+                            text: (root.currentProvider && root.currentProvider.cache_stats)
+                                ? (root.formatTokenCount(root.currentProvider.cache_stats.cached_tokens) + " tokens saved from prompt cache")
+                                : ""
+                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                            font.pixelSize: 10
+                            color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
                         }
                     }
 
@@ -684,413 +581,404 @@ Item {
             }
 
             // -----------------------------------------------------------------
-            // RIGHT COLUMN: Account Management & Ecosystem Scanner (~42% width)
+            // RIGHT CARD: Contextual Intelligence Hub (~44% width)
             // -----------------------------------------------------------------
-            ColumnLayout {
-                Layout.preferredWidth: 380
-                Layout.minimumWidth: 340
-                Layout.maximumWidth: 420
+            Card {
+                Layout.preferredWidth: 410
+                Layout.minimumWidth: 360
+                Layout.maximumWidth: 440
                 Layout.fillWidth: false
                 Layout.fillHeight: true
-                spacing: Theme.spaceMedium
+                radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
+                padding: 16
 
-                // Card A: Multi-Account Management (if provider has accounts)
-                Card {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: Theme.radiusGlassCard
-                    padding: 14
+                // -------------------------------------------------------------
+                // CASE A: Multi-Account Management (e.g. Gemini with 3 accounts)
+                // -------------------------------------------------------------
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 8
                     visible: root.currentProvider && root.currentProvider.accounts && root.currentProvider.accounts.length >= 1
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 8
+                    // Header
+                    RowLayout {
+                        Layout.fillWidth: true
 
-                        RowLayout {
-                            Layout.fillWidth: true
+                        MaterialIcon {
+                            text: "manage_accounts"
+                            size: 18
+                            color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
+                        }
 
-                            MaterialIcon {
-                                text: "manage_accounts"
-                                size: 16
-                                color: Colors.primary
-                            }
+                        Text {
+                            text: "Connected Profiles"
+                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                            color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                        }
 
-                            Text {
-                                text: "Accounts (" + ((root.currentProvider && root.currentProvider.accounts) ? root.currentProvider.accounts.length : 0) + ")"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 12
-                                font.weight: Font.Bold
-                                color: Colors.m3onSurface
-                            }
+                        ActionPill {
+                            text: ((root.currentProvider && root.currentProvider.accounts) ? root.currentProvider.accounts.length : 0) + " Accounts"
+                            variant: "info"
+                            fontPixelSize: 9
+                            fixedHeight: 20
+                            paddingHorizontal: 8
+                            interactive: false
+                        }
 
-                            Item { Layout.fillWidth: true }
+                        Item { Layout.fillWidth: true }
 
-                            ActionPill {
-                                text: "Settings"
-                                icon: "settings"
-                                variant: "secondary"
-                                fontPixelSize: 9
-                                fixedHeight: 20
-                                paddingHorizontal: 8
-                                onClicked: {
-                                    if (typeof Config !== "undefined") {
-                                        Config.openSettings("ai");
-                                    }
+                        ActionPill {
+                            text: "Manage"
+                            icon: "settings"
+                            variant: "secondary"
+                            fontPixelSize: 9
+                            fixedHeight: 20
+                            paddingHorizontal: 8
+                            onClicked: {
+                                if (typeof Config !== "undefined") {
+                                    Config.dashboardVisible = false;
+                                    Config.openSettings("ai");
                                 }
                             }
                         }
+                    }
 
-                        // Accounts List
-                        Repeater {
-                            model: (root.currentProvider && root.currentProvider.accounts) ? root.currentProvider.accounts : []
-                            delegate: Rectangle {
-                                id: accItem
-                                required property var modelData
+                    // Accounts List
+                    Repeater {
+                        model: (root.currentProvider && root.currentProvider.accounts) ? root.currentProvider.accounts : []
 
-                                readonly property bool isAccountActive: (typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail)
-                                    ? (modelData.identity.toLowerCase() === AiTokenService.activeGeminiEmail.toLowerCase() || modelData.id === AiTokenService.activeGeminiEmail)
-                                    : modelData.is_active
+                        Item {
+                            Layout.fillWidth: true
+                            implicitHeight: 36
 
-                                readonly property bool isSelected: root.selectedAccount
-                                    ? (root.selectedAccount.identity === modelData.identity || root.selectedAccount.id === modelData.id)
-                                    : isAccountActive
+                            readonly property bool isAccountActive: (typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail)
+                                ? (modelData.identity.toLowerCase() === AiTokenService.activeGeminiEmail.toLowerCase() || modelData.id === AiTokenService.activeGeminiEmail)
+                                : modelData.is_active
+                            readonly property bool isHovered: accMouse.containsMouse
 
-                                Layout.fillWidth: true
-                                height: 32
-                                radius: Theme.radiusSmall
-                                color: isSelected
-                                    ? Qt.alpha(Colors.primary, 0.14)
-                                    : (accMouse.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : Qt.rgba(1.0, 1.0, 1.0, 0.03))
-                                border.color: isSelected
-                                    ? Colors.primary
-                                    : (isAccountActive ? Qt.alpha(Colors.primary, 0.4) : Qt.rgba(1.0, 1.0, 1.0, 0.10))
-                                border.width: 1
-
-                                MouseArea {
-                                    id: accMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        root.selectedAccountIdentity = modelData.identity || modelData.id;
-                                    }
-                                }
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 8
+                                color: isAccountActive 
+                                    ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.12)
+                                    : (isHovered ? Qt.rgba(1, 1, 1, 0.06) : "transparent")
+                                border.width: isAccountActive ? 1 : (isHovered ? 1 : 0)
+                                border.color: isAccountActive 
+                                    ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.35)
+                                    : Qt.rgba(1, 1, 1, 0.12)
 
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.leftMargin: 8
-                                    anchors.rightMargin: 8
-                                    spacing: 6
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 10
+                                    spacing: 8
 
-                                    MaterialIcon {
-                                        text: accItem.isAccountActive ? "check_circle" : "account_circle"
-                                        size: 15
-                                        color: accItem.isAccountActive ? Colors.primary : Colors.m3onSurfaceVariant
+                                    // Profile Avatar Glyph
+                                    Rectangle {
+                                        width: 22
+                                        height: 22
+                                        radius: 11
+                                        color: isAccountActive 
+                                            ? Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.25)
+                                            : Qt.rgba(1, 1, 1, 0.08)
+
+                                        MaterialIcon {
+                                            anchors.centerIn: parent
+                                            text: isAccountActive ? "person" : "account_circle"
+                                            size: 14
+                                            color: isAccountActive 
+                                                ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
+                                                : ((typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0")
+                                        }
                                     }
 
+                                    // Identity Email
                                     Text {
-                                        text: modelData.identity || modelData.label
-                                        font.family: Theme.fontFamily
+                                        text: modelData.identity || modelData.id
+                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                         font.pixelSize: 11
-                                        font.weight: accItem.isAccountActive ? Font.DemiBold : Font.Normal
-                                        color: isSelected ? Colors.m3onSurface : (accItem.isAccountActive ? Colors.primary : Colors.m3onSurfaceVariant)
+                                        font.weight: isAccountActive ? Font.Bold : Font.Normal
+                                        color: isAccountActive 
+                                            ? ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF")
+                                            : ((typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0")
+                                        elide: Text.ElideMiddle
                                         Layout.fillWidth: true
-                                        elide: Text.ElideRight
                                     }
 
+                                    // Quota Preview Badge
                                     Text {
-                                        visible: modelData.five_hour_remaining_percent !== null && modelData.five_hour_remaining_percent !== undefined
-                                        text: Math.round(modelData.five_hour_remaining_percent) + "%"
-                                            + ((modelData.weekly_remaining_percent !== null && modelData.weekly_remaining_percent !== undefined) ? (" · " + Math.round(modelData.weekly_remaining_percent) + "%") : "")
-                                        font.family: Theme.fontFamily
+                                        visible: modelData.five_hour_remaining_percent !== undefined
+                                        text: Math.round(modelData.five_hour_remaining_percent || 0) + "% · " + Math.round(modelData.weekly_remaining_percent || 0) + "%"
+                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                         font.pixelSize: 10
                                         font.weight: Font.DemiBold
-                                        color: (modelData.five_hour_remaining_percent < 20)
-                                            ? "#EF4444"
-                                            : ((modelData.five_hour_remaining_percent <= 50) ? "#F59E0B" : Colors.primary)
+                                        color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
                                     }
 
-                                    // Switch / Active pill
-                                    Item {
-                                        Layout.preferredWidth: 48
-                                        Layout.preferredHeight: 20
+                                    // Status Badge / Action
+                                    ActionPill {
+                                        text: isAccountActive ? "Active" : "Switch"
+                                        variant: isAccountActive ? "active" : (isHovered ? "primary" : "secondary")
+                                        fontPixelSize: 9
+                                        fixedHeight: 20
+                                        paddingHorizontal: 8
+                                        interactive: false
+                                    }
+                                }
+                            }
 
-                                        ActionPill {
-                                            visible: accItem.isAccountActive
-                                            anchors.fill: parent
-                                            text: "Active"
-                                            variant: "active"
-                                            fontPixelSize: 9
-                                            fontWeight: Font.Bold
-                                            interactive: false
-                                        }
-
-                                        ActionPill {
-                                            visible: !accItem.isAccountActive
-                                            anchors.fill: parent
-                                            text: "Switch"
-                                            variant: "secondary"
-                                            fontPixelSize: 9
-                                            onClicked: {
-                                                root.selectedAccountIdentity = modelData.identity || modelData.id;
-                                                if (typeof AiTokenService !== "undefined") {
-                                                    AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
-                                                }
-                                            }
-                                        }
+                            MouseArea {
+                                id: accMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.selectedAccountIdentity = modelData.identity || modelData.id;
+                                    if (typeof AiTokenService !== "undefined") {
+                                        AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // Card A2: Detailed Session Cache Analytics (when provider has cache_stats and no accounts)
-                Card {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: Theme.radiusGlassCard
-                    padding: 14
-                    visible: root.currentProvider && root.currentProvider.cache_stats && (!root.currentProvider.accounts || root.currentProvider.accounts.length === 0)
+                    Item { Layout.fillHeight: true }
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 10
-
-                        RowLayout {
-                            Layout.fillWidth: true
-
-                            MaterialIcon {
-                                text: "bolt"
-                                size: 16
-                                color: "#10B981"
-                            }
-
-                            Text {
-                                text: "Session Cache Breakdown"
-                                font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                                font.pixelSize: 12
-                                font.weight: Font.Bold
-                                color: Colors.m3onSurface
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            ActionPill {
-                                text: (root.currentProvider && root.currentProvider.cache_stats)
-                                    ? (root.currentProvider.cache_stats.cache_hit_rate_percent.toFixed(1) + "% Hit Rate")
-                                    : "0% Hit Rate"
-                                variant: "active"
-                                fontPixelSize: 9
-                                fixedHeight: 20
-                                paddingHorizontal: 8
-                                interactive: false
-                            }
-                        }
-
-                        // 3-Metric Grid: Cached / Uncached / Output
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            // Cached Tokens
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 50
-                                radius: 8
-                                color: Qt.rgba(16/255, 185/255, 129/255, 0.12)
-                                border.width: 1
-                                border.color: Qt.rgba(16/255, 185/255, 129/255, 0.3)
-
-                                ColumnLayout {
-                                    anchors.centerIn: parent
-                                    spacing: 2
-                                    Text {
-                                        text: (root.currentProvider && root.currentProvider.cache_stats)
-                                            ? root.formatTokenCount(root.currentProvider.cache_stats.cached_tokens)
-                                            : "0"
-                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                                        font.pixelSize: 13
-                                        font.weight: Font.Bold
-                                        color: "#10B981"
-                                        Layout.alignment: Qt.AlignHCenter
-                                    }
-                                    Text {
-                                        text: "Cached"
-                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                                        font.pixelSize: 9
-                                        color: Colors.m3onSurfaceVariant
-                                        Layout.alignment: Qt.AlignHCenter
-                                    }
-                                }
-                            }
-
-                            // Uncached Input Tokens
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 50
-                                radius: 8
-                                color: Qt.rgba(245/255, 158/255, 11/255, 0.12)
-                                border.width: 1
-                                border.color: Qt.rgba(245/255, 158/255, 11/255, 0.3)
-
-                                ColumnLayout {
-                                    anchors.centerIn: parent
-                                    spacing: 2
-                                    Text {
-                                        text: (root.currentProvider && root.currentProvider.cache_stats)
-                                            ? root.formatTokenCount(root.currentProvider.cache_stats.uncached_input_tokens)
-                                            : "0"
-                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                                        font.pixelSize: 13
-                                        font.weight: Font.Bold
-                                        color: "#F59E0B"
-                                        Layout.alignment: Qt.AlignHCenter
-                                    }
-                                    Text {
-                                        text: "Uncached"
-                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                                        font.pixelSize: 9
-                                        color: Colors.m3onSurfaceVariant
-                                        Layout.alignment: Qt.AlignHCenter
-                                    }
-                                }
-                            }
-
-                            // Output Tokens
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 50
-                                radius: 8
-                                color: Qt.rgba(96/255, 165/255, 250/255, 0.12)
-                                border.width: 1
-                                border.color: Qt.rgba(96/255, 165/255, 250/255, 0.3)
-
-                                ColumnLayout {
-                                    anchors.centerIn: parent
-                                    spacing: 2
-                                    Text {
-                                        text: (root.currentProvider && root.currentProvider.cache_stats)
-                                            ? root.formatTokenCount(root.currentProvider.cache_stats.output_tokens)
-                                            : "0"
-                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                                        font.pixelSize: 13
-                                        font.weight: Font.Bold
-                                        color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
-                                        Layout.alignment: Qt.AlignHCenter
-                                    }
-                                    Text {
-                                        text: "Output"
-                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                                        font.pixelSize: 9
-                                        color: Colors.m3onSurfaceVariant
-                                        Layout.alignment: Qt.AlignHCenter
-                                    }
-                                }
-                            }
-                        }
-
-                        // Ratio Bar: Cached vs Uncached
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 3
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 6
-                                radius: 3
-                                color: Qt.rgba(245/255, 158/255, 11/255, 0.5)
-
-                                Rectangle {
-                                    anchors.left: parent.left
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    width: (root.currentProvider && root.currentProvider.cache_stats)
-                                        ? Math.max(4, parent.width * Math.min(1.0, root.currentProvider.cache_stats.cache_hit_rate_percent / 100.0))
-                                        : 0
-                                    radius: 3
-                                    color: "#10B981"
-                                }
-                            }
-
-                            Text {
-                                text: "Prompt Cache Ratio: " + ((root.currentProvider && root.currentProvider.cache_stats) ? root.currentProvider.cache_stats.cache_hit_rate_percent.toFixed(1) + "%" : "0%") + " hit efficiency"
-                                font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                                font.pixelSize: 10
-                                color: Colors.m3onSurfaceVariant
-                            }
-                        }
-
-                        Item { Layout.fillHeight: true }
+                    // Discovery Telemetry Footer
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Qt.rgba(1, 1, 1, 0.08)
                     }
-                }
 
-                // Card B: Ecosystem & Scanners Status
-                Card {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 110
-                    radius: Theme.radiusGlassCard
-                    padding: 14
-
-                    ColumnLayout {
-                        anchors.fill: parent
+                    RowLayout {
+                        Layout.fillWidth: true
                         spacing: 8
 
-                        RowLayout {
+                        Text {
+                            text: "Discovered via"
+                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                            font.pixelSize: 10
+                            color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                        }
+
+                        Text {
+                            text: "● Antigravity Cockpit   ● Pi Agent   ● OpenCode"
+                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
                             Layout.fillWidth: true
-                            MaterialIcon {
-                                text: "radar"
-                                size: 16
-                                color: Colors.primary
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                // -------------------------------------------------------------
+                // CASE B: Prompt Cache Analytics (when no multiple accounts, e.g. MiniMax)
+                // -------------------------------------------------------------
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 10
+                    visible: root.currentProvider && (!root.currentProvider.accounts || root.currentProvider.accounts.length === 0)
+
+                    // Header
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        MaterialIcon {
+                            text: "bolt"
+                            size: 18
+                            color: "#10B981"
+                        }
+
+                        Text {
+                            text: "Session Cache Breakdown"
+                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                            color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        ActionPill {
+                            text: (root.currentProvider && root.currentProvider.cache_stats)
+                                ? (root.currentProvider.cache_stats.cache_hit_rate_percent.toFixed(1) + "% Hit Rate")
+                                : "0% Hit Rate"
+                            variant: "active"
+                            fontPixelSize: 9
+                            fixedHeight: 20
+                            paddingHorizontal: 8
+                            interactive: false
+                        }
+                    }
+
+                    // 3-Metric Hero Bento Grid
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        // Cached Tokens
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 60
+                            radius: 10
+                            color: Qt.rgba(16/255, 185/255, 129/255, 0.12)
+                            border.width: 1
+                            border.color: Qt.rgba(16/255, 185/255, 129/255, 0.3)
+
+                            ColumnLayout {
+                                anchors.centerIn: parent
+                                spacing: 2
+                                Text {
+                                    text: (root.currentProvider && root.currentProvider.cache_stats)
+                                        ? root.formatTokenCount(root.currentProvider.cache_stats.cached_tokens)
+                                        : "0"
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 15
+                                    font.weight: Font.Bold
+                                    color: "#10B981"
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+                                Text {
+                                    text: "Cached"
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 10
+                                    color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
                             }
-                            Text {
-                                text: "Agent Tool Scanners"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 12
-                                font.weight: Font.Bold
-                                color: Colors.m3onSurface
+                        }
+
+                        // Uncached Input Tokens
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 60
+                            radius: 10
+                            color: Qt.rgba(245/255, 158/255, 11/255, 0.12)
+                            border.width: 1
+                            border.color: Qt.rgba(245/255, 158/255, 11/255, 0.3)
+
+                            ColumnLayout {
+                                anchors.centerIn: parent
+                                spacing: 2
+                                Text {
+                                    text: (root.currentProvider && root.currentProvider.cache_stats)
+                                        ? root.formatTokenCount(root.currentProvider.cache_stats.uncached_input_tokens)
+                                        : "0"
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 15
+                                    font.weight: Font.Bold
+                                    color: "#F59E0B"
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+                                Text {
+                                    text: "Uncached"
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 10
+                                    color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+                            }
+                        }
+
+                        // Output Tokens
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 60
+                            radius: 10
+                            color: Qt.rgba(96/255, 165/255, 250/255, 0.12)
+                            border.width: 1
+                            border.color: Qt.rgba(96/255, 165/255, 250/255, 0.3)
+
+                            ColumnLayout {
+                                anchors.centerIn: parent
+                                spacing: 2
+                                Text {
+                                    text: (root.currentProvider && root.currentProvider.cache_stats)
+                                        ? root.formatTokenCount(root.currentProvider.cache_stats.output_tokens)
+                                        : "0"
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 15
+                                    font.weight: Font.Bold
+                                    color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+                                Text {
+                                    text: "Output"
+                                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                    font.pixelSize: 10
+                                    color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+                            }
+                        }
+                    }
+
+                    // Dual-Tone Ratio Gauge
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 8
+                            radius: 4
+                            color: Qt.rgba(245/255, 158/255, 11/255, 0.35)
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: (root.currentProvider && root.currentProvider.cache_stats)
+                                    ? Math.max(4, parent.width * Math.min(1.0, root.currentProvider.cache_stats.cache_hit_rate_percent / 100.0))
+                                    : 0
+                                radius: 4
+                                color: "#10B981"
                             }
                         }
 
                         Text {
-                            text: "Deterministic auto-discovery active across Pi Agent, Antigravity Cockpit, OpenCode, and OMP."
-                            font.family: Theme.fontFamily
+                            text: "Prompt Cache Ratio: " + ((root.currentProvider && root.currentProvider.cache_stats) ? root.currentProvider.cache_stats.cache_hit_rate_percent.toFixed(1) + "%" : "0%") + " efficiency"
+                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: 10
-                            color: Colors.m3onSurfaceVariant
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
+                            color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
+                        }
+                    }
+
+                    Item { Layout.fillHeight: true }
+
+                    // Discovery Telemetry Footer
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Qt.rgba(1, 1, 1, 0.08)
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            text: "Discovered via"
+                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                            font.pixelSize: 10
+                            color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
                         }
 
-                        RowLayout {
+                        Text {
+                            text: root.getProviderDiscoverySource(root.currentProvider)
+                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
                             Layout.fillWidth: true
-                            spacing: 6
-
-                            ActionPill {
-                                text: "pi: ~/.pi"
-                                variant: "info"
-                                fontPixelSize: 9
-                                fixedHeight: 18
-                                paddingHorizontal: 6
-                                interactive: false
-                            }
-
-                            ActionPill {
-                                text: "agy: cockpit"
-                                variant: "info"
-                                fontPixelSize: 9
-                                fixedHeight: 18
-                                paddingHorizontal: 6
-                                interactive: false
-                            }
-
-                            ActionPill {
-                                text: "opencode"
-                                variant: "info"
-                                fontPixelSize: 9
-                                fixedHeight: 18
-                                paddingHorizontal: 6
-                                interactive: false
-                            }
+                            elide: Text.ElideRight
                         }
                     }
                 }
@@ -1098,12 +986,12 @@ Item {
         }
 
         // =====================================================================
-        // 4. EMPTY STATE (When no providers detected)
+        // 3. EMPTY STATE (When no providers detected)
         // =====================================================================
         Card {
             Layout.fillWidth: true
             Layout.preferredHeight: 140
-            radius: Theme.radiusGlassCard
+            radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
             visible: !root.providersList || root.providersList.length === 0
             padding: 20
 
@@ -1115,24 +1003,24 @@ Item {
                     Layout.alignment: Qt.AlignHCenter
                     text: "cloud_off"
                     size: 32
-                    color: Colors.m3onSurfaceVariant
+                    color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
                 }
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: "No AI Providers or Coding Plans Detected"
-                    font.family: Theme.fontFamily
+                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                     font.pixelSize: 14
                     font.weight: Font.Bold
-                    color: Colors.m3onSurface
+                    color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
                 }
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: "Authenticate in CLI agents ('agy auth login' / 'pi' / 'opencode') or configure credentials in Settings."
-                    font.family: Theme.fontFamily
+                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                     font.pixelSize: 11
-                    color: Colors.m3onSurfaceVariant
+                    color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0"
                 }
 
                 ActionPill {
