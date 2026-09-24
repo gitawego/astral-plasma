@@ -43,6 +43,10 @@ while [ $# -gt 0 ]; do
             IS_PRERELEASE=true
             shift
             ;;
+        --current)
+            BUMP_TYPE="current"
+            shift
+            ;;
         --patch)
             BUMP_TYPE="patch"
             shift
@@ -103,20 +107,25 @@ echo "[*] Current Cargo version: ${CURRENT_RAW_VERSION}"
 if [ -n "$BUMP_TYPE" ]; then
     IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_RAW_VERSION"
     case "$BUMP_TYPE" in
+        current)
+            TARGET_VERSION="${CURRENT_RAW_VERSION}"
+            ;;
         patch)
             PATCH=$((PATCH + 1))
+            TARGET_VERSION="${MAJOR}.${MINOR}.${PATCH}"
             ;;
         minor)
             MINOR=$((MINOR + 1))
             PATCH=0
+            TARGET_VERSION="${MAJOR}.${MINOR}.${PATCH}"
             ;;
         major)
             MAJOR=$((MAJOR + 1))
             MINOR=0
             PATCH=0
+            TARGET_VERSION="${MAJOR}.${MINOR}.${PATCH}"
             ;;
     esac
-    TARGET_VERSION="${MAJOR}.${MINOR}.${PATCH}"
 elif [ -n "$VERSION_INPUT" ]; then
     # Strip leading 'v' if present for semver comparison
     TARGET_VERSION="${VERSION_INPUT#v}"
@@ -130,24 +139,28 @@ else
     echo ""
     echo "Current version is ${CURRENT_RAW_VERSION}"
     echo "Select release type:"
-    echo "  1) patch -> ${NEXT_PATCH} (default)"
-    echo "  2) minor -> ${NEXT_MINOR}"
-    echo "  3) major -> ${NEXT_MAJOR}"
-    echo "  4) custom version"
-    read -rp "Enter choice [1-4] (default: 1): " CHOICE
-    case "${CHOICE:-1}" in
-        2|minor)
+    echo "  1) current -> ${CURRENT_RAW_VERSION} (release current version without bump)"
+    echo "  2) patch   -> ${NEXT_PATCH} (default)"
+    echo "  3) minor   -> ${NEXT_MINOR}"
+    echo "  4) major   -> ${NEXT_MAJOR}"
+    echo "  5) custom version"
+    read -rp "Enter choice [1-5] (default: 2): " CHOICE
+    case "${CHOICE:-2}" in
+        1|current)
+            TARGET_VERSION="${CURRENT_RAW_VERSION}"
+            ;;
+        2|patch)
+            TARGET_VERSION="${NEXT_PATCH}"
+            ;;
+        3|minor)
             TARGET_VERSION="${NEXT_MINOR}"
             ;;
-        3|major)
+        4|major)
             TARGET_VERSION="${NEXT_MAJOR}"
             ;;
-        4|custom)
+        5|custom)
             read -rp "Enter custom version (e.g. 0.2.0): " USER_VER
             TARGET_VERSION="${USER_VER#v}"
-            ;;
-        1|patch)
-            TARGET_VERSION="${NEXT_PATCH}"
             ;;
         *)
             if [[ "$CHOICE" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
