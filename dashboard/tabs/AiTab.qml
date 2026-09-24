@@ -76,6 +76,24 @@ Item {
         return "Agent Tool Scanner";
     }
 
+    function getProviderDiscoveryBadges(p) {
+        if (!p) return "● Config";
+        const pid = (p.provider_id || p.provider || "").toLowerCase();
+        if (pid === "gemini") {
+            return "● Antigravity Cockpit   ● Desktop Keyring   ● Token Storage";
+        }
+        if (pid === "minimax-cn") {
+            return "● Pi Agent Sessions (~/.pi/agent)   ● Session Logs";
+        }
+        if (pid === "opencode-go" || pid === "opencode") {
+            return "● OpenCode Config (~/.config/opencode)   ● Pi Agent (~/.pi/agent)";
+        }
+        if (pid.indexOf("mimo") !== -1 || pid.indexOf("xiaomi") !== -1) {
+            return "● OMP Agent Config (~/.omp/agent)";
+        }
+        return "● Local Config & Tool Scanner";
+    }
+
     function syncActiveTab() {
         if (!root.providersList || root.providersList.length === 0) return;
         const lastId = (typeof AiTokenService !== "undefined" && AiTokenService.lastActiveProviderId)
@@ -817,7 +835,7 @@ Item {
                         }
 
                         Text {
-                            text: "● Antigravity Cockpit   ● Pi Agent   ● OpenCode"
+                            text: root.getProviderDiscoveryBadges(root.currentProvider)
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: 10
                             font.weight: Font.DemiBold
@@ -1054,7 +1072,7 @@ Item {
                         }
 
                         Text {
-                            text: root.getProviderDiscoverySource(root.currentProvider)
+                            text: root.getProviderDiscoveryBadges(root.currentProvider)
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: 10
                             font.weight: Font.DemiBold
