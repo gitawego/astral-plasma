@@ -9,6 +9,7 @@ export QT_ASSUME_STDERR_HAS_CONSOLE=1
 # Allows suites to read source files via XMLHttpRequest so they can assert on
 # token values in the QML/JS source of truth (e.g. the glass alpha table).
 export QML_XHR_ALLOW_FILE_READ=1
+export QT_QPA_PLATFORM=offscreen
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -23,13 +24,14 @@ print(f"=== Running {count} Astral Plasma QML Test Suite(s) ===")
 env = os.environ.copy()
 env["QT_ASSUME_STDERR_HAS_CONSOLE"] = "1"
 env["QML_XHR_ALLOW_FILE_READ"] = "1"
+env["QT_QPA_PLATFORM"] = "offscreen"
 
 # Dynamically locate Qt 6 qml runner
 def check_qt6(bin_path):
     if not bin_path or not (shutil.which(bin_path) or os.path.exists(bin_path)):
         return False
     try:
-        res = subprocess.run([bin_path, "--version"], capture_output=True, text=True, timeout=5)
+        res = subprocess.run([bin_path, "-platform", "offscreen", "--version"], capture_output=True, text=True, env=env, timeout=5)
         out = (res.stdout or "") + (res.stderr or "")
         return "Runtime 6." in out
     except Exception:
