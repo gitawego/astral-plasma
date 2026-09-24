@@ -22,7 +22,7 @@ Item {
 
     readonly property bool isMediaNotification: {
         let app = (root.appName || "").toLowerCase();
-        let isMprisMatch = (typeof MprisMedia !== "undefined" && Boolean(MprisMedia.identity)) ? app.includes(MprisMedia.identity.toLowerCase()) : false;
+        let isMprisMatch = (typeof MprisMedia !== "undefined" && Boolean(MprisMedia.identity)) ? (app.length > 0 && app.includes(MprisMedia.identity.toLowerCase())) : false;
         return Boolean(app.includes("strawberry") || 
                        app.includes("elisa") || 
                        app.includes("cloudmusic") || 
@@ -38,16 +38,6 @@ Item {
         if (src && src.length > 0) {
             if (src.startsWith("/")) return "file://" + src;
             if (src.startsWith("file://") || src.startsWith("http://") || src.startsWith("https://")) return src;
-        }
-        // Fallback: If this is a media player notification or matches active track, use MprisMedia.artUrl
-        if (typeof MprisMedia !== "undefined" && MprisMedia.artUrl && MprisMedia.artUrl.length > 0) {
-            if (isMediaNotification || 
-                (root.summary && MprisMedia.title && root.summary.toLowerCase().includes(MprisMedia.title.toLowerCase())) ||
-                (root.body && MprisMedia.artist && root.body.toLowerCase().includes(MprisMedia.artist.toLowerCase()))) {
-                let art = MprisMedia.artUrl;
-                if (art.startsWith("/")) return "file://" + art;
-                return art;
-            }
         }
         return "";
     }
@@ -103,30 +93,36 @@ Item {
     Timer {
         id: autoCloseTimer
         interval: root.timeoutMs
-        running: root.visible && !root.isDismissed && !hoverHandler.hovered && root.timeoutMs > 0
         repeat: false
         onTriggered: root.close()
     }
 
-    onVisibleChanged: {
-        if (root.visible) {
-            root.isDismissed = false;
+    function resetTimer() {
+        if (root.visible && !root.isDismissed && root.timeoutMs > 0 && (!hoverHandler || !hoverHandler.hovered)) {
             autoCloseTimer.restart();
         } else {
             autoCloseTimer.stop();
         }
     }
 
+    onVisibleChanged: {
+        if (root.visible) {
+            root.isDismissed = false;
+        }
+        root.resetTimer();
+    }
+
     onSummaryChanged: {
         if (root.visible) {
             root.isDismissed = false;
-            autoCloseTimer.restart();
         }
+        root.resetTimer();
     }
+
+    Component.onCompleted: root.resetTimer()
 
     FusedPanel {
         id: panel
-        anchors.fill: parent
         attachEdge: "topRight"
         panelWidth: root.width
         panelHeight: root.expanded ? (expandedContent.implicitHeight + 52) : (root.hasImageCover ? 84 : 78)
@@ -146,6 +142,7 @@ Item {
 
         HoverHandler {
             id: hoverHandler
+            onHoveredChanged: root.resetTimer()
         }
 
         // Inner Liquid Glass Substrate Card Layer (Sculpted frosted glass plate behind notification)

@@ -678,7 +678,6 @@ Item {
                                     duration: 22000
                                     loops: Animation.Infinite
                                     running: root.isTargetVisible && MprisMedia.isPlaying
-                                    paused: !MprisMedia.isPlaying
                                 }
 
                                 Image {

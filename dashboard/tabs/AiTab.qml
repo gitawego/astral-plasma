@@ -544,7 +544,7 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
-                        visible: root.currentProvider && root.currentProvider.cache_stats
+                        visible: !!(root.currentProvider && root.currentProvider.cache_stats)
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -635,7 +635,7 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 14
                     spacing: 8
-                    visible: root.currentProvider && root.currentProvider.accounts && root.currentProvider.accounts.length >= 1
+                    visible: !!(root.currentProvider && root.currentProvider.accounts && root.currentProvider.accounts.length >= 1)
 
                     // Header
                     RowLayout {
@@ -837,7 +837,7 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 14
                     spacing: 10
-                    visible: root.currentProvider && (!root.currentProvider.accounts || root.currentProvider.accounts.length === 0)
+                    visible: !!(root.currentProvider && (!root.currentProvider.accounts || root.currentProvider.accounts.length === 0))
 
                     // Header
                     RowLayout {
@@ -1079,7 +1079,7 @@ Item {
             color: (typeof Colors !== "undefined" && Colors.isDarkMode)
                 ? Qt.tint(Qt.rgba(0.03, 0.04, 0.07, 0.52), Qt.alpha(((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"), 0.06))
                 : ((typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.50))
-            visible: !root.providersList || root.providersList.length === 0
+            visible: Boolean(!root.providersList || root.providersList.length === 0)
             padding: 20
 
             ColumnLayout {

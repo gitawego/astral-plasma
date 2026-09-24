@@ -358,7 +358,6 @@ Item {
                     duration: 22000
                     loops: Animation.Infinite
                     running: root.isPlaying && root.isTargetVisible
-                    paused: !root.isPlaying
                 }
 
                 Image {

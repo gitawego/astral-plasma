@@ -38,7 +38,6 @@ Item {
             duration: 16000
             loops: Animation.Infinite
             running: root.isPlaying && root.visible
-            paused: !root.isPlaying
         }
 
         // Dark outer vinyl plate
