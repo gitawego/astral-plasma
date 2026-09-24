@@ -315,5 +315,25 @@ fn test_resolve_gemini_flash_38() {
     assert_eq!(id2.display_name, "Gemini Flash 3.8");
 }
 
+#[test]
+fn test_opencode_log_is_ignored_and_does_not_trigger_mimo() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    use std::fs;
+    let temp_home = tempfile::tempdir().unwrap();
+    let opencode_dir = temp_home.path().join(".local/share/opencode/log");
+    fs::create_dir_all(&opencode_dir).unwrap();
 
+    let log_file = opencode_dir.join("opencode.log");
+    fs::write(
+        &log_file,
+        "timestamp=2026-09-24T14:55:03.721Z level=INFO event.type=model.updated event.data={}\n",
+    )
+    .unwrap();
 
+    // parse_model_from_file MUST return None for server log files
+    assert!(AiActivityMonitor::parse_model_from_file(&log_file).is_none());
+    assert!(AiActivityMonitor::parse_model_and_tokens_from_file(&log_file).is_none());
+
+    // find_latest_session_file MUST NOT select opencode.log
+    assert!(AiActivityMonitor::find_latest_session_file(temp_home.path()).is_none());
+}

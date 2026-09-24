@@ -142,6 +142,15 @@ impl AiActivityMonitor {
     /// Comprehensive file parser: examines tail, head (for initial model_change), and tool settings.
     pub fn parse_model_from_file(path: &Path) -> Option<(String, String)> {
         let path_hint = path.to_string_lossy();
+        if path_hint.ends_with(".log")
+            || path_hint.ends_with(".lock")
+            || path_hint.ends_with(".db")
+            || path_hint.contains("context-mode")
+            || path_hint.contains("stats-pid")
+        {
+            return None;
+        }
+
         if path_hint.contains("antigravity") && !path_hint.ends_with("transcript.jsonl") {
             return None;
         }
@@ -193,6 +202,15 @@ impl AiActivityMonitor {
     /// Comprehensive file parser: extracts active model, provider, and recent token throughput.
     pub fn parse_model_and_tokens_from_file(path: &Path) -> Option<(String, String, Option<u64>)> {
         let path_hint = path.to_string_lossy();
+        if path_hint.ends_with(".log")
+            || path_hint.ends_with(".lock")
+            || path_hint.ends_with(".db")
+            || path_hint.contains("context-mode")
+            || path_hint.contains("stats-pid")
+        {
+            return None;
+        }
+
         if path_hint.contains("antigravity") && !path_hint.ends_with("transcript.jsonl") {
             return None;
         }
@@ -262,25 +280,11 @@ impl AiActivityMonitor {
             return Some(("Gemini Flash 3.8".to_string(), "gemini".to_string()));
         }
 
-        // Keyword detection in recent lines
-        let lower_tail = tail.to_lowercase();
-        if lower_tail.contains("mimo") {
-            return Some(("mimo-v2.6-flash".to_string(), "mimo".to_string()));
-        } else if lower_tail.contains("muse") || lower_tail.contains("spark") {
-            return Some(("muse-spark-1.2".to_string(), "meta".to_string()));
-        } else if lower_tail.contains("grok") {
-            return Some(("grok-3".to_string(), "grok".to_string()));
-        } else if lower_tail.contains("ollama") {
-            return Some(("ollama-cloud/deepseek-v4-flash".to_string(), "ollama".to_string()));
-        }
-
-        // Fallback by tool source if file was actively modified
+        // Fallback by tool source if file was actively modified and verified settings exist
         match tool_source {
             "claude" => Some(("claude-3-7-sonnet".to_string(), "claude".to_string())),
-            "pi" => read_pi_default_settings().or_else(|| Some(("mimo-v2.6-flash".to_string(), "opencode-go".to_string()))),
-            "omp" => Some(("mimo-v2.6-flash".to_string(), "mimo".to_string())),
+            "pi" => read_pi_default_settings(),
             "codex" => Some(("gpt-4o".to_string(), "openai".to_string())),
-            "opencode" => Some(("mimo-v2.6-flash".to_string(), "mimo".to_string())),
             "antigravity" => Some(("Gemini Flash 3.8".to_string(), "gemini".to_string())),
             _ => None,
         }
@@ -303,7 +307,6 @@ impl AiActivityMonitor {
             home.join(".claude/sessions"),
             home.join(".codex"),
             home.join(".codex/sessions"),
-            home.join(".local/share/opencode/log"),
             home.join(".omp/agent/sessions"),
         ];
 
@@ -595,12 +598,6 @@ impl AiActivityMonitor {
                     }
                 }
             }
-        }
-
-        // 5. OpenCode logs
-        let opencode_log = home.join(".local/share/opencode/log/opencode.log");
-        if opencode_log.exists() {
-            candidates.push(opencode_log);
         }
 
         let mut newest_time = 0u64;
