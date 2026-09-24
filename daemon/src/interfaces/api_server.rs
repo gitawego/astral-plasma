@@ -116,7 +116,7 @@ pub async fn dispatch_http_request(req: &str) -> (u16, String) {
 
     match (method, path) {
         ("GET", "/api/status") | ("GET", "/status") => {
-            (200, r#"{"ok":true,"name":"astral-plasma","version":"0.1.0"}"#.to_string())
+            (200, format!(r#"{{"ok":true,"name":"astral-plasma","version":"{}"}}"#, env!("CARGO_PKG_VERSION")))
         }
 
         ("GET", "/api/metrics") | ("GET", "/metrics") => {
