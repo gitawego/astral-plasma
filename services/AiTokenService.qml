@@ -16,10 +16,22 @@ Singleton {
     property string lastActiveProviderId: "gemini"
     property string fetchedAt: ""
     property bool isRefreshing: false
+    property var globalCacheStats: null
+    property real cacheHitRate: 0.0
+    property double totalCachedTokens: 0
+    property double totalInputTokens: 0
     property bool isAuthenticating: false
     property string authenticatingEmail: ""
     property string authStatusMessage: ""
     property string lastAuthError: ""
+
+    function formatTokenCount(n) {
+        if (!n || n <= 0) return "0";
+        if (n >= 1000000000) return (n / 1000000000).toFixed(1) + "B";
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+        if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+        return Math.round(n).toString();
+    }
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
     readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
@@ -34,7 +46,8 @@ Singleton {
 
     readonly property bool isUiActive: (typeof Config !== "undefined")
         ? ((Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai") ||
-           (Config.settingsVisible && Config.activeSettingsPage === "ai"))
+           (Config.settingsVisible && Config.activeSettingsPage === "ai") ||
+           (Config.dashboardVisible && Config.activeDashboardTab === "ai"))
         : false
 
     onIsUiActiveChanged: {
@@ -89,6 +102,12 @@ Singleton {
         }
         if (d.fetched_at) {
             root.fetchedAt = d.fetched_at;
+        }
+        if (d.global_cache_stats) {
+            root.globalCacheStats = d.global_cache_stats;
+            root.cacheHitRate = d.global_cache_stats.cache_hit_rate_percent || 0.0;
+            root.totalCachedTokens = d.global_cache_stats.cached_tokens || 0;
+            root.totalInputTokens = d.global_cache_stats.uncached_input_tokens || 0;
         }
     }
 

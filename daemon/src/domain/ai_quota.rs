@@ -23,6 +23,15 @@ pub struct ProviderAccount {
     pub windows: Vec<QuotaWindow>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct TokenCacheStats {
+    pub cached_tokens: u64,
+    pub uncached_input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_prompt_tokens: u64,
+    pub cache_hit_rate_percent: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AiProviderQuota {
     pub provider_id: String,
@@ -35,6 +44,8 @@ pub struct AiProviderQuota {
     pub windows: Vec<QuotaWindow>,
     pub accounts: Vec<ProviderAccount>,
     pub error_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_stats: Option<TokenCacheStats>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -45,6 +56,8 @@ pub struct AiQuotaSnapshot {
     pub warning_level: String, // "normal", "warning", "critical"
     pub fetched_at: String,
     pub active_gemini_email: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_cache_stats: Option<TokenCacheStats>,
 }
 
 impl AiQuotaSnapshot {
@@ -213,6 +226,7 @@ pub fn parse_agy_quota(json_str: &str, active_email: Option<String>) -> Result<A
         windows,
         accounts: Vec::new(),
         error_message: None,
+        cache_stats: None,
     })
 }
 
@@ -264,6 +278,7 @@ pub fn parse_opencode_usage(json_str: &str) -> Result<AiProviderQuota, String> {
         windows,
         accounts: Vec::new(),
         error_message: None,
+        cache_stats: None,
     })
 }
 
@@ -344,6 +359,7 @@ pub fn parse_coding_plan_remains(
                 windows: Vec::new(),
                 accounts: Vec::new(),
                 error_message: None,
+                cache_stats: None,
             });
         }
         if code != 0 {
@@ -424,6 +440,7 @@ pub fn parse_coding_plan_remains(
         windows,
         accounts: Vec::new(),
         error_message: None,
+        cache_stats: None,
     })
 }
 
@@ -578,6 +595,7 @@ pub fn parse_token_tracker_quotas(
             windows,
             accounts,
             error_message: error_msg,
+            cache_stats: None,
         });
     }
 
@@ -588,6 +606,7 @@ pub fn parse_token_tracker_quotas(
         warning_level: "normal".to_string(),
         fetched_at: root.get("fetched_at").and_then(|f| f.as_str()).unwrap_or("").to_string(),
         active_gemini_email: active_gemini_email.map(|s| s.to_string()),
+        global_cache_stats: None,
     };
 
     snapshot.compute_metrics(warning_thr, critical_thr);

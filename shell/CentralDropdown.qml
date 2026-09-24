@@ -17,9 +17,9 @@ Item {
 
     Behavior on dropH {
         NumberAnimation {
-            duration: Theme.animExpressiveDefaultSpatial
+            duration: (typeof Theme !== "undefined" && Theme.animExpressiveDefaultSpatial) ? Theme.animExpressiveDefaultSpatial : 500
             easing.type: Easing.BezierSpline
-            easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+            easing.bezierCurve: (typeof Theme !== "undefined" && Theme.curveExpressiveDefaultSpatial) ? Theme.curveExpressiveDefaultSpatial : [0.38, 1.21, 0.22, 1.0, 1.0, 1.0]
         }
     }
 
@@ -33,6 +33,18 @@ Item {
             if (typeof Config !== "undefined" && Config.dashboardVisible !== undefined) {
                 root.isOpen = Config.dashboardVisible;
             }
+        }
+        function onActiveDashboardTabChanged() {
+            if (typeof Config !== "undefined" && Config.activeDashboardTab && root.activeTab !== Config.activeDashboardTab) {
+                root.activeTab = Config.activeDashboardTab;
+            }
+        }
+    }
+
+    property string activeTab: (typeof Config !== "undefined" && Config.activeDashboardTab) ? Config.activeDashboardTab : "dashboard"
+    onActiveTabChanged: {
+        if (typeof Config !== "undefined" && Config.activeDashboardTab !== undefined && Config.activeDashboardTab !== activeTab) {
+            Config.activeDashboardTab = activeTab;
         }
     }
 
@@ -77,7 +89,8 @@ Item {
         { id: "dashboard", label: "Dashboard", icon: "grid_view" },
         { id: "media", label: "Media", icon: "queue_music" },
         { id: "performance", label: "Performance", icon: "speed" },
-        { id: "workspaces", label: "Workspaces", icon: "workspaces" }
+        { id: "workspaces", label: "Workspaces", icon: "workspaces" },
+        { id: "ai", label: "AI Quotas", icon: "auto_awesome" }
     ]
 
     ColumnLayout {
@@ -143,7 +156,7 @@ Item {
                 id: tabsRow
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 16
+                spacing: 12
 
                 Repeater {
                     id: tabRepeater
@@ -153,9 +166,9 @@ Item {
                         id: tabItem
                         required property var modelData
                         required property int index
-                        readonly property bool isSelected: Config.activeDashboardTab === modelData.id
+                        readonly property bool isSelected: root.activeTab === modelData.id
 
-                        width: 175
+                        width: 145
                         height: 50
                         radius: Theme.radiusSmall
                         color: tabHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : "transparent"
@@ -168,9 +181,9 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.icon
                                 size: 20
-                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.textMain)
+                                color: isSelected ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb") : (tabHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb") : ((typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#e3e3e3"))
                                 Behavior on color {
-                                    ColorAnimation { duration: Theme.animExpressiveFastEffects }
+                                    ColorAnimation { duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastEffects) ? Theme.animExpressiveFastEffects : 150 }
                                 }
                             }
 
@@ -179,10 +192,10 @@ Item {
                                 text: modelData.label
                                 font.pixelSize: 12
                                 font.weight: isSelected ? Font.Bold : Font.DemiBold
-                                font.family: Theme.fontFamily
-                                color: isSelected ? Colors.primary : (tabHover.containsMouse ? Colors.primary : Colors.textMain)
+                                font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                color: isSelected ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb") : (tabHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb") : ((typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#e3e3e3"))
                                 Behavior on color {
-                                    ColorAnimation { duration: Theme.animExpressiveFastEffects }
+                                    ColorAnimation { duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastEffects) ? Theme.animExpressiveFastEffects : 150 }
                                 }
                             }
                         }
@@ -192,7 +205,12 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: Config.activeDashboardTab = modelData.id
+                            onClicked: {
+                                root.activeTab = modelData.id;
+                                if (typeof Config !== "undefined") {
+                                    Config.activeDashboardTab = modelData.id;
+                                }
+                            }
                         }
                     }
                 }
@@ -207,11 +225,12 @@ Item {
                 color: Colors.primary
 
                 readonly property int activeIdx: {
-                    switch (Config.activeDashboardTab) {
+                    switch (root.activeTab) {
                         case "dashboard": return 0;
                         case "media": return 1;
                         case "performance": return 2;
                         case "workspaces": return 3;
+                        case "ai": return 4;
                         default: return 0;
                     }
                 }
@@ -248,11 +267,12 @@ Item {
             Layout.preferredHeight: implicitHeight
             clip: true
             implicitHeight: {
-                switch (Config.activeDashboardTab) {
+                switch (root.activeTab) {
                     case "dashboard": return tabPane0.implicitHeight;
                     case "media": return tabPane1.implicitHeight;
                     case "performance": return tabPane2.implicitHeight;
                     case "workspaces": return tabPane3.implicitHeight;
+                    case "ai": return tabPane4.implicitHeight;
                     default: return tabPane0.implicitHeight;
                 }
             }
@@ -266,18 +286,19 @@ Item {
             }
 
             readonly property int activeTabIndex: {
-                switch (Config.activeDashboardTab) {
+                switch (root.activeTab) {
                     case "dashboard": return 0;
                     case "media": return 1;
                     case "performance": return 2;
                     case "workspaces": return 3;
+                    case "ai": return 4;
                     default: return 0;
                 }
             }
 
             Item {
                 id: tabSlider
-                width: tabContentContainer.width * 4
+                width: tabContentContainer.width * 5
                 height: parent.height
                 x: -tabContentContainer.activeTabIndex * tabContentContainer.width
 
@@ -350,6 +371,22 @@ Item {
 
                     WorkspacesTab {
                         id: wsTab
+                        width: parent.width
+                        height: parent.height
+                    }
+                }
+
+                Item {
+                    id: tabPane4
+                    x: tabContentContainer.width * 4
+                    width: tabContentContainer.width
+                    height: implicitHeight
+                    implicitHeight: aiTab.implicitHeight
+                    clip: true
+                    visible: tabContentContainer.activeTabIndex === 4 || tabSlider.isAnimating
+
+                    AiTab {
+                        id: aiTab
                         width: parent.width
                         height: parent.height
                     }

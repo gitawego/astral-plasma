@@ -3,6 +3,7 @@ use crate::domain::ai_quota::{
     parse_xiaomi_usage, AiProviderQuota, AiQuotaSnapshot, ProviderAccount, QuotaWindow,
 };
 use crate::infrastructure::scanners::ToolConfigAggregator;
+use crate::infrastructure::token_cache_analytics::TokenCacheAnalytics;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -1617,6 +1618,7 @@ impl AiQuotaAdapter {
                                 }],
                                 accounts,
                                 error_message: None,
+                                cache_stats: None,
                             });
                         }
                     }
@@ -2045,6 +2047,16 @@ impl AiQuotaAdapter {
                                             }
                                         }
                                     }
+                                    if snap.global_cache_stats.is_none() {
+                                        let (global_stats, per_prov) =
+                                            TokenCacheAnalytics::calculate_stats();
+                                        for p in &mut snap.providers {
+                                            if let Some(cs) = per_prov.get(&p.provider_id) {
+                                                p.cache_stats = Some(cs.clone());
+                                            }
+                                        }
+                                        snap.global_cache_stats = Some(global_stats);
+                                    }
                                     snap.compute_metrics(warning_thr, critical_thr);
                                     return snap;
                                 }
@@ -2093,6 +2105,13 @@ impl AiQuotaAdapter {
             }
         }
 
+        let (global_cache_stats, per_provider_cache) = TokenCacheAnalytics::calculate_stats();
+        for p in &mut providers {
+            if let Some(cs) = per_provider_cache.get(&p.provider_id) {
+                p.cache_stats = Some(cs.clone());
+            }
+        }
+
         let now_rfc3339 = chrono_lite_rfc3339();
 
         let mut snapshot = AiQuotaSnapshot {
@@ -2102,6 +2121,7 @@ impl AiQuotaAdapter {
             warning_level: "normal".to_string(),
             fetched_at: now_rfc3339,
             active_gemini_email,
+            global_cache_stats: Some(global_cache_stats),
         };
 
         snapshot.compute_metrics(warning_thr, critical_thr);

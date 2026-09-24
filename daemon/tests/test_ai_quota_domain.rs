@@ -178,6 +178,7 @@ fn test_warning_level_escalation() {
                 ],
                 accounts: vec![],
                 error_message: None,
+                cache_stats: None,
             }
         ],
         highest_used_percent: 0.0,
@@ -185,6 +186,7 @@ fn test_warning_level_escalation() {
         warning_level: "normal".to_string(),
         fetched_at: "now".to_string(),
         active_gemini_email: None,
+        global_cache_stats: None,
     };
 
     snap.compute_metrics(80.0, 95.0);
@@ -358,5 +360,24 @@ fn test_compute_next_monthly_reset_iso() {
     // If reset day was 20 (today 23 >= 20, so next month)
     assert_eq!(compute_next_monthly_reset_iso(now_ms, 20), "2024-10-20T00:00:00Z");
 }
+
+#[test]
+fn test_token_cache_stats_hit_rate() {
+    use astral_plasma::domain::ai_quota::TokenCacheStats;
+
+    let stats = TokenCacheStats {
+        cached_tokens: 9000,
+        uncached_input_tokens: 1000,
+        output_tokens: 500,
+        total_prompt_tokens: 10000,
+        cache_hit_rate_percent: 90.0,
+    };
+
+    assert_eq!(stats.total_prompt_tokens, 10000);
+    assert_eq!(stats.cache_hit_rate_percent, 90.0);
+    assert_eq!(stats.cached_tokens, 9000);
+    assert_eq!(stats.uncached_input_tokens, 1000);
+}
+
 
 

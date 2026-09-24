@@ -56,7 +56,8 @@ PanelWindow {
                     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
                     { id: "media", label: "Media", icon: "media" },
                     { id: "performance", label: "Performance", icon: "performance" },
-                    { id: "workspaces", label: "Workspaces", icon: "workspaces" }
+                    { id: "workspaces", label: "Workspaces", icon: "workspaces" },
+                    { id: "ai", label: "AI Quotas", icon: "auto_awesome" }
                 ]
                 onTabSelected: tabId => Config.activeDashboardTab = tabId
             }
@@ -72,6 +73,7 @@ PanelWindow {
                         case "media": return mediaTabComp;
                         case "performance": return perfTabComp;
                         case "workspaces": return wsTabComp;
+                        case "ai": return aiTabComp;
                         default: return dashboardTabComp;
                     }
                 }
@@ -82,5 +84,6 @@ PanelWindow {
         Component { id: mediaTabComp; MediaTab {} }
         Component { id: perfTabComp; PerformanceTab {} }
         Component { id: wsTabComp; WorkspacesTab {} }
+        Component { id: aiTabComp; AiTab {} }
     }
 }
