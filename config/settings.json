@@ -161,6 +161,7 @@
     "warningThresholdPercent": 80,
     "criticalThresholdPercent": 95,
     "dockPillMode": "dynamic",
+    "modelActivityEffect": true,
     "geminiMonthlyEnabled": true,
     "geminiMonthlyRemainingPercent": 85.0,
     "geminiMonthlyResetDay": 1

@@ -1,0 +1,341 @@
+use crate::domain::ai_activity::{resolve_model_metadata, AiActivityState};
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
+
+/// Tail reader that extracts the most recent model identifier in <0.1ms without loading entire files.
+pub struct AiActivityMonitor {
+    pub state: Arc<RwLock<AiActivityState>>,
+    watch_descriptors: Arc<RwLock<HashMap<i32, PathBuf>>>,
+    recent_events_window: Arc<RwLock<Vec<u64>>>,
+}
+
+impl Default for AiActivityMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AiActivityMonitor {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(RwLock::new(AiActivityState::default())),
+            watch_descriptors: Arc::new(RwLock::new(HashMap::new())),
+            recent_events_window: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    pub async fn get_state(&self) -> AiActivityState {
+        self.state.read().await.clone()
+    }
+
+    /// Records a new request event for the specified model and tool, updating activity metrics.
+    pub async fn record_activity(&self, raw_model: &str, tool_source: &str) {
+        let now_ms = current_epoch_ms();
+        let identity = resolve_model_metadata(raw_model, tool_source);
+
+        // Update rolling request rate window
+        let mut window = self.recent_events_window.write().await;
+        window.retain(|&t| now_ms.saturating_sub(t) < 60_000); // 60s rolling window
+        window.push(now_ms);
+        let rpm = window.len() as f64;
+
+        let mut st = self.state.write().await;
+        st.identity = identity;
+        st.is_active = true;
+        st.intensity = 1.0;
+        st.request_rate_rpm = rpm;
+        st.last_event_epoch_ms = now_ms;
+    }
+
+    /// Advances activity decay math. Returns `true` if state transitioned from active to inactive.
+    pub async fn tick_decay(&self) -> bool {
+        let now_ms = current_epoch_ms();
+        let mut st = self.state.write().await;
+
+        if !st.is_active {
+            return false;
+        }
+
+        let elapsed = now_ms.saturating_sub(st.last_event_epoch_ms);
+
+        // Decay rolling window
+        let mut window = self.recent_events_window.write().await;
+        window.retain(|&t| now_ms.saturating_sub(t) < 60_000);
+        st.request_rate_rpm = window.len() as f64;
+
+        if elapsed > 4000 {
+            // Exponential decay after 4s idle
+            st.intensity *= 0.70;
+            if st.intensity < 0.05 {
+                st.intensity = 0.0;
+                st.is_active = false;
+                return true; // Transitioned to inactive
+            }
+        }
+        false
+    }
+
+    /// Reads up to `max_bytes` from the end of the file.
+    pub fn read_tail_string(path: &Path, max_bytes: usize) -> Option<String> {
+        let mut file = File::open(path).ok()?;
+        let len = file.metadata().ok()?.len();
+        if len == 0 {
+            return None;
+        }
+
+        let seek_bytes = (max_bytes as u64).min(len);
+        file.seek(SeekFrom::End(-(seek_bytes as i64))).ok()?;
+
+        let mut buf = Vec::with_capacity(seek_bytes as usize);
+        file.read_to_end(&mut buf).ok()?;
+        Some(String::from_utf8_lossy(&buf).to_string())
+    }
+
+    /// Extracts the most recent model identifier from the tail of a session or log file.
+    pub fn parse_model_from_tail(tail: &str, path_hint: &str) -> Option<(String, String)> {
+        let hint_lower = path_hint.to_lowercase();
+        let tool_source = if hint_lower.contains("claude") {
+            "claude"
+        } else if hint_lower.contains("codex") {
+            "codex"
+        } else if hint_lower.contains("antigravity") || hint_lower.contains("gemini") {
+            "antigravity"
+        } else if hint_lower.contains("opencode") {
+            "opencode"
+        } else if hint_lower.contains(".omp") {
+            "omp"
+        } else if hint_lower.contains(".pi") {
+            "pi"
+        } else {
+            "agent"
+        };
+
+        // Scan lines in reverse order to find the latest model change or usage message
+        for line in tail.lines().rev() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            // Check for direct JSON structure
+            if let Some((m, prov)) = extract_model_from_json_line(trimmed) {
+                let resolved_tool = if !prov.is_empty() { prov } else { tool_source.to_string() };
+                return Some((m, resolved_tool));
+            }
+        }
+
+        None
+    }
+    pub fn start_background_watcher(self: Arc<Self>) {
+        tokio::spawn(async move {
+            self.run_inotify_loop().await;
+        });
+    }
+
+    pub async fn run_inotify_loop(&self) {
+        let home = match std::env::var("HOME").ok().map(PathBuf::from) {
+            Some(h) => h,
+            None => return,
+        };
+
+        let mut candidate_dirs = vec![
+            home.join(".pi/agent/sessions"),
+            home.join(".claude"),
+            home.join(".claude/sessions"),
+            home.join(".codex"),
+            home.join(".codex/sessions"),
+            home.join(".gemini/antigravity/brain"),
+            home.join(".local/share/opencode/log"),
+            home.join(".omp/agent/sessions"),
+        ];
+
+        // Also add immediate subdirectories of sessions
+        let session_roots = [
+            home.join(".pi/agent/sessions"),
+            home.join(".omp/agent/sessions"),
+            home.join(".claude/sessions"),
+        ];
+        for sroot in &session_roots {
+            if sroot.exists() && sroot.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(sroot) {
+                    for e in entries.flatten() {
+                        let p = e.path();
+                        if p.is_dir() {
+                            candidate_dirs.push(p);
+                        }
+                    }
+                }
+            }
+        }
+
+        let inotify_fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+        if inotify_fd < 0 {
+            return;
+        }
+
+        let mut watch_map = HashMap::new();
+        for dir in candidate_dirs {
+            if !dir.exists() || !dir.is_dir() {
+                continue;
+            }
+            if let Ok(c_str) = std::ffi::CString::new(dir.to_string_lossy().as_bytes()) {
+                let wd = unsafe {
+                    libc::inotify_add_watch(
+                        inotify_fd,
+                        c_str.as_ptr(),
+                        libc::IN_MODIFY | libc::IN_CREATE | libc::IN_CLOSE_WRITE,
+                    )
+                };
+                if wd >= 0 {
+                    watch_map.insert(wd, dir);
+                }
+            }
+        }
+
+        {
+            let mut wds = self.watch_descriptors.write().await;
+            *wds = watch_map.clone();
+        }
+
+        let async_fd = match tokio::io::unix::AsyncFd::new(inotify_fd) {
+            Ok(fd) => fd,
+            Err(_) => {
+                unsafe { libc::close(inotify_fd) };
+                return;
+            }
+        };
+
+        let mut decay_tick = tokio::time::interval(tokio::time::Duration::from_millis(500));
+        let mut buffer = [0u8; 8192];
+
+        loop {
+            tokio::select! {
+                guard_res = async_fd.readable() => {
+                    let mut guard = match guard_res {
+                        Ok(g) => g,
+                        Err(_) => break,
+                    };
+
+                    let n = unsafe {
+                        libc::read(inotify_fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len())
+                    };
+
+                    guard.clear_ready();
+
+                    if n > 0 {
+                        let mut offset = 0usize;
+                        let bytes_read = n as usize;
+                        while offset + std::mem::size_of::<libc::inotify_event>() <= bytes_read {
+                            let event = unsafe {
+                                &*(buffer.as_ptr().add(offset) as *const libc::inotify_event)
+                            };
+
+                            let name_len = event.len as usize;
+                            if name_len > 0 && offset + std::mem::size_of::<libc::inotify_event>() + name_len <= bytes_read {
+                                let name_bytes = &buffer[offset + std::mem::size_of::<libc::inotify_event>()..offset + std::mem::size_of::<libc::inotify_event>() + name_len];
+                                let name_str = String::from_utf8_lossy(name_bytes).trim_matches('\0').to_string();
+
+                                if name_str.ends_with(".jsonl") || name_str.ends_with(".log") {
+                                    if let Some(dir) = watch_map.get(&event.wd) {
+                                        let full_path = dir.join(&name_str);
+                                        if let Some(tail) = Self::read_tail_string(&full_path, 1536) {
+                                            if let Some((model, tool)) = Self::parse_model_from_tail(&tail, &full_path.to_string_lossy()) {
+                                                self.record_activity(&model, &tool).await;
+                                                let curr = self.get_state().await;
+                                                emit_activity_payload(&curr);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            offset += std::mem::size_of::<libc::inotify_event>() + name_len;
+                        }
+                    }
+                }
+                _ = decay_tick.tick() => {
+                    if self.tick_decay().await {
+                        let curr = self.get_state().await;
+                        emit_activity_payload(&curr);
+                    }
+                }
+            }
+        }
+
+        unsafe { libc::close(inotify_fd) };
+    }
+}
+
+pub fn emit_activity_payload(st: &AiActivityState) {
+    let payload = serde_json::json!({
+        "msg_type": "ai_activity",
+        "agent": st.identity.tool_source,
+        "model": st.identity.model_id,
+        "display_name": st.identity.display_name,
+        "brand_color": st.identity.brand_color,
+        "brand_icon": st.identity.brand_icon,
+        "is_active": st.is_active,
+        "intensity": (st.intensity * 100.0).round() / 100.0,
+        "request_rate": st.request_rate_rpm,
+    });
+    if let Ok(s) = serde_json::to_string(&payload) {
+        println!("{}", s);
+    }
+}
+
+/// Helper to parse a single JSON line and extract model and provider.
+pub fn extract_model_from_json_line(line: &str) -> Option<(String, String)> {
+    if !line.contains("\"model\"") && !line.contains("\"model_id\"") && !line.contains("\"modelName\"") {
+        return None;
+    }
+
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+        // Case 1: Direct model field
+        let direct_model = v.get("model")
+            .or_else(|| v.get("model_id"))
+            .or_else(|| v.get("modelName"))
+            .and_then(|s| s.as_str());
+
+        // Case 2: Nested message.model
+        let msg = v.get("message");
+        let msg_model = msg.and_then(|m| m.get("model").or_else(|| m.get("model_id"))).and_then(|s| s.as_str());
+
+        let model = direct_model.or(msg_model)?;
+
+        let prov = v.get("provider")
+            .or_else(|| msg.and_then(|m| m.get("provider")))
+            .and_then(|p| p.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        return Some((model.to_string(), prov));
+    }
+
+    // Fallback: fast regex/substring extraction if line is partially truncated
+    if let Some(pos) = line.rfind("\"model\":") {
+        let rem = &line[pos + 8..];
+        let trimmed_rem = rem.trim_start();
+        if let Some(quote_start) = trimmed_rem.find('"') {
+            let inner = &trimmed_rem[quote_start + 1..];
+            if let Some(quote_end) = inner.find('"') {
+                let model = &inner[..quote_end];
+                if !model.is_empty() {
+                    return Some((model.to_string(), String::new()));
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn current_epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}

@@ -442,6 +442,13 @@ Singleton {
                     const data = JSON.parse(line);
                     if (!data) return;
 
+                    if (data.msg_type === "ai_activity") {
+                        if (typeof AiActivityService !== "undefined") {
+                            AiActivityService.applyActivity(data);
+                        }
+                        return;
+                    }
+
                     if (data.activeTitle !== undefined) root.activeTitle = data.activeTitle;
                     if (data.activeMaterialIcon !== undefined) root.activeMaterialIcon = data.activeMaterialIcon;
                     if (data.activeIconName !== undefined) root.activeIconName = data.activeIconName;

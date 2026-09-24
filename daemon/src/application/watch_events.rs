@@ -819,6 +819,10 @@ pub async fn run_event_daemon() -> DynResult<()> {
         });
     }
 
+    // Spawn real-time AI Agent Model Activity Monitor
+    let ai_monitor = Arc::new(crate::infrastructure::ai_activity_monitor::AiActivityMonitor::new());
+    ai_monitor.start_background_watcher();
+
     // Spawn periodic tray poller
     let tray_state = Arc::clone(&state);
     tokio::spawn(async move {

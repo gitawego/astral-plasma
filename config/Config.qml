@@ -173,6 +173,7 @@ Singleton {
 
     // AI Token Plan Configuration
     readonly property bool aiEnabled: (root.settings && root.settings.ai && root.settings.ai.enabled !== undefined) ? root.settings.ai.enabled : true
+    readonly property bool modelActivityEffect: (root.settings && root.settings.ai && root.settings.ai.modelActivityEffect !== undefined) ? root.settings.ai.modelActivityEffect : true
     readonly property int aiPollIntervalMinutes: (root.settings && root.settings.ai && root.settings.ai.pollIntervalMinutes) ? root.settings.ai.pollIntervalMinutes : 5
     readonly property real aiWarningThreshold: (root.settings && root.settings.ai && root.settings.ai.warningThresholdPercent !== undefined) ? root.settings.ai.warningThresholdPercent : 80.0
     readonly property real aiCriticalThreshold: (root.settings && root.settings.ai && root.settings.ai.criticalThresholdPercent !== undefined) ? root.settings.ai.criticalThresholdPercent : 95.0

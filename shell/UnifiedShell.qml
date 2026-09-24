@@ -1328,6 +1328,35 @@ PanelWindow {
         width: root.dockW
         height: root.height - root.borderT * 2 - 12
 
+        // Micro-hairline rim glow for AI activity
+        Rectangle {
+            id: aiCapsuleRim
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 1.5
+            z: 50
+            visible: Config.modelActivityEffect && (typeof AiActivityService !== "undefined") && (AiActivityService.isActive || opacity > 0.01)
+            color: (typeof AiActivityService !== "undefined" && AiActivityService.brandColor)
+                ? AiActivityService.brandColor
+                : Colors.primary
+            opacity: (typeof AiActivityService !== "undefined" && AiActivityService.isActive)
+                ? (0.20 + (rimPulse * 0.50))
+                : 0.0
+
+            Behavior on opacity {
+                NumberAnimation { duration: 4000; easing.type: Easing.OutQuad } // 4s smooth fade
+            }
+
+            property real rimPulse: 0.0
+            SequentialAnimation on rimPulse {
+                running: Config.modelActivityEffect && (typeof AiActivityService !== "undefined") && AiActivityService.isActive
+                loops: Animation.Infinite
+                NumberAnimation { to: 1.0; duration: (typeof AiActivityService !== "undefined") ? Math.round(AiActivityService.pulseDuration / 2) : 1000; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.0; duration: (typeof AiActivityService !== "undefined") ? Math.round(AiActivityService.pulseDuration / 2) : 1000; easing.type: Easing.InOutSine }
+            }
+        }
+
         UnifiedDock {
             anchors.fill: parent
             iconS: root.iconS

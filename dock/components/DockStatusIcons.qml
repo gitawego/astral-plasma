@@ -160,10 +160,11 @@ LiquidGlassCard {
             }
         }
 
-        // 4. AI Token Quota Pill (Dynamic)
+        // 4. AI Token Quota Pill (Dynamic & Activity-Aware)
         Item {
             id: aiItem
-            visible: typeof AiTokenService !== "undefined" && AiTokenService.shouldShowPill
+            visible: (typeof AiTokenService !== "undefined" && AiTokenService.shouldShowPill)
+                     || (typeof AiActivityService !== "undefined" && (AiActivityService.isActive || (Config.modelActivityEffect && AiActivityService.displayName !== "AI Agent")))
             implicitWidth: visible ? root.btnSize : 0
             implicitHeight: visible ? root.btnSize : 0
             width: implicitWidth
@@ -173,6 +174,36 @@ LiquidGlassCard {
             Behavior on opacity { NumberAnimation { duration: Theme.animDurationNormal } }
             opacity: visible ? 1.0 : 0.0
 
+            // Breathing Specular Halo for AI Model Activity
+            Rectangle {
+                id: aiAura
+                anchors.centerIn: parent
+                width: parent.width + 8
+                height: parent.height + 8
+                radius: Theme.radiusFull
+                z: -1
+                visible: Config.modelActivityEffect && (typeof AiActivityService !== "undefined") && (AiActivityService.isActive || opacity > 0.01)
+                color: (typeof AiActivityService !== "undefined" && AiActivityService.brandColor)
+                    ? Qt.alpha(AiActivityService.brandColor, 0.35)
+                    : Qt.alpha(Colors.primary, 0.35)
+                opacity: (typeof AiActivityService !== "undefined" && AiActivityService.isActive)
+                    ? (0.25 + (auraPulse * 0.50))
+                    : 0.0
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 4000; easing.type: Easing.OutQuad } // 4s smooth fade
+                }
+
+                property real auraPulse: 0.0
+
+                SequentialAnimation on auraPulse {
+                    running: Config.modelActivityEffect && (typeof AiActivityService !== "undefined") && AiActivityService.isActive
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 1.0; duration: (typeof AiActivityService !== "undefined") ? Math.round(AiActivityService.pulseDuration / 2) : 1000; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0.0; duration: (typeof AiActivityService !== "undefined") ? Math.round(AiActivityService.pulseDuration / 2) : 1000; easing.type: Easing.InOutSine }
+                }
+            }
+
             Rectangle {
                 id: aiBg
                 anchors.fill: parent
@@ -180,6 +211,7 @@ LiquidGlassCard {
 
                 readonly property bool isPopActive: Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai"
                 readonly property string warn: typeof AiTokenService !== "undefined" ? AiTokenService.warningLevel : "normal"
+                readonly property bool hasModelActivity: typeof AiActivityService !== "undefined" && Config.modelActivityEffect && AiActivityService.isActive
 
                 color: isPopActive
                     ? (warn === "critical" ? "#E05353" : (warn === "warning" ? "#F59E0B" : Colors.primary))
@@ -187,14 +219,20 @@ LiquidGlassCard {
                         ? Qt.alpha("#E05353", 0.25)
                         : (warn === "warning"
                             ? Qt.alpha("#F59E0B", 0.20)
-                            : (aiHover.hovered ? Colors.surfaceContainerHigh : "transparent")))
+                            : (hasModelActivity
+                                ? Qt.alpha(AiActivityService.brandColor, 0.18)
+                                : (aiHover.hovered ? Colors.surfaceContainerHigh : "transparent"))))
 
                 border.color: isPopActive
                     ? "transparent"
                     : (warn === "critical"
                         ? "#E05353"
-                        : (warn === "warning" ? "#F59E0B" : (aiHover.hovered ? Theme.borderSubtle : "transparent")))
-                border.width: (warn !== "normal") ? 1.5 : 0
+                        : (warn === "warning"
+                            ? "#F59E0B"
+                            : (hasModelActivity
+                                ? Qt.alpha(AiActivityService.brandColor, 0.60)
+                                : (aiHover.hovered ? Theme.borderSubtle : "transparent"))))
+                border.width: (warn !== "normal" || hasModelActivity) ? 1.5 : 0
 
                 SequentialAnimation on opacity {
                     running: aiBg.warn === "critical" && !aiBg.isPopActive
@@ -203,15 +241,23 @@ LiquidGlassCard {
                     NumberAnimation { to: 1.0; duration: 650; easing.type: Easing.InOutQuad }
                 }
 
+                readonly property string activeAiIcon: (typeof AiActivityService !== "undefined" && Config.modelActivityEffect && AiActivityService.brandIcon && AiActivityService.displayName !== "AI Agent")
+                    ? AiActivityService.brandIcon
+                    : "auto_awesome"
+
                 MaterialIcon {
                     anchors.centerIn: parent
-                    text: "auto_awesome"
+                    text: aiBg.activeAiIcon
                     size: root.iconSize
                     color: aiBg.isPopActive
                         ? Colors.textOnPrimary
                         : (aiBg.warn === "critical"
                             ? "#E05353"
-                            : (aiBg.warn === "warning" ? "#F59E0B" : (aiHover.hovered ? Colors.primary : Colors.textOnSurfaceVariant)))
+                            : (aiBg.warn === "warning"
+                                ? "#F59E0B"
+                                : (aiBg.hasModelActivity
+                                    ? AiActivityService.brandColor
+                                    : (aiHover.hovered ? Colors.primary : Colors.textOnSurfaceVariant))))
                 }
 
                 HoverHandler {

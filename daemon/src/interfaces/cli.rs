@@ -551,6 +551,64 @@ pub async fn run_cli() -> DynResult<()> {
                     let snapshot = ai_service.get_status(warning_thr, critical_thr, false)?;
                     println!("{}", serde_json::to_string(&snapshot)?);
                 }
+                "activity" => {
+                    use crate::infrastructure::ai_activity_monitor::AiActivityMonitor;
+                    let monitor = AiActivityMonitor::new();
+                    if let Some(home) = std::env::var("HOME").ok().map(std::path::PathBuf::from) {
+                        let candidates = [
+                            home.join(".pi/agent/sessions"),
+                            home.join(".omp/agent/sessions"),
+                            home.join(".claude/sessions"),
+                            home.join(".codex/sessions"),
+                        ];
+                        let mut latest_time = 0u64;
+                        let mut latest_entry = None;
+                        for root in &candidates {
+                            if !root.exists() { continue; }
+                            if let Ok(dirs) = std::fs::read_dir(root) {
+                                for d in dirs.flatten() {
+                                    let p = d.path();
+                                    if p.is_dir() {
+                                        if let Ok(files) = std::fs::read_dir(&p) {
+                                            for f in files.flatten() {
+                                                let fp = f.path();
+                                                if fp.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                                                    if let Ok(meta) = fp.metadata() {
+                                                        if let Ok(mtime) = meta.modified() {
+                                                            let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                                                            if epoch > latest_time {
+                                                                latest_time = epoch;
+                                                                latest_entry = Some(fp);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(path) = latest_entry {
+                            if let Some(tail) = AiActivityMonitor::read_tail_string(&path, 1536) {
+                                if let Some((m, t)) = AiActivityMonitor::parse_model_from_tail(&tail, &path.to_string_lossy()) {
+                                    monitor.record_activity(&m, &t).await;
+                                }
+                            }
+                        }
+                    }
+                    let state = monitor.get_state().await;
+                    println!("{}", serde_json::to_string(&serde_json::json!({
+                        "agent": state.identity.tool_source,
+                        "model": state.identity.model_id,
+                        "display_name": state.identity.display_name,
+                        "brand_color": state.identity.brand_color,
+                        "brand_icon": state.identity.brand_icon,
+                        "is_active": state.is_active,
+                        "intensity": state.intensity,
+                        "request_rate": state.request_rate_rpm,
+                    }))?);
+                }
                 "refresh" => {
                     let warning_thr = args.get(3).and_then(|s| s.parse::<f64>().ok()).unwrap_or(80.0);
                     let critical_thr = args.get(4).and_then(|s| s.parse::<f64>().ok()).unwrap_or(95.0);
