@@ -4,7 +4,6 @@ import QtQuick.Effects
 import "../components"
 import "../theme"
 import "../config"
-import "../services"
 
 Item {
     id: root
@@ -22,7 +21,6 @@ Item {
 
     readonly property bool isMediaNotification: {
         let app = (root.appName || "").toLowerCase();
-        let isMprisMatch = (typeof MprisMedia !== "undefined" && Boolean(MprisMedia.identity)) ? (app.length > 0 && app.includes(MprisMedia.identity.toLowerCase())) : false;
         return Boolean(app.includes("strawberry") || 
                        app.includes("elisa") || 
                        app.includes("cloudmusic") || 
@@ -30,7 +28,7 @@ Item {
                        app.includes("music") || 
                        app.includes("player") || 
                        app.includes("spotify") ||
-                       isMprisMatch);
+                       root.materialIcon === "music_note");
     }
 
     readonly property string effectiveCover: {

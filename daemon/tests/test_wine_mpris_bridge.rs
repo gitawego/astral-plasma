@@ -7,8 +7,11 @@
 
 use astral_plasma::application::wine_mpris::{WineMprisService, WINE_MPRIS_BUS_NAME};
 
+static BUS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test]
 async fn bridge_takes_over_a_name_a_dying_instance_released() {
+    let _guard = BUS_LOCK.lock().await;
     // Without a session bus there is nothing to test (headless CI).
     let Ok(conn) = zbus::Connection::session().await else {
         return;
@@ -53,6 +56,7 @@ async fn bridge_takes_over_a_name_a_dying_instance_released() {
 /// the reply is what keeps it reachable.
 #[tokio::test]
 async fn the_bridge_owns_its_bus_name() {
+    let _guard = BUS_LOCK.lock().await;
     use astral_plasma::application::wine_mpris::{WineMprisService, WINE_MPRIS_BUS_NAME};
 
     let conn = zbus::Connection::session().await.expect("session bus");
