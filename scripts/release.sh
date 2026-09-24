@@ -121,17 +121,42 @@ elif [ -n "$VERSION_INPUT" ]; then
     # Strip leading 'v' if present for semver comparison
     TARGET_VERSION="${VERSION_INPUT#v}"
 else
-    # Prompt user
+    # Propose release types and calculate targets
+    IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_RAW_VERSION"
+    NEXT_PATCH="${MAJOR}.${MINOR}.$((PATCH + 1))"
+    NEXT_MINOR="${MAJOR}.$((MINOR + 1)).0"
+    NEXT_MAJOR="$((MAJOR + 1)).0.0"
+
     echo ""
     echo "Current version is ${CURRENT_RAW_VERSION}"
-    read -rp "Enter new version (e.g. 0.2.0) or press Enter for next patch: " USER_VER
-    if [ -z "$USER_VER" ]; then
-        IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_RAW_VERSION"
-        PATCH=$((PATCH + 1))
-        TARGET_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-    else
-        TARGET_VERSION="${USER_VER#v}"
-    fi
+    echo "Select release type:"
+    echo "  1) patch -> ${NEXT_PATCH} (default)"
+    echo "  2) minor -> ${NEXT_MINOR}"
+    echo "  3) major -> ${NEXT_MAJOR}"
+    echo "  4) custom version"
+    read -rp "Enter choice [1-4] (default: 1): " CHOICE
+    case "${CHOICE:-1}" in
+        2|minor)
+            TARGET_VERSION="${NEXT_MINOR}"
+            ;;
+        3|major)
+            TARGET_VERSION="${NEXT_MAJOR}"
+            ;;
+        4|custom)
+            read -rp "Enter custom version (e.g. 0.2.0): " USER_VER
+            TARGET_VERSION="${USER_VER#v}"
+            ;;
+        1|patch)
+            TARGET_VERSION="${NEXT_PATCH}"
+            ;;
+        *)
+            if [[ "$CHOICE" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+                TARGET_VERSION="${CHOICE#v}"
+            else
+                TARGET_VERSION="${NEXT_PATCH}"
+            fi
+            ;;
+    esac
 fi
 
 # Ensure valid semver format

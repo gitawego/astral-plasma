@@ -161,15 +161,23 @@ Astral Plasma includes an automated multi-architecture release pipeline built on
 - **Supported Architectures**: `x86_64` (Intel/AMD) and `aarch64` (ARM64 / Raspberry Pi / Asahi Linux).
 - **Trigger via Local Project CLI**:
   ```bash
-  # Check test gate, preview changelog, bump version, tag, and trigger GitHub Actions release:
-  ./scripts/release.sh 0.2.0
-  # Or increment patch/minor automatically:
+  # Interactive mode: proposes patch, minor, major, or custom version:
+  ./scripts/release.sh
+
+  # Or explicit flags / version:
   ./scripts/release.sh --patch
-  # Or via Makefile:
-  make release-tag VERSION=0.2.0
+  ./scripts/release.sh --minor
+  ./scripts/release.sh --major
+  ./scripts/release.sh 0.2.0
+
+  # Preview with dry-run:
+  ./scripts/release.sh --dry-run
   ```
 - **Trigger via GitHub Actions Web UI**:
-  Go to the **Actions** tab -> **Release** -> **Run workflow** -> Enter version tag (e.g. `v0.2.0`).
+  Go to the **Actions** tab -> **Release** -> **Run workflow**:
+  - **Release type**: Select `patch` (default), `minor`, `major`, or `custom`.
+  - **Custom version**: Enter version only if `custom` is selected.
+  - The workflow automatically increments the version, updates `daemon/Cargo.toml`, commits with `[skip ci]`, creates the annotated git tag, compiles x64 & arm64 binaries, and publishes the GitHub Release.
 - Releases automatically generate a formatted Conventional Commits changelog, compile stripped binaries for both architectures, calculate cryptographic checksums (`SHA256SUMS.txt`), and publish GitHub Releases with downloadable archives and standalone binaries.
 
 ---
