@@ -67,6 +67,16 @@ impl Default for AiActivityState {
 
 /// Resolves raw model name and agent tool source into a standardized identity with brand aesthetics.
 pub fn resolve_model_metadata(raw_model: &str, tool_source: &str) -> AiAgentIdentity {
+    let unescaped_model = if raw_model.trim().starts_with('{') {
+        serde_json::from_str::<serde_json::Value>(raw_model)
+            .ok()
+            .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
+            .unwrap_or_else(|| raw_model.to_string())
+    } else {
+        raw_model.to_string()
+    };
+    let raw_model = unescaped_model.as_str();
+
     let lower_model = raw_model.trim().to_lowercase();
     let lower_tool = tool_source.trim().to_lowercase();
 
@@ -282,26 +292,49 @@ pub fn resolve_model_metadata(raw_model: &str, tool_source: &str) -> AiAgentIden
         };
     }
 
-    // 11. Fallback / Generic
+    // 11. OpenCode
+    if lower_tool.contains("opencode") || lower_model.contains("opencode") {
+        return AiAgentIdentity {
+            tool_source: "opencode".to_string(),
+            model_id: if raw_model.is_empty() { "opencode".to_string() } else { raw_model.to_string() },
+            display_name: if raw_model.is_empty() { "OpenCode".to_string() } else { format_clean_model_name(raw_model) },
+            brand_color: "#10B981".to_string(), // OpenCode Emerald
+            brand_icon: "terminal".to_string(),
+        };
+    }
+
+    // 12. Fallback / Generic
     AiAgentIdentity {
         tool_source: tool_source.to_string(),
         model_id: raw_model.to_string(),
         display_name: if raw_model.is_empty() { "AI Agent".to_string() } else { format_clean_model_name(raw_model) },
-        brand_color: "#9bcbfb".to_string(),
+        brand_color: "#10B981".to_string(), // OpenCode / Terminal Emerald
         brand_icon: "token".to_string(),
     }
 }
 
-fn format_clean_model_name(raw: &str) -> String {
+pub fn format_clean_model_name(raw: &str) -> String {
     let stripped = raw.split('/').last().unwrap_or(raw);
     let parts: Vec<String> = stripped
         .split(['-', '_', ':'])
         .filter(|s| !s.is_empty())
         .map(|s| {
-            let mut c = s.chars();
-            match c.next() {
-                None => String::new(),
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            let lower = s.to_lowercase();
+            match lower.as_str() {
+                "gpt" => "GPT".to_string(),
+                "r1" => "R1".to_string(),
+                "ai" => "AI".to_string(),
+                "glm" => "GLM".to_string(),
+                "api" => "API".to_string(),
+                "deepseek" => "DeepSeek".to_string(),
+                "minimax" => "MiniMax".to_string(),
+                _ => {
+                    let mut c = s.chars();
+                    match c.next() {
+                        None => String::new(),
+                        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                    }
+                }
             }
         })
         .collect();

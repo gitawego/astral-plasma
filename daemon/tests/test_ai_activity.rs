@@ -395,3 +395,60 @@ async fn test_multi_agent_decay_prunes_inactive_agent_first() {
     let st2 = monitor.get_state().await;
     assert_eq!(st2.active_agents.len(), 2);
 }
+
+#[test]
+fn test_resolve_opencode_space_bunny_alpha_model() {
+    let id1 = resolve_model_metadata("stealth/space-bunny-alpha", "opencode");
+    assert_eq!(id1.tool_source, "opencode");
+    assert_eq!(id1.brand_color, "#10B981");
+    assert_eq!(id1.brand_icon, "terminal");
+    assert_eq!(id1.display_name, "Space Bunny Alpha");
+
+    // Test JSON formatted model string from SQLite
+    let raw_json = r#"{"id":"stealth/space-bunny-alpha","providerID":"openrouter","variant":"max"}"#;
+    let id2 = resolve_model_metadata(raw_json, "opencode");
+    assert_eq!(id2.tool_source, "opencode");
+    assert_eq!(id2.brand_color, "#10B981");
+    assert_eq!(id2.display_name, "Space Bunny Alpha");
+}
+
+#[test]
+fn test_resolve_generic_models_without_hardcoded_overrides() {
+    let id1 = resolve_model_metadata("deepseek/deepseek-r1", "custom");
+    assert_eq!(id1.display_name, "DeepSeek R1");
+
+    let id2 = resolve_model_metadata("qwen-2.5-coder", "opencode");
+    assert_eq!(id2.display_name, "Qwen 2.5 Coder");
+
+    let id3 = resolve_model_metadata("custom-local-model", "other");
+    assert_eq!(id3.display_name, "Custom Local Model");
+}
+
+#[test]
+fn test_query_opencode_latest_session_sqlite() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    use std::fs;
+    let temp_home = tempfile::tempdir().unwrap();
+    let opencode_dir = temp_home.path().join(".local/share/opencode");
+    fs::create_dir_all(&opencode_dir).unwrap();
+
+    let db_path = opencode_dir.join("opencode.db");
+    // Initialize SQLite database table and test row via sqlite3 CLI
+    let status = std::process::Command::new("sqlite3")
+        .arg(&db_path)
+        .arg("CREATE TABLE session_v2 (id text PRIMARY KEY, project_id text NOT NULL, slug text NOT NULL, directory text NOT NULL, version text NOT NULL, model text, tokens_input integer DEFAULT 0 NOT NULL, tokens_output integer DEFAULT 0 NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL);
+              INSERT INTO session_v2 (id, project_id, slug, directory, version, model, tokens_input, tokens_output, time_created, time_updated) VALUES ('ses_test', 'proj_1', 'slug_1', '/test', '2.0', '{\"id\":\"stealth/space-bunny-alpha\",\"providerID\":\"openrouter\"}', 12000, 4500, 1000, 1790264509833);")
+        .status();
+
+    if let Ok(st) = status {
+        if st.success() {
+            let res = AiActivityMonitor::query_opencode_latest_session(temp_home.path());
+            assert!(res.is_some(), "query_opencode_latest_session must extract row from SQLite");
+            let (model_id, total_tokens, time_updated) = res.unwrap();
+            assert_eq!(model_id, "stealth/space-bunny-alpha");
+            assert_eq!(total_tokens, 16500);
+            assert_eq!(time_updated, 1790264509833);
+        }
+    }
+}
+

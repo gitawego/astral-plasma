@@ -416,14 +416,14 @@ Item {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: {
-                                    if (!agentInfo) return "Gemini Flash 3.8";
+                                    if (!agentInfo) return (root.modelDisplayName || "Active Agent");
                                     const name = agentInfo.display_name;
-                                    if (name && name !== "AI Agent") {
+                                    if (name && name.length > 0 && name !== "AI Agent") {
                                         if (name === "Gemini Flash") return "Gemini Flash 3.8";
                                         if (name === "Gemini Pro") return "Gemini Pro 3.8";
                                         return name;
                                     }
-                                    return "Gemini Flash 3.8";
+                                    return (root.modelDisplayName || "Active Agent");
                                 }
                                 font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                                 font.pixelSize: 9
@@ -480,17 +480,17 @@ Item {
                             scale: 0.92 + (root.pulse * 0.16)
                         }
 
-                        // Active Model Code Name with Version (e.g. Gemini Flash 3.8)
+                        // Active Model Code Name with Version (e.g. Space Bunny Alpha, Claude 3.7 Sonnet)
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: {
                                 const name = root.modelDisplayName;
-                                if (name && name !== "AI Agent") {
+                                if (name && name.length > 0 && name !== "AI Agent") {
                                     if (name === "Gemini Flash") return "Gemini Flash 3.8";
                                     if (name === "Gemini Pro") return "Gemini Pro 3.8";
                                     return name;
                                 }
-                                return "Gemini Flash 3.8";
+                                return "Active Agent";
                             }
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                             font.pixelSize: 9

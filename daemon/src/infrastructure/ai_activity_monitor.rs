@@ -373,6 +373,54 @@ impl AiActivityMonitor {
             _ => None,
         }
     }
+
+    /// Extracts the latest session from OpenCode's SQLite database (~/.local/share/opencode/opencode.db).
+    /// Returns (model_id, total_tokens, time_updated_ms).
+    pub fn query_opencode_latest_session(home: &Path) -> Option<(String, u64, u64)> {
+        let db_path = home.join(".local/share/opencode/opencode.db");
+        if !db_path.exists() {
+            return None;
+        }
+
+        let uri = format!("file:{}?mode=ro", db_path.to_string_lossy());
+        let output = std::process::Command::new("sqlite3")
+            .arg(&uri)
+            .arg("SELECT model, tokens_input, tokens_output, time_updated FROM session_v2 ORDER BY time_updated DESC LIMIT 1;")
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let trimmed = stdout.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let parts: Vec<&str> = trimmed.split('|').collect();
+        if parts.len() < 4 {
+            return None;
+        }
+
+        let raw_model = parts[0].trim();
+        let tokens_in: u64 = parts[1].trim().parse().unwrap_or(0);
+        let tokens_out: u64 = parts[2].trim().parse().unwrap_or(0);
+        let time_updated: u64 = parts[3].trim().parse().unwrap_or(0);
+
+        let model_id = if raw_model.starts_with('{') {
+            serde_json::from_str::<serde_json::Value>(raw_model)
+                .ok()
+                .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
+                .unwrap_or_else(|| raw_model.to_string())
+        } else {
+            raw_model.to_string()
+        };
+
+        Some((model_id, tokens_in + tokens_out, time_updated))
+    }
+
     pub fn start_background_watcher(self: Arc<Self>) {
         tokio::spawn(async move {
             self.run_inotify_loop().await;
@@ -392,6 +440,7 @@ impl AiActivityMonitor {
             home.join(".codex"),
             home.join(".codex/sessions"),
             home.join(".omp/agent/sessions"),
+            home.join(".local/share/opencode"),
         ];
 
         // Also add immediate subdirectories of sessions
@@ -460,6 +509,11 @@ impl AiActivityMonitor {
         let mut last_seen_mtime: u64 = current_epoch_ms();
         let mut last_seen_size: u64 = 0;
 
+        let mut last_seen_opencode_time: u64 = 0;
+        let mut last_seen_opencode_tokens: u64 = 0;
+        let mut last_seen_opencode_mtime: u64 = 0;
+        let mut last_seen_opencode_size: u64 = 0;
+
         // Synchronize initial ground-truth state immediately
         if let Some((path, mtime, size)) = Self::find_latest_session_file(&home) {
             let now_epoch = current_epoch_ms();
@@ -480,6 +534,16 @@ impl AiActivityMonitor {
                 st.token_rate_tpm = 0.0;
                 st.recent_tokens = 0;
                 st.last_event_epoch_ms = mtime;
+            }
+        }
+
+        // OpenCode initial ground-truth check
+        if let Some((model, tokens, time_updated)) = Self::query_opencode_latest_session(&home) {
+            let now_epoch = current_epoch_ms();
+            last_seen_opencode_time = time_updated;
+            last_seen_opencode_tokens = tokens;
+            if now_epoch.saturating_sub(time_updated) < 8_000 {
+                self.record_activity_with_tokens(&model, "opencode", Some(tokens)).await;
             }
         }
         emit_activity_payload(&self.get_state().await);
@@ -556,6 +620,28 @@ impl AiActivityMonitor {
                                                 *wds = watch_map.clone();
                                             }
                                         }
+                                    } else if name_str.starts_with("opencode.db") {
+                                        let is_fresh = full_path.metadata().ok()
+                                            .and_then(|m| m.modified().ok())
+                                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < 12_000)
+                                            .unwrap_or(false);
+                                        if is_fresh {
+                                            if let Some((model, tokens, time_updated)) = Self::query_opencode_latest_session(&home) {
+                                                let now_epoch = current_epoch_ms();
+                                                if now_epoch.saturating_sub(time_updated) < 12_000
+                                                    && (time_updated > last_seen_opencode_time || tokens != last_seen_opencode_tokens)
+                                                {
+                                                    let delta = tokens.saturating_sub(last_seen_opencode_tokens);
+                                                    last_seen_opencode_time = time_updated;
+                                                    last_seen_opencode_tokens = tokens;
+                                                    let reported = if delta > 0 { delta } else { tokens.min(5000) };
+                                                    self.record_activity_with_tokens(&model, "opencode", Some(reported)).await;
+                                                    let curr = self.get_state().await;
+                                                    emit_activity_payload(&curr);
+                                                }
+                                            }
+                                        }
                                     } else if name_str.ends_with(".jsonl") || name_str.ends_with(".log") {
                                         if (name_str.contains("antigravity") || full_path.to_string_lossy().contains("antigravity")) && name_str != "transcript.jsonl" {
                                             offset += std::mem::size_of::<libc::inotify_event>() + name_len;
@@ -594,6 +680,36 @@ impl AiActivityMonitor {
                                 self.record_activity_with_tokens(&model, &tool, tokens).await;
                                 let curr = self.get_state().await;
                                 emit_activity_payload(&curr);
+                            }
+                        }
+                    }
+
+                    // Resilient poll: check OpenCode database updates
+                    let opencode_wal = home.join(".local/share/opencode/opencode.db-wal");
+                    let opencode_db = home.join(".local/share/opencode/opencode.db");
+                    let wal_target = if opencode_wal.exists() { &opencode_wal } else { &opencode_db };
+                    if let Ok(meta) = wal_target.metadata() {
+                        let mtime = meta.modified().ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+                        let size = meta.len();
+                        if mtime > last_seen_opencode_mtime || size != last_seen_opencode_size {
+                            last_seen_opencode_mtime = mtime;
+                            last_seen_opencode_size = size;
+                            if let Some((model, tokens, time_updated)) = Self::query_opencode_latest_session(&home) {
+                                let now_epoch = current_epoch_ms();
+                                if now_epoch.saturating_sub(time_updated) < 8_000 {
+                                    if time_updated > last_seen_opencode_time || tokens != last_seen_opencode_tokens {
+                                        let delta = tokens.saturating_sub(last_seen_opencode_tokens);
+                                        last_seen_opencode_time = time_updated;
+                                        last_seen_opencode_tokens = tokens;
+                                        let reported = if delta > 0 { delta } else { tokens.min(5000) };
+                                        self.record_activity_with_tokens(&model, "opencode", Some(reported)).await;
+                                        let curr = self.get_state().await;
+                                        emit_activity_payload(&curr);
+                                    }
+                                }
                             }
                         }
                     }

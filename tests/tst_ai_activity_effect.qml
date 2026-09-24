@@ -195,6 +195,24 @@ Item {
         assert(activityModel.activeAgents[0].display_name === "Gemini Flash 3.8", "Agent 1 must be Gemini Flash 3.8");
         assert(activityModel.activeAgents[1].display_name === "Claude 3.7 Sonnet", "Agent 2 must be Claude 3.7 Sonnet");
 
+        // ---- 5c. OpenCode 2 Desktop & Space Bunny Alpha Ingestion ----
+        activityModel.applyActivity({
+            agent: "opencode",
+            model: "stealth/space-bunny-alpha",
+            display_name: "Space Bunny Alpha",
+            brand_color: "#10B981",
+            brand_icon: "terminal",
+            is_active: true,
+            intensity: 1.0,
+            request_rate: 4.0
+        });
+
+        assert(activityModel.agent === "opencode", "Agent should be opencode");
+        assert(activityModel.displayName === "Space Bunny Alpha", "Display name should be Space Bunny Alpha");
+        assert(Qt.colorEqual(activityModel.brandColor, "#10B981"), "Brand color should be #10B981 (OpenCode Emerald)");
+        assert(activityModel.brandIcon === "terminal", "Brand icon should be terminal");
+        assert(activityModel.isActive === true, "isActive should be true");
+
         // ---- 6. Source Contract: services/AiActivityService.qml ----
         const serviceSrc = readLocalFile("../services/AiActivityService.qml");
         assert(serviceSrc.length > 500, "AiActivityService.qml must be readable");
@@ -217,6 +235,8 @@ Item {
         // ---- 8. Source Contract: components/MatrixBorderEffect.qml ----
         const matrixSrc = readLocalFile("../components/MatrixBorderEffect.qml");
         assert(matrixSrc.length > 1000, "MatrixBorderEffect.qml must be readable");
+        assert(!/if\s*\(!agentInfo\)\s*return\s*"Gemini Flash 3\.8"/.test(matrixSrc),
+            "MatrixBorderEffect must not hardcode Gemini Flash 3.8 fallback for missing agentInfo");
         assert(/matrixStreamTimer/.test(matrixSrc),
             "MatrixBorderEffect must declare matrixStreamTimer for digital rain animation");
         assert(/running:\s*root\.active\s*&&/.test(matrixSrc),
