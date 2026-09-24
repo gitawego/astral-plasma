@@ -75,22 +75,43 @@ pub fn resolve_model_metadata(raw_model: &str, tool_source: &str) -> AiAgentIden
 
     // 2. Google Gemini / Antigravity
     if lower_model.contains("gemini") || lower_tool.contains("gemini") || lower_tool.contains("antigravity") {
-        let display = if lower_model.contains("2.5-pro") || lower_model.contains("2-5-pro") {
-            "Gemini 2.5 Pro".to_string()
-        } else if lower_model.contains("2.5-flash") || lower_model.contains("2-5-flash") {
-            "Gemini 2.5 Flash".to_string()
-        } else if lower_model.contains("flash") {
-            "Gemini Flash".to_string()
+        let display = if lower_model.contains("3.8") || lower_model.contains("3-8") || lower_model.contains("m318") {
+            if lower_model.contains("pro") {
+                "Gemini Pro 3.8".to_string()
+            } else {
+                "Gemini Flash 3.8".to_string()
+            }
+        } else if lower_model.contains("2.5") || lower_model.contains("2-5") {
+            if lower_model.contains("pro") {
+                "Gemini 2.5 Pro".to_string()
+            } else {
+                "Gemini 2.5 Flash".to_string()
+            }
+        } else if lower_model.contains("2.0") || lower_model.contains("2-0") {
+            if lower_model.contains("pro") {
+                "Gemini 2.0 Pro".to_string()
+            } else {
+                "Gemini 2.0 Flash".to_string()
+            }
         } else if lower_model.contains("pro") {
-            "Gemini Pro".to_string()
+            "Gemini Pro 3.8".to_string()
+        } else if lower_model.contains("flash") {
+            "Gemini Flash 3.8".to_string()
         } else if !raw_model.is_empty() {
-            format_clean_model_name(raw_model)
+            let clean = format_clean_model_name(raw_model);
+            if clean.eq_ignore_ascii_case("gemini flash") {
+                "Gemini Flash 3.8".to_string()
+            } else if clean.eq_ignore_ascii_case("gemini pro") {
+                "Gemini Pro 3.8".to_string()
+            } else {
+                clean
+            }
         } else {
-            "Google Gemini".to_string()
+            "Gemini Flash 3.8".to_string()
         };
         return AiAgentIdentity {
             tool_source: "gemini".to_string(),
-            model_id: if raw_model.is_empty() { "gemini".to_string() } else { raw_model.to_string() },
+            model_id: if raw_model.is_empty() { "gemini-flash-3.8".to_string() } else { raw_model.to_string() },
             display_name: display,
             brand_color: "#818CF8".to_string(), // Stellar Violet
             brand_icon: "auto_awesome".to_string(),

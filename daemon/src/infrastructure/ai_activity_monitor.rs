@@ -242,14 +242,24 @@ impl AiActivityMonitor {
             for line in tail.lines().rev() {
                 if let Some(pos) = line.find("Model Selection` from None to ") {
                     let rem = &line[pos + 30..];
-                    let candidate = rem.split(['`', '\n', '\r']).next().unwrap_or("Gemini Flash").trim();
+                    let candidate = rem.split(['`', '\n', '\r']).next().unwrap_or("Gemini Flash 3.8").trim();
                     let clean = candidate.trim_end_matches('.').split('(').next().unwrap_or(candidate).trim();
                     if !clean.is_empty() && clean.len() < 30 && !clean.contains('\\') && !clean.contains('{') && !clean.contains("let ") {
-                        return Some((clean.to_string(), "gemini".to_string()));
+                        let final_name = if clean == "Gemini Flash" {
+                            "Gemini Flash 3.8".to_string()
+                        } else if clean == "Gemini Pro" {
+                            "Gemini Pro 3.8".to_string()
+                        } else {
+                            clean.to_string()
+                        };
+                        return Some((final_name, "gemini".to_string()));
                     }
                 }
             }
-            return Some(("Gemini Flash".to_string(), "gemini".to_string()));
+            if let Some(state_model) = read_antigravity_state_model() {
+                return Some((state_model, "gemini".to_string()));
+            }
+            return Some(("Gemini Flash 3.8".to_string(), "gemini".to_string()));
         }
 
         // Keyword detection in recent lines
@@ -271,7 +281,7 @@ impl AiActivityMonitor {
             "omp" => Some(("mimo-v2.6-flash".to_string(), "mimo".to_string())),
             "codex" => Some(("gpt-4o".to_string(), "openai".to_string())),
             "opencode" => Some(("mimo-v2.6-flash".to_string(), "mimo".to_string())),
-            "antigravity" => Some(("Gemini Flash".to_string(), "gemini".to_string())),
+            "antigravity" => Some(("Gemini Flash 3.8".to_string(), "gemini".to_string())),
             _ => None,
         }
     }
@@ -735,6 +745,29 @@ pub fn read_pi_default_settings() -> Option<(String, String)> {
             let model = v.get("defaultModel").and_then(|s| s.as_str())?;
             let prov = v.get("defaultProvider").and_then(|s| s.as_str()).unwrap_or("opencode-go");
             return Some((model.to_string(), prov.to_string()));
+        }
+    }
+    None
+}
+
+/// Reads active model configured in ~/.gemini/antigravity/antigravity_state.pbtxt
+pub fn read_antigravity_state_model() -> Option<String> {
+    let home = std::env::var("HOME").ok()?;
+    let pbtxt_path = PathBuf::from(home).join(".gemini/antigravity/antigravity_state.pbtxt");
+    if let Ok(content) = std::fs::read_to_string(&pbtxt_path) {
+        for line in content.lines() {
+            if line.contains("last_selected_agent_model:") {
+                if let Some(val) = line.split(':').nth(1) {
+                    let trimmed = val.trim();
+                    if trimmed.contains("M318") {
+                        return Some("Gemini Flash 3.8".to_string());
+                    } else if trimmed.contains("PRO") {
+                        return Some("Gemini Pro 3.8".to_string());
+                    } else if trimmed.contains("25") || trimmed.contains("2_5") {
+                        return Some("Gemini Flash 2.5".to_string());
+                    }
+                }
+            }
         }
     }
     None

@@ -254,7 +254,7 @@ fn test_find_latest_session_file_detects_antigravity_brain_transcripts() {
     fs::create_dir_all(&brain_dir).unwrap();
 
     let transcript = brain_dir.join("transcript.jsonl");
-    fs::write(&transcript, "`Model Selection` from None to Gemini Flash.\n").unwrap();
+    fs::write(&transcript, "`Model Selection` from None to Gemini Flash 3.8.\n").unwrap();
 
     let latest = AiActivityMonitor::find_latest_session_file(temp_home.path());
     assert!(latest.is_some());
@@ -264,7 +264,7 @@ fn test_find_latest_session_file_detects_antigravity_brain_transcripts() {
     let parsed = AiActivityMonitor::parse_model_from_file(&path);
     assert!(parsed.is_some());
     let (model, tool) = parsed.unwrap();
-    assert_eq!(model, "Gemini Flash");
+    assert_eq!(model, "Gemini Flash 3.8");
     assert_eq!(tool, "gemini");
 }
 
@@ -302,8 +302,17 @@ fn test_parse_model_from_file_ignores_non_transcript_antigravity_files() {
     assert!(AiActivityMonitor::parse_model_from_file(&transcript_full).is_none());
 
     let transcript = brain_dir.join("logs/transcript.jsonl");
-    fs::write(&transcript, "`Model Selection` from None to Gemini Flash.\n").unwrap();
+    fs::write(&transcript, "`Model Selection` from None to Gemini Flash 3.8.\n").unwrap();
     assert!(AiActivityMonitor::parse_model_from_file(&transcript).is_some());
+}
+
+#[test]
+fn test_resolve_gemini_flash_38() {
+    let id1 = resolve_model_metadata("gemini-3.8-flash", "antigravity");
+    assert_eq!(id1.display_name, "Gemini Flash 3.8");
+
+    let id2 = resolve_model_metadata("Gemini Flash", "antigravity");
+    assert_eq!(id2.display_name, "Gemini Flash 3.8");
 }
 
 

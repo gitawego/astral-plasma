@@ -31,11 +31,12 @@ Item {
     // Combined throughput load from request rate (RPM) and token processing rate
     readonly property real throughputLoad: Math.max(0.0, root.rpm + (root.tokenRate / 2500.0) + Math.min(15.0, root.recentTokens / 2000.0))
 
-    // Velocity modulation: higher throughput load accelerates electric travel duration (260ms to 2400ms)
-    readonly property int currentTravelDuration: Math.max(260, Math.min(2400, Math.round(2400.0 / (1.0 + 0.28 * throughputLoad))))
+    // Velocity modulation: higher throughput load accelerates electric travel duration (850ms to 2400ms)
+    // Clamped between 850ms (dynamic high-speed surge) and 2400ms (calm glide) to ensure crisp visual tracking without strobe flicker
+    readonly property int currentTravelDuration: Math.max(850, Math.min(2400, Math.round(2400.0 / (1.0 + 0.08 * throughputLoad))))
 
-    // Electric packet length elongates with higher velocity/momentum (36px to 56px)
-    readonly property real packetLength: Math.min(56, Math.max(36, 36 + throughputLoad * 0.9))
+    // Electric packet length elongates with higher velocity/momentum (48px to 96px)
+    readonly property real packetLength: Math.min(96, Math.max(48, 48 + throughputLoad * 1.5))
 
     // Energized color modulation based on throughput load
     readonly property color energizedColor: {
@@ -178,8 +179,12 @@ Item {
             // Luminous Arc Flash when electric currents meet at the nexus
             ShapePath {
                 fillColor: "transparent"
-                strokeColor: root.safeAlpha("#FFFFFF", Math.max(0.0, Math.sin(Math.max(0.0, root.currentTravelProgress - 0.7) / 0.3 * Math.PI) * 0.95))
-                strokeWidth: 1.5
+                strokeColor: {
+                    const p1 = Math.max(0.0, Math.sin(Math.max(0.0, root.currentTravelProgress - 0.70) / 0.30 * Math.PI));
+                    const p2 = Math.max(0.0, Math.sin(Math.max(0.0, ((root.currentTravelProgress + 0.50) % 1.0) - 0.70) / 0.30 * Math.PI));
+                    return root.safeAlpha("#FFFFFF", Math.max(p1, p2) * 0.95);
+                }
+                strokeWidth: 2.0
                 capStyle: ShapePath.RoundCap
                 startX: root.cornerFilletR; startY: 0
                 PathArc {
@@ -232,24 +237,64 @@ Item {
             }
         }
 
-        // Traveling digital data packet (horizontal electric current) across the 1px specular border
+        // Soft electric glow halo (horizontal)
         Rectangle {
-            id: dataPacket
-            y: 0
-            width: root.packetLength
-            height: 1
-            z: 6
+            id: dataPacketGlow
+            y: -2
+            height: 5
+            width: Math.round(root.packetLength * 1.25)
+            z: 5
+            radius: 2.5
             color: "transparent"
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.25; color: root.safeAlpha(root.accentColor, 0.70) }
+                GradientStop { position: 0.50; color: root.safeAlpha(root.energizedColor, 0.45 * (0.8 + 0.2 * root.pulse)) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            x: Math.round(root.currentTravelProgress * (bottomBorderSection.width - width))
+        }
+
+        // Traveling digital data packet (lead horizontal electric current) across the 1px specular border
+        Rectangle {
+            id: dataPacket
+            y: -1
+            width: root.packetLength
+            height: 3
+            z: 6
+            radius: 1.5
+            color: "transparent"
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.20; color: root.safeAlpha(root.accentColor, 0.80) }
                 GradientStop { position: 0.50; color: "#FFFFFF" }
-                GradientStop { position: 0.75; color: root.safeAlpha(root.accentColor, 0.70) }
+                GradientStop { position: 0.80; color: root.safeAlpha(root.accentColor, 0.80) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
 
             x: Math.round(root.currentTravelProgress * (bottomBorderSection.width - width))
+        }
+
+        // Interleaved trailing secondary electric pulse (ensures continuous electrical flow)
+        Rectangle {
+            id: dataPacketSecondary
+            y: -1
+            width: Math.round(root.packetLength * 0.85)
+            height: 3
+            z: 6
+            radius: 1.5
+            color: "transparent"
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.25; color: root.safeAlpha(root.accentColor, 0.65) }
+                GradientStop { position: 0.50; color: Qt.lighter(root.accentColor, 1.30) }
+                GradientStop { position: 0.75; color: root.safeAlpha(root.accentColor, 0.65) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+
+            x: Math.round(((root.currentTravelProgress + 0.50) % 1.0) * (bottomBorderSection.width - width))
         }
 
         // =====================================================================
@@ -316,12 +361,18 @@ Item {
                         scale: 0.92 + (root.pulse * 0.16)
                     }
 
-                    // Active Model Code Name (Title Case, clean bold, letter spacing)
+                    // Active Model Code Name with Version (e.g. Gemini Flash 3.8)
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: (root.modelDisplayName && root.modelDisplayName !== "AI Agent")
-                            ? root.modelDisplayName
-                            : "Matrix AI"
+                        text: {
+                            const name = root.modelDisplayName;
+                            if (name && name !== "AI Agent") {
+                                if (name === "Gemini Flash") return "Gemini Flash 3.8";
+                                if (name === "Gemini Pro") return "Gemini Pro 3.8";
+                                return name;
+                            }
+                            return "Gemini Flash 3.8";
+                        }
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                         font.pixelSize: 9
                         font.bold: true
@@ -454,24 +505,64 @@ Item {
             }
         }
 
-        // Traveling digital data packet (vertical electric current) across the 1px specular border
+        // Soft electric glow halo (vertical)
         Rectangle {
-            id: dataPacketVertical
-            x: 0
-            width: 1
-            height: root.packetLength
-            z: 6
+            id: dataPacketVerticalGlow
+            x: -2
+            width: 5
+            height: Math.round(root.packetLength * 1.25)
+            z: 5
+            radius: 2.5
             color: "transparent"
             gradient: Gradient {
                 orientation: Gradient.Vertical
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.25; color: root.safeAlpha(root.accentColor, 0.70) }
+                GradientStop { position: 0.50; color: root.safeAlpha(root.energizedColor, 0.45 * (0.8 + 0.2 * root.pulse)) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            y: Math.round(root.currentTravelProgress * (rightBorderSection.height - height))
+        }
+
+        // Traveling digital data packet (lead vertical electric current) across the 1px specular border
+        Rectangle {
+            id: dataPacketVertical
+            x: -1
+            width: 3
+            height: root.packetLength
+            z: 6
+            radius: 1.5
+            color: "transparent"
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.20; color: root.safeAlpha(root.accentColor, 0.80) }
                 GradientStop { position: 0.50; color: "#FFFFFF" }
-                GradientStop { position: 0.75; color: root.safeAlpha(root.accentColor, 0.70) }
+                GradientStop { position: 0.80; color: root.safeAlpha(root.accentColor, 0.80) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
 
             y: Math.round(root.currentTravelProgress * (rightBorderSection.height - height))
+        }
+
+        // Interleaved trailing secondary vertical electric pulse (ensures continuous electrical flow)
+        Rectangle {
+            id: dataPacketVerticalSecondary
+            x: -1
+            width: 3
+            height: Math.round(root.packetLength * 0.85)
+            z: 6
+            radius: 1.5
+            color: "transparent"
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.25; color: root.safeAlpha(root.accentColor, 0.65) }
+                GradientStop { position: 0.50; color: Qt.lighter(root.accentColor, 1.30) }
+                GradientStop { position: 0.75; color: root.safeAlpha(root.accentColor, 0.65) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+
+            y: Math.round(((root.currentTravelProgress + 0.50) % 1.0) * (rightBorderSection.height - height))
         }
 
         // =====================================================================
