@@ -32,7 +32,7 @@ Item {
     // Frame geometry
     property real borderT: 14
     property real cornerFilletR: 20
-    property real bottomWidth: Math.min(760, Math.max(380, 420 + (root.activeAgents && root.activeAgents.length > 1 ? 160 : 0) + rpm * 20))
+    property real bottomWidth: Math.min(860, Math.max(380, 420 + Math.max(0, (root.activeAgents ? root.activeAgents.length - 1 : 0)) * 130 + rpm * 20))
     property real rightHeight: Math.min(480, Math.max(220, 240 + rpm * 18))
 
     // Helper to clamp alpha strictly between 0.0 and 1.0 to prevent Qt setAlphaF warnings
@@ -384,7 +384,7 @@ Item {
 
                     // --- Multi-Agent Mode (2 or more active agents) ---
                     Repeater {
-                        model: (root.activeAgents && root.activeAgents.length > 1) ? root.activeAgents.slice(0, 2) : []
+                        model: (root.activeAgents && root.activeAgents.length > 1) ? root.activeAgents.slice(0, 3) : []
                         delegate: Row {
                             spacing: 3
                             anchors.verticalCenter: parent.verticalCenter
@@ -453,11 +453,11 @@ Item {
                         }
                     }
 
-                    // Multi-agent overflow badge (+N if > 2 agents)
+                    // Multi-agent overflow badge (+N if > 3 agents)
                     Text {
-                        visible: root.activeAgents && root.activeAgents.length > 2
+                        visible: root.activeAgents && root.activeAgents.length > 3
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "+" + (root.activeAgents.length - 2)
+                        text: "+" + (root.activeAgents.length - 3)
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                         font.pixelSize: 8
                         font.bold: true

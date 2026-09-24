@@ -63,10 +63,10 @@ Singleton {
         }
     }
 
-    // Fallback auto-decay watchdog: resets active state to idle if no agent events arrive for 9s
+    // Fallback auto-decay watchdog: resets active state to idle if no agent events arrive for 45s
     Timer {
         id: autoDecayWatchdog
-        interval: 9000
+        interval: 45000
         repeat: false
         running: root.isActive
         onTriggered: {

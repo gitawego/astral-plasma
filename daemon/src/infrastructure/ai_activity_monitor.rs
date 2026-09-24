@@ -7,6 +7,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
+pub const ACTIVE_AGENT_WINDOW_MS: u64 = 35_000; // 35s active window (sustains active state during reasoning and tool execution)
+pub const TRACK_RETENTION_MS: u64 = 120_000;    // 120s track retention for rolling metrics
+
 /// Track state for an individual agent tool during concurrent execution.
 #[derive(Debug, Clone)]
 pub struct AgentTrack {
@@ -73,8 +76,8 @@ impl AiActivityMonitor {
         let total_tokens: u64 = tok_window.iter().map(|&(_, cnt)| cnt).sum();
         let tpm = total_tokens as f64;
 
-        // Update per-agent track
-        let key = identity.tool_source.clone();
+        // Update per-agent track using composite key (tool_source:model_id) so concurrent agents never overwrite each other
+        let key = format!("{}:{}", identity.tool_source, identity.model_id);
         let mut tracks = self.agent_tracks.write().await;
         let track = tracks.entry(key).or_insert_with(|| AgentTrack {
             identity: identity.clone(),
@@ -93,13 +96,13 @@ impl AiActivityMonitor {
         }
         track.last_event_epoch_ms = now_ms;
 
-        // Build active_agents list for any track active within 12s
+        // Build active_agents list for any track active within the ACTIVE_AGENT_WINDOW_MS
         let mut active_slots = Vec::new();
         for (_, t) in tracks.iter_mut() {
             t.recent_events_window.retain(|&ev| now_ms.saturating_sub(ev) < 60_000);
             t.recent_tokens_window.retain(|&(ev, _)| now_ms.saturating_sub(ev) < 60_000);
             let agent_tokens: u64 = t.recent_tokens_window.iter().map(|&(_, c)| c).sum();
-            if now_ms.saturating_sub(t.last_event_epoch_ms) < 12_000 {
+            if now_ms.saturating_sub(t.last_event_epoch_ms) < ACTIVE_AGENT_WINDOW_MS {
                 active_slots.push(crate::domain::ai_activity::ActiveAgentSlot {
                     tool_source: t.identity.tool_source.clone(),
                     model_id: t.identity.model_id.clone(),
@@ -155,11 +158,11 @@ impl AiActivityMonitor {
         tracks.retain(|_, t| {
             t.recent_events_window.retain(|&ev| now_ms.saturating_sub(ev) < 60_000);
             t.recent_tokens_window.retain(|&(ev, _)| now_ms.saturating_sub(ev) < 60_000);
-            now_ms.saturating_sub(t.last_event_epoch_ms) < 30_000
+            now_ms.saturating_sub(t.last_event_epoch_ms) < TRACK_RETENTION_MS
         });
 
         for (_, t) in tracks.iter() {
-            if now_ms.saturating_sub(t.last_event_epoch_ms) < 12_000 {
+            if now_ms.saturating_sub(t.last_event_epoch_ms) < ACTIVE_AGENT_WINDOW_MS {
                 let agent_tokens: u64 = t.recent_tokens_window.iter().map(|&(_, c)| c).sum();
                 active_slots.push(crate::domain::ai_activity::ActiveAgentSlot {
                     tool_source: t.identity.tool_source.clone(),
@@ -175,10 +178,11 @@ impl AiActivityMonitor {
             }
         }
         active_slots.sort_by(|a, b| b.last_event_epoch_ms.cmp(&a.last_event_epoch_ms));
+        let active_slots_changed = st.active_agents != active_slots;
         st.active_agents = active_slots.clone();
 
-        if active_slots.is_empty() && elapsed > 6000 {
-            // Exponential decay after 6s idle when no agents are active
+        if active_slots.is_empty() && elapsed > 15_000 {
+            // Exponential decay after 15s idle when no agents are active
             st.intensity *= 0.50;
             if st.intensity < 0.05 {
                 st.intensity = 0.0;
@@ -190,7 +194,7 @@ impl AiActivityMonitor {
                 return true; // Transitioned to inactive
             }
         }
-        false
+        active_slots_changed
     }
 
     /// Reads up to `max_bytes` from the beginning of the file.
@@ -227,11 +231,22 @@ impl AiActivityMonitor {
     pub fn parse_model_from_file(path: &Path) -> Option<(String, String)> {
         let path_hint = path.to_string_lossy();
         if path_hint.ends_with(".log")
-            || path_hint.ends_with(".lock")
             || path_hint.ends_with(".db")
             || path_hint.contains("context-mode")
             || path_hint.contains("stats-pid")
         {
+            return None;
+        }
+
+        // Special handling for DSH: session.lock or session files
+        if path_hint.contains(".dsh") {
+            if let Some(dsh_defaults) = read_dsh_default_settings() {
+                return Some(dsh_defaults);
+            }
+            return Some(("DSH Agent".to_string(), "dsh".to_string()));
+        }
+
+        if path_hint.ends_with(".lock") {
             return None;
         }
 
@@ -247,6 +262,7 @@ impl AiActivityMonitor {
                     continue;
                 }
                 if let Some((m, prov)) = extract_model_from_json_line(trimmed) {
+                    let prov = if prov.is_empty() && path_hint.contains(".codex") { "openai".to_string() } else { prov };
                     return Some((m, prov));
                 }
             }
@@ -260,6 +276,7 @@ impl AiActivityMonitor {
                     continue;
                 }
                 if let Some((m, prov)) = extract_model_from_json_line(trimmed) {
+                    let prov = if prov.is_empty() && path_hint.contains(".codex") { "openai".to_string() } else { prov };
                     return Some((m, prov));
                 }
             }
@@ -278,6 +295,14 @@ impl AiActivityMonitor {
             if let Some(pi_defaults) = read_pi_default_settings() {
                 return Some(pi_defaults);
             }
+        } else if lower.contains(".codex") {
+            if let Some(codex_defaults) = read_codex_default_settings() {
+                return Some(codex_defaults);
+            }
+        } else if lower.contains(".dsh") {
+            if let Some(dsh_defaults) = read_dsh_default_settings() {
+                return Some(dsh_defaults);
+            }
         }
 
         None
@@ -287,7 +312,6 @@ impl AiActivityMonitor {
     pub fn parse_model_and_tokens_from_file(path: &Path) -> Option<(String, String, Option<u64>)> {
         let path_hint = path.to_string_lossy();
         if path_hint.ends_with(".log")
-            || path_hint.ends_with(".lock")
             || path_hint.ends_with(".db")
             || path_hint.contains("context-mode")
             || path_hint.contains("stats-pid")
@@ -317,6 +341,12 @@ impl AiActivityMonitor {
             "antigravity"
         } else if hint_lower.contains("opencode") {
             "opencode"
+        } else if hint_lower.contains(".dsh") {
+            "dsh"
+        } else if hint_lower.contains("cursor") {
+            "cursor"
+        } else if hint_lower.contains("windsurf") {
+            "windsurf"
         } else if hint_lower.contains(".omp") {
             "omp"
         } else if hint_lower.contains(".pi") {
@@ -334,7 +364,13 @@ impl AiActivityMonitor {
 
             // Check for direct JSON structure
             if let Some((m, prov)) = extract_model_from_json_line(trimmed) {
-                let resolved_tool = if !prov.is_empty() { prov } else { tool_source.to_string() };
+                let resolved_tool = if !prov.is_empty() {
+                    prov
+                } else if tool_source == "codex" {
+                    "openai".to_string()
+                } else {
+                    tool_source.to_string()
+                };
                 return Some((m, resolved_tool));
             }
         }
@@ -368,8 +404,11 @@ impl AiActivityMonitor {
         match tool_source {
             "claude" => Some(("claude-3-7-sonnet".to_string(), "claude".to_string())),
             "pi" => read_pi_default_settings(),
-            "codex" => Some(("gpt-4o".to_string(), "openai".to_string())),
+            "codex" => read_codex_default_settings().or_else(|| Some(("gpt-5.5".to_string(), "openai".to_string()))),
             "antigravity" => Some(("Gemini Flash 3.8".to_string(), "gemini".to_string())),
+            "dsh" => read_dsh_default_settings(),
+            "cursor" => Some(("Cursor".to_string(), "cursor".to_string())),
+            "windsurf" => Some(("Windsurf Cascade".to_string(), "windsurf".to_string())),
             _ => None,
         }
     }
@@ -437,10 +476,16 @@ impl AiActivityMonitor {
             home.join(".pi/agent/sessions"),
             home.join(".claude"),
             home.join(".claude/sessions"),
+            home.join(".claude/projects"),
             home.join(".codex"),
             home.join(".codex/sessions"),
+            home.join(".dsh"),
+            home.join(".dsh/sessions"),
             home.join(".omp/agent/sessions"),
             home.join(".local/share/opencode"),
+            home.join(".config/ai.opencode.desktop"),
+            home.join(".config/Cursor"),
+            home.join(".config/Windsurf"),
         ];
 
         // Also add immediate subdirectories of sessions
@@ -449,17 +494,12 @@ impl AiActivityMonitor {
             home.join(".omp/agent/sessions"),
             home.join(".claude/sessions"),
             home.join(".claude/projects"),
+            home.join(".codex/sessions"),
+            home.join(".dsh/sessions"),
         ];
         for sroot in &session_roots {
             if sroot.exists() && sroot.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(sroot) {
-                    for e in entries.flatten() {
-                        let p = e.path();
-                        if p.is_dir() {
-                            candidate_dirs.push(p);
-                        }
-                    }
-                }
+                scan_dirs_recursive(sroot, 3, &mut |p| candidate_dirs.push(p.to_path_buf()));
             }
         }
 
@@ -505,35 +545,18 @@ impl AiActivityMonitor {
             *wds = watch_map.clone();
         }
 
-        let mut last_seen_file: Option<PathBuf> = None;
-        let mut last_seen_mtime: u64 = current_epoch_ms();
-        let mut last_seen_size: u64 = 0;
-
+        let mut seen_sessions: HashMap<PathBuf, (u64, u64)> = HashMap::new();
         let mut last_seen_opencode_time: u64 = 0;
         let mut last_seen_opencode_tokens: u64 = 0;
         let mut last_seen_opencode_mtime: u64 = 0;
         let mut last_seen_opencode_size: u64 = 0;
 
-        // Synchronize initial ground-truth state immediately
-        if let Some((path, mtime, size)) = Self::find_latest_session_file(&home) {
-            let now_epoch = current_epoch_ms();
-            let is_recent = now_epoch.saturating_sub(mtime) < 8_000;
-            if is_recent {
-                last_seen_file = Some(path.clone());
-                last_seen_mtime = mtime;
-                last_seen_size = size;
-                if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&path) {
-                    self.record_activity_with_tokens(&model, &tool, tokens).await;
-                }
-            } else if let Some((model, tool)) = Self::parse_model_from_file(&path) {
-                let mut st = self.state.write().await;
-                st.identity = crate::domain::ai_activity::resolve_model_metadata(&model, &tool);
-                st.is_active = false;
-                st.intensity = 0.0;
-                st.request_rate_rpm = 0.0;
-                st.token_rate_tpm = 0.0;
-                st.recent_tokens = 0;
-                st.last_event_epoch_ms = mtime;
+        // Synchronize initial ground-truth state across all active agents
+        let initial_active_files = Self::scan_all_active_session_files(&home, ACTIVE_AGENT_WINDOW_MS);
+        for file_info in initial_active_files {
+            seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
+            if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&file_info.path) {
+                self.record_activity_with_tokens(&model, &tool, tokens).await;
             }
         }
 
@@ -542,8 +565,25 @@ impl AiActivityMonitor {
             let now_epoch = current_epoch_ms();
             last_seen_opencode_time = time_updated;
             last_seen_opencode_tokens = tokens;
-            if now_epoch.saturating_sub(time_updated) < 8_000 {
+            if now_epoch.saturating_sub(time_updated) < ACTIVE_AGENT_WINDOW_MS {
                 self.record_activity_with_tokens(&model, "opencode", Some(tokens)).await;
+            }
+        }
+
+        // Fallback if completely idle: set identity from latest known session file
+        if self.get_state().await.active_agents.is_empty() {
+            if let Some((path, mtime, size)) = Self::find_latest_session_file(&home) {
+                seen_sessions.insert(path.clone(), (mtime, size));
+                if let Some((model, tool)) = Self::parse_model_from_file(&path) {
+                    let mut st = self.state.write().await;
+                    st.identity = crate::domain::ai_activity::resolve_model_metadata(&model, &tool);
+                    st.is_active = false;
+                    st.intensity = 0.0;
+                    st.request_rate_rpm = 0.0;
+                    st.token_rate_tpm = 0.0;
+                    st.recent_tokens = 0;
+                    st.last_event_epoch_ms = mtime;
+                }
             }
         }
         emit_activity_payload(&self.get_state().await);
@@ -604,7 +644,7 @@ impl AiActivityMonitor {
                                 if let Some(dir) = watch_map.get(&event.wd).cloned() {
                                     let full_path = dir.join(&name_str);
 
-                                    // Check for new subdirectory creation (e.g. dynamic session directories in pi / omp)
+                                    // Check for new subdirectory creation
                                     if event.mask & libc::IN_ISDIR != 0 && full_path.is_dir() {
                                         if let Ok(c_str) = std::ffi::CString::new(full_path.to_string_lossy().as_bytes()) {
                                             let new_wd = unsafe {
@@ -624,12 +664,12 @@ impl AiActivityMonitor {
                                         let is_fresh = full_path.metadata().ok()
                                             .and_then(|m| m.modified().ok())
                                             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < 12_000)
+                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < ACTIVE_AGENT_WINDOW_MS)
                                             .unwrap_or(false);
                                         if is_fresh {
                                             if let Some((model, tokens, time_updated)) = Self::query_opencode_latest_session(&home) {
                                                 let now_epoch = current_epoch_ms();
-                                                if now_epoch.saturating_sub(time_updated) < 12_000
+                                                if now_epoch.saturating_sub(time_updated) < ACTIVE_AGENT_WINDOW_MS
                                                     && (time_updated > last_seen_opencode_time || tokens != last_seen_opencode_tokens)
                                                 {
                                                     let delta = tokens.saturating_sub(last_seen_opencode_tokens);
@@ -642,7 +682,7 @@ impl AiActivityMonitor {
                                                 }
                                             }
                                         }
-                                    } else if name_str.ends_with(".jsonl") || name_str.ends_with(".log") {
+                                    } else if name_str.ends_with(".jsonl") || name_str.ends_with(".log") || name_str == "session.lock" {
                                         if (name_str.contains("antigravity") || full_path.to_string_lossy().contains("antigravity")) && name_str != "transcript.jsonl" {
                                             offset += std::mem::size_of::<libc::inotify_event>() + name_len;
                                             continue;
@@ -650,7 +690,7 @@ impl AiActivityMonitor {
                                         let is_fresh = full_path.metadata().ok()
                                             .and_then(|m| m.modified().ok())
                                             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < 8_000)
+                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < ACTIVE_AGENT_WINDOW_MS)
                                             .unwrap_or(false);
                                         if is_fresh {
                                             if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&full_path) {
@@ -667,24 +707,26 @@ impl AiActivityMonitor {
                     }
                 }
                 _ = decay_tick.tick() => {
-                    // Resilient poll: check latest modified session across all agent directories
-                    if let Some((path, mtime, size)) = Self::find_latest_session_file(&home) {
-                        let now_epoch = current_epoch_ms();
-                        let is_recent = now_epoch.saturating_sub(mtime) < 8_000;
-                        if is_recent && (mtime > last_seen_mtime || size != last_seen_size || last_seen_file.as_ref() != Some(&path)) {
-                            last_seen_file = Some(path.clone());
-                            last_seen_mtime = mtime;
-                            last_seen_size = size;
+                    let mut should_emit = false;
 
-                            if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&path) {
+                    // 1. Resilient concurrent poll: scan ALL active sessions across all agent tools
+                    let active_files = Self::scan_all_active_session_files(&home, ACTIVE_AGENT_WINDOW_MS);
+                    for file_info in active_files {
+                        let prev = seen_sessions.get(&file_info.path).copied();
+                        let is_new_event = match prev {
+                            None => true,
+                            Some((prev_mtime, prev_size)) => file_info.mtime > prev_mtime || file_info.size != prev_size,
+                        };
+                        if is_new_event {
+                            seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
+                            if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&file_info.path) {
                                 self.record_activity_with_tokens(&model, &tool, tokens).await;
-                                let curr = self.get_state().await;
-                                emit_activity_payload(&curr);
+                                should_emit = true;
                             }
                         }
                     }
 
-                    // Resilient poll: check OpenCode database updates
+                    // 2. Resilient poll: check OpenCode database updates
                     let opencode_wal = home.join(".local/share/opencode/opencode.db-wal");
                     let opencode_db = home.join(".local/share/opencode/opencode.db");
                     let wal_target = if opencode_wal.exists() { &opencode_wal } else { &opencode_db };
@@ -699,23 +741,23 @@ impl AiActivityMonitor {
                             last_seen_opencode_size = size;
                             if let Some((model, tokens, time_updated)) = Self::query_opencode_latest_session(&home) {
                                 let now_epoch = current_epoch_ms();
-                                if now_epoch.saturating_sub(time_updated) < 8_000 {
+                                if now_epoch.saturating_sub(time_updated) < ACTIVE_AGENT_WINDOW_MS {
                                     if time_updated > last_seen_opencode_time || tokens != last_seen_opencode_tokens {
                                         let delta = tokens.saturating_sub(last_seen_opencode_tokens);
                                         last_seen_opencode_time = time_updated;
                                         last_seen_opencode_tokens = tokens;
                                         let reported = if delta > 0 { delta } else { tokens.min(5000) };
                                         self.record_activity_with_tokens(&model, "opencode", Some(reported)).await;
-                                        let curr = self.get_state().await;
-                                        emit_activity_payload(&curr);
+                                        should_emit = true;
                                     }
                                 }
                             }
                         }
                     }
 
-                    let transitioned = self.tick_decay().await;
-                    if transitioned {
+                    // 3. Advance decay and prune inactive agents; emit payload if slots changed
+                    let transitioned_or_changed = self.tick_decay().await;
+                    if should_emit || transitioned_or_changed {
                         let curr = self.get_state().await;
                         emit_activity_payload(&curr);
                     }
@@ -800,6 +842,39 @@ impl AiActivityMonitor {
             }
         }
 
+        // 5. Codex rollout sessions & history
+        let codex_sessions = home.join(".codex/sessions");
+        if codex_sessions.exists() {
+            scan_jsonl_recursive(&codex_sessions, 4, &mut |p| candidates.push(p.to_path_buf()));
+        }
+        let codex_history = home.join(".codex/history.jsonl");
+        if codex_history.exists() {
+            candidates.push(codex_history);
+        }
+
+        // 6. DSH sessions
+        let dsh_sessions = home.join(".dsh/sessions");
+        if dsh_sessions.exists() {
+            if let Ok(dirs) = std::fs::read_dir(&dsh_sessions) {
+                for d in dirs.flatten() {
+                    let p = d.path();
+                    if p.is_dir() {
+                        if let Ok(sub) = std::fs::read_dir(&p) {
+                            for s in sub.flatten() {
+                                let sp = s.path();
+                                if sp.is_dir() {
+                                    let lock = sp.join("session.lock");
+                                    if lock.exists() {
+                                        candidates.push(lock);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let mut newest_time = 0u64;
         let mut newest_entry = None;
 
@@ -816,6 +891,102 @@ impl AiActivityMonitor {
         }
 
         newest_entry
+    }
+
+    /// Scans all active session files modified within `max_age_ms` across all supported agent tools.
+    pub fn scan_all_active_session_files(home: &Path, max_age_ms: u64) -> Vec<ActiveSessionFile> {
+        let now = current_epoch_ms();
+        let mut files = Vec::new();
+
+        let mut check_file = |p: &Path| {
+            if let Ok(meta) = p.metadata() {
+                if let Ok(mtime) = meta.modified() {
+                    let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                    if now.saturating_sub(epoch) < max_age_ms {
+                        files.push(ActiveSessionFile {
+                            path: p.to_path_buf(),
+                            mtime: epoch,
+                            size: meta.len(),
+                        });
+                    }
+                }
+            }
+        };
+
+        // 1. Antigravity brain transcripts
+        let brain = home.join(".gemini/antigravity/brain");
+        if let Ok(dirs) = std::fs::read_dir(&brain) {
+            for d in dirs.flatten() {
+                let p = d.path();
+                if p.is_dir() {
+                    let log_p = p.join(".system_generated/logs/transcript.jsonl");
+                    if log_p.exists() {
+                        check_file(&log_p);
+                    }
+                }
+            }
+        }
+
+        // 2. Pi agent sessions
+        let pi_sessions = home.join(".pi/agent/sessions");
+        if pi_sessions.exists() {
+            scan_jsonl_recursive(&pi_sessions, 3, &mut check_file);
+        }
+
+        // 3. OMP agent sessions
+        let omp_sessions = home.join(".omp/agent/sessions");
+        if omp_sessions.exists() {
+            scan_jsonl_recursive(&omp_sessions, 3, &mut check_file);
+        }
+
+        // 4. Claude projects and sessions
+        let claude_projects = home.join(".claude/projects");
+        if claude_projects.exists() {
+            scan_jsonl_recursive(&claude_projects, 3, &mut check_file);
+        }
+        let claude_sessions = home.join(".claude/sessions");
+        if claude_sessions.exists() {
+            scan_jsonl_recursive(&claude_sessions, 2, &mut check_file);
+        }
+        let claude_history = home.join(".claude/history.jsonl");
+        if claude_history.exists() {
+            check_file(&claude_history);
+        }
+
+        // 5. Codex rollout sessions & history
+        let codex_sessions = home.join(".codex/sessions");
+        if codex_sessions.exists() {
+            scan_jsonl_recursive(&codex_sessions, 4, &mut check_file);
+        }
+        let codex_history = home.join(".codex/history.jsonl");
+        if codex_history.exists() {
+            check_file(&codex_history);
+        }
+
+        // 6. DSH sessions
+        let dsh_sessions = home.join(".dsh/sessions");
+        if dsh_sessions.exists() {
+            if let Ok(dirs) = std::fs::read_dir(&dsh_sessions) {
+                for d in dirs.flatten() {
+                    let p = d.path();
+                    if p.is_dir() {
+                        if let Ok(sub) = std::fs::read_dir(&p) {
+                            for s in sub.flatten() {
+                                let sp = s.path();
+                                if sp.is_dir() {
+                                    let lock = sp.join("session.lock");
+                                    if lock.exists() {
+                                        check_file(&lock);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        files
     }
 }
 
@@ -839,9 +1010,57 @@ pub fn emit_activity_payload(st: &AiActivityState) {
     }
 }
 
-/// Helper to extract token usage from a JSON line (supports pi, omp, claude, openai formats).
+/// Active session file descriptor for concurrent multi-agent tracking.
+#[derive(Debug, Clone)]
+pub struct ActiveSessionFile {
+    pub path: PathBuf,
+    pub mtime: u64,
+    pub size: u64,
+}
+
+pub fn scan_jsonl_recursive<F>(dir: &Path, max_depth: usize, callback: &mut F)
+where
+    F: FnMut(&Path),
+{
+    if max_depth == 0 || !dir.exists() || !dir.is_dir() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                scan_jsonl_recursive(&path, max_depth - 1, callback);
+            } else if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if ext == "jsonl" || ext == "lock" {
+                    callback(&path);
+                }
+            }
+        }
+    }
+}
+
+pub fn scan_dirs_recursive<F>(dir: &Path, max_depth: usize, callback: &mut F)
+where
+    F: FnMut(&Path),
+{
+    if max_depth == 0 || !dir.exists() || !dir.is_dir() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                callback(&path);
+                scan_dirs_recursive(&path, max_depth - 1, callback);
+            }
+        }
+    }
+}
+
+/// Helper to extract token usage from a JSON line (supports pi, omp, claude, codex, openai formats).
 pub fn extract_tokens_from_json_line(line: &str) -> Option<u64> {
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+        // Standard message/usage format (Claude, Pi, OMP, OpenCode)
         if let Some(usage) = v.get("usage").or_else(|| v.get("message").and_then(|m| m.get("usage"))) {
             if let Some(tot) = usage.get("totalTokens").or_else(|| usage.get("total_tokens")).and_then(|t| t.as_u64()) {
                 if tot > 0 {
@@ -852,6 +1071,21 @@ pub fn extract_tokens_from_json_line(line: &str) -> Option<u64> {
             let output = usage.get("output").or_else(|| usage.get("output_tokens")).or_else(|| usage.get("completion_tokens")).and_then(|t| t.as_u64()).unwrap_or(0);
             if input + output > 0 {
                 return Some(input + output);
+            }
+        }
+        // Codex event_msg token_count format
+        if let Some(payload) = v.get("payload") {
+            if let Some(info) = payload.get("info") {
+                if let Some(last_tok) = info.get("last_token_usage").and_then(|u| u.get("total_tokens")).and_then(|t| t.as_u64()) {
+                    if last_tok > 0 {
+                        return Some(last_tok);
+                    }
+                }
+                if let Some(tot) = info.get("total_token_usage").and_then(|u| u.get("total_tokens")).and_then(|t| t.as_u64()) {
+                    if tot > 0 {
+                        return Some(tot);
+                    }
+                }
             }
         }
     }
@@ -903,10 +1137,21 @@ pub fn extract_model_from_json_line(line: &str) -> Option<(String, String)> {
                 .or_else(|| m.get("model_name"))
         }).and_then(|s| s.as_str());
 
-        let model = direct_model.or(msg_model)?;
+        // Nested payload.model or payload.settings.model or payload.collaboration_mode.settings.model (Codex)
+        let payload = v.get("payload");
+        let payload_model = payload.and_then(|p| {
+            p.get("model")
+                .or_else(|| p.get("modelId"))
+                .or_else(|| p.get("model_id"))
+                .or_else(|| p.get("settings").and_then(|s| s.get("model")))
+                .or_else(|| p.get("collaboration_mode").and_then(|c| c.get("settings")).and_then(|s| s.get("model")))
+        }).and_then(|s| s.as_str());
+
+        let model = direct_model.or(msg_model).or(payload_model)?;
 
         let prov = v.get("provider")
             .or_else(|| msg.and_then(|m| m.get("provider")))
+            .or_else(|| payload.and_then(|p| p.get("provider").or_else(|| p.get("model_provider"))))
             .and_then(|p| p.as_str())
             .unwrap_or("")
             .to_string();
@@ -946,6 +1191,54 @@ pub fn read_pi_default_settings() -> Option<(String, String)> {
         }
     }
     None
+}
+
+/// Reads default model configured in ~/.dsh/settings.yaml
+pub fn read_dsh_default_settings() -> Option<(String, String)> {
+    let home = std::env::var("HOME").ok()?;
+    let settings_path = PathBuf::from(home).join(".dsh/settings.yaml");
+    if let Ok(content) = std::fs::read_to_string(&settings_path) {
+        let mut in_agent_default = false;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("agent-default-model:") {
+                in_agent_default = true;
+                continue;
+            }
+            if in_agent_default {
+                if !line.starts_with(' ') && !line.starts_with('\t') {
+                    break;
+                }
+                if let Some(m) = trimmed.strip_prefix("model:") {
+                    let m_clean = m.trim().trim_matches('"').trim_matches('\'');
+                    if !m_clean.is_empty() {
+                        return Some((m_clean.to_string(), "dsh".to_string()));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Reads default model configured in ~/.codex/config.toml
+pub fn read_codex_default_settings() -> Option<(String, String)> {
+    let home = std::env::var("HOME").ok()?;
+    let config_path = PathBuf::from(home).join(".codex/config.toml");
+    if let Ok(content) = std::fs::read_to_string(&config_path) {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("model ") || trimmed.starts_with("model=") {
+                if let Some(val) = trimmed.split('=').nth(1) {
+                    let clean = val.trim().trim_matches('"').trim_matches('\'').trim();
+                    if !clean.is_empty() {
+                        return Some((clean.to_string(), "openai".to_string()));
+                    }
+                }
+            }
+        }
+    }
+    Some(("gpt-5.5".to_string(), "openai".to_string()))
 }
 
 /// Reads active model configured in ~/.gemini/antigravity/antigravity_state.pbtxt

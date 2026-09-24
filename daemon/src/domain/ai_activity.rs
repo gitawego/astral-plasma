@@ -80,6 +80,64 @@ pub fn resolve_model_metadata(raw_model: &str, tool_source: &str) -> AiAgentIden
     let lower_model = raw_model.trim().to_lowercase();
     let lower_tool = tool_source.trim().to_lowercase();
 
+    // 0a. Cursor
+    if lower_tool.contains("cursor") {
+        let display = if !raw_model.is_empty() {
+            let inner = resolve_model_metadata(raw_model, "");
+            inner.display_name
+        } else {
+            "Cursor".to_string()
+        };
+        return AiAgentIdentity {
+            tool_source: "cursor".to_string(),
+            model_id: if raw_model.is_empty() { "cursor".to_string() } else { raw_model.to_string() },
+            display_name: display,
+            brand_color: "#6366F1".to_string(), // Indigo
+            brand_icon: "smart_toy".to_string(),
+        };
+    }
+
+    // 0b. Windsurf
+    if lower_tool.contains("windsurf") {
+        let display = if !raw_model.is_empty() {
+            let inner = resolve_model_metadata(raw_model, "");
+            inner.display_name
+        } else {
+            "Windsurf Cascade".to_string()
+        };
+        return AiAgentIdentity {
+            tool_source: "windsurf".to_string(),
+            model_id: if raw_model.is_empty() { "windsurf".to_string() } else { raw_model.to_string() },
+            display_name: display,
+            brand_color: "#0EA5E9".to_string(), // Sky Blue
+            brand_icon: "waves".to_string(),
+        };
+    }
+
+    // 0c. DSH (Developer Shell)
+    if lower_tool.contains("dsh") {
+        let display = if lower_model.contains("muse") || lower_model.contains("spark") {
+            if lower_model.contains("1.3") {
+                "Muse Spark 1.3".to_string()
+            } else if lower_model.contains("1.2") {
+                "Muse Spark 1.2".to_string()
+            } else {
+                "Muse Spark".to_string()
+            }
+        } else if !raw_model.is_empty() {
+            format_clean_model_name(raw_model)
+        } else {
+            "DSH Agent".to_string()
+        };
+        return AiAgentIdentity {
+            tool_source: "dsh".to_string(),
+            model_id: if raw_model.is_empty() { "dsh".to_string() } else { raw_model.to_string() },
+            display_name: display,
+            brand_color: "#06B6D4".to_string(), // Electric Mint / Cyan
+            brand_icon: "bolt".to_string(),
+        };
+    }
+
     // 1. Claude / Anthropic
     if lower_model.contains("claude") || lower_tool.contains("claude") {
         let display = if lower_model.contains("3-7") || lower_model.contains("3.7") {
@@ -151,7 +209,9 @@ pub fn resolve_model_metadata(raw_model: &str, tool_source: &str) -> AiAgentIden
 
     // 3. OpenAI / Codex / GPT
     if lower_model.contains("gpt") || lower_model.contains("o1") || lower_model.contains("o3") || lower_model.contains("codex") || lower_tool.contains("codex") {
-        let display = if lower_model.contains("o3-mini") {
+        let display = if lower_model.contains("5.5") || lower_model.contains("5-5") {
+            "GPT-5.5".to_string()
+        } else if lower_model.contains("o3-mini") {
             "OpenAI o3-mini".to_string()
         } else if lower_model.contains("o1") {
             "OpenAI o1".to_string()

@@ -452,3 +452,114 @@ fn test_query_opencode_latest_session_sqlite() {
     }
 }
 
+#[test]
+fn test_resolve_codex_models() {
+    let id1 = resolve_model_metadata("gpt-5.5", "codex");
+    assert_eq!(id1.tool_source, "openai");
+    assert_eq!(id1.brand_color, "#10A37F");
+    assert_eq!(id1.brand_icon, "terminal");
+    assert_eq!(id1.display_name, "GPT-5.5");
+
+    let id2 = resolve_model_metadata("o3-mini", "codex");
+    assert_eq!(id2.tool_source, "openai");
+    assert_eq!(id2.brand_color, "#10A37F");
+    assert_eq!(id2.display_name, "OpenAI o3-mini");
+
+    let id3 = resolve_model_metadata("gpt-4o", "codex");
+    assert_eq!(id3.tool_source, "openai");
+    assert_eq!(id3.display_name, "GPT-4o");
+}
+
+#[test]
+fn test_resolve_dsh_models() {
+    let id1 = resolve_model_metadata("muse-spark-1.3", "dsh");
+    assert_eq!(id1.tool_source, "dsh");
+    assert_eq!(id1.brand_color, "#06B6D4");
+    assert_eq!(id1.brand_icon, "bolt");
+    assert_eq!(id1.display_name, "Muse Spark 1.3");
+
+    let id2 = resolve_model_metadata("", "dsh");
+    assert_eq!(id2.tool_source, "dsh");
+    assert_eq!(id2.brand_color, "#06B6D4");
+    assert_eq!(id2.brand_icon, "bolt");
+    assert_eq!(id2.display_name, "DSH Agent");
+}
+
+#[test]
+fn test_resolve_cursor_and_windsurf() {
+    let id_cursor = resolve_model_metadata("claude-3-7-sonnet", "cursor");
+    assert_eq!(id_cursor.tool_source, "cursor");
+    assert_eq!(id_cursor.brand_color, "#6366F1");
+    assert_eq!(id_cursor.brand_icon, "smart_toy");
+    assert_eq!(id_cursor.display_name, "Claude 3.7 Sonnet");
+
+    let id_cursor_generic = resolve_model_metadata("", "cursor");
+    assert_eq!(id_cursor_generic.tool_source, "cursor");
+    assert_eq!(id_cursor_generic.brand_color, "#6366F1");
+    assert_eq!(id_cursor_generic.brand_icon, "smart_toy");
+    assert_eq!(id_cursor_generic.display_name, "Cursor");
+
+    let id_windsurf = resolve_model_metadata("", "windsurf");
+    assert_eq!(id_windsurf.tool_source, "windsurf");
+    assert_eq!(id_windsurf.brand_color, "#0EA5E9");
+    assert_eq!(id_windsurf.brand_icon, "waves");
+    assert_eq!(id_windsurf.display_name, "Windsurf Cascade");
+}
+
+#[test]
+fn test_codex_token_and_model_extraction() {
+    use astral_plasma::infrastructure::ai_activity_monitor::{extract_model_from_json_line, extract_tokens_from_json_line};
+
+    // Codex turn_context with model
+    let model_line = r#"{"type":"turn_context","payload":{"model":"gpt-5.5","model_provider":"openai"}}"#;
+    let extracted_model = extract_model_from_json_line(model_line);
+    assert!(extracted_model.is_some());
+    let (m, prov) = extracted_model.unwrap();
+    assert_eq!(m, "gpt-5.5");
+    assert_eq!(prov, "openai");
+
+    // Codex event_msg with token usage
+    let token_line = r#"{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"total_tokens":4250,"input_tokens":3800,"output_tokens":450}}}}"#;
+    let tokens = extract_tokens_from_json_line(token_line);
+    assert_eq!(tokens, Some(4250));
+}
+
+#[tokio::test]
+async fn test_concurrent_multi_agent_three_tools_simultaneous() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    let monitor = AiActivityMonitor::new();
+
+    // 1. Start Codex (GPT-5.5)
+    monitor.record_activity_with_tokens("gpt-5.5", "codex", Some(4000)).await;
+    let st1 = monitor.get_state().await;
+    assert_eq!(st1.active_agents.len(), 1);
+    assert_eq!(st1.active_agents[0].display_name, "GPT-5.5");
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+
+    // 2. Concurrently start OpenCode (Space Bunny Alpha)
+    monitor.record_activity_with_tokens("stealth/space-bunny-alpha", "opencode", Some(8000)).await;
+    let st2 = monitor.get_state().await;
+    assert_eq!(st2.active_agents.len(), 2, "Both Codex and OpenCode must be active simultaneously without overwriting");
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+
+    // 3. Concurrently start DSH (Muse Spark 1.3)
+    monitor.record_activity_with_tokens("muse-spark-1.3", "dsh", Some(3500)).await;
+    let st3 = monitor.get_state().await;
+    assert_eq!(st3.active_agents.len(), 3, "All three agents (Codex, OpenCode, DSH) must be tracked concurrently in active_agents");
+
+    // Ensure order is most recent first
+    assert_eq!(st3.active_agents[0].display_name, "Muse Spark 1.3");
+    assert_eq!(st3.active_agents[0].tool_source, "dsh");
+
+    assert_eq!(st3.active_agents[1].display_name, "Space Bunny Alpha");
+    assert_eq!(st3.active_agents[1].tool_source, "opencode");
+
+    assert_eq!(st3.active_agents[2].display_name, "GPT-5.5");
+    assert_eq!(st3.active_agents[2].tool_source, "openai");
+
+    // Aggregate tokens reflect total throughput across all three agents
+    assert_eq!(st3.recent_tokens, 15500);
+}
+

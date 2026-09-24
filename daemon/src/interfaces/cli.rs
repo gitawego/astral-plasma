@@ -552,19 +552,37 @@ pub async fn run_cli() -> DynResult<()> {
                     println!("{}", serde_json::to_string(&snapshot)?);
                 }
                 "activity" => {
-                    use crate::infrastructure::ai_activity_monitor::AiActivityMonitor;
+                    use crate::infrastructure::ai_activity_monitor::{AiActivityMonitor, ACTIVE_AGENT_WINDOW_MS};
                     let monitor = AiActivityMonitor::new();
                     if let Some(home) = std::env::var("HOME").ok().map(std::path::PathBuf::from) {
-                        if let Some((path, mtime, _)) = AiActivityMonitor::find_latest_session_file(&home) {
+                        let active_files = AiActivityMonitor::scan_all_active_session_files(&home, ACTIVE_AGENT_WINDOW_MS);
+                        for f in active_files {
+                            if let Some((m, t, tok)) = AiActivityMonitor::parse_model_and_tokens_from_file(&f.path) {
+                                monitor.record_activity_with_tokens(&m, &t, tok).await;
+                            }
+                        }
+
+                        if let Some((model, tokens, time_updated)) = AiActivityMonitor::query_opencode_latest_session(&home) {
                             let now_ms = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_millis() as u64;
-                            let is_recent = now_ms.saturating_sub(mtime) < 8_000;
-                            if let Some((m, t, tok)) = AiActivityMonitor::parse_model_and_tokens_from_file(&path) {
-                                if is_recent {
-                                    monitor.record_activity_with_tokens(&m, &t, tok).await;
-                                } else {
+                            let is_recent = now_ms.saturating_sub(time_updated) < ACTIVE_AGENT_WINDOW_MS;
+                            if is_recent {
+                                monitor.record_activity_with_tokens(&model, "opencode", Some(tokens)).await;
+                            } else if monitor.state.read().await.last_event_epoch_ms < time_updated && monitor.get_state().await.active_agents.is_empty() {
+                                let mut st = monitor.state.write().await;
+                                st.identity = crate::domain::ai_activity::resolve_model_metadata(&model, "opencode");
+                                st.is_active = false;
+                                st.intensity = 0.0;
+                                st.request_rate_rpm = 0.0;
+                                st.last_event_epoch_ms = time_updated;
+                            }
+                        }
+
+                        if monitor.get_state().await.active_agents.is_empty() {
+                            if let Some((path, mtime, _)) = AiActivityMonitor::find_latest_session_file(&home) {
+                                if let Some((m, t, _)) = AiActivityMonitor::parse_model_and_tokens_from_file(&path) {
                                     let mut st = monitor.state.write().await;
                                     st.identity = crate::domain::ai_activity::resolve_model_metadata(&m, &t);
                                     st.is_active = false;
@@ -572,23 +590,6 @@ pub async fn run_cli() -> DynResult<()> {
                                     st.request_rate_rpm = 0.0;
                                     st.last_event_epoch_ms = mtime;
                                 }
-                            }
-                        }
-                        if let Some((model, tokens, time_updated)) = AiActivityMonitor::query_opencode_latest_session(&home) {
-                            let now_ms = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_millis() as u64;
-                            let is_recent = now_ms.saturating_sub(time_updated) < 8_000;
-                            if is_recent {
-                                monitor.record_activity_with_tokens(&model, "opencode", Some(tokens)).await;
-                            } else if monitor.state.read().await.last_event_epoch_ms < time_updated {
-                                let mut st = monitor.state.write().await;
-                                st.identity = crate::domain::ai_activity::resolve_model_metadata(&model, "opencode");
-                                st.is_active = false;
-                                st.intensity = 0.0;
-                                st.request_rate_rpm = 0.0;
-                                st.last_event_epoch_ms = time_updated;
                             }
                         }
                     }

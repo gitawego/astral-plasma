@@ -10,6 +10,8 @@
 
 The design language is adapted from upstream [caelestia-dots/shell](https://github.com/caelestia-dots/shell), featuring a seamless outer screen frame, an organic capsule dock, fluid Material 3 Expressive motion physics, and wallpaper-driven dynamic palettes.
 
+**Portability specification:** [`docs/HYPRLAND-OMARCHY-SPEC.md`](docs/HYPRLAND-OMARCHY-SPEC.md) defines the shared Desktop Session language, ports-and-adapters boundary, Hyprland backend, hosted Omarchy plugin profile, standalone experimental boundary, migration phases, and acceptance gates. Read it before changing compositor integration, desktop lifecycle, global shortcuts, window/workspace services, wallpaper, previews, or compositor effects. The domain glossary lives in [`CONTEXT.md`](CONTEXT.md).
+
 ---
 
 ## 2. Design System Authority & Custom Theme Architecture
