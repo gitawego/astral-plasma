@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use std::ptr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,104 +78,367 @@ pub union XEvent {
     pub pad: [libc::c_long; 24],
 }
 
-#[link(name = "X11")]
-#[link(name = "Xtst")]
-extern "C" {
-    pub(crate) fn XOpenDisplay(display_name: *const libc::c_char) -> *mut libc::c_void;
-    pub(crate) fn XCloseDisplay(display: *mut libc::c_void) -> libc::c_int;
-    pub(crate) fn XFlush(display: *mut libc::c_void) -> libc::c_int;
-    pub(crate) fn XDefaultRootWindow(display: *mut libc::c_void) -> libc::c_ulong;
-    pub(crate) fn XInternAtom(
-        display: *mut libc::c_void,
-        atom_name: *const libc::c_char,
-        only_if_exists: libc::c_int,
-    ) -> libc::c_ulong;
-    pub(crate) fn XGetWindowProperty(
-        display: *mut libc::c_void,
-        w: libc::c_ulong,
-        property: libc::c_ulong,
-        long_offset: libc::c_long,
-        long_length: libc::c_long,
-        delete: libc::c_int,
-        req_type: libc::c_ulong,
-        actual_type_return: *mut libc::c_ulong,
-        actual_format_return: *mut libc::c_int,
-        nitems_return: *mut libc::c_ulong,
-        bytes_after_return: *mut libc::c_ulong,
-        prop_return: *mut *mut libc::c_uchar,
-    ) -> libc::c_int;
-    pub(crate) fn XFree(data: *mut libc::c_void) -> libc::c_int;
-    pub(crate) fn XGetInputFocus(
-        display: *mut libc::c_void,
-        focus_return: *mut libc::c_ulong,
-        revert_to_return: *mut libc::c_int,
-    ) -> libc::c_int;
-    pub(crate) fn XSetInputFocus(
-        display: *mut libc::c_void,
-        focus: libc::c_ulong,
-        revert_to: libc::c_int,
-        time: libc::c_ulong,
-    ) -> libc::c_int;
-    #[allow(dead_code)]
-    pub(crate) fn XGetGeometry(
-        display: *mut libc::c_void,
-        d: libc::c_ulong,
-        root_return: *mut libc::c_ulong,
-        x_return: *mut libc::c_int,
-        y_return: *mut libc::c_int,
-        width_return: *mut libc::c_uint,
-        height_return: *mut libc::c_uint,
-        border_width_return: *mut libc::c_uint,
-        depth_return: *mut libc::c_uint,
-    ) -> libc::c_int;
-    pub(crate) fn XSendEvent(
-        display: *mut libc::c_void,
-        w: libc::c_ulong,
-        propagate: libc::c_int,
-        event_mask: libc::c_long,
-        event_send: *mut XEvent,
-    ) -> libc::c_int;
-    #[allow(dead_code)]
-    pub(crate) fn XTranslateCoordinates(
-        display: *mut libc::c_void,
-        src_w: libc::c_ulong,
-        dest_w: libc::c_ulong,
-        src_x: libc::c_int,
-        src_y: libc::c_int,
-        dest_x_return: *mut libc::c_int,
-        dest_y_return: *mut libc::c_int,
-        child_return: *mut libc::c_ulong,
-    ) -> libc::c_int;
-    pub(crate) fn XTestFakeKeyEvent(
-        display: *mut libc::c_void,
-        keycode: libc::c_uint,
-        is_press: libc::c_int,
-        delay: libc::c_ulong,
-    ) -> libc::c_int;
-    pub(crate) fn XQueryTree(
-        display: *mut libc::c_void,
-        w: libc::c_ulong,
-        root_return: *mut libc::c_ulong,
-        parent_return: *mut libc::c_ulong,
-        children_return: *mut *mut libc::c_ulong,
-        nchildren_return: *mut libc::c_uint,
-    ) -> libc::c_int;
-    #[allow(dead_code)]
-    pub(crate) fn XQueryPointer(
-        display: *mut libc::c_void,
-        w: libc::c_ulong,
-        root_return: *mut libc::c_ulong,
-        child_return: *mut libc::c_ulong,
-        root_x_return: *mut libc::c_int,
-        root_y_return: *mut libc::c_int,
-        win_x_return: *mut libc::c_int,
-        win_y_return: *mut libc::c_int,
-        mask_return: *mut libc::c_uint,
-    ) -> libc::c_int;
-    #[allow(dead_code)]
-    pub(crate) fn XSetErrorHandler(
-        handler: Option<unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void) -> libc::c_int>,
-    ) -> libc::c_int;
+use std::sync::OnceLock;
+
+struct X11Functions {
+    x_open_display: unsafe extern "C" fn(*const libc::c_char) -> *mut libc::c_void,
+    x_close_display: unsafe extern "C" fn(*mut libc::c_void) -> libc::c_int,
+    x_flush: unsafe extern "C" fn(*mut libc::c_void) -> libc::c_int,
+    x_default_root_window: unsafe extern "C" fn(*mut libc::c_void) -> libc::c_ulong,
+    x_intern_atom: unsafe extern "C" fn(*mut libc::c_void, *const libc::c_char, libc::c_int) -> libc::c_ulong,
+    x_get_window_property: unsafe extern "C" fn(
+        *mut libc::c_void,
+        libc::c_ulong,
+        libc::c_ulong,
+        libc::c_long,
+        libc::c_long,
+        libc::c_int,
+        libc::c_ulong,
+        *mut libc::c_ulong,
+        *mut libc::c_int,
+        *mut libc::c_ulong,
+        *mut libc::c_ulong,
+        *mut *mut libc::c_uchar,
+    ) -> libc::c_int,
+    x_free: unsafe extern "C" fn(*mut libc::c_void) -> libc::c_int,
+    x_get_input_focus: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_ulong, *mut libc::c_int) -> libc::c_int,
+    x_set_input_focus: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong, libc::c_int, libc::c_ulong) -> libc::c_int,
+    x_get_geometry: unsafe extern "C" fn(
+        *mut libc::c_void,
+        libc::c_ulong,
+        *mut libc::c_ulong,
+        *mut libc::c_int,
+        *mut libc::c_int,
+        *mut libc::c_uint,
+        *mut libc::c_uint,
+        *mut libc::c_uint,
+        *mut libc::c_uint,
+    ) -> libc::c_int,
+    x_send_event: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong, libc::c_int, libc::c_long, *mut XEvent) -> libc::c_int,
+    x_query_tree: unsafe extern "C" fn(
+        *mut libc::c_void,
+        libc::c_ulong,
+        *mut libc::c_ulong,
+        *mut libc::c_ulong,
+        *mut *mut libc::c_ulong,
+        *mut libc::c_uint,
+    ) -> libc::c_int,
+    x_query_pointer: unsafe extern "C" fn(
+        *mut libc::c_void,
+        libc::c_ulong,
+        *mut libc::c_ulong,
+        *mut libc::c_ulong,
+        *mut libc::c_int,
+        *mut libc::c_int,
+        *mut libc::c_int,
+        *mut libc::c_int,
+        *mut libc::c_uint,
+    ) -> libc::c_int,
+    x_set_error_handler: unsafe extern "C" fn(
+        Option<unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void) -> libc::c_int>,
+    ) -> libc::c_int,
+    x_test_fake_key_event: Option<unsafe extern "C" fn(*mut libc::c_void, libc::c_uint, libc::c_int, libc::c_ulong) -> libc::c_int>,
+}
+
+unsafe impl Send for X11Functions {}
+unsafe impl Sync for X11Functions {}
+
+static X11_LIB: OnceLock<Option<X11Functions>> = OnceLock::new();
+
+fn get_x11() -> Option<&'static X11Functions> {
+    X11_LIB.get_or_init(|| {
+        unsafe {
+            let x11_handle = libc::dlopen(b"libX11.so.6\0".as_ptr() as *const _, libc::RTLD_LAZY | libc::RTLD_LOCAL);
+            let x11 = if x11_handle.is_null() {
+                libc::dlopen(b"libX11.so\0".as_ptr() as *const _, libc::RTLD_LAZY | libc::RTLD_LOCAL)
+            } else {
+                x11_handle
+            };
+            if x11.is_null() {
+                return None;
+            }
+
+            macro_rules! sym {
+                ($handle:expr, $name:literal) => {{
+                    let s = libc::dlsym($handle, concat!($name, "\0").as_ptr() as *const _);
+                    if s.is_null() {
+                        return None;
+                    }
+                    std::mem::transmute(s)
+                }};
+            }
+
+            let xtst_handle = libc::dlopen(b"libXtst.so.6\0".as_ptr() as *const _, libc::RTLD_LAZY | libc::RTLD_LOCAL);
+            let xtst = if xtst_handle.is_null() {
+                libc::dlopen(b"libXtst.so\0".as_ptr() as *const _, libc::RTLD_LAZY | libc::RTLD_LOCAL)
+            } else {
+                xtst_handle
+            };
+
+            let x_test_fake_key_event = if !xtst.is_null() {
+                let s = libc::dlsym(xtst, b"XTestFakeKeyEvent\0".as_ptr() as *const _);
+                if !s.is_null() {
+                    Some(std::mem::transmute(s))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            Some(X11Functions {
+                x_open_display: sym!(x11, "XOpenDisplay"),
+                x_close_display: sym!(x11, "XCloseDisplay"),
+                x_flush: sym!(x11, "XFlush"),
+                x_default_root_window: sym!(x11, "XDefaultRootWindow"),
+                x_intern_atom: sym!(x11, "XInternAtom"),
+                x_get_window_property: sym!(x11, "XGetWindowProperty"),
+                x_free: sym!(x11, "XFree"),
+                x_get_input_focus: sym!(x11, "XGetInputFocus"),
+                x_set_input_focus: sym!(x11, "XSetInputFocus"),
+                x_get_geometry: sym!(x11, "XGetGeometry"),
+                x_send_event: sym!(x11, "XSendEvent"),
+                x_query_tree: sym!(x11, "XQueryTree"),
+                x_query_pointer: sym!(x11, "XQueryPointer"),
+                x_set_error_handler: sym!(x11, "XSetErrorHandler"),
+                x_test_fake_key_event,
+            })
+        }
+    }).as_ref()
+}
+
+#[allow(non_snake_case)]
+pub(crate) unsafe fn XOpenDisplay(display_name: *const libc::c_char) -> *mut libc::c_void {
+    if let Some(x11) = get_x11() {
+        (x11.x_open_display)(display_name)
+    } else {
+        ptr::null_mut()
+    }
+}
+
+pub(crate) unsafe fn XCloseDisplay(display: *mut libc::c_void) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_close_display)(display)
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn XFlush(display: *mut libc::c_void) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_flush)(display)
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn XDefaultRootWindow(display: *mut libc::c_void) -> libc::c_ulong {
+    if let Some(x11) = get_x11() {
+        (x11.x_default_root_window)(display)
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn XInternAtom(
+    display: *mut libc::c_void,
+    atom_name: *const libc::c_char,
+    only_if_exists: libc::c_int,
+) -> libc::c_ulong {
+    if let Some(x11) = get_x11() {
+        (x11.x_intern_atom)(display, atom_name, only_if_exists)
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn XGetWindowProperty(
+    display: *mut libc::c_void,
+    w: libc::c_ulong,
+    property: libc::c_ulong,
+    long_offset: libc::c_long,
+    long_length: libc::c_long,
+    delete: libc::c_int,
+    req_type: libc::c_ulong,
+    actual_type_return: *mut libc::c_ulong,
+    actual_format_return: *mut libc::c_int,
+    nitems_return: *mut libc::c_ulong,
+    bytes_after_return: *mut libc::c_ulong,
+    prop_return: *mut *mut libc::c_uchar,
+) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_get_window_property)(
+            display,
+            w,
+            property,
+            long_offset,
+            long_length,
+            delete,
+            req_type,
+            actual_type_return,
+            actual_format_return,
+            nitems_return,
+            bytes_after_return,
+            prop_return,
+        )
+    } else {
+        1
+    }
+}
+
+pub(crate) unsafe fn XFree(data: *mut libc::c_void) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_free)(data)
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn XGetInputFocus(
+    display: *mut libc::c_void,
+    focus_return: *mut libc::c_ulong,
+    revert_to_return: *mut libc::c_int,
+) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_get_input_focus)(display, focus_return, revert_to_return)
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn XSetInputFocus(
+    display: *mut libc::c_void,
+    focus: libc::c_ulong,
+    revert_to: libc::c_int,
+    time: libc::c_ulong,
+) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_set_input_focus)(display, focus, revert_to, time)
+    } else {
+        0
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) unsafe fn XGetGeometry(
+    display: *mut libc::c_void,
+    d: libc::c_ulong,
+    root_return: *mut libc::c_ulong,
+    x_return: *mut libc::c_int,
+    y_return: *mut libc::c_int,
+    width_return: *mut libc::c_uint,
+    height_return: *mut libc::c_uint,
+    border_width_return: *mut libc::c_uint,
+    depth_return: *mut libc::c_uint,
+) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_get_geometry)(
+            display,
+            d,
+            root_return,
+            x_return,
+            y_return,
+            width_return,
+            height_return,
+            border_width_return,
+            depth_return,
+        )
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn XSendEvent(
+    display: *mut libc::c_void,
+    w: libc::c_ulong,
+    propagate: libc::c_int,
+    event_mask: libc::c_long,
+    event_send: *mut XEvent,
+) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_send_event)(display, w, propagate, event_mask, event_send)
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn XQueryTree(
+    display: *mut libc::c_void,
+    w: libc::c_ulong,
+    root_return: *mut libc::c_ulong,
+    parent_return: *mut libc::c_ulong,
+    children_return: *mut *mut libc::c_ulong,
+    nchildren_return: *mut libc::c_uint,
+) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_query_tree)(
+            display,
+            w,
+            root_return,
+            parent_return,
+            children_return,
+            nchildren_return,
+        )
+    } else {
+        0
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) unsafe fn XQueryPointer(
+    display: *mut libc::c_void,
+    w: libc::c_ulong,
+    root_return: *mut libc::c_ulong,
+    child_return: *mut libc::c_ulong,
+    root_x_return: *mut libc::c_int,
+    root_y_return: *mut libc::c_int,
+    win_x_return: *mut libc::c_int,
+    win_y_return: *mut libc::c_int,
+    mask_return: *mut libc::c_uint,
+) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_query_pointer)(
+            display,
+            w,
+            root_return,
+            child_return,
+            root_x_return,
+            root_y_return,
+            win_x_return,
+            win_y_return,
+            mask_return,
+        )
+    } else {
+        0
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) unsafe fn XSetErrorHandler(
+    handler: Option<unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void) -> libc::c_int>,
+) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        (x11.x_set_error_handler)(handler)
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn XTestFakeKeyEvent(
+    display: *mut libc::c_void,
+    keycode: libc::c_uint,
+    is_press: libc::c_int,
+    delay: libc::c_ulong,
+) -> libc::c_int {
+    if let Some(x11) = get_x11() {
+        if let Some(fake_key) = x11.x_test_fake_key_event {
+            fake_key(display, keycode, is_press, delay)
+        } else {
+            0
+        }
+    } else {
+        0
+    }
 }
 
 unsafe extern "C" fn x11_silent_error_handler(_dpy: *mut libc::c_void, _event: *mut libc::c_void) -> libc::c_int {

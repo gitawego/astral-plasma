@@ -129,14 +129,21 @@ jobs:
             echo "[✓] Pushed version update commit to ${GITHUB_REF_NAME}"
           fi
 
-          # 4. Create and push tag if not already existing
+          # 4. Create or update tag to point to HEAD
           if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "[*] Creating and pushing tag ${TAG}..."
+            echo "[*] Creating tag ${TAG}..."
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git tag -a "$TAG" -m "Release $TAG"
             git push origin "$TAG"
             echo "[✓] Pushed tag ${TAG} to origin"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "[*] Updating tag ${TAG} to current commit..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -fa "$TAG" -m "Release $TAG"
+            git push origin "$TAG" --force
+            echo "[✓] Force-pushed tag ${TAG} to origin"
           fi
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
