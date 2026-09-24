@@ -1,8 +1,10 @@
 # Astral Plasma
 
-> A sleek, fluid, and multi-theme modern desktop shell for **KDE Plasma 6 & KWin**, built with [Quickshell](https://quickshell.outfoxxed.me/), QtQuick, and a native **Rust daemon**.
+> A sleek, fluid, and multi-theme modern desktop shell for **KDE Plasma 6 & KWin** and **Hyprland / Omarchy**, built with [Quickshell](https://quickshell.outfoxxed.me/), QtQuick, and a native **Rust daemon**.
 
 [![KDE Plasma 6](https://img.shields.io/badge/KDE_Plasma-6.x-blue.svg?logo=kde)](https://kde.org/plasma-desktop/)
+[![Hyprland](https://img.shields.io/badge/Hyprland-0.50%2B-00c8ff.svg)](https://hyprland.org/)
+[![Omarchy](https://img.shields.io/badge/Omarchy-Hosted_Plugin-purple.svg)](https://omarchy.org/)
 [![Powered by Quickshell](https://img.shields.io/badge/Powered_by-Quickshell-ff79c6.svg)](https://quickshell.outfoxxed.me/)
 [![Backend: Rust](https://img.shields.io/badge/Backend-Rust-black.svg?logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -11,28 +13,28 @@
 
 ## 🌟 Overview & Inspiration
 
-**Astral Plasma** is an extensible desktop shell engineered specifically for **KDE Plasma 6** and **KWin** (Wayland & X11).
+**Astral Plasma** is an extensible desktop shell engineered for **KDE Plasma 6 (KWin)**, **Hyprland**, and hosted **Omarchy** plugin environments.
 
-The visual language is **highly inspired by [caelestia-dots/shell](https://github.com/caelestia-dots/shell)** — its seamless desktop frame, soft shadows, and fluid morphing popouts — while the architecture is a general-purpose, multi-theme shell framework: a Quickshell/QML frontend layered on top of a self-contained Rust daemon.
+The visual language is **highly inspired by [caelestia-dots/shell](https://github.com/caelestia-dots/shell)** — its seamless desktop frame, soft shadows, and fluid morphing popouts — while the architecture is a general-purpose, multi-theme shell framework: a Quickshell/QML frontend layered on top of a self-contained Rust daemon with a ports-and-adapters architecture.
 
 ### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  QML Frontend (Quickshell)                                  │
-│  shell.qml → shell/ (UnifiedShell · UnifiedDock · TopBar)   │
+│  QML Presentation (Quickshell)                              │
+│  shell.qml · DesktopSessionFacade · UnifiedShell · Dock     │
 │  dashboard/ · settings_gui/ · dock/ · services/ · theme/    │
 └──────────────────────────┬──────────────────────────────────┘
-                           │ Quickshell IPC · stdin/JSON
+                           │ Quickshell IPC · Unix Socket Stream
 ┌──────────────────────────▼──────────────────────────────────┐
 │  Rust Daemon  (bin/astral-plasma, DDD layers)               │
-│  domain/ → application/ → infrastructure/ → interfaces/     │
-│  DBus (KWin · Plasma · MPRIS · Tray) · PipeWire spectrum    │
+│  domain/ (DesktopSessionSnapshot · Workspace · Window)      │
+│  infrastructure/ (KWinAdapter · HyprlandAdapter · DBus)     │
 │  window previews · metrics · wallpaper · shortcuts · doctor │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-The daemon builds into a **single self-contained binary** (`bin/astral-plasma`) that embeds the entire QML theme bundle, runs the shell, exposes a REST/Unix-socket API, and manages Plasma panels, shortcuts, and system diagnostics.
+The daemon builds into a **single self-contained binary** (`bin/astral-plasma`) that embeds the entire QML theme bundle and Omarchy plugin assets, runs the shell, exposes a REST/Unix-socket API, and manages Plasma panels, Hyprland socket events, shortcuts, and system diagnostics.
 
 ---
 
@@ -77,12 +79,14 @@ The daemon builds into a **single self-contained binary** (`bin/astral-plasma`) 
 
 ## 📋 Prerequisites
 
-- **OS**: Linux with **KDE Plasma 6**
-- **Window Manager**: KWin (Wayland or X11)
+- **Desktop Environments Supported**:
+  - **KDE Plasma 6** & KWin (Wayland or X11)
+  - **Hyprland** (v0.50.0+ Wayland)
+  - **Omarchy** (v4.0.x hosted plugin mode under `omarchy-shell`)
 - **Runtime dependencies**:
   - [`quickshell`](https://quickshell.outfoxxed.me/) (v0.3.0+)
   - `qt6-base`, `qt6-declarative`, `qt6-svg` (Qt 6.6+)
-  - `qdbus6` / `kwriteconfig6` (standard in Plasma 6)
+  - `qdbus6` / `kwriteconfig6` (when running under KDE Plasma 6)
   - `pipewire` (audio & visualizer)
 - **Build dependencies**:
   - Rust toolchain (`cargo`, stable) — builds the daemon
@@ -200,6 +204,8 @@ quickshell ipc -p "$PWD" call launcher open apps
 run                          Run the full self-contained shell
 serve [--port <port>]        REST & Unix-socket API server
 extract [target_dir]         Extract the embedded QML theme bundle
+session snapshot             Query canonical DesktopSessionSnapshot JSON
+omarchy <install|remove|status> Manage hosted Omarchy plugin package
 plasma <disable|restore|status|watchdog>
 systemd <status|install|remove>
 settings [toggle|open|close] Control the Settings GUI via IPC
@@ -273,6 +279,7 @@ astral-plasma/
 ├── services/               # DBus/system services (KWinWorkspaces, WindowService,
 │                           # MprisMedia, NetworkService, WallpaperEngine…)
 ├── notifications/ menus/ topbar/ shortcuts/
+├── omarchy/                 # Omarchy hosted plugin package (manifest.json, Service.qml, Bar.qml)
 ├── theme/                  # Theme.qml (motion tokens), Colors.qml, assets/
 ├── config/                 # Config.qml, settings.json (shipped defaults)
 ├── kwin/                   # KWin shortcut script package (bare-Meta overview)

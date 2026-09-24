@@ -88,3 +88,38 @@ originals (`merge_missing_entries`), and the use-case always reaches it.
   `quickshell -p ~/.config/quickshell ipc call overview toggle` — scriptable.
 - Esc / scrim click / Meta — close (focus returns to your previous window via
   `focus restore` unless you picked one).
+
+---
+
+# Hyprland & Hosted Omarchy Compatibility — Walkthrough
+
+According to [`docs/HYPRLAND-OMARCHY-SPEC.md`](docs/HYPRLAND-OMARCHY-SPEC.md), Astral Plasma supports both **KDE Plasma 6 (KWin)** and **Hyprland** (alongside hosted **Omarchy 4.0.x** plugin integration) using a ports-and-adapters architecture.
+
+## Architecture & Ports
+
+```mermaid
+flowchart TD
+    UI["QML Presentation (UnifiedShell, Dock, Dashboard)"] --> Facade["DesktopSessionFacade.qml"]
+    Facade --> Socket["Socket / IPC Watcher"]
+    Socket --> Daemon["Daemon Application Layer"]
+    Daemon --> Ports["Domain Ports (DesktopSessionPort, WindowManagerPort, etc.)"]
+    Ports --> KWin["KWinAdapter (D-Bus, Plasma panels, KWin scripts)"]
+    Ports --> Hypr["HyprlandAdapter (.socket.sock & .socket2.sock)"]
+```
+
+- **Compositor Neutrality**: Protocol objects from KWin or Hyprland never cross into core domain models (`DesktopSessionSnapshot`, `Workspace`, `Window`, `Output`) or QML presentation components.
+- **Hyprland Direct IPC**: Directly communicates with `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket.sock` and `.socket2.sock` over `UnixStream` with zero child-process spawn overhead.
+- **Safe Profile Scoping**: KDE Plasma panel backup/disable and KWin shortcut script lifecycle are strictly scoped to the `Kde` profile and never interfere with Hyprland or Omarchy sessions.
+- **Hosted Omarchy Plugin**: Self-contained `omarchy/` bundle (`manifest.json`, `Service.qml`, `Bar.qml`) embedded directly into the release binary `bin/astral-plasma`.
+- **Management CLI**: `bin/astral-plasma omarchy install|remove|status` installs and manages the plugin for `omarchy-shell` without competing host processes. Standalone launches beside `omarchy-shell` are guarded unless `ASTRAL_STANDALONE_OVERRIDE=1` is explicitly set.
+
+## Verification & Visual Proof
+
+- **Automated Tests**:
+  - `make test` passes 100% across all Rust unit suites and all 82 QML test suites.
+  - Contract unit tests in `daemon/tests/test_desktop_session_domain.rs`, `daemon/tests/test_hyprland_adapter.rs`, `daemon/tests/test_daemon_cli.rs`, and offscreen QML tests in `tests/tst_desktop_session_facade.qml` and `tests/tst_omarchy_plugin.qml`.
+- **Live Nested Session Verification**:
+  - Launched nested Hyprland compositor on Wayland display `wayland-1`.
+  - Executed query, workspace switching, and session snapshot against live Hyprland IPC.
+  - Executed Astral Plasma shell inside `wayland-1` and captured visual proof of work:
+    `nested_hyprland_astral_proof.png` showing the liquid glass dock, central dashboard, calendar, avatar, and system status running natively on Hyprland.

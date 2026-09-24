@@ -78,3 +78,57 @@ fn test_daemon_desktop_cli() {
     let stderr_str = String::from_utf8_lossy(&out.stderr);
     assert!(stderr_str.contains("Usage: astral-plasma desktop <install|cleanup>"));
 }
+
+#[test]
+fn test_daemon_omarchy_cli() {
+    let bin = get_bin_path();
+    let temp_home = tempfile::tempdir().unwrap();
+
+    // 1. Initial status: not installed
+    let out = Command::new(&bin)
+        .env("HOME", temp_home.path())
+        .args(["omarchy", "status"])
+        .output()
+        .expect("omarchy status");
+    assert!(out.status.success());
+    let val: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(val["installed"], false);
+
+    // 2. Install
+    let out = Command::new(&bin)
+        .env("HOME", temp_home.path())
+        .args(["omarchy", "install"])
+        .output()
+        .expect("omarchy install");
+    assert!(out.status.success());
+
+    // 3. Status: installed
+    let out = Command::new(&bin)
+        .env("HOME", temp_home.path())
+        .args(["omarchy", "status"])
+        .output()
+        .expect("omarchy status");
+    assert!(out.status.success());
+    let val: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(val["installed"], true);
+    assert_eq!(val["pluginId"], "org.astralplasma.omarchy");
+
+    // 4. Remove
+    let out = Command::new(&bin)
+        .env("HOME", temp_home.path())
+        .args(["omarchy", "remove"])
+        .output()
+        .expect("omarchy remove");
+    assert!(out.status.success());
+
+    // 5. Status: not installed
+    let out = Command::new(&bin)
+        .env("HOME", temp_home.path())
+        .args(["omarchy", "status"])
+        .output()
+        .expect("omarchy status");
+    assert!(out.status.success());
+    let val: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(val["installed"], false);
+}
+

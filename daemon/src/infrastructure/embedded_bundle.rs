@@ -16,6 +16,7 @@ pub static SETTINGS_GUI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../sett
 pub static SHELL_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../shell");
 pub static SHORTCUTS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../shortcuts");
 pub static TOPBAR_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../topbar");
+pub static OMARCHY_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../omarchy");
 
 pub fn get_default_package_dir() -> PathBuf {
     branding::default_package_dir()
@@ -37,6 +38,7 @@ pub fn extract_embedded_theme(target_dir: &Path) -> DynResult<()> {
         ("shell", &SHELL_DIR),
         ("shortcuts", &SHORTCUTS_DIR),
         ("topbar", &TOPBAR_DIR),
+        ("omarchy", &OMARCHY_DIR),
     ];
 
     for (name, d) in dirs {

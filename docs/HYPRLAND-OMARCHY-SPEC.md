@@ -1,6 +1,6 @@
 # Hyprland and Omarchy Compatibility Specification
 
-> **Status:** Design baseline accepted; implementation pending.
+> **Status:** Implemented & Verified (Phases 0–5 complete).
 >
 > **Scope:** Add Hyprland support and first-class hosted Omarchy plugin support without rewriting the shared visual shell or removing KDE Plasma/KWin support.
 
@@ -749,18 +749,18 @@ Primary references:
 
 The feature is complete only when:
 
-- [ ] Plasma/KWin remains supported and its tests pass.
-- [ ] Hyprland launches the shared shell without backend-specific QML rewrites.
-- [ ] Canonical windows, outputs, workspaces, surfaces, capabilities, intents, results, and events are implemented.
-- [ ] KWin and Hyprland implement the same port contracts.
-- [ ] No raw KWin or Hyprland protocol objects leak into shared QML.
-- [ ] Unsupported actions are visibly capability-gated and return typed results.
-- [ ] Plasma lifecycle takeover is profile-scoped and reversible.
-- [ ] Hyprland lifecycle takeover is profile-scoped and reversible.
-- [ ] Omarchy hosted plugin mode works inside `omarchy-shell` without a second host.
-- [ ] Omarchy bar-widget and complete-bar modes have documented ownership behavior.
-- [ ] Standalone Hyprland mode is explicit, tested, and refuses to run beside `omarchy-shell`.
-- [ ] `make test` passes with zero failures.
-- [ ] Real Hyprland, hosted Omarchy, and standalone-profile smoke tests pass.
-- [ ] Visual proof is captured and inspected.
-- [ ] Documentation reflects the new supported environments and limitations.
+- [x] Plasma/KWin remains supported and its tests pass.
+- [x] Hyprland launches the shared shell without backend-specific QML rewrites.
+- [x] Canonical windows, outputs, workspaces, surfaces, capabilities, intents, results, and events are implemented.
+- [x] KWin and Hyprland implement the same port contracts.
+- [x] No raw KWin or Hyprland protocol objects leak into shared QML.
+- [x] Unsupported actions are visibly capability-gated and return typed results.
+- [x] Plasma lifecycle takeover is profile-scoped and reversible.
+- [x] Hyprland lifecycle takeover is profile-scoped and reversible.
+- [x] Omarchy hosted plugin mode works inside `omarchy-shell` without a second host.
+- [x] Omarchy bar-widget and complete-bar modes have documented ownership behavior.
+- [x] Standalone Hyprland mode is explicit, tested, and refuses to run beside `omarchy-shell`.
+- [x] `make test` passes with zero failures.
+- [x] Real Hyprland, hosted Omarchy, and standalone-profile smoke tests pass.
+- [x] Visual proof is captured and inspected.
+- [x] Documentation reflects the new supported environments and limitations.

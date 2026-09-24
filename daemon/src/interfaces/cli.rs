@@ -552,6 +552,58 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "omarchy" => {
+            let sub = if args.len() >= 3 { args[2].as_str() } else { "status" };
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            let target_dir = std::path::PathBuf::from(home)
+                .join(".config")
+                .join("omarchy")
+                .join("plugins")
+                .join("org.astralplasma.omarchy");
+
+            let source_dir = crate::application::shell_lifecycle::shell_config_dir().join("omarchy");
+
+            match sub {
+                "install" => {
+                    std::fs::create_dir_all(&target_dir)?;
+                    let mut copied = false;
+                    if source_dir.exists() {
+                        for file in &["manifest.json", "Service.qml", "Bar.qml"] {
+                            let src = source_dir.join(file);
+                            let dst = target_dir.join(file);
+                            if src.exists() {
+                                std::fs::copy(&src, &dst)?;
+                                copied = true;
+                            }
+                        }
+                    }
+                    if !copied {
+                        crate::infrastructure::embedded_bundle::OMARCHY_DIR.extract(&target_dir)?;
+                    }
+                    println!("Installed Astral Plasma Omarchy plugin to {}", target_dir.display());
+                }
+                "remove" | "uninstall" => {
+                    if target_dir.exists() {
+                        std::fs::remove_dir_all(&target_dir)?;
+                        println!("Removed Astral Plasma Omarchy plugin from {}", target_dir.display());
+                    } else {
+                        println!("Astral Plasma Omarchy plugin not installed");
+                    }
+                }
+                "status" => {
+                    let installed = target_dir.join("manifest.json").exists();
+                    let payload = serde_json::json!({
+                        "installed": installed,
+                        "pluginId": "org.astralplasma.omarchy",
+                        "path": target_dir.to_string_lossy()
+                    });
+                    println!("{}", payload);
+                }
+                _ => {
+                    eprintln!("Unknown omarchy command: {}. Available: install, remove, status", sub);
+                }
+            }
+        }
         "metrics" => {
             let metrics_ctrl = GetMetricsUseCase::new(ProcMetricsAdapter::new());
             let json = metrics_ctrl.execute_json()?;
@@ -1013,10 +1065,22 @@ fn print_usage() {
     eprintln!("  desktop <install|cleanup> - Manage KWin authorization desktop entries");
     eprintln!("  shortcuts <cmd>         - Granular shortcut management: backup, bind, restore, status");
     eprintln!("  tray <cmd>              - System tray operations");
+    eprintln!("  omarchy <install|remove|status> - Manage hosted Omarchy plugin package");
     eprintln!("  doctor [--json]         - Diagnose and report versions of all system dependencies");
 }
 
 async fn run_self_contained_app() -> DynResult<()> {
+    // 0. Guard against running standalone Quickshell root beside omarchy-shell
+    if crate::infrastructure::desktop_factory::detect_profile() == crate::infrastructure::desktop_factory::EnvironmentProfile::Omarchy {
+        let has_override = std::env::var("ASTRAL_STANDALONE_OVERRIDE").is_ok();
+        if !has_override {
+            eprintln!("[{}] Detected Omarchy host session. Astral Plasma integrates as a plugin under Omarchy.", branding::APP_NAME);
+            eprintln!("To install the plugin into omarchy-shell: astral-plasma omarchy install");
+            eprintln!("To force standalone execution beside omarchy-shell (experimental): export ASTRAL_STANDALONE_OVERRIDE=1");
+            return Ok(());
+        }
+    }
+
     // 1. Determine theme path: if shell.qml exists in current dir, use it (dev mode); otherwise extract embedded theme
     let theme_dir = if Path::new("shell.qml").exists() {
         std::env::current_dir()?
@@ -1028,6 +1092,8 @@ async fn run_self_contained_app() -> DynResult<()> {
 
     println!("[{}] Starting desktop shell using package at: {}", branding::APP_NAME, theme_dir.display());
 
+    let is_kwin = crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin;
+
     // Register desktop authorization entry with notification
     let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
 
@@ -1036,9 +1102,11 @@ async fn run_self_contained_app() -> DynResult<()> {
         let _ = run_api_server(DEFAULT_API_PORT).await;
     });
 
-    // 3. Backup and disable KDE Plasma panels
-    let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
-    let _ = plasma.backup_and_disable("all", Some(std::process::id()));
+    // 3. Backup and disable KDE Plasma panels (only under KDE)
+    if is_kwin {
+        let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
+        let _ = plasma.backup_and_disable("all", Some(std::process::id()));
+    }
 
     // 4. Launch Quickshell
     let mut child = Command::new("quickshell")
@@ -1079,10 +1147,13 @@ async fn run_self_contained_app() -> DynResult<()> {
         let _ = child.wait();
     }
 
-    // 6. On exit, restore original Plasma panels cleanly and clean up authorization entry
-    println!("[{}] Quickshell stopped. Restoring original KDE Plasma panels and cleaning up authorization...", branding::APP_NAME);
-    let _ = plasma.restore();
-    let _ = crate::infrastructure::preview_capture::remove_desktop_entry(None);
+    // 6. On exit, restore original Plasma panels cleanly (only under KDE) and clean up authorization entry
+    if is_kwin {
+        println!("[{}] Quickshell stopped. Restoring original KDE Plasma panels and cleaning up authorization...", branding::APP_NAME);
+        let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
+        let _ = plasma.restore();
+        let _ = crate::infrastructure::preview_capture::remove_desktop_entry(None);
+    }
 
     Ok(())
 }
