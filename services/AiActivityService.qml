@@ -20,8 +20,17 @@ Singleton {
     property real tokenRate: 0.0
     property real recentTokens: 0.0
 
-    // Pulse duration modulated by request rate: faster for high RPM, calmer for steady state
-    readonly property int pulseDuration: Math.max(900, Math.min(2600, 2400 - Math.round(root.requestRate * 180)))
+    // Combined throughput load from request rate (RPM) and token processing rate
+    readonly property real throughputLoad: Math.max(0.0, root.requestRate + (root.tokenRate / 2500.0) + Math.min(15.0, root.recentTokens / 2000.0))
+
+    // Velocity modulation: higher throughput load accelerates electric travel duration (850ms to 2400ms)
+    readonly property int currentTravelDuration: Math.max(850, Math.min(2400, Math.round(2400.0 / (1.0 + 0.08 * throughputLoad))))
+
+    // Breathing pulse duration modulated by throughput: faster for high RPM/tokens (500ms to 2000ms)
+    readonly property int pulseDuration: Math.max(500, Math.min(2200, Math.round(2000.0 / (1.0 + 0.15 * throughputLoad))))
+
+    // Electric packet length elongates with higher velocity/momentum (48px to 96px)
+    readonly property real packetLength: Math.min(96, Math.max(48, 48 + throughputLoad * 1.5))
 
     // Active effect enabled check
     readonly property bool effectEnabled: (typeof Config !== "undefined" && Config.modelActivityEffect !== undefined)

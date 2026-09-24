@@ -86,7 +86,7 @@ ShellRoot {
                 Config.openBottomPopout("ai", 1450);
             }
         }
-        function triggerActivity(agent: string, model: string, displayName: string, brandColor: string, rate: real): void {
+        function triggerActivity(agent: string, model: string, displayName: string, brandColor: string, rate: real, tokens: real): void {
             if (typeof AiActivityService !== "undefined") {
                 AiActivityService.applyActivity({
                     agent: agent,
@@ -96,7 +96,9 @@ ShellRoot {
                     brand_icon: "token",
                     is_active: true,
                     intensity: 1.0,
-                    request_rate: (rate !== undefined) ? rate : 1.0
+                    request_rate: (rate !== undefined) ? rate : 1.0,
+                    token_rate: (tokens !== undefined) ? tokens : 0.0,
+                    recent_tokens: (tokens !== undefined) ? tokens : 0.0
                 });
             }
         }
@@ -105,7 +107,9 @@ ShellRoot {
                 AiActivityService.applyActivity({
                     is_active: false,
                     intensity: 0.0,
-                    request_rate: 0.0
+                    request_rate: 0.0,
+                    token_rate: 0.0,
+                    recent_tokens: 0.0
                 });
             }
         }
@@ -117,6 +121,10 @@ ShellRoot {
         property real requestRate: (typeof AiActivityService !== "undefined") ? AiActivityService.requestRate : 0.0
         property real tokenRate: (typeof AiActivityService !== "undefined") ? AiActivityService.tokenRate : 0.0
         property real recentTokens: (typeof AiActivityService !== "undefined") ? AiActivityService.recentTokens : 0.0
+        property real throughputLoad: (typeof AiActivityService !== "undefined") ? AiActivityService.throughputLoad : 0.0
+        property int currentTravelDuration: (typeof AiActivityService !== "undefined") ? AiActivityService.currentTravelDuration : 2400
+        property int pulseDuration: (typeof AiActivityService !== "undefined") ? AiActivityService.pulseDuration : 2000
+        property real packetLength: (typeof AiActivityService !== "undefined") ? AiActivityService.packetLength : 48.0
     }
 
     IpcHandler {
