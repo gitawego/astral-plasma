@@ -24,16 +24,27 @@ env = os.environ.copy()
 env["QT_ASSUME_STDERR_HAS_CONSOLE"] = "1"
 env["QML_XHR_ALLOW_FILE_READ"] = "1"
 
-# Dynamically locate qml runner
+# Dynamically locate Qt 6 qml runner
+def check_qt6(bin_path):
+    if not bin_path or not (shutil.which(bin_path) or os.path.exists(bin_path)):
+        return False
+    try:
+        res = subprocess.run([bin_path, "--version"], capture_output=True, text=True, timeout=5)
+        out = (res.stdout or "") + (res.stderr or "")
+        return "Runtime 6." in out
+    except Exception:
+        return False
+
 qml_bin = os.environ.get("QML_BIN")
-if not qml_bin:
-    for candidate in ["qml6", "qml", "/usr/lib/qt6/bin/qml", "/usr/lib/qt6/bin/qml6", "/usr/bin/qml6", "/usr/bin/qml"]:
-        if shutil.which(candidate) or os.path.exists(candidate):
+if not (qml_bin and check_qt6(qml_bin)):
+    qml_bin = None
+    for candidate in ["qml6", "/usr/lib/qt6/bin/qml", "/usr/lib/qt6/bin/qml6", "/usr/bin/qml6", "qml", "/usr/bin/qml"]:
+        if check_qt6(candidate):
             qml_bin = candidate
             break
 
 if not qml_bin:
-    print("Error: Could not locate 'qml6' or 'qml' binary. Please ensure Qt 6 QML runtime is installed.", file=sys.stderr)
+    print("Error: Could not locate a valid Qt 6 'qml' or 'qml6' binary. Please ensure Qt 6 QML runtime is installed.", file=sys.stderr)
     sys.exit(1)
 
 print(f"Using QML binary: {qml_bin}")
