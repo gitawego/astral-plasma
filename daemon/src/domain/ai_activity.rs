@@ -129,7 +129,7 @@ pub fn resolve_model_metadata(raw_model: &str, tool_source: &str) -> AiAgentIden
             model_id: raw_model.to_string(),
             display_name: display,
             brand_color: "#FF6900".to_string(), // Xiaomi Orange
-            brand_icon: "devices".to_string(),
+            brand_icon: "token".to_string(),
         };
     }
 

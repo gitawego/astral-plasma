@@ -86,6 +86,35 @@ ShellRoot {
                 Config.openBottomPopout("ai", 1450);
             }
         }
+        function triggerActivity(agent: string, model: string, displayName: string, brandColor: string, rate: real): void {
+            if (typeof AiActivityService !== "undefined") {
+                AiActivityService.applyActivity({
+                    agent: agent,
+                    model: model,
+                    display_name: displayName,
+                    brand_color: brandColor,
+                    brand_icon: "token",
+                    is_active: true,
+                    intensity: 1.0,
+                    request_rate: (rate !== undefined) ? rate : 1.0
+                });
+            }
+        }
+        function clearActivity(): void {
+            if (typeof AiActivityService !== "undefined") {
+                AiActivityService.applyActivity({
+                    is_active: false,
+                    intensity: 0.0,
+                    request_rate: 0.0
+                });
+            }
+        }
+
+        property string activeModel: (typeof AiActivityService !== "undefined") ? AiActivityService.model : ""
+        property string activeDisplayName: (typeof AiActivityService !== "undefined") ? AiActivityService.displayName : ""
+        property bool isActive: (typeof AiActivityService !== "undefined") ? AiActivityService.isActive : false
+        property real intensity: (typeof AiActivityService !== "undefined") ? AiActivityService.intensity : 0.0
+        property real requestRate: (typeof AiActivityService !== "undefined") ? AiActivityService.requestRate : 0.0
     }
 
     IpcHandler {

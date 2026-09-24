@@ -1319,6 +1319,30 @@ PanelWindow {
         }
     }
 
+    // 5b. BOTTOM-RIGHT AI ACTIVITY MATRIX BORDER EFFECT & GROWING LIGHTING
+    // Strictly stays within the screen frame's 14px border thickness (NO physical border growth).
+    // Features:
+    // 1. Matrix digital rain streaming along bottom & right borders with leading phosphor white heads
+    // 2. Ambient background lighting blooming into the desktop backdrop
+    // 3. Smooth border color degradation merging seamlessly with resting desktop frame
+    // 4. Integrated digital monospace HUD badge showing model name, RPM, and dancing pulses
+    MatrixBorderEffect {
+        id: aiMatrixBorderEffect
+        anchors.fill: parent
+        z: 950
+        borderT: root.borderT
+        cornerFilletR: root.cornerFilletR
+        active: (typeof Config !== "undefined" && Config.modelActivityEffect)
+            && (typeof AiActivityService !== "undefined")
+            && AiActivityService.isActive
+        brandColor: (typeof AiActivityService !== "undefined" && AiActivityService.brandColor)
+            ? AiActivityService.brandColor
+            : ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#818CF8")
+        rpm: (typeof AiActivityService !== "undefined") ? AiActivityService.requestRate : 0.0
+        intensity: (typeof AiActivityService !== "undefined") ? AiActivityService.intensity : 0.0
+        modelDisplayName: (typeof AiActivityService !== "undefined") ? AiActivityService.displayName : ""
+    }
+
     // 6. LEFT DOCK CONTENT
     Item {
         id: dockArea
@@ -1327,35 +1351,6 @@ PanelWindow {
         y: root.borderT + 6
         width: root.dockW
         height: root.height - root.borderT * 2 - 12
-
-        // Micro-hairline rim glow for AI activity
-        Rectangle {
-            id: aiCapsuleRim
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: 1.5
-            z: 50
-            visible: Config.modelActivityEffect && (typeof AiActivityService !== "undefined") && (AiActivityService.isActive || opacity > 0.01)
-            color: (typeof AiActivityService !== "undefined" && AiActivityService.brandColor)
-                ? AiActivityService.brandColor
-                : Colors.primary
-            opacity: (typeof AiActivityService !== "undefined" && AiActivityService.isActive)
-                ? (0.20 + (rimPulse * 0.50))
-                : 0.0
-
-            Behavior on opacity {
-                NumberAnimation { duration: 4000; easing.type: Easing.OutQuad } // 4s smooth fade
-            }
-
-            property real rimPulse: 0.0
-            SequentialAnimation on rimPulse {
-                running: Config.modelActivityEffect && (typeof AiActivityService !== "undefined") && AiActivityService.isActive
-                loops: Animation.Infinite
-                NumberAnimation { to: 1.0; duration: (typeof AiActivityService !== "undefined") ? Math.round(AiActivityService.pulseDuration / 2) : 1000; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 0.0; duration: (typeof AiActivityService !== "undefined") ? Math.round(AiActivityService.pulseDuration / 2) : 1000; easing.type: Easing.InOutSine }
-            }
-        }
 
         UnifiedDock {
             anchors.fill: parent

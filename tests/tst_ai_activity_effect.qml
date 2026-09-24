@@ -81,7 +81,7 @@ Item {
             model: "opencode-go/mimo-v2.6-flash",
             display_name: "MiMo 2.6 Flash",
             brand_color: "#FF6900",
-            brand_icon: "devices",
+            brand_icon: "token",
             is_active: true,
             intensity: 1.0,
             request_rate: 2.5
@@ -90,7 +90,7 @@ Item {
         assert(activityModel.agent === "mimo", "Agent should be mimo");
         assert(activityModel.displayName === "MiMo 2.6 Flash", "Display name should be MiMo 2.6 Flash");
         assert(Qt.colorEqual(activityModel.brandColor, "#FF6900"), "Brand color should be #FF6900 (Xiaomi Vibrant Orange)");
-        assert(activityModel.brandIcon === "devices", "Brand icon should be devices");
+        assert(activityModel.brandIcon === "token", "Brand icon should be token");
         assert(activityModel.isActive === true, "isActive should be true");
         assert(activityModel.requestRate === 2.5, "requestRate should be 2.5 req/min");
         assert(activityModel.pulseDuration === 1950, "pulseDuration should be 1950ms at 2.5 req/min (got " + activityModel.pulseDuration + ")");
@@ -177,28 +177,36 @@ Item {
         // ---- 7. Source Contract: dock/components/DockStatusIcons.qml ----
         const dockSrc = readLocalFile("../dock/components/DockStatusIcons.qml");
         assert(dockSrc.length > 1000, "DockStatusIcons.qml must be readable");
-        assert(/id:\s*aiAura/.test(dockSrc),
-            "DockStatusIcons must declare aiAura for breathing halo effect");
-        assert(/AiActivityService\.brandColor/.test(dockSrc),
-            "DockStatusIcons must bind halo and background to AiActivityService.brandColor");
-        assert(/running:\s*Config\.modelActivityEffect\s*&&\s*\(typeof AiActivityService\s*!==\s*"undefined"\)\s*&&\s*AiActivityService\.isActive/.test(dockSrc),
-            "DockStatusIcons must guarantee 0% idle CPU by running animation only when active");
+        assert(/text:\s*"token"/.test(dockSrc),
+            "DockStatusIcons must strictly use 'token' icon for AI activity/quota pill");
 
-        // ---- 8. Source Contract: shell/UnifiedShell.qml ----
+        // ---- 8. Source Contract: components/MatrixBorderEffect.qml ----
+        const matrixSrc = readLocalFile("../components/MatrixBorderEffect.qml");
+        assert(matrixSrc.length > 1000, "MatrixBorderEffect.qml must be readable");
+        assert(/matrixStreamTimer/.test(matrixSrc),
+            "MatrixBorderEffect must declare matrixStreamTimer for digital rain animation");
+        assert(/running:\s*root\.active\s*&&/.test(matrixSrc),
+            "MatrixBorderEffect timers must strictly run only when active for 0% idle CPU");
+        assert(/bottomAmbientGlow/.test(matrixSrc),
+            "MatrixBorderEffect must declare background growing lighting for ambient bloom");
+        assert(/fusedCornerNexus/.test(matrixSrc),
+            "MatrixBorderEffect must declare fusedCornerNexus for seamless corner fillet integration");
+
+        // ---- 9. Source Contract: shell/UnifiedShell.qml ----
         const shellSrc = readLocalFile("../shell/UnifiedShell.qml");
         assert(shellSrc.length > 1000, "UnifiedShell.qml must be readable");
-        assert(/id:\s*aiCapsuleRim/.test(shellSrc),
-            "UnifiedShell must declare aiCapsuleRim 1px breathing hairline");
-        assert(/running:\s*Config\.modelActivityEffect\s*&&\s*\(typeof AiActivityService\s*!==\s*"undefined"\)\s*&&\s*AiActivityService\.isActive/.test(shellSrc),
-            "UnifiedShell aiCapsuleRim animation must run only when active to guarantee 0% idle CPU");
+        assert(/id:\s*aiMatrixBorderEffect/.test(shellSrc),
+            "UnifiedShell must declare aiMatrixBorderEffect for Matrix border streaming effect");
+        assert(/active:\s*\(typeof Config !== "undefined"/.test(shellSrc),
+            "UnifiedShell aiMatrixBorderEffect must bind active state to Config and AiActivityService");
 
-        // ---- 9. Source Contract: services/WindowService.qml event routing ----
+        // ---- 10. Source Contract: services/WindowService.qml event routing ----
         const winServiceSrc = readLocalFile("../services/WindowService.qml");
         assert(winServiceSrc.length > 1000, "WindowService.qml must be readable");
         assert(/data\.msg_type\s*===\s*"ai_activity"/.test(winServiceSrc),
             "WindowService must route ai_activity IPC events from daemon to AiActivityService");
 
-        // ---- 10. Config Reactivity ----
+        // ---- 11. Config Reactivity ----
         const configSrc = readLocalFile("../config/Config.qml");
         assert(/property\s+bool\s+modelActivityEffect:/.test(configSrc),
             "Config.qml must declare modelActivityEffect property");

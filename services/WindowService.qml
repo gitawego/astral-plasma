@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "."
 import "../components"
 
 Singleton {
@@ -442,7 +443,7 @@ Singleton {
                     const data = JSON.parse(line);
                     if (!data) return;
 
-                    if (data.msg_type === "ai_activity") {
+                    if (data.msg_type === "ai_activity" || data.type === "ai_activity") {
                         if (typeof AiActivityService !== "undefined") {
                             AiActivityService.applyActivity(data);
                         }

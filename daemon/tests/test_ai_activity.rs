@@ -5,7 +5,7 @@ fn test_resolve_mimo_xiaomi_model() {
     let id1 = resolve_model_metadata("opencode-go/mimo-v2.6-flash", "omp");
     assert_eq!(id1.tool_source, "mimo");
     assert_eq!(id1.brand_color, "#FF6900");
-    assert_eq!(id1.brand_icon, "devices");
+    assert_eq!(id1.brand_icon, "token");
     assert_eq!(id1.display_name, "MiMo 2.6 Flash");
 
     let id2 = resolve_model_metadata("mimo-cn/mimo-v2.5-pro", "pi");
@@ -167,3 +167,117 @@ async fn test_ai_activity_monitor_record_and_decay() {
     let st2 = monitor.get_state().await;
     assert_eq!(st2.request_rate_rpm, 2.0);
 }
+
+#[test]
+fn test_extract_model_from_json_line_pi_model_id() {
+    use astral_plasma::infrastructure::ai_activity_monitor::extract_model_from_json_line;
+    let line = r#"{"type":"model_change","id":"980bac6a","parentId":null,"timestamp":"2026-09-23T19:40:06.546Z","provider":"opencode-go","modelId":"mimo-v2.6-flash"}"#;
+    let res = extract_model_from_json_line(line);
+    assert!(res.is_some(), "extract_model_from_json_line must match modelId");
+    let (model, prov) = res.unwrap();
+    assert_eq!(model, "mimo-v2.6-flash");
+    assert_eq!(prov, "opencode-go");
+
+    let id = resolve_model_metadata(&model, &prov);
+    assert_eq!(id.tool_source, "mimo");
+    assert_eq!(id.brand_color, "#FF6900");
+    assert_eq!(id.display_name, "MiMo 2.6 Flash");
+}
+
+#[test]
+fn test_parse_model_from_tail_pi_mimo() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    let sample = r#"
+{"type":"session","version":3,"id":"01a0cfc8-4239-7245-8032-3507206090fc","timestamp":"2026-09-23T19:40:03.001Z","cwd":"/mnt/data/workspace/astral-plasma"}
+{"type":"model_change","id":"980bac6a","parentId":null,"timestamp":"2026-09-23T19:40:06.546Z","provider":"opencode-go","modelId":"mimo-v2.6-flash"}
+{"type":"thinking_level_change","id":"3fa343dd","parentId":"980bac6a","timestamp":"2026-09-23T19:40:06.546Z","thinkingLevel":"high"}
+"#;
+    let res = AiActivityMonitor::parse_model_from_tail(sample, "/home/hlu/.pi/agent/sessions/--mnt-data-workspace--/test.jsonl");
+    assert!(res.is_some());
+    let (model, prov) = res.unwrap();
+    assert_eq!(model, "mimo-v2.6-flash");
+    assert_eq!(prov, "opencode-go");
+}
+
+#[test]
+fn test_parse_model_from_file_head_fallback() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    use std::io::Write;
+    let mut temp = tempfile::NamedTempFile::new().unwrap();
+    writeln!(temp, r#"{{"type":"session","version":3,"id":"test-123","cwd":"/test"}}"#).unwrap();
+    writeln!(temp, r#"{{"type":"model_change","id":"m1","provider":"opencode-go","modelId":"mimo-v2.6-flash"}}"#).unwrap();
+    // Write 50KB of filler content (e.g. huge tool calls or context messages)
+    let filler = "x".repeat(1000);
+    for _ in 0..40 {
+        writeln!(temp, r#"{{"type":"message","id":"f","message":{{"role":"tool","content":"{}"}}}}"#, filler).unwrap();
+    }
+    // End with user prompt lacking model
+    writeln!(temp, r#"{{"type":"message","id":"u1","message":{{"role":"user","content":[{{"type":"text","text":"can you check this?"}}]}}}}"#).unwrap();
+    temp.flush().unwrap();
+
+    let res = AiActivityMonitor::parse_model_from_file(temp.path());
+    assert!(res.is_some(), "parse_model_from_file must find model from file head when tail is filled with messages");
+    let (model, prov) = res.unwrap();
+    assert_eq!(model, "mimo-v2.6-flash");
+    assert_eq!(prov, "opencode-go");
+}
+
+#[test]
+fn test_find_latest_session_file_ignores_context_mode_stats() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    use std::fs;
+    let temp_home = tempfile::tempdir().unwrap();
+    let pi_session_dir = temp_home.path().join(".pi/agent/sessions/--test-workspace--");
+    let pi_ctx_dir = temp_home.path().join(".pi/context-mode/sessions");
+    fs::create_dir_all(&pi_session_dir).unwrap();
+    fs::create_dir_all(&pi_ctx_dir).unwrap();
+
+    let session_file = pi_session_dir.join("2026-09-24_real.jsonl");
+    fs::write(&session_file, r#"{"type":"session"}"#).unwrap();
+
+    // Create a context-mode stats json with a newer timestamp
+    let stats_file = pi_ctx_dir.join("stats-pid-9999.json");
+    fs::write(&stats_file, r#"{"schemaVersion":2,"bytes_returned":0}"#).unwrap();
+
+    let latest = AiActivityMonitor::find_latest_session_file(temp_home.path());
+    assert!(latest.is_some());
+    let (path, _, _) = latest.unwrap();
+    assert_eq!(path, session_file, "find_latest_session_file must return the real session jsonl and ignore context-mode stats json");
+}
+
+#[test]
+fn test_find_latest_session_file_ignores_antigravity_brain_transcripts() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    use std::fs;
+    let temp_home = tempfile::tempdir().unwrap();
+    let brain_dir = temp_home.path().join(".gemini/antigravity/brain/session-123/.system_generated/logs");
+    let pi_session_dir = temp_home.path().join(".pi/agent/sessions/--test-workspace--");
+    fs::create_dir_all(&brain_dir).unwrap();
+    fs::create_dir_all(&pi_session_dir).unwrap();
+
+    let pi_session = pi_session_dir.join("real_pi.jsonl");
+    fs::write(&pi_session, r#"{"type":"session","id":"pi-1"}"#).unwrap();
+
+    // Create an antigravity transcript that is newer
+    let transcript = brain_dir.join("transcript.jsonl");
+    fs::write(&transcript, r#"{"type":"message","text":"antigravity log"}"#).unwrap();
+
+    let latest = AiActivityMonitor::find_latest_session_file(temp_home.path());
+    assert!(latest.is_some());
+    let (path, _, _) = latest.unwrap();
+    assert_eq!(path, pi_session, "find_latest_session_file must strictly ignore antigravity brain transcripts and pick true agent sessions");
+}
+
+#[tokio::test]
+async fn test_ai_activity_inactive_when_session_older_than_15s() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    let monitor = AiActivityMonitor::new();
+    
+    // An inactive/idle monitor must start with is_active = false
+    let st = monitor.get_state().await;
+    assert!(!st.is_active);
+    assert_eq!(st.intensity, 0.0);
+    assert_eq!(st.request_rate_rpm, 0.0);
+}
+
+

@@ -555,44 +555,22 @@ pub async fn run_cli() -> DynResult<()> {
                     use crate::infrastructure::ai_activity_monitor::AiActivityMonitor;
                     let monitor = AiActivityMonitor::new();
                     if let Some(home) = std::env::var("HOME").ok().map(std::path::PathBuf::from) {
-                        let candidates = [
-                            home.join(".pi/agent/sessions"),
-                            home.join(".omp/agent/sessions"),
-                            home.join(".claude/sessions"),
-                            home.join(".codex/sessions"),
-                        ];
-                        let mut latest_time = 0u64;
-                        let mut latest_entry = None;
-                        for root in &candidates {
-                            if !root.exists() { continue; }
-                            if let Ok(dirs) = std::fs::read_dir(root) {
-                                for d in dirs.flatten() {
-                                    let p = d.path();
-                                    if p.is_dir() {
-                                        if let Ok(files) = std::fs::read_dir(&p) {
-                                            for f in files.flatten() {
-                                                let fp = f.path();
-                                                if fp.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                                                    if let Ok(meta) = fp.metadata() {
-                                                        if let Ok(mtime) = meta.modified() {
-                                                            let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-                                                            if epoch > latest_time {
-                                                                latest_time = epoch;
-                                                                latest_entry = Some(fp);
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if let Some(path) = latest_entry {
-                            if let Some(tail) = AiActivityMonitor::read_tail_string(&path, 1536) {
-                                if let Some((m, t)) = AiActivityMonitor::parse_model_from_tail(&tail, &path.to_string_lossy()) {
+                        if let Some((path, mtime, _)) = AiActivityMonitor::find_latest_session_file(&home) {
+                            let now_ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as u64;
+                            let is_recent = now_ms.saturating_sub(mtime) < 15_000;
+                            if let Some((m, t)) = AiActivityMonitor::parse_model_from_file(&path) {
+                                if is_recent {
                                     monitor.record_activity(&m, &t).await;
+                                } else {
+                                    let mut st = monitor.state.write().await;
+                                    st.identity = crate::domain::ai_activity::resolve_model_metadata(&m, &t);
+                                    st.is_active = false;
+                                    st.intensity = 0.0;
+                                    st.request_rate_rpm = 0.0;
+                                    st.last_event_epoch_ms = mtime;
                                 }
                             }
                         }

@@ -124,8 +124,8 @@ Item {
         "auto_awesome": "󰄧",
         "psychology": "󰧑",
         "brain": "󰧑",
-        "token": "󰇂",
-        "tokens": "󰇂",
+        "token": "\uf51e",
+        "tokens": "\uf51e",
         "spark": "󰄧",
         "sparkles": "󰄧",
         "tune": "󰔡",
@@ -133,7 +133,7 @@ Item {
         "memory": "󰍛",
         "palette": "󰏘",
         "window": "󰖯",
-        "toll": "󰇂",
+        "toll": "\uf51e",
         "cloud": "󰅟",
         "keyboard": "󰌌",
         "system_update": "󰚰",
@@ -202,7 +202,7 @@ Item {
         if (text && text.includes("drag")) return "󰇙";
         if (text && (text.includes("psychology") || text.includes("brain") || text === "ai")) return "󰧑";
         if (text && (text.includes("spark") || text.includes("auto_awesome"))) return "󰄧";
-        if (text && (text.includes("token") || text.includes("toll") || text.includes("coin"))) return "󰇂";
+        if (text && (text.includes("token") || text.includes("toll") || text.includes("coin"))) return "\uf51e";
         if (text && (text === "add" || text.includes("plus"))) return "󰐕";
         if (text && (text.includes("key") || text.includes("vpn_key"))) return "󰌆";
         if (text && (text.includes("delete") || text.includes("trash"))) return "󰆴";
