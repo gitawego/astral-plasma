@@ -246,26 +246,26 @@ fn test_find_latest_session_file_ignores_context_mode_stats() {
 }
 
 #[test]
-fn test_find_latest_session_file_ignores_antigravity_brain_transcripts() {
+fn test_find_latest_session_file_detects_antigravity_brain_transcripts() {
     use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
     use std::fs;
     let temp_home = tempfile::tempdir().unwrap();
     let brain_dir = temp_home.path().join(".gemini/antigravity/brain/session-123/.system_generated/logs");
-    let pi_session_dir = temp_home.path().join(".pi/agent/sessions/--test-workspace--");
     fs::create_dir_all(&brain_dir).unwrap();
-    fs::create_dir_all(&pi_session_dir).unwrap();
 
-    let pi_session = pi_session_dir.join("real_pi.jsonl");
-    fs::write(&pi_session, r#"{"type":"session","id":"pi-1"}"#).unwrap();
-
-    // Create an antigravity transcript that is newer
     let transcript = brain_dir.join("transcript.jsonl");
-    fs::write(&transcript, r#"{"type":"message","text":"antigravity log"}"#).unwrap();
+    fs::write(&transcript, "`Model Selection` from None to Gemini Flash.\n").unwrap();
 
     let latest = AiActivityMonitor::find_latest_session_file(temp_home.path());
     assert!(latest.is_some());
     let (path, _, _) = latest.unwrap();
-    assert_eq!(path, pi_session, "find_latest_session_file must strictly ignore antigravity brain transcripts and pick true agent sessions");
+    assert_eq!(path, transcript, "find_latest_session_file must detect active antigravity brain transcripts");
+
+    let parsed = AiActivityMonitor::parse_model_from_file(&path);
+    assert!(parsed.is_some());
+    let (model, tool) = parsed.unwrap();
+    assert_eq!(model, "Gemini Flash");
+    assert_eq!(tool, "gemini");
 }
 
 #[tokio::test]
@@ -279,5 +279,32 @@ async fn test_ai_activity_inactive_when_session_older_than_15s() {
     assert_eq!(st.intensity, 0.0);
     assert_eq!(st.request_rate_rpm, 0.0);
 }
+
+#[test]
+fn test_parse_model_from_file_ignores_non_transcript_antigravity_files() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+    use std::fs;
+    let temp_home = tempfile::tempdir().unwrap();
+    let brain_dir = temp_home.path().join(".gemini/antigravity/brain/session-123/.system_generated");
+    fs::create_dir_all(brain_dir.join("tasks")).unwrap();
+    fs::create_dir_all(brain_dir.join("messages")).unwrap();
+
+    let task_log = brain_dir.join("tasks/task-10540.log");
+    fs::write(&task_log, "some task log").unwrap();
+    let msg_json = brain_dir.join("messages/read.json");
+    fs::write(&msg_json, "{}").unwrap();
+    let transcript_full = brain_dir.join("logs/transcript_full.jsonl");
+    fs::create_dir_all(brain_dir.join("logs")).unwrap();
+    fs::write(&transcript_full, "{}").unwrap();
+
+    assert!(AiActivityMonitor::parse_model_from_file(&task_log).is_none());
+    assert!(AiActivityMonitor::parse_model_from_file(&msg_json).is_none());
+    assert!(AiActivityMonitor::parse_model_from_file(&transcript_full).is_none());
+
+    let transcript = brain_dir.join("logs/transcript.jsonl");
+    fs::write(&transcript, "`Model Selection` from None to Gemini Flash.\n").unwrap();
+    assert!(AiActivityMonitor::parse_model_from_file(&transcript).is_some());
+}
+
 
 

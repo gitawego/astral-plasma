@@ -17,6 +17,8 @@ Singleton {
     property bool isActive: false
     property real intensity: 0.0
     property real requestRate: 0.0
+    property real tokenRate: 0.0
+    property real recentTokens: 0.0
 
     // Pulse duration modulated by request rate: faster for high RPM, calmer for steady state
     readonly property int pulseDuration: Math.max(900, Math.min(2600, 2400 - Math.round(root.requestRate * 180)))
@@ -48,10 +50,10 @@ Singleton {
         }
     }
 
-    // Fallback auto-decay watchdog: resets active state to idle if no agent events arrive for 15s
+    // Fallback auto-decay watchdog: resets active state to idle if no agent events arrive for 9s
     Timer {
         id: autoDecayWatchdog
-        interval: 15000
+        interval: 9000
         repeat: false
         running: root.isActive
         onTriggered: {
@@ -71,6 +73,8 @@ Singleton {
         if (data.is_active !== undefined) root.isActive = Boolean(data.is_active);
         if (data.intensity !== undefined) root.intensity = Number(data.intensity);
         if (data.request_rate !== undefined) root.requestRate = Number(data.request_rate);
+        if (data.token_rate !== undefined) root.tokenRate = Number(data.token_rate);
+        if (data.recent_tokens !== undefined) root.recentTokens = Number(data.recent_tokens);
 
         if (root.isActive) {
             autoDecayWatchdog.restart();

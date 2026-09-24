@@ -17,6 +17,10 @@ pub struct AiActivityState {
     pub is_active: bool,
     pub intensity: f64,        // 0.0 to 1.0 (smooth decay)
     pub request_rate_rpm: f64, // Rolling requests per minute
+    #[serde(default)]
+    pub token_rate_tpm: f64,   // Rolling tokens per minute
+    #[serde(default)]
+    pub recent_tokens: u64,    // Total tokens in rolling window
     pub last_event_epoch_ms: u64,
 }
 
@@ -33,6 +37,8 @@ impl Default for AiActivityState {
             is_active: false,
             intensity: 0.0,
             request_rate_rpm: 0.0,
+            token_rate_tpm: 0.0,
+            recent_tokens: 0,
             last_event_epoch_ms: 0,
         }
     }

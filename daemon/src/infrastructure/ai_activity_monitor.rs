@@ -12,6 +12,7 @@ pub struct AiActivityMonitor {
     pub state: Arc<RwLock<AiActivityState>>,
     watch_descriptors: Arc<RwLock<HashMap<i32, PathBuf>>>,
     recent_events_window: Arc<RwLock<Vec<u64>>>,
+    recent_tokens_window: Arc<RwLock<Vec<(u64, u64)>>>,
 }
 
 impl Default for AiActivityMonitor {
@@ -26,6 +27,7 @@ impl AiActivityMonitor {
             state: Arc::new(RwLock::new(AiActivityState::default())),
             watch_descriptors: Arc::new(RwLock::new(HashMap::new())),
             recent_events_window: Arc::new(RwLock::new(Vec::new())),
+            recent_tokens_window: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -35,6 +37,11 @@ impl AiActivityMonitor {
 
     /// Records a new request event for the specified model and tool, updating activity metrics.
     pub async fn record_activity(&self, raw_model: &str, tool_source: &str) {
+        self.record_activity_with_tokens(raw_model, tool_source, None).await;
+    }
+
+    /// Records a new request event with optional token quantity, updating RPM and TPM metrics.
+    pub async fn record_activity_with_tokens(&self, raw_model: &str, tool_source: &str, tokens: Option<u64>) {
         let now_ms = current_epoch_ms();
         let identity = resolve_model_metadata(raw_model, tool_source);
 
@@ -44,11 +51,24 @@ impl AiActivityMonitor {
         window.push(now_ms);
         let rpm = window.len() as f64;
 
+        // Update rolling tokens window
+        let mut tok_window = self.recent_tokens_window.write().await;
+        tok_window.retain(|&(t, _)| now_ms.saturating_sub(t) < 60_000);
+        if let Some(tok) = tokens {
+            if tok > 0 {
+                tok_window.push((now_ms, tok));
+            }
+        }
+        let total_tokens: u64 = tok_window.iter().map(|&(_, cnt)| cnt).sum();
+        let tpm = total_tokens as f64;
+
         let mut st = self.state.write().await;
         st.identity = identity;
         st.is_active = true;
         st.intensity = 1.0;
         st.request_rate_rpm = rpm;
+        st.token_rate_tpm = tpm;
+        st.recent_tokens = total_tokens;
         st.last_event_epoch_ms = now_ms;
     }
 
@@ -63,17 +83,26 @@ impl AiActivityMonitor {
 
         let elapsed = now_ms.saturating_sub(st.last_event_epoch_ms);
 
-        // Decay rolling window
+        // Decay rolling windows
         let mut window = self.recent_events_window.write().await;
         window.retain(|&t| now_ms.saturating_sub(t) < 60_000);
         st.request_rate_rpm = window.len() as f64;
 
-        if elapsed > 12000 {
-            // Exponential decay after 12s idle
-            st.intensity *= 0.80;
+        let mut tok_window = self.recent_tokens_window.write().await;
+        tok_window.retain(|&(t, _)| now_ms.saturating_sub(t) < 60_000);
+        let total_tokens: u64 = tok_window.iter().map(|&(_, cnt)| cnt).sum();
+        st.token_rate_tpm = total_tokens as f64;
+        st.recent_tokens = total_tokens;
+
+        if elapsed > 6000 {
+            // Exponential decay after 6s idle
+            st.intensity *= 0.50;
             if st.intensity < 0.05 {
                 st.intensity = 0.0;
                 st.is_active = false;
+                st.request_rate_rpm = 0.0;
+                st.token_rate_tpm = 0.0;
+                st.recent_tokens = 0;
                 return true; // Transitioned to inactive
             }
         }
@@ -113,6 +142,9 @@ impl AiActivityMonitor {
     /// Comprehensive file parser: examines tail, head (for initial model_change), and tool settings.
     pub fn parse_model_from_file(path: &Path) -> Option<(String, String)> {
         let path_hint = path.to_string_lossy();
+        if path_hint.contains("antigravity") && !path_hint.ends_with("transcript.jsonl") {
+            return None;
+        }
 
         // 1. Try reading tail (up to 32KB)
         if let Some(tail) = Self::read_tail_string(path, 32768) {
@@ -158,6 +190,20 @@ impl AiActivityMonitor {
         None
     }
 
+    /// Comprehensive file parser: extracts active model, provider, and recent token throughput.
+    pub fn parse_model_and_tokens_from_file(path: &Path) -> Option<(String, String, Option<u64>)> {
+        let path_hint = path.to_string_lossy();
+        if path_hint.contains("antigravity") && !path_hint.ends_with("transcript.jsonl") {
+            return None;
+        }
+
+        let tail = Self::read_tail_string(path, 32768);
+        let tokens = tail.as_deref().and_then(extract_tokens_from_tail);
+
+        let (model, tool) = Self::parse_model_from_file(path)?;
+        Some((model, tool, tokens))
+    }
+
     /// Extracts the most recent model identifier from the tail of a session or log file.
     pub fn parse_model_from_tail(tail: &str, path_hint: &str) -> Option<(String, String)> {
         let hint_lower = path_hint.to_lowercase();
@@ -165,6 +211,8 @@ impl AiActivityMonitor {
             "claude"
         } else if hint_lower.contains("codex") {
             "codex"
+        } else if hint_lower.contains("antigravity") || hint_lower.contains("gemini") {
+            "antigravity"
         } else if hint_lower.contains("opencode") {
             "opencode"
         } else if hint_lower.contains(".omp") {
@@ -189,6 +237,21 @@ impl AiActivityMonitor {
             }
         }
 
+        // Antigravity special handling: check for "Model Selection" or planner steps
+        if hint_lower.contains("antigravity") || hint_lower.contains("gemini") {
+            for line in tail.lines().rev() {
+                if let Some(pos) = line.find("Model Selection` from None to ") {
+                    let rem = &line[pos + 30..];
+                    let candidate = rem.split(['`', '\n', '\r']).next().unwrap_or("Gemini Flash").trim();
+                    let clean = candidate.trim_end_matches('.').split('(').next().unwrap_or(candidate).trim();
+                    if !clean.is_empty() && clean.len() < 30 && !clean.contains('\\') && !clean.contains('{') && !clean.contains("let ") {
+                        return Some((clean.to_string(), "gemini".to_string()));
+                    }
+                }
+            }
+            return Some(("Gemini Flash".to_string(), "gemini".to_string()));
+        }
+
         // Keyword detection in recent lines
         let lower_tail = tail.to_lowercase();
         if lower_tail.contains("mimo") {
@@ -208,6 +271,7 @@ impl AiActivityMonitor {
             "omp" => Some(("mimo-v2.6-flash".to_string(), "mimo".to_string())),
             "codex" => Some(("gpt-4o".to_string(), "openai".to_string())),
             "opencode" => Some(("mimo-v2.6-flash".to_string(), "mimo".to_string())),
+            "antigravity" => Some(("Gemini Flash".to_string(), "gemini".to_string())),
             _ => None,
         }
     }
@@ -253,6 +317,19 @@ impl AiActivityMonitor {
             }
         }
 
+        // Antigravity transcripts live in ~/.gemini/antigravity/brain/<id>/.system_generated/logs
+        let brain = home.join(".gemini/antigravity/brain");
+        if brain.exists() && brain.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&brain) {
+                for e in entries.flatten() {
+                    let logs = e.path().join(".system_generated/logs");
+                    if logs.exists() && logs.is_dir() {
+                        candidate_dirs.push(logs);
+                    }
+                }
+            }
+        }
+
         let inotify_fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
         if inotify_fd < 0 {
             return;
@@ -268,7 +345,7 @@ impl AiActivityMonitor {
                     libc::inotify_add_watch(
                         inotify_fd,
                         c_str.as_ptr(),
-                        libc::IN_MODIFY | libc::IN_CREATE | libc::IN_CLOSE_WRITE | libc::IN_ATTRIB,
+                        libc::IN_MODIFY | libc::IN_CREATE | libc::IN_CLOSE_WRITE,
                     )
                 };
                 if wd >= 0 {
@@ -289,13 +366,13 @@ impl AiActivityMonitor {
         // Synchronize initial ground-truth state immediately
         if let Some((path, mtime, size)) = Self::find_latest_session_file(&home) {
             let now_epoch = current_epoch_ms();
-            let is_recent = now_epoch.saturating_sub(mtime) < 15_000;
+            let is_recent = now_epoch.saturating_sub(mtime) < 8_000;
             if is_recent {
                 last_seen_file = Some(path.clone());
                 last_seen_mtime = mtime;
                 last_seen_size = size;
-                if let Some((model, tool)) = Self::parse_model_from_file(&path) {
-                    self.record_activity(&model, &tool).await;
+                if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&path) {
+                    self.record_activity_with_tokens(&model, &tool, tokens).await;
                 }
             } else if let Some((model, tool)) = Self::parse_model_from_file(&path) {
                 let mut st = self.state.write().await;
@@ -303,6 +380,8 @@ impl AiActivityMonitor {
                 st.is_active = false;
                 st.intensity = 0.0;
                 st.request_rate_rpm = 0.0;
+                st.token_rate_tpm = 0.0;
+                st.recent_tokens = 0;
                 st.last_event_epoch_ms = mtime;
             }
         }
@@ -327,13 +406,28 @@ impl AiActivityMonitor {
                         Err(_) => break,
                     };
 
-                    let n = unsafe {
-                        libc::read(inotify_fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len())
-                    };
+                    loop {
+                        let n = unsafe {
+                            libc::read(inotify_fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len())
+                        };
 
-                    guard.clear_ready();
+                        if n < 0 {
+                            let err = std::io::Error::last_os_error();
+                            if err.raw_os_error() == Some(libc::EAGAIN) || err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+                                guard.clear_ready();
+                                break;
+                            } else {
+                                guard.clear_ready();
+                                eprintln!("[ai_activity_monitor] inotify fatal read error: {}", err);
+                                return;
+                            }
+                        }
 
-                    if n > 0 {
+                        if n == 0 {
+                            guard.clear_ready();
+                            return;
+                        }
+
                         let mut offset = 0usize;
                         let bytes_read = n as usize;
                         while offset + std::mem::size_of::<libc::inotify_event>() <= bytes_read {
@@ -356,7 +450,7 @@ impl AiActivityMonitor {
                                                 libc::inotify_add_watch(
                                                     inotify_fd,
                                                     c_str.as_ptr(),
-                                                    libc::IN_MODIFY | libc::IN_CREATE | libc::IN_CLOSE_WRITE | libc::IN_ATTRIB,
+                                                    libc::IN_MODIFY | libc::IN_CREATE | libc::IN_CLOSE_WRITE,
                                                 )
                                             };
                                             if new_wd >= 0 {
@@ -365,11 +459,22 @@ impl AiActivityMonitor {
                                                 *wds = watch_map.clone();
                                             }
                                         }
-                                    } else if name_str.ends_with(".jsonl") || name_str.ends_with(".log") || name_str.ends_with(".json") {
-                                        if let Some((model, tool)) = Self::parse_model_from_file(&full_path) {
-                                            self.record_activity(&model, &tool).await;
-                                            let curr = self.get_state().await;
-                                            emit_activity_payload(&curr);
+                                    } else if name_str.ends_with(".jsonl") || name_str.ends_with(".log") {
+                                        if (name_str.contains("antigravity") || full_path.to_string_lossy().contains("antigravity")) && name_str != "transcript.jsonl" {
+                                            offset += std::mem::size_of::<libc::inotify_event>() + name_len;
+                                            continue;
+                                        }
+                                        let is_fresh = full_path.metadata().ok()
+                                            .and_then(|m| m.modified().ok())
+                                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < 8_000)
+                                            .unwrap_or(false);
+                                        if is_fresh {
+                                            if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&full_path) {
+                                                self.record_activity_with_tokens(&model, &tool, tokens).await;
+                                                let curr = self.get_state().await;
+                                                emit_activity_payload(&curr);
+                                            }
                                         }
                                     }
                                 }
@@ -382,23 +487,22 @@ impl AiActivityMonitor {
                     // Resilient poll: check latest modified session across all agent directories
                     if let Some((path, mtime, size)) = Self::find_latest_session_file(&home) {
                         let now_epoch = current_epoch_ms();
-                        let is_recent = now_epoch.saturating_sub(mtime) < 15_000;
+                        let is_recent = now_epoch.saturating_sub(mtime) < 8_000;
                         if is_recent && (mtime > last_seen_mtime || size != last_seen_size || last_seen_file.as_ref() != Some(&path)) {
                             last_seen_file = Some(path.clone());
                             last_seen_mtime = mtime;
                             last_seen_size = size;
 
-                            if let Some((model, tool)) = Self::parse_model_from_file(&path) {
-                                self.record_activity(&model, &tool).await;
+                            if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&path) {
+                                self.record_activity_with_tokens(&model, &tool, tokens).await;
                                 let curr = self.get_state().await;
                                 emit_activity_payload(&curr);
                             }
                         }
                     }
 
-                    let was_active = self.get_state().await.is_active;
                     let transitioned = self.tick_decay().await;
-                    if transitioned || was_active {
+                    if transitioned {
                         let curr = self.get_state().await;
                         emit_activity_payload(&curr);
                     }
@@ -413,7 +517,21 @@ impl AiActivityMonitor {
     pub fn find_latest_session_file(home: &Path) -> Option<(PathBuf, u64, u64)> {
         let mut candidates = Vec::new();
 
-        // 1. Pi agent sessions (purely real .jsonl session files, context-mode stats excluded)
+        // 1. Antigravity brain transcripts
+        let brain = home.join(".gemini/antigravity/brain");
+        if let Ok(dirs) = std::fs::read_dir(&brain) {
+            for d in dirs.flatten() {
+                let p = d.path();
+                if p.is_dir() {
+                    let log_p = p.join(".system_generated/logs/transcript.jsonl");
+                    if log_p.exists() {
+                        candidates.push(log_p);
+                    }
+                }
+            }
+        }
+
+        // 2. Pi agent sessions (purely real .jsonl session files, context-mode stats excluded)
         let pi_sessions = home.join(".pi/agent/sessions");
         if let Ok(dirs) = std::fs::read_dir(&pi_sessions) {
             for d in dirs.flatten() {
@@ -505,9 +623,49 @@ pub fn emit_activity_payload(st: &AiActivityState) {
         "is_active": st.is_active,
         "intensity": (st.intensity * 100.0).round() / 100.0,
         "request_rate": st.request_rate_rpm,
+        "token_rate": st.token_rate_tpm,
+        "recent_tokens": st.recent_tokens,
     });
     if let Ok(s) = serde_json::to_string(&payload) {
         println!("{}", s);
+    }
+}
+
+/// Helper to extract token usage from a JSON line (supports pi, omp, claude, openai formats).
+pub fn extract_tokens_from_json_line(line: &str) -> Option<u64> {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+        if let Some(usage) = v.get("usage").or_else(|| v.get("message").and_then(|m| m.get("usage"))) {
+            if let Some(tot) = usage.get("totalTokens").or_else(|| usage.get("total_tokens")).and_then(|t| t.as_u64()) {
+                if tot > 0 {
+                    return Some(tot);
+                }
+            }
+            let input = usage.get("input").or_else(|| usage.get("input_tokens")).or_else(|| usage.get("prompt_tokens")).and_then(|t| t.as_u64()).unwrap_or(0);
+            let output = usage.get("output").or_else(|| usage.get("output_tokens")).or_else(|| usage.get("completion_tokens")).and_then(|t| t.as_u64()).unwrap_or(0);
+            if input + output > 0 {
+                return Some(input + output);
+            }
+        }
+    }
+    None
+}
+
+/// Helper to scan tail lines for token usage or estimate from line length.
+pub fn extract_tokens_from_tail(tail: &str) -> Option<u64> {
+    for line in tail.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(tok) = extract_tokens_from_json_line(trimmed) {
+            return Some(tok);
+        }
+    }
+    let last_len = tail.lines().rev().find(|l| !l.trim().is_empty()).map(|l| l.len()).unwrap_or(0);
+    if last_len > 60 {
+        Some(((last_len / 4) as u64).min(4096))
+    } else {
+        None
     }
 }
 

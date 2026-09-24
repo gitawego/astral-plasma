@@ -1339,6 +1339,8 @@ PanelWindow {
             ? AiActivityService.brandColor
             : ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#818CF8")
         rpm: (typeof AiActivityService !== "undefined") ? AiActivityService.requestRate : 0.0
+        tokenRate: (typeof AiActivityService !== "undefined") ? AiActivityService.tokenRate : 0.0
+        recentTokens: (typeof AiActivityService !== "undefined") ? AiActivityService.recentTokens : 0.0
         intensity: (typeof AiActivityService !== "undefined") ? AiActivityService.intensity : 0.0
         modelDisplayName: (typeof AiActivityService !== "undefined") ? AiActivityService.displayName : ""
     }

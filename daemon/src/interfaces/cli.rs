@@ -560,7 +560,7 @@ pub async fn run_cli() -> DynResult<()> {
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_millis() as u64;
-                            let is_recent = now_ms.saturating_sub(mtime) < 15_000;
+                            let is_recent = now_ms.saturating_sub(mtime) < 8_000;
                             if let Some((m, t)) = AiActivityMonitor::parse_model_from_file(&path) {
                                 if is_recent {
                                     monitor.record_activity(&m, &t).await;
@@ -585,6 +585,8 @@ pub async fn run_cli() -> DynResult<()> {
                         "is_active": state.is_active,
                         "intensity": state.intensity,
                         "request_rate": state.request_rate_rpm,
+                        "token_rate": state.token_rate_tpm,
+                        "recent_tokens": state.recent_tokens,
                     }))?);
                 }
                 "refresh" => {

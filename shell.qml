@@ -115,6 +115,8 @@ ShellRoot {
         property bool isActive: (typeof AiActivityService !== "undefined") ? AiActivityService.isActive : false
         property real intensity: (typeof AiActivityService !== "undefined") ? AiActivityService.intensity : 0.0
         property real requestRate: (typeof AiActivityService !== "undefined") ? AiActivityService.requestRate : 0.0
+        property real tokenRate: (typeof AiActivityService !== "undefined") ? AiActivityService.tokenRate : 0.0
+        property real recentTokens: (typeof AiActivityService !== "undefined") ? AiActivityService.recentTokens : 0.0
     }
 
     IpcHandler {

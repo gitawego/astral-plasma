@@ -12,6 +12,8 @@ Item {
     property bool active: false
     property color brandColor: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#818CF8"
     property real rpm: 0.0
+    property real tokenRate: 0.0
+    property real recentTokens: 0.0
     property real intensity: 0.0
     property string modelDisplayName: ""
 
@@ -26,11 +28,20 @@ Item {
         return Qt.alpha(c, Math.max(0.0, Math.min(1.0, a)));
     }
 
-    // Energized color modulation based on RPM
+    // Combined throughput load from request rate (RPM) and token processing rate
+    readonly property real throughputLoad: Math.max(0.0, root.rpm + (root.tokenRate / 2500.0) + Math.min(15.0, root.recentTokens / 2000.0))
+
+    // Velocity modulation: higher throughput load accelerates electric travel duration (260ms to 2400ms)
+    readonly property int currentTravelDuration: Math.max(260, Math.min(2400, Math.round(2400.0 / (1.0 + 0.28 * throughputLoad))))
+
+    // Electric packet length elongates with higher velocity/momentum (36px to 56px)
+    readonly property real packetLength: Math.min(56, Math.max(36, 36 + throughputLoad * 0.9))
+
+    // Energized color modulation based on throughput load
     readonly property color energizedColor: {
-        if (rpm >= 8.0) {
+        if (throughputLoad >= 8.0) {
             return Qt.lighter(brandColor, 1.40);
-        } else if (rpm >= 3.0) {
+        } else if (throughputLoad >= 3.0) {
             return Qt.lighter(brandColor, 1.20);
         } else {
             return brandColor;
@@ -38,9 +49,9 @@ Item {
     }
 
     readonly property color accentColor: {
-        if (rpm >= 8.0) {
+        if (throughputLoad >= 8.0) {
             return Qt.tint(energizedColor, Qt.rgba(1.0, 0.90, 0.40, 0.35));
-        } else if (rpm >= 4.0) {
+        } else if (throughputLoad >= 4.0) {
             return Qt.tint(energizedColor, Qt.rgba(0.40, 0.90, 1.0, 0.25));
         } else {
             return energizedColor;
@@ -54,14 +65,24 @@ Item {
         loops: Animation.Infinite
         NumberAnimation {
             to: 1.0
-            duration: Math.max(700, Math.min(2200, 2000 - Math.round(root.rpm * 150)))
+            duration: Math.max(500, Math.min(2200, Math.round(2000.0 / (1.0 + 0.15 * root.throughputLoad))))
             easing.type: Easing.InOutSine
         }
         NumberAnimation {
             to: 0.0
-            duration: Math.max(700, Math.min(2200, 2000 - Math.round(root.rpm * 150)))
+            duration: Math.max(500, Math.min(2200, Math.round(2000.0 / (1.0 + 0.15 * root.throughputLoad))))
             easing.type: Easing.InOutSine
         }
+    }
+
+    // Synchronized electric current travel progress across both borders
+    property real currentTravelProgress: 0.0
+    NumberAnimation on currentTravelProgress {
+        running: root.active && root.growthProgress > 0.01
+        loops: Animation.Infinite
+        from: 0.0
+        to: 1.0
+        duration: root.currentTravelDuration
     }
 
     // Smooth entry / exit fade
@@ -153,6 +174,22 @@ Item {
                     direction: PathArc.Clockwise
                 }
             }
+
+            // Luminous Arc Flash when electric currents meet at the nexus
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: root.safeAlpha("#FFFFFF", Math.max(0.0, Math.sin(Math.max(0.0, root.currentTravelProgress - 0.7) / 0.3 * Math.PI) * 0.95))
+                strokeWidth: 1.5
+                capStyle: ShapePath.RoundCap
+                startX: root.cornerFilletR; startY: 0
+                PathArc {
+                    x: 0
+                    y: root.cornerFilletR
+                    radiusX: root.cornerFilletR
+                    radiusY: root.cornerFilletR
+                    direction: PathArc.Clockwise
+                }
+            }
         }
     }
 
@@ -195,31 +232,24 @@ Item {
             }
         }
 
-        // Traveling digital data packet across the 1px specular border
+        // Traveling digital data packet (horizontal electric current) across the 1px specular border
         Rectangle {
             id: dataPacket
             y: 0
-            width: 32
+            width: root.packetLength
             height: 1
             z: 6
             color: "transparent"
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.5; color: "#FFFFFF" }
+                GradientStop { position: 0.25; color: root.safeAlpha(root.accentColor, 0.70) }
+                GradientStop { position: 0.50; color: "#FFFFFF" }
+                GradientStop { position: 0.75; color: root.safeAlpha(root.accentColor, 0.70) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
 
-            property real travelProgress: 0.0
-            x: Math.round(travelProgress * (bottomBorderSection.width - width))
-
-            NumberAnimation on travelProgress {
-                running: root.active && root.growthProgress > 0.01
-                loops: Animation.Infinite
-                from: 0.0
-                to: 1.0
-                duration: Math.max(900, 2400 - Math.round(root.rpm * 180))
-            }
+            x: Math.round(root.currentTravelProgress * (bottomBorderSection.width - width))
         }
 
         // =====================================================================
@@ -310,12 +340,19 @@ Item {
                         color: root.safeAlpha("#FFFFFF", 0.65)
                     }
 
-                    // Live RPM / Frequency Indicator
+                    // Live RPM / Frequency Indicator & Token throughput
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: (root.rpm > 0)
-                            ? ((root.rpm >= 10 ? root.rpm.toFixed(0) : root.rpm.toFixed(1)) + " RPM")
-                            : "ACTIVE"
+                        text: {
+                            if (root.recentTokens >= 1000) {
+                                const kTok = (root.recentTokens / 1000).toFixed(root.recentTokens >= 10000 ? 0 : 1);
+                                return ((root.rpm > 0 ? (root.rpm >= 10 ? root.rpm.toFixed(0) : root.rpm.toFixed(1)) + " RPM " : "") + kTok + "k Tok").trim();
+                            } else if (root.rpm > 0) {
+                                return (root.rpm >= 10 ? root.rpm.toFixed(0) : root.rpm.toFixed(1)) + " RPM";
+                            } else {
+                                return "ACTIVE";
+                            }
+                        }
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                         font.pixelSize: 9
                         font.bold: true
@@ -332,21 +369,21 @@ Item {
 
                         Rectangle {
                             width: 2
-                            height: Math.min(7, Math.max(2, 3 + Math.round(4 * Math.abs(Math.sin(root.pulse * Math.PI)) * Math.min(1.2, Math.max(0.6, root.rpm * 0.25)))))
+                            height: Math.min(7, Math.max(2, 3 + Math.round(4 * Math.abs(Math.sin(root.pulse * Math.PI)) * Math.min(1.2, Math.max(0.6, root.throughputLoad * 0.20)))))
                             color: root.energizedColor
                             radius: 0.5
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Rectangle {
                             width: 2
-                            height: Math.min(7, Math.max(2, 4 + Math.round(5 * Math.abs(Math.cos(root.pulse * Math.PI)) * Math.min(1.2, Math.max(0.6, root.rpm * 0.25)))))
+                            height: Math.min(7, Math.max(2, 4 + Math.round(5 * Math.abs(Math.cos(root.pulse * Math.PI)) * Math.min(1.2, Math.max(0.6, root.throughputLoad * 0.20)))))
                             color: root.accentColor
                             radius: 0.5
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Rectangle {
                             width: 2
-                            height: Math.min(7, Math.max(2, 3 + Math.round(4 * Math.abs(Math.sin((root.pulse + 0.5) * Math.PI)) * Math.min(1.2, Math.max(0.6, root.rpm * 0.25)))))
+                            height: Math.min(7, Math.max(2, 3 + Math.round(4 * Math.abs(Math.sin((root.pulse + 0.5) * Math.PI)) * Math.min(1.2, Math.max(0.6, root.throughputLoad * 0.20)))))
                             color: root.energizedColor
                             radius: 0.5
                             anchors.verticalCenter: parent.verticalCenter
@@ -395,8 +432,8 @@ Item {
         gradient: Gradient {
             orientation: Gradient.Vertical
             GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 0.35; color: root.safeAlpha(root.brandColor, 0.12 * root.intensity) }
-            GradientStop { position: 0.75; color: root.safeAlpha(root.brandColor, 0.28 * root.intensity) }
+            GradientStop { position: 0.25; color: root.safeAlpha(root.brandColor, 0.12 * root.intensity) }
+            GradientStop { position: 0.70; color: root.safeAlpha(root.brandColor, 0.28 * root.intensity) }
             GradientStop { position: 1.0; color: root.safeAlpha(root.energizedColor, 0.48 * (0.7 + 0.3 * root.pulse)) }
         }
 
@@ -415,6 +452,26 @@ Item {
                 GradientStop { position: 0.70; color: root.safeAlpha(root.energizedColor, 0.85) }
                 GradientStop { position: 1.0; color: Qt.lighter(root.energizedColor, 1.40) }
             }
+        }
+
+        // Traveling digital data packet (vertical electric current) across the 1px specular border
+        Rectangle {
+            id: dataPacketVertical
+            x: 0
+            width: 1
+            height: root.packetLength
+            z: 6
+            color: "transparent"
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.25; color: root.safeAlpha(root.accentColor, 0.70) }
+                GradientStop { position: 0.50; color: "#FFFFFF" }
+                GradientStop { position: 0.75; color: root.safeAlpha(root.accentColor, 0.70) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+
+            y: Math.round(root.currentTravelProgress * (rightBorderSection.height - height))
         }
 
         // =====================================================================
