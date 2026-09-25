@@ -214,7 +214,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 10
 
-        // 1. App Launcher Button (Arch Linux Logo)
+        // 1. App Launcher Button (Astral Plasma Logo)
         Item {
             id: launcherBtn
             anchors.horizontalCenter: parent.horizontalCenter
@@ -223,14 +223,17 @@ Item {
             implicitWidth: root.iconS
             implicitHeight: root.iconS
 
-            Text {
+            Image {
                 id: launcherIcon
                 anchors.centerIn: parent
-                text: "\uf303" // Arch Linux logo glyph
-                font.family: Theme.fontFamily
-                font.pixelSize: Math.round(root.iconS * 0.72)
-                color: Colors.primary
-                opacity: launcherHover.containsMouse ? 1.0 : 0.85
+                width: Math.round(root.iconS * 0.82)
+                height: Math.round(root.iconS * 0.82)
+                source: Qt.resolvedUrl("../theme/assets/logo.svg")
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                sourceSize.width: Math.round(root.iconS * 2)
+                sourceSize.height: Math.round(root.iconS * 2)
+                opacity: launcherHover.containsMouse ? 1.0 : 0.88
                 scale: launcherHover.pressed ? 0.9 : (launcherHover.containsMouse ? 1.12 : 1.0)
 
                 Behavior on scale {
