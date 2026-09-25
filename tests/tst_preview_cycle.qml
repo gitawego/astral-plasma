@@ -101,6 +101,23 @@ Item {
         cycle.advance(); // completes "only", wraps onto an empty list
         assert(cycle.active === false, "wrap onto an empty list must deactivate the cycle");
 
+        // 9. First pass synchronous pumping when firstPassInterval === 0 even with large interval
+        cycle.stop();
+        cycle.interval = 5000;
+        cycle.firstPassInterval = 0;
+        cycle.items = ["init1", "init2", "init3"];
+        testRoot.calls = [];
+        cycle.start();
+        assert(testRoot.calls.length === 1 && testRoot.calls[0] === "init1", "first item must pump immediately");
+        cycle.advance();
+        assert(testRoot.calls.length === 2 && testRoot.calls[1] === "init2", "second item in first pass must pump immediately without waiting for interval");
+        cycle.advance();
+        assert(testRoot.calls.length === 3 && testRoot.calls[2] === "init3", "third item in first pass must pump immediately");
+        cycle.advance();
+        assert(testRoot.finishedCycles >= 1, "must finish first pass cycle");
+        assert(testRoot.calls.length === 3, "wrap into second pass with interval: 5000 must wait for timer, not pump immediately");
+        cycle.stop();
+
         console.log("PASS: Preview Cycle serial rotation tests passed");
         Qt.exit(0);
     }

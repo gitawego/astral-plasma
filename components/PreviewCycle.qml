@@ -15,10 +15,12 @@ Item {
     property var items: []
     property var runner: null
     property int interval: 120
+    property int firstPassInterval: 0
     property bool active: false
 
     property var _queue: []
     property int _index: 0
+    property bool _isFirstPass: true
 
     signal finishedCycle()
 
@@ -40,7 +42,9 @@ Item {
     }
 
     function _schedule() {
-        if (interval > 0) {
+        const delay = _isFirstPass ? root.firstPassInterval : root.interval;
+        if (delay > 0) {
+            nextTimer.interval = Math.max(1, delay);
             nextTimer.restart();
         } else {
             _pump();
@@ -49,6 +53,7 @@ Item {
 
     function start() {
         nextTimer.stop();
+        _isFirstPass = true;
         _rebuild();
         _index = 0;
         active = _queue.length > 0;
@@ -60,12 +65,14 @@ Item {
         active = false;
         _queue = [];
         _index = 0;
+        _isFirstPass = true;
     }
 
     function advance() {
         if (!active) return;
         _index++;
         if (_index >= _queue.length) {
+            _isFirstPass = false;
             finishedCycle();
             _rebuild();
             _index = 0;

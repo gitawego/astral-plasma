@@ -12,6 +12,7 @@ Singleton {
     property var windows: []
     property var tray: []
     property var pendingLaunches: []
+    property var installedApps: []
     property string activeTitle: "Desktop"
     property string activeMaterialIcon: "desktop_windows"
     property string activeIconName: ""
@@ -93,6 +94,35 @@ Singleton {
         if (!exists) {
             next.push(launchObj);
             root.pendingLaunches = next;
+        }
+    }
+
+    // Background process to populate and cache all installed system applications
+    Process {
+        id: installedAppsProc
+        command: [root.daemonBin, "apps"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const parsed = JSON.parse(this.text.trim());
+                    if (Array.isArray(parsed)) {
+                        for (let i = 0; i < parsed.length; i++) {
+                            const a = parsed[i];
+                            a._searchKey = ((a.name || "") + " " + (a.comment || "") + " " + (a.exec || "") + " " + (a.desktop_file || "")).toLowerCase();
+                        }
+                        root.installedApps = parsed;
+                    }
+                } catch (e) {
+                    console.warn("WindowService installedApps parse error:", e);
+                }
+            }
+        }
+    }
+
+    function reloadInstalledApps() {
+        if (!installedAppsProc.running) {
+            installedAppsProc.running = true;
         }
     }
 
@@ -355,12 +385,12 @@ Singleton {
     }
 
     // ---- Active-apps overview thumbnails ---------------------------------
-    // While the overview is open, PreviewCycle rotates ONE capture at a time
-    // across every window through a single Process, so two KWin
-    // CaptureWindow calls never race. Each capture alternates that window's
-    // two slot files, so the stored URL changes on every refresh and
-    // LiveWindowThumbnail can swap buffers without a blank frame. The map is
-    // reassigned (not mutated) so delegate bindings re-evaluate.
+    // While the overview is open, an initial parallel batch capture runs
+    // via `astral-plasma preview batch`, immediately streaming cached
+    // thumbnails (0ms frame 0) and parallel fresh captures (~40-60ms).
+    // Steady-state continuous updates then hand off to PreviewCycle, which
+    // rotates ONE capture at a time across every window through a single Process,
+    // alternating round-robin slots for flicker-free double-buffered updates.
     property var overviewThumbnails: ({})
     property bool overviewActive: false
     readonly property int overviewThumbWidth: 480
@@ -400,6 +430,37 @@ Singleton {
         onExited: overviewCycle.advance()
     }
 
+    Process {
+        id: overviewBatchProc
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: (raw) => {
+                const line = raw.trim();
+                if (!line) return;
+                const parts = line.split(":");
+                if (parts.length >= 3 && (parts[0] === "cached" || parts[0] === "ready")) {
+                    const key = parts[1];
+                    const path = parts.slice(2).join(":");
+                    if (path.startsWith("/")) {
+                        root._storeOverviewThumbnail(key, "file://" + path);
+                    }
+                }
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const err = this.text.trim();
+                if (err) console.warn("Overview batch preview error:", err);
+            }
+        }
+        onExited: (exitCode, exitStatus) => {
+            if (root.overviewActive) {
+                overviewCycle.items = root._overviewKeys();
+                if (!overviewCycle.active) overviewCycle.start();
+            }
+        }
+    }
+
     function _storeOverviewThumbnail(key, url) {
         const next = Object.assign({}, root.overviewThumbnails);
         next[key] = url;
@@ -424,18 +485,31 @@ Singleton {
     /// Start (or re-target) the overview rotation for every current window.
     function startOverviewThumbnails() {
         root.overviewActive = true;
-        overviewCycle.items = root._overviewKeys();
-        if (!overviewCycle.active) overviewCycle.start();
+        const keys = root._overviewKeys();
+        overviewCycle.items = keys;
+
+        if (keys.length > 0) {
+            overviewBatchProc.running = false;
+            overviewBatchProc.command = [root.daemonBin, "preview", "batch", "" + root.overviewThumbWidth].concat(keys);
+            overviewBatchProc.running = true;
+        } else {
+            if (!overviewCycle.active) overviewCycle.start();
+        }
     }
 
     /// Adopt window-list changes while open without restarting the rotation:
     /// PreviewCycle re-reads `items` at the next wrap.
     function refreshOverviewThumbnails() {
-        overviewCycle.items = root._overviewKeys();
+        const keys = root._overviewKeys();
+        overviewCycle.items = keys;
+        if (root.overviewActive && !overviewBatchProc.running && !overviewCycle.active) {
+            overviewCycle.start();
+        }
     }
 
     function stopOverviewThumbnails() {
         root.overviewActive = false;
+        overviewBatchProc.running = false;
         overviewCycle.stop();
         // An in-flight capture is left to finish (~one frame). Killing it
         // would emit a late onExited whose advance() could race a fast reopen

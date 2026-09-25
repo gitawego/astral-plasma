@@ -213,3 +213,34 @@ fn test_fit_box_short_window_height_not_fabricated() {
     assert!(img.height() < 40,
         "height must not be fabricated up to the old 40px floor, got {}", img.height());
 }
+
+#[test]
+fn test_get_existing_preview_resolution() {
+    let test_uuid = "unit-test-existing-preview-id";
+    let p0 = get_target_path(test_uuid, "0");
+    let p1 = get_target_path(test_uuid, "1");
+
+    let _ = fs::remove_file(&p0);
+    let _ = fs::remove_file(&p1);
+
+    // 1. None when files don't exist
+    assert_eq!(get_existing_preview(test_uuid), None);
+
+    // 2. Only slot 0 exists
+    fs::write(&p0, b"data0").unwrap();
+    assert_eq!(get_existing_preview(test_uuid), Some(p0.clone()));
+
+    // 3. Both exist, slot 1 newer
+    std::thread::sleep(std::time::Duration::from_millis(15));
+    fs::write(&p1, b"data1").unwrap();
+    assert_eq!(get_existing_preview(test_uuid), Some(p1.clone()));
+
+    // 4. Slot 0 updated to be newer than slot 1
+    std::thread::sleep(std::time::Duration::from_millis(15));
+    fs::write(&p0, b"data0_new").unwrap();
+    assert_eq!(get_existing_preview(test_uuid), Some(p0.clone()));
+
+    // Cleanup
+    let _ = fs::remove_file(&p0);
+    let _ = fs::remove_file(&p1);
+}

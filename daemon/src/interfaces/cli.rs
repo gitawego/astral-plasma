@@ -1018,8 +1018,36 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
-        "preview" => {
-            if args.len() >= 3 {
+        "preview" | "preview-batch" => {
+            let cmd = args[1].as_str();
+            let is_batch = (cmd == "preview-batch")
+                || (args.get(2).map(|s| s.as_str()) == Some("batch"));
+
+            if is_batch {
+                let (width_idx, ids_start) = if cmd == "preview-batch" {
+                    (2, 3)
+                } else {
+                    (3, 4)
+                };
+                let width: u32 = args.get(width_idx).and_then(|w| w.parse().ok()).unwrap_or(480);
+                let window_ids: Vec<String> = args.iter().skip(ids_start).cloned().collect();
+
+                // 1. Emit any existing cached previews first for 0ms frame-0 rendering
+                for wid in &window_ids {
+                    let clean = wid.trim_matches(|c| c == '{' || c == '}');
+                    if let Some(cached) = crate::infrastructure::preview_capture::get_existing_preview(clean) {
+                        println!("cached:{}:{}", clean, cached);
+                    }
+                }
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+
+                // 2. Perform parallel batch capture
+                if let Err(e) = crate::infrastructure::preview_capture::capture_windows_batch(&window_ids, width).await {
+                    eprintln!("Batch preview capture failed: {}", e);
+                    std::process::exit(1);
+                }
+            } else if args.len() >= 3 {
                 let win_id = &args[2];
                 let width: u32 = args.get(3).and_then(|w| w.parse().ok()).unwrap_or(320);
                 let slot = args.get(4).map(|s| s.as_str());
@@ -1035,6 +1063,7 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             } else {
                 eprintln!("Usage: astral-plasma preview <window_id> [target_width] [slot]");
+                eprintln!("   or: astral-plasma preview batch <target_width> [window_ids...]");
             }
         }
         "desktop" => {

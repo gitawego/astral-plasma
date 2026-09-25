@@ -175,6 +175,10 @@ ShellRoot {
         function toggle(): void { Config.toggleOverview(); }
         function open(): void { Config.openOverview(); }
         function close(): void { Config.closeOverview(); }
+        function search(query: string): void {
+            Config.openOverview();
+            if (overviewSurface) overviewSurface.queryText = query;
+        }
     }
 
     IpcHandler {
@@ -356,7 +360,9 @@ ShellRoot {
 
     // Active apps overview (bare Meta key -> KWin shortcut -> daemon ShellIpc
     // -> this IPC): fullscreen overlay with live thumbnails, primary screen.
-    ActiveAppsOverview {}
+    ActiveAppsOverview {
+        id: overviewSurface
+    }
 
     // Settings GUI Window
     SettingsWindow {

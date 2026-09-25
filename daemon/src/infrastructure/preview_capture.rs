@@ -1,9 +1,11 @@
 use crate::domain::branding;
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::os::fd::FromRawFd;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use zbus::zvariant::{OwnedFd, Value};
 use zbus::Connection;
 
@@ -131,6 +133,28 @@ pub fn get_next_slot(win_uuid: &str) -> &'static str {
     }
 }
 
+pub fn get_existing_preview(win_uuid: &str) -> Option<String> {
+    let clean_uuid = win_uuid.trim_matches(|c| c == '{' || c == '}');
+    let p0 = get_target_path(clean_uuid, "0");
+    let p1 = get_target_path(clean_uuid, "1");
+
+    let m0 = fs::metadata(&p0).ok().and_then(|m| m.modified().ok());
+    let m1 = fs::metadata(&p1).ok().and_then(|m| m.modified().ok());
+
+    match (m0, m1) {
+        (None, None) => None,
+        (Some(_), None) => Some(p0),
+        (None, Some(_)) => Some(p1),
+        (Some(t0), Some(t1)) => {
+            if t0 >= t1 {
+                Some(p0)
+            } else {
+                Some(p1)
+            }
+        }
+    }
+}
+
 pub fn process_bgra_to_png(
     raw: &[u8],
     width: u32,
@@ -171,7 +195,12 @@ pub fn process_bgra_to_png(
     }
 
     let mut png_bytes = Vec::new();
-    rgba_img.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)?;
+    let encoder = PngEncoder::new_with_quality(
+        &mut png_bytes,
+        CompressionType::Fast,
+        FilterType::NoFilter,
+    );
+    rgba_img.write_with_encoder(encoder)?;
     Ok(png_bytes)
 }
 
@@ -200,7 +229,8 @@ async fn do_capture(
     Ok((reply, raw_data))
 }
 
-pub async fn capture_window(
+pub async fn capture_window_with_proxy(
+    proxy: &zbus::Proxy<'_>,
     win_uuid: &str,
     target_width: u32,
     slot: Option<&str>,
@@ -211,21 +241,9 @@ pub async fn capture_window(
         _ => get_next_slot(clean_uuid),
     };
 
-    // Preemptively ensure desktop entry is registered
-    let _ = install_desktop_entry_with_notification(None, None);
-
-    let connection = Connection::session().await?;
-
     let options: HashMap<String, Value> = HashMap::new();
 
-    let proxy = zbus::Proxy::new(
-        &connection,
-        "org.kde.KWin",
-        "/org/kde/KWin/ScreenShot2",
-        "org.kde.KWin.ScreenShot2",
-    ).await?;
-
-    let (reply, raw_data) = match do_capture(&proxy, clean_uuid, &options).await {
+    let (reply, raw_data) = match do_capture(proxy, clean_uuid, &options).await {
         Ok(res) => res,
         Err(e) => {
             let err_str = e.to_string();
@@ -233,7 +251,7 @@ pub async fn capture_window(
                 // Re-register desktop entry and notify user, then retry once
                 let _ = install_desktop_entry_with_notification(None, None);
                 let _ = std::process::Command::new("kbuildsycoca6").output();
-                do_capture(&proxy, clean_uuid, &options).await?
+                do_capture(proxy, clean_uuid, &options).await?
             } else {
                 return Err(e);
             }
@@ -279,4 +297,83 @@ pub async fn capture_window(
     fs::rename(&tmp_path, &out_path)?;
 
     Ok(out_path)
+}
+
+pub async fn capture_window(
+    win_uuid: &str,
+    target_width: u32,
+    slot: Option<&str>,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // Preemptively ensure desktop entry is registered
+    let _ = install_desktop_entry_with_notification(None, None);
+
+    let connection = Connection::session().await?;
+
+    let proxy = zbus::Proxy::new(
+        &connection,
+        "org.kde.KWin",
+        "/org/kde/KWin/ScreenShot2",
+        "org.kde.KWin.ScreenShot2",
+    )
+    .await?;
+
+    capture_window_with_proxy(&proxy, win_uuid, target_width, slot).await
+}
+
+pub async fn capture_windows_batch(
+    window_ids: &[String],
+    target_width: u32,
+) -> Result<Vec<(String, String)>, Box<dyn std::error::Error + Send + Sync>> {
+    let _ = install_desktop_entry_with_notification(None, None);
+
+    let connection = Connection::session().await?;
+    let proxy = Arc::new(
+        zbus::Proxy::new(
+            &connection,
+            "org.kde.KWin",
+            "/org/kde/KWin/ScreenShot2",
+            "org.kde.KWin.ScreenShot2",
+        )
+        .await?,
+    );
+
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(6));
+    let mut tasks = Vec::new();
+
+    for wid in window_ids {
+        let clean_wid = wid.trim_matches(|c| c == '{' || c == '}').to_string();
+        if clean_wid.is_empty() {
+            continue;
+        }
+        let proxy = Arc::clone(&proxy);
+        let sem = Arc::clone(&semaphore);
+
+        tasks.push(tokio::spawn(async move {
+            let _permit = match sem.acquire().await {
+                Ok(p) => p,
+                Err(_) => return None,
+            };
+            match capture_window_with_proxy(&proxy, &clean_wid, target_width, None).await {
+                Ok(path) => {
+                    println!("ready:{}:{}", clean_wid, path);
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
+                    Some((clean_wid, path))
+                }
+                Err(e) => {
+                    eprintln!("[preview-batch] capture failed for {}: {}", clean_wid, e);
+                    None
+                }
+            }
+        }));
+    }
+
+    let mut results = Vec::new();
+    for task in tasks {
+        if let Ok(Some(pair)) = task.await {
+            results.push(pair);
+        }
+    }
+
+    Ok(results)
 }
