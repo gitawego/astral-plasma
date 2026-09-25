@@ -63,10 +63,10 @@ Singleton {
         }
     }
 
-    // Fallback auto-decay watchdog: resets active state to idle if no agent events arrive for 45s
+    // Fallback auto-decay watchdog: resets active state to idle if no agent events arrive for 8s
     Timer {
         id: autoDecayWatchdog
-        interval: 45000
+        interval: 8000
         repeat: false
         running: root.isActive
         onTriggered: {
@@ -94,11 +94,15 @@ Singleton {
         if (data.active_agents !== undefined && Array.isArray(data.active_agents)) {
             root.activeAgents = data.active_agents;
         }
-
-        if (root.isActive) {
-            autoDecayWatchdog.restart();
-        } else {
+        if (!root.isActive) {
+            root.intensity = 0.0;
+            root.requestRate = 0.0;
+            root.tokenRate = 0.0;
+            root.recentTokens = 0.0;
+            root.activeAgents = [];
             autoDecayWatchdog.stop();
+        } else {
+            autoDecayWatchdog.restart();
         }
     }
 }

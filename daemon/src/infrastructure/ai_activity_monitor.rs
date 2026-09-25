@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
-pub const IN_FLIGHT_WINDOW_MS: u64 = 25_000;   // 25s active window during in-flight reasoning and tool execution
-pub const COMPLETED_WINDOW_MS: u64 = 4_000;    // 4s active window after turn completion (shows completion state, then promptly decays)
-pub const ACTIVE_AGENT_WINDOW_MS: u64 = 25_000; // alias for in-flight / active sessions scan
+pub const IN_FLIGHT_WINDOW_MS: u64 = 12_000;   // 12s active window during in-flight reasoning and tool execution
+pub const COMPLETED_WINDOW_MS: u64 = 3_000;    // 3s active window after turn completion (shows completion state, then promptly decays)
+pub const ACTIVE_AGENT_WINDOW_MS: u64 = 12_000; // alias for in-flight / active sessions scan
 pub const TRACK_RETENTION_MS: u64 = 120_000;   // 120s track retention for rolling metrics
 
 /// Track state for an individual agent tool during concurrent execution.
@@ -198,18 +198,15 @@ impl AiActivityMonitor {
         st.active_agents = active_slots.clone();
 
         if active_slots.is_empty() {
-            // Immediate smooth exponential decay when no agents are active
-            st.intensity *= 0.70;
-            if st.intensity < 0.05 {
-                st.intensity = 0.0;
-                st.is_active = false;
-                st.request_rate_rpm = 0.0;
-                st.token_rate_tpm = 0.0;
-                st.recent_tokens = 0;
-                st.active_agents.clear();
-                return true; // Transitioned to inactive
-            }
-            return true; // Intensity changed during decay
+            // Immediate clean transition to inactive when no agents are active
+            let was_active = st.is_active;
+            st.intensity = 0.0;
+            st.is_active = false;
+            st.request_rate_rpm = 0.0;
+            st.token_rate_tpm = 0.0;
+            st.recent_tokens = 0;
+            st.active_agents.clear();
+            return was_active; // Transitioned from active to inactive
         }
         active_slots_changed
     }
@@ -575,11 +572,14 @@ impl AiActivityMonitor {
         let mut last_seen_opencode_size: u64 = 0;
 
         // Synchronize initial ground-truth state across all active agents
+        let now_ms = current_epoch_ms();
         let initial_active_files = Self::scan_all_active_session_files(&home, ACTIVE_AGENT_WINDOW_MS);
         for file_info in initial_active_files {
             seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
-            if let Some((model, tool, tokens)) = Self::parse_model_and_tokens_from_file(&file_info.path) {
-                self.record_activity_with_tokens(&model, &tool, tokens).await;
+            if let Some((model, tool, tokens, is_completed)) = Self::parse_model_tokens_and_status_from_file(&file_info.path) {
+                if !is_completed || now_ms.saturating_sub(file_info.mtime) < COMPLETED_WINDOW_MS {
+                    self.record_activity_full(&model, &tool, tokens, is_completed).await;
+                }
             }
         }
 
@@ -699,7 +699,7 @@ impl AiActivityMonitor {
                                                     last_seen_opencode_time = time_updated;
                                                     last_seen_opencode_tokens = tokens;
                                                     let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                                                    let is_completed = now_epoch.saturating_sub(time_updated) >= 4_000;
+                                                    let is_completed = now_epoch.saturating_sub(time_updated) >= 3_000;
                                                     self.record_activity_full(&model, "opencode", Some(reported), is_completed).await;
                                                     let curr = self.get_state().await;
                                                     emit_activity_payload(&curr);
@@ -711,16 +711,23 @@ impl AiActivityMonitor {
                                             offset += std::mem::size_of::<libc::inotify_event>() + name_len;
                                             continue;
                                         }
-                                        let is_fresh = full_path.metadata().ok()
-                                            .and_then(|m| m.modified().ok())
-                                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < ACTIVE_AGENT_WINDOW_MS)
-                                            .unwrap_or(false);
-                                        if is_fresh {
-                                            if let Some((model, tool, tokens, is_completed)) = Self::parse_model_tokens_and_status_from_file(&full_path) {
-                                                self.record_activity_full(&model, &tool, tokens, is_completed).await;
-                                                let curr = self.get_state().await;
-                                                emit_activity_payload(&curr);
+                                        if let Ok(meta) = full_path.metadata() {
+                                            let mtime = meta.modified().ok()
+                                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                                .map(|d| d.as_millis() as u64)
+                                                .unwrap_or(0);
+                                            let size = meta.len();
+                                            seen_sessions.insert(full_path.clone(), (mtime, size));
+                                            let now_ms = current_epoch_ms();
+                                            let is_fresh = now_ms.saturating_sub(mtime) < ACTIVE_AGENT_WINDOW_MS;
+                                            if is_fresh {
+                                                if let Some((model, tool, tokens, is_completed)) = Self::parse_model_tokens_and_status_from_file(&full_path) {
+                                                    if !is_completed || now_ms.saturating_sub(mtime) < COMPLETED_WINDOW_MS {
+                                                        self.record_activity_full(&model, &tool, tokens, is_completed).await;
+                                                        let curr = self.get_state().await;
+                                                        emit_activity_payload(&curr);
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -744,8 +751,11 @@ impl AiActivityMonitor {
                         if is_new_event {
                             seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
                             if let Some((model, tool, tokens, is_completed)) = Self::parse_model_tokens_and_status_from_file(&file_info.path) {
-                                self.record_activity_full(&model, &tool, tokens, is_completed).await;
-                                should_emit = true;
+                                let now_ms = current_epoch_ms();
+                                if !is_completed || now_ms.saturating_sub(file_info.mtime) < COMPLETED_WINDOW_MS {
+                                    self.record_activity_full(&model, &tool, tokens, is_completed).await;
+                                    should_emit = true;
+                                }
                             }
                         }
                     }
@@ -771,7 +781,7 @@ impl AiActivityMonitor {
                                         last_seen_opencode_time = time_updated;
                                         last_seen_opencode_tokens = tokens;
                                         let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                                        let is_completed = now_epoch.saturating_sub(time_updated) >= 4_000;
+                                        let is_completed = now_epoch.saturating_sub(time_updated) >= 3_000;
                                         self.record_activity_full(&model, "opencode", Some(reported), is_completed).await;
                                         should_emit = true;
                                     }

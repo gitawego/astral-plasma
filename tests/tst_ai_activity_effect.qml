@@ -64,6 +64,12 @@ Item {
             if (data.intensity !== undefined) activityModel.intensity = Number(data.intensity);
             if (data.request_rate !== undefined) activityModel.requestRate = Number(data.request_rate);
             if (data.active_agents !== undefined) activityModel.activeAgents = data.active_agents;
+
+            if (!activityModel.isActive) {
+                activityModel.intensity = 0.0;
+                activityModel.requestRate = 0.0;
+                activityModel.activeAgents = [];
+            }
         }
     }
 
@@ -213,6 +219,17 @@ Item {
         assert(activityModel.brandIcon === "terminal", "Brand icon should be terminal");
         assert(activityModel.isActive === true, "isActive should be true");
 
+        // ---- 5d. Immediate Idle Decay when Turn Finishes ----
+        activityModel.applyActivity({
+            is_active: false,
+            intensity: 0.0,
+            request_rate: 0.0,
+            active_agents: []
+        });
+        assert(activityModel.isActive === false, "activityModel must immediately become inactive when turn completes");
+        assert(activityModel.intensity === 0.0, "intensity must reset to 0.0");
+        assert(activityModel.activeAgents.length === 0, "activeAgents must be empty");
+
         // ---- 6. Source Contract: services/AiActivityService.qml ----
         const serviceSrc = readLocalFile("../services/AiActivityService.qml");
         assert(serviceSrc.length > 500, "AiActivityService.qml must be readable");
@@ -225,6 +242,8 @@ Item {
             "AiActivityService must declare activeAgents list for multi-agent support");
         assert(/Math\.max\(1350,\s*Math\.min\(3200/.test(serviceSrc),
             "AiActivityService must use slowed down travel duration (1350ms to 3200ms)");
+        assert(/interval:\s*8000\b/.test(serviceSrc),
+            "AiActivityService must use responsive 8000ms watchdog timer");
 
         // ---- 7. Source Contract: dock/components/DockStatusIcons.qml ----
         const dockSrc = readLocalFile("../dock/components/DockStatusIcons.qml");

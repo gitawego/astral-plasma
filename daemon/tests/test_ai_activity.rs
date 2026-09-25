@@ -620,33 +620,24 @@ async fn test_turn_completion_decays_promptly() {
     assert!(st1.is_active);
     assert_eq!(st1.active_agents.len(), 1);
 
-    // 2. Immediately after turn completion, it stays active for the 4s window
+    // 2. Immediately after turn completion, it stays active for the 3s window
     let _ = monitor.tick_decay().await;
     let st2 = monitor.get_state().await;
     assert_eq!(st2.active_agents.len(), 1);
 
-    // 3. Fast-forward past the 4s completion window by updating last_event_epoch_ms
+    // 3. Fast-forward past the 3s completion window by updating last_event_epoch_ms
     {
         let mut tracks = monitor.agent_tracks_for_test().await;
         for (_, t) in tracks.iter_mut() {
-            t.last_event_epoch_ms = t.last_event_epoch_ms.saturating_sub(4500);
+            t.last_event_epoch_ms = t.last_event_epoch_ms.saturating_sub(3500);
         }
     }
 
-    // Next tick prunes active_slots and initiates exponential decay immediately
+    // 4. Next tick prunes active_slots and transitions to inactive immediately
     let transitioned = monitor.tick_decay().await;
-    assert!(transitioned);
+    assert!(transitioned, "Monitor must signal transition when active agents expire");
     let st3 = monitor.get_state().await;
-    assert_eq!(st3.active_agents.len(), 0, "Agent must be pruned from active_agents after 4s completion window");
-    assert!(st3.intensity < 1.0, "Intensity must immediately begin decaying");
-
-    // Advance decay ticks until intensity < 0.05
-    for _ in 0..10 {
-        monitor.tick_decay().await;
-    }
-    let st_final = monitor.get_state().await;
-    assert!(!st_final.is_active, "Monitor must smoothly transition to inactive in sub-10s instead of hanging for 1 minute");
-    assert_eq!(st_final.intensity, 0.0);
+    assert_eq!(st3.active_agents.len(), 0, "Agent must be pruned from active_agents after 3s completion window");
+    assert!(!st3.is_active, "Monitor must immediately transition to inactive when all agents complete");
+    assert_eq!(st3.intensity, 0.0);
 }
-
-
