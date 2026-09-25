@@ -766,6 +766,7 @@ Singleton {
     // Command Launcher State
     property bool commandLauncherVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_LAUNCHER_OPEN") === "1") ? true : false
     property string commandLauncherMode: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_LAUNCHER_MODE")) ? Quickshell.env("ASTRAL_PLASMA_LAUNCHER_MODE") : "apps"
+    property string commandLauncherInitialQuery: ""
 
     function toggleCommandLauncher(mode) {
         if (root.commandLauncherVisible) {
@@ -775,9 +776,11 @@ Singleton {
         }
     }
 
-    function openCommandLauncher(mode) {
+    function openCommandLauncher(mode, query) {
         root.commandLauncherMode = mode || "apps";
+        root.commandLauncherInitialQuery = query || "";
         root.commandLauncherVisible = true;
+        root.overviewVisible = false;
         root.dashboardVisible = false;
         root.closeBottomPopout();
     }

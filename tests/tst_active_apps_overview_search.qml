@@ -56,9 +56,31 @@ Item {
 
         property string lastActivatedWindowId: ""
         property string lastLaunchedTarget: ""
+        property string lastCommandExecuted: ""
+        property string lastCommandArg: ""
         property bool overviewClosed: false
 
         readonly property string searchQuery: queryText.trim().toLowerCase()
+
+        readonly property var commandItems: [
+            { id: "wallpaper", name: "Wallpaper", description: "Change the current wallpaper", icon: "wallpaper", aliases: ["wallpaper", "wp", "wallpapers", "background"] },
+            { id: "scheme", name: "Color Scheme", description: "Switch Material 3 color presets", icon: "palette", aliases: ["scheme", "color", "colors", "theme"] },
+            { id: "mode", name: "Dark / Light Mode", description: "Toggle system dark or light appearance", icon: "brightness_6", aliases: ["mode", "dark", "light", "appearance"] },
+            { id: "settings", name: "System Settings", description: "Jump to system configuration pages", icon: "settings", aliases: ["settings", "set", "config", "preferences"] },
+            { id: "exit", name: "Exit Astral Plasma", description: "Leave the shell and restore the Plasma desktop", icon: "exit_to_app", aliases: ["exit", "quit", "leave"] }
+        ]
+
+        readonly property bool isCommandMode: queryText.startsWith(">")
+        readonly property string commandName: {
+            if (!isCommandMode) return "";
+            const parts = queryText.slice(1).trim().split(" ");
+            return parts[0].toLowerCase();
+        }
+        readonly property string commandArg: {
+            if (!isCommandMode) return "";
+            const parts = queryText.slice(1).trim().split(" ");
+            return parts.length > 1 ? parts.slice(1).join(" ").toLowerCase() : "";
+        }
 
         function scoreItem(text, q) {
             if (!text) return 0;
@@ -71,8 +93,54 @@ Item {
             return 0;
         }
 
+        readonly property var matchingCommands: {
+            if (isCommandMode) {
+                const q = commandName;
+                if (!q) return commandItems;
+                const scored = [];
+                for (let i = 0; i < commandItems.length; i++) {
+                    const item = commandItems[i];
+                    let best = scoreItem(item.id, q);
+                    best = Math.max(best, scoreItem(item.name, q));
+                    for (let a = 0; a < item.aliases.length; a++) {
+                        best = Math.max(best, scoreItem(item.aliases[a], q));
+                    }
+                    if (best === 0) {
+                        if (item.id.indexOf(q) !== -1 || item.name.toLowerCase().indexOf(q) !== -1) {
+                            best = 30;
+                        }
+                        for (let a = 0; a < item.aliases.length; a++) {
+                            if (item.aliases[a].indexOf(q) !== -1) best = Math.max(best, 30);
+                        }
+                    }
+                    if (best > 0) {
+                        scored.push({ cmd: item, score: best });
+                    }
+                }
+                scored.sort((a, b) => b.score - a.score);
+                return scored.map(item => item.cmd);
+            } else {
+                if (!searchQuery || searchQuery.length < 3) return [];
+                const q = searchQuery;
+                const scored = [];
+                for (let i = 0; i < commandItems.length; i++) {
+                    const item = commandItems[i];
+                    let best = scoreItem(item.id, q);
+                    best = Math.max(best, scoreItem(item.name, q));
+                    for (let a = 0; a < item.aliases.length; a++) {
+                        best = Math.max(best, scoreItem(item.aliases[a], q));
+                    }
+                    if (best >= 60) {
+                        scored.push({ cmd: item, score: best });
+                    }
+                }
+                scored.sort((a, b) => b.score - a.score);
+                return scored.map(item => item.cmd);
+            }
+        }
+
         readonly property var matchingWindows: {
-            if (!searchQuery) return [];
+            if (!searchQuery || isCommandMode) return [];
             const q = searchQuery;
             const wins = searchHarness.windows || [];
             const scored = [];
@@ -91,7 +159,7 @@ Item {
         }
 
         readonly property var matchingInstalledApps: {
-            if (!searchQuery) return [];
+            if (!searchQuery || isCommandMode) return [];
             const q = searchQuery;
             const apps = searchHarness.installedApps || [];
             const scored = [];
@@ -110,13 +178,22 @@ Item {
         }
 
         readonly property var searchResults: {
-            if (!searchQuery) return [];
+            if (!searchQuery && !isCommandMode) return [];
             const res = [];
+            if (isCommandMode) {
+                for (let k = 0; k < matchingCommands.length; k++) {
+                    res.push({ type: "command", data: matchingCommands[k] });
+                }
+                return res;
+            }
             for (let i = 0; i < matchingWindows.length; i++) {
                 res.push({ type: "window", data: matchingWindows[i] });
             }
             for (let j = 0; j < matchingInstalledApps.length; j++) {
                 res.push({ type: "app", data: matchingInstalledApps[j] });
+            }
+            for (let k = 0; k < matchingCommands.length; k++) {
+                res.push({ type: "command", data: matchingCommands[k] });
             }
             return res;
         }
@@ -138,7 +215,18 @@ Item {
         }
 
         function executeCurrent() {
-            if (searchResults.length === 0) return;
+            if (searchResults.length === 0) {
+                if (isCommandMode) {
+                    const cmdName = commandName;
+                    if (cmdName === "wallpaper" || cmdName === "wp" || cmdName === "wallpapers") {
+                        lastCommandExecuted = "wallpaper";
+                        lastCommandArg = commandArg;
+                        overviewClosed = true;
+                        return;
+                    }
+                }
+                return;
+            }
             const item = searchResults[selectedSearchIndex];
             if (!item) return;
             if (item.type === "window") {
@@ -146,6 +234,10 @@ Item {
                 overviewClosed = true;
             } else if (item.type === "app") {
                 lastLaunchedTarget = item.data.desktop_file || item.data.exec || item.data.name;
+                overviewClosed = true;
+            } else if (item.type === "command") {
+                lastCommandExecuted = item.data.id;
+                lastCommandArg = commandArg;
                 overviewClosed = true;
             }
         }
@@ -267,7 +359,70 @@ Item {
         assert(searchHarness.searchResults[0].type === "app",
             "Result should be of type 'app'");
 
-        // ---- 9. Structural verification of ActiveAppsOverview.qml ------------
+        // ---- 10. Command mode with bare '>' lists all commands -----------------
+        searchHarness.queryText = ">";
+        assert(searchHarness.isCommandMode === true, "query '>' must activate isCommandMode");
+        assert(searchHarness.matchingCommands.length === 5,
+            "Bare '>' must list all 5 available commands");
+        assert(searchHarness.searchResults.length === 5,
+            "Bare '>' searchResults must contain all 5 commands");
+        assert(searchHarness.matchingWindows.length === 0,
+            "In command mode matchingWindows must be empty");
+        assert(searchHarness.matchingInstalledApps.length === 0,
+            "In command mode matchingInstalledApps must be empty");
+
+        // ---- 11. Shortcut '>wallpaper' matches the Wallpaper command ----------
+        searchHarness.queryText = ">wallpaper";
+        assert(searchHarness.isCommandMode === true, "'>wallpaper' must activate isCommandMode");
+        assert(searchHarness.commandName === "wallpaper", "commandName must be 'wallpaper'");
+        assert(searchHarness.matchingCommands.length === 1,
+            "'>wallpaper' must match exactly 1 command");
+        assert(searchHarness.matchingCommands[0].id === "wallpaper",
+            "Matching command must be 'wallpaper'");
+        assert(searchHarness.searchResults.length === 1,
+            "searchResults must contain 1 item");
+        assert(searchHarness.searchResults[0].type === "command",
+            "Result item must be of type 'command'");
+        assert(searchHarness.searchResults[0].data.id === "wallpaper",
+            "Result command id must be 'wallpaper'");
+
+        // ---- 12. Executing '>wallpaper' triggers command execution -------------
+        searchHarness.overviewClosed = false;
+        searchHarness.lastCommandExecuted = "";
+        searchHarness.executeCurrent();
+        assert(searchHarness.lastCommandExecuted === "wallpaper",
+            "Executing '>wallpaper' must set lastCommandExecuted to 'wallpaper'");
+        assert(searchHarness.overviewClosed === true,
+            "Executing command must close the overview");
+
+        // ---- 13. Alias '>wp' matches the Wallpaper command --------------------
+        searchHarness.queryText = ">wp";
+        assert(searchHarness.isCommandMode === true, "'>wp' must activate isCommandMode");
+        assert(searchHarness.matchingCommands.length === 1, "'>wp' must match Wallpaper command");
+        assert(searchHarness.matchingCommands[0].id === "wallpaper",
+            "Matching command for '>wp' must be 'wallpaper'");
+
+        // ---- 14. Command with arguments '>wallpaper nature' -------------------
+        searchHarness.queryText = ">wallpaper nature";
+        assert(searchHarness.commandName === "wallpaper", "commandName must be 'wallpaper'");
+        assert(searchHarness.commandArg === "nature", "commandArg must be 'nature'");
+        searchHarness.overviewClosed = false;
+        searchHarness.lastCommandExecuted = "";
+        searchHarness.lastCommandArg = "";
+        searchHarness.executeCurrent();
+        assert(searchHarness.lastCommandExecuted === "wallpaper", "command must execute wallpaper");
+        assert(searchHarness.lastCommandArg === "nature", "command argument must be 'nature'");
+        assert(searchHarness.overviewClosed === true, "overview must close");
+
+        // ---- 15. Natural query 'wallpaper' without '>' surfaces command -------
+        searchHarness.queryText = "wallpaper";
+        assert(searchHarness.isCommandMode === false, "'wallpaper' without '>' is not command mode");
+        assert(searchHarness.matchingCommands.length === 1,
+            "Query 'wallpaper' must match the Wallpaper command");
+        assert(searchHarness.searchResults.some(r => r.type === "command" && r.data.id === "wallpaper"),
+            "searchResults for 'wallpaper' must include the Wallpaper command");
+
+        // ---- 16. Structural verification of ActiveAppsOverview.qml ------------
         const surface = readLocalFile("../shell/ActiveAppsOverview.qml");
         assert(surface.length > 1000, "ActiveAppsOverview.qml must be readable");
         assert(/TextInput/.test(surface),
@@ -278,6 +433,16 @@ Item {
             "ActiveAppsOverview must define matchingInstalledApps");
         assert(/searchResults/.test(surface),
             "ActiveAppsOverview must define searchResults");
+        assert(/commandItems/.test(surface),
+            "ActiveAppsOverview must define commandItems");
+        assert(/isCommandMode/.test(surface),
+            "ActiveAppsOverview must define isCommandMode");
+        assert(/matchingCommands/.test(surface),
+            "ActiveAppsOverview must define matchingCommands");
+        assert(/executeCommand\(/.test(surface),
+            "ActiveAppsOverview must define executeCommand()");
+        assert(/openCommandLauncher/.test(surface),
+            "ActiveAppsOverview must route commands to Config.openCommandLauncher");
 
         console.log("PASS: Active apps overview search tests passed");
         Qt.exit(0);

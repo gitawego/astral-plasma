@@ -89,17 +89,21 @@ PanelWindow {
         target: (typeof Config !== "undefined") ? Config : null
         function onCommandLauncherVisibleChanged() {
             if (Config && Config.commandLauncherVisible) {
+                const initQ = (Config.commandLauncherInitialQuery || "").trim();
                 if (Config.commandLauncherMode === "wallpaper") {
-                    root.queryText = ">wallpaper";
+                    root.queryText = initQ.length > 0 ? (">wallpaper " + initQ) : ">wallpaper";
                     root.activeMode = "wallpaper";
                 } else if (Config.commandLauncherMode === "scheme") {
-                    root.queryText = ">scheme";
+                    root.queryText = initQ.length > 0 ? (">scheme " + initQ) : ">scheme";
                     root.activeMode = "scheme";
                 } else if (Config.commandLauncherMode === "settings") {
-                    root.queryText = ">settings";
+                    root.queryText = initQ.length > 0 ? (">settings " + initQ) : ">settings";
                     root.activeMode = "settings";
+                } else if (Config.commandLauncherMode === "mode") {
+                    root.queryText = initQ.length > 0 ? (">mode " + initQ) : ">mode";
+                    root.activeMode = "mode";
                 } else {
-                    root.queryText = "";
+                    root.queryText = initQ;
                     root.activeMode = "";
                 }
                 searchInput.forceActiveFocus();
@@ -107,8 +111,9 @@ PanelWindow {
         }
         function onCommandLauncherModeChanged() {
             if (Config && Config.commandLauncherVisible) {
+                const initQ = (Config.commandLauncherInitialQuery || "").trim();
                 if (Config.commandLauncherMode === "wallpaper") {
-                    root.queryText = ">wallpaper";
+                    root.queryText = initQ.length > 0 ? (">wallpaper " + initQ) : ">wallpaper";
                     root.activeMode = "wallpaper";
                 }
             }
@@ -996,6 +1001,8 @@ PanelWindow {
         if (typeof Config !== "undefined") {
             Config.commandLauncherMode = mode || "apps";
             Config.commandLauncherVisible = true;
+            Config.overviewVisible = false;
+            Config.dashboardVisible = false;
         }
         searchInput.forceActiveFocus();
         if (appsList) {

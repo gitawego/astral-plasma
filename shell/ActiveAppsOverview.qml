@@ -78,6 +78,57 @@ PanelWindow {
     property string queryText: ""
     readonly property string searchQuery: queryText.trim().toLowerCase()
 
+    // Command shortcuts definitions (matching CommandLauncher)
+    readonly property var commandItems: [
+        {
+            id: "wallpaper",
+            name: "Wallpaper",
+            description: "Change the current wallpaper",
+            icon: "wallpaper",
+            aliases: ["wallpaper", "wp", "wallpapers", "background"]
+        },
+        {
+            id: "scheme",
+            name: "Color Scheme",
+            description: "Switch Material 3 color presets",
+            icon: "palette",
+            aliases: ["scheme", "color", "colors", "theme"]
+        },
+        {
+            id: "mode",
+            name: "Dark / Light Mode",
+            description: "Toggle system dark or light appearance",
+            icon: "brightness_6",
+            aliases: ["mode", "dark", "light", "appearance"]
+        },
+        {
+            id: "settings",
+            name: "System Settings",
+            description: "Jump to system configuration pages",
+            icon: "settings",
+            aliases: ["settings", "set", "config", "preferences"]
+        },
+        {
+            id: "exit",
+            name: "Exit Astral Plasma",
+            description: "Leave the shell and restore the Plasma desktop",
+            icon: "exit_to_app",
+            aliases: ["exit", "quit", "leave"]
+        }
+    ]
+
+    readonly property bool isCommandMode: queryText.startsWith(">")
+    readonly property string commandName: {
+        if (!isCommandMode) return "";
+        const parts = queryText.slice(1).trim().split(" ");
+        return parts[0].toLowerCase();
+    }
+    readonly property string commandArg: {
+        if (!isCommandMode) return "";
+        const parts = queryText.slice(1).trim().split(" ");
+        return parts.length > 1 ? parts.slice(1).join(" ").toLowerCase() : "";
+    }
+
     // Navigation indices
     property int selectedSearchIndex: 0
     property int selectedGridIndex: 0
@@ -94,9 +145,56 @@ PanelWindow {
         return 0;
     }
 
+    // Filtered & ranked commands matching search query or command mode
+    readonly property var matchingCommands: {
+        if (isCommandMode) {
+            const q = commandName;
+            if (!q) return commandItems;
+            const scored = [];
+            for (let i = 0; i < commandItems.length; i++) {
+                const item = commandItems[i];
+                let best = scoreItem(item.id, q);
+                best = Math.max(best, scoreItem(item.name, q));
+                for (let a = 0; a < item.aliases.length; a++) {
+                    best = Math.max(best, scoreItem(item.aliases[a], q));
+                }
+                if (best === 0) {
+                    if (item.id.indexOf(q) !== -1 || item.name.toLowerCase().indexOf(q) !== -1) {
+                        best = 30;
+                    }
+                    for (let a = 0; a < item.aliases.length; a++) {
+                        if (item.aliases[a].indexOf(q) !== -1) best = Math.max(best, 30);
+                    }
+                }
+                if (best > 0) {
+                    scored.push({ cmd: item, score: best });
+                }
+            }
+            scored.sort((a, b) => b.score - a.score);
+            return scored.map(item => item.cmd);
+        } else {
+            if (!searchQuery || searchQuery.length < 3) return [];
+            const q = searchQuery;
+            const scored = [];
+            for (let i = 0; i < commandItems.length; i++) {
+                const item = commandItems[i];
+                let best = scoreItem(item.id, q);
+                best = Math.max(best, scoreItem(item.name, q));
+                for (let a = 0; a < item.aliases.length; a++) {
+                    best = Math.max(best, scoreItem(item.aliases[a], q));
+                }
+                if (best >= 60) {
+                    scored.push({ cmd: item, score: best });
+                }
+            }
+            scored.sort((a, b) => b.score - a.score);
+            return scored.map(item => item.cmd);
+        }
+    }
+
     // Filtered & ranked open windows matching search query
     readonly property var matchingWindows: {
-        if (!searchQuery) return [];
+        if (!searchQuery || isCommandMode) return [];
         const q = searchQuery;
         const wins = WindowService.windows || [];
         const scored = [];
@@ -116,7 +214,7 @@ PanelWindow {
 
     // Filtered & ranked installed applications matching search query
     readonly property var matchingInstalledApps: {
-        if (!searchQuery) return [];
+        if (!searchQuery || isCommandMode) return [];
         const q = searchQuery;
         const apps = root.installedApps || [];
         const scored = [];
@@ -137,13 +235,22 @@ PanelWindow {
 
     // Unified flat list for search navigation & virtualized display
     readonly property var searchResults: {
-        if (!searchQuery) return [];
+        if (!searchQuery && !isCommandMode) return [];
         const res = [];
+        if (isCommandMode) {
+            for (let k = 0; k < matchingCommands.length; k++) {
+                res.push({ type: "command", data: matchingCommands[k] });
+            }
+            return res;
+        }
         for (let i = 0; i < matchingWindows.length; i++) {
             res.push({ type: "window", data: matchingWindows[i] });
         }
         for (let j = 0; j < matchingInstalledApps.length; j++) {
             res.push({ type: "app", data: matchingInstalledApps[j] });
+        }
+        for (let k = 0; k < matchingCommands.length; k++) {
+            res.push({ type: "command", data: matchingCommands[k] });
         }
         return res;
     }
@@ -176,8 +283,53 @@ PanelWindow {
         }
     }
 
+    function executeCommand(cmd) {
+        if (!cmd) return;
+        const id = cmd.id;
+        Config.closeOverview();
+        if (id === "wallpaper") {
+            Config.openCommandLauncher("wallpaper", root.commandArg);
+        } else if (id === "scheme") {
+            Config.openCommandLauncher("scheme", root.commandArg);
+        } else if (id === "mode") {
+            Config.openCommandLauncher("mode", root.commandArg);
+        } else if (id === "settings") {
+            Config.openCommandLauncher("settings", root.commandArg);
+        } else if (id === "exit") {
+            if (typeof Config !== "undefined" && Config.exitShell) {
+                Config.exitShell();
+            }
+        }
+    }
+
     function executeSearchItem() {
-        if (searchResults.length === 0) return;
+        if (searchResults.length === 0) {
+            if (root.isCommandMode) {
+                const cmdName = root.commandName;
+                if (cmdName === "wallpaper" || cmdName === "wp" || cmdName === "wallpapers" || cmdName === "background") {
+                    Config.closeOverview();
+                    Config.openCommandLauncher("wallpaper", root.commandArg);
+                    return;
+                } else if (cmdName === "scheme" || cmdName === "color" || cmdName === "colors" || cmdName === "theme") {
+                    Config.closeOverview();
+                    Config.openCommandLauncher("scheme", root.commandArg);
+                    return;
+                } else if (cmdName === "mode" || cmdName === "dark" || cmdName === "light" || cmdName === "appearance") {
+                    Config.closeOverview();
+                    Config.openCommandLauncher("mode", root.commandArg);
+                    return;
+                } else if (cmdName === "settings" || cmdName === "set" || cmdName === "config" || cmdName === "preferences") {
+                    Config.closeOverview();
+                    Config.openCommandLauncher("settings", root.commandArg);
+                    return;
+                } else if (cmdName === "exit" || cmdName === "quit" || cmdName === "leave") {
+                    Config.closeOverview();
+                    if (typeof Config !== "undefined" && Config.exitShell) Config.exitShell();
+                    return;
+                }
+            }
+            return;
+        }
         const item = searchResults[selectedSearchIndex];
         if (!item) return;
         if (item.type === "window") {
@@ -187,6 +339,8 @@ PanelWindow {
         } else if (item.type === "app") {
             WindowService.launchApp(item.data.desktop_file || item.data.exec || item.data.name, item.data);
             Config.closeOverview();
+        } else if (item.type === "command") {
+            root.executeCommand(item.data);
         }
     }
 
@@ -264,7 +418,7 @@ PanelWindow {
                 }
             } else {
                 WindowService.stopOverviewThumbnails();
-                if (root.pickedWindowId === "") {
+                if (root.pickedWindowId === "" && !Config.commandLauncherVisible) {
                     focusRestoreProc.command = [Config.daemonBin, "focus", "restore"];
                     focusRestoreProc.running = true;
                 }
@@ -311,7 +465,7 @@ PanelWindow {
         anchors.topMargin: Math.max(16, root.gridMargin * 0.32)
         anchors.horizontalCenter: parent.horizontalCenter
         height: 46
-        width: Math.min(root.searchQuery.length > 0 ? 680 : 540, root.width - 48)
+        width: Math.min((root.searchQuery.length > 0 || root.isCommandMode) ? 680 : 540, root.width - 48)
         radius: Theme.radiusGlassPill
         elevation: 8
         showShadow: true
@@ -338,9 +492,9 @@ PanelWindow {
             spacing: 10
 
             MaterialIcon {
-                text: "search"
+                text: root.isCommandMode ? "terminal" : "search"
                 size: 20
-                color: root.searchQuery.length > 0 ? Colors.primary : Colors.textMuted
+                color: (root.searchQuery.length > 0 || root.isCommandMode) ? Colors.primary : Colors.textMuted
             }
 
             TextInput {
@@ -361,7 +515,7 @@ PanelWindow {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !searchInput.text && !searchInput.inputMethodComposing
-                    text: "Search open windows & applications..."
+                    text: "Search windows & apps, or type > for commands..."
                     font: searchInput.font
                     color: Qt.alpha("#FFFFFF", 0.45)
                 }
@@ -384,43 +538,48 @@ PanelWindow {
                             event.accepted = true;
                         }
                     } else if (event.key === Qt.Key_Down) {
-                        if (root.searchQuery.length > 0) {
+                        if (root.searchQuery.length > 0 || root.isCommandMode) {
                             root.selectNextSearchItem();
                         } else {
                             root.selectGridDown();
                         }
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Up) {
-                        if (root.searchQuery.length > 0) {
+                        if (root.searchQuery.length > 0 || root.isCommandMode) {
                             root.selectPreviousSearchItem();
                         } else {
                             root.selectGridUp();
                         }
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Left) {
-                        if (root.searchQuery.length === 0) {
+                        if (root.searchQuery.length === 0 && !root.isCommandMode) {
                             root.selectGridLeft();
                             event.accepted = true;
                         }
                     } else if (event.key === Qt.Key_Right) {
-                        if (root.searchQuery.length === 0) {
+                        if (root.searchQuery.length === 0 && !root.isCommandMode) {
                             root.selectGridRight();
                             event.accepted = true;
                         }
                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        if (root.searchQuery.length > 0) {
+                        if (root.searchQuery.length > 0 || root.isCommandMode) {
                             root.executeSearchItem();
                         } else {
                             root.executeGridItem();
                         }
                         event.accepted = true;
+                    } else if (event.key === Qt.Key_Tab) {
+                        if (root.searchResults.length > 0) {
+                            root.executeSearchItem();
+                            event.accepted = true;
+                        }
                     }
                 }
             }
 
             // Results count badge when searching
             Rectangle {
-                visible: root.searchQuery.length > 0
+                visible: root.searchQuery.length > 0 || root.isCommandMode
                 height: 22
                 width: matchText.implicitWidth + 14
                 radius: 11
@@ -429,7 +588,9 @@ PanelWindow {
                 Text {
                     id: matchText
                     anchors.centerIn: parent
-                    text: root.matchingWindows.length + " win · " + root.matchingInstalledApps.length + " app"
+                    text: root.isCommandMode
+                        ? (root.matchingCommands.length + " command" + (root.matchingCommands.length === 1 ? "" : "s"))
+                        : (root.matchingWindows.length + " win · " + root.matchingInstalledApps.length + " app" + (root.matchingCommands.length > 0 ? (" · " + root.matchingCommands.length + " cmd") : ""))
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontLabelSmall
                     font.weight: Font.Bold
@@ -821,7 +982,7 @@ PanelWindow {
     // Unified Liquid Glass Search Results Board
     Item {
         id: searchResultsContainer
-        visible: root.searchQuery.length > 0
+        visible: root.searchQuery.length > 0 || root.isCommandMode
         anchors.top: searchCapsule.bottom
         anchors.topMargin: 16
         anchors.horizontalCenter: parent.horizontalCenter
@@ -830,6 +991,9 @@ PanelWindow {
         readonly property real estimatedContentHeight: {
             if (root.searchResults.length === 0) return 140;
             let h = 0;
+            if (root.matchingCommands.length > 0) {
+                h += 34 + root.matchingCommands.length * 52;
+            }
             if (root.matchingWindows.length > 0) {
                 h += 34 + root.matchingWindows.length * 62;
             }
@@ -840,10 +1004,10 @@ PanelWindow {
         }
 
         height: Math.min(estimatedContentHeight, Math.min(root.height - searchCapsule.y - searchCapsule.height - 40, 560))
-        opacity: root.searchQuery.length > 0 ? 1.0 : 0.0
-        scale: root.searchQuery.length > 0 ? 1.0 : 0.96
+        opacity: (root.searchQuery.length > 0 || root.isCommandMode) ? 1.0 : 0.0
+        scale: (root.searchQuery.length > 0 || root.isCommandMode) ? 1.0 : 0.96
         transform: Translate {
-            y: root.searchQuery.length > 0 ? 0 : 16
+            y: (root.searchQuery.length > 0 || root.isCommandMode) ? 0 : 16
             Behavior on y {
                 NumberAnimation {
                     duration: Theme.animExpressiveFastSpatial
@@ -910,14 +1074,14 @@ PanelWindow {
 
                         MaterialIcon {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: section === "window" ? "space_dashboard" : "apps"
+                            text: section === "window" ? "space_dashboard" : (section === "command" ? "terminal" : "apps")
                             size: 14
                             color: Colors.primary
                         }
 
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: section === "window" ? "OPEN WINDOWS" : "APPLICATIONS"
+                            text: section === "window" ? "OPEN WINDOWS" : (section === "command" ? "COMMANDS" : "APPLICATIONS")
                             font.family: Theme.fontFamily
                             font.pixelSize: 11
                             font.weight: Font.Bold
@@ -935,7 +1099,7 @@ PanelWindow {
                             Text {
                                 id: secBadge
                                 anchors.centerIn: parent
-                                text: String(section === "window" ? root.matchingWindows.length : root.matchingInstalledApps.length)
+                                text: String(section === "window" ? root.matchingWindows.length : (section === "command" ? root.matchingCommands.length : root.matchingInstalledApps.length))
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 10
                                 font.weight: Font.Bold
@@ -952,6 +1116,7 @@ PanelWindow {
 
                     readonly property bool isSelected: root.selectedSearchIndex === index
                     readonly property bool isWindow: modelData.type === "window"
+                    readonly property bool isCommand: modelData.type === "command"
                     width: resultsList.width
                     height: isWindow ? 58 : 50
                     radius: Theme.radiusGlassItem
@@ -1046,7 +1211,7 @@ PanelWindow {
 
                         // App item: Application Icon
                         Item {
-                            visible: !resultRow.isWindow
+                            visible: !resultRow.isWindow && !resultRow.isCommand
                             Layout.preferredWidth: 32
                             Layout.preferredHeight: 32
                             Layout.alignment: Qt.AlignVCenter
@@ -1073,6 +1238,29 @@ PanelWindow {
                             }
                         }
 
+                        // Command item: Command Terminal / Action Icon
+                        Item {
+                            visible: resultRow.isCommand
+                            Layout.preferredWidth: 32
+                            Layout.preferredHeight: 32
+                            Layout.alignment: Qt.AlignVCenter
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 8
+                                color: isSelected ? Colors.primary : Colors.surfaceContainer
+                                border.width: 1
+                                border.color: isSelected ? "transparent" : Colors.glassBorderSubtle
+
+                                MaterialIcon {
+                                    anchors.centerIn: parent
+                                    text: (modelData.data && modelData.data.icon) ? modelData.data.icon : "terminal"
+                                    size: 18
+                                    color: isSelected ? Colors.onPrimary : Colors.primary
+                                }
+                            }
+                        }
+
                         // Text details
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -1082,7 +1270,7 @@ PanelWindow {
                                 Layout.fillWidth: true
                                 text: resultRow.isWindow
                                     ? ((modelData.data.title && modelData.data.title.trim() !== "") ? modelData.data.title : (modelData.data.appName || "Window"))
-                                    : (modelData.data.name || "Application")
+                                    : (resultRow.isCommand ? (modelData.data.name || "Command") : (modelData.data.name || "Application"))
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 13
                                 font.weight: isSelected ? Font.Bold : Font.DemiBold
@@ -1094,7 +1282,9 @@ PanelWindow {
                                 Layout.fillWidth: true
                                 text: resultRow.isWindow
                                     ? (modelData.data.appName || "")
-                                    : (modelData.data.comment || modelData.data.exec || "")
+                                    : (resultRow.isCommand
+                                        ? (modelData.data.description + (modelData.data.aliases && modelData.data.aliases.length > 0 ? (" · >" + modelData.data.aliases[0]) : ""))
+                                        : (modelData.data.comment || modelData.data.exec || ""))
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 11
                                 color: isSelected ? Qt.alpha("#FFFFFF", 0.75) : Colors.textMuted
@@ -1115,8 +1305,8 @@ PanelWindow {
                                 id: ctaText
                                 anchors.centerIn: parent
                                 text: isSelected
-                                    ? (resultRow.isWindow ? "Switch ↵" : "Launch ↵")
-                                    : (resultRow.isWindow ? "Window" : "App")
+                                    ? (resultRow.isWindow ? "Switch ↵" : (resultRow.isCommand ? "Run ↵" : "Launch ↵"))
+                                    : (resultRow.isWindow ? "Window" : (resultRow.isCommand ? "Command" : "App"))
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 11
                                 font.weight: isSelected ? Font.Bold : Font.Medium
@@ -1143,18 +1333,18 @@ PanelWindow {
             Column {
                 anchors.centerIn: parent
                 spacing: Theme.spaceMedium
-                visible: root.searchQuery.length > 0 && root.searchResults.length === 0
+                visible: (root.searchQuery.length > 0 || root.isCommandMode) && root.searchResults.length === 0
 
                 MaterialIcon {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "search_off"
+                    text: root.isCommandMode ? "terminal" : "search_off"
                     size: 40
                     color: Colors.textMuted
                 }
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "No matching windows or applications"
+                    text: root.isCommandMode ? "No matching commands" : "No matching windows or applications"
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBodyMedium
                     font.weight: Font.DemiBold
@@ -1163,7 +1353,9 @@ PanelWindow {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Try searching with a different name or keyword"
+                    text: root.isCommandMode
+                        ? "Try >wallpaper, >scheme, >mode, >settings, or >exit"
+                        : "Try searching with a different name or keyword"
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBodySmall
                     color: Colors.textMuted
