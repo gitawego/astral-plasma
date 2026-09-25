@@ -219,6 +219,24 @@ Item {
         assert(activityModel.brandIcon === "terminal", "Brand icon should be terminal");
         assert(activityModel.isActive === true, "isActive should be true");
 
+        // ---- 5c2. ZCode Agent Ingestion ----
+        activityModel.applyActivity({
+            agent: "zcode",
+            model: "MiniMax-M3",
+            display_name: "ZCode · MiniMax M3",
+            brand_color: "#06B6D4",
+            brand_icon: "bolt",
+            is_active: true,
+            intensity: 0.85,
+            request_rate: 6.0
+        });
+
+        assert(activityModel.agent === "zcode", "Agent should be zcode");
+        assert(activityModel.displayName === "ZCode · MiniMax M3", "Display name should be ZCode · MiniMax M3");
+        assert(Qt.colorEqual(activityModel.brandColor, "#06B6D4"), "Brand color should be #06B6D4 (MiniMax Bolt)");
+        assert(activityModel.brandIcon === "bolt", "Brand icon should be bolt");
+        assert(activityModel.isActive === true, "isActive should be true");
+
         // ---- 5d. Immediate Idle Decay when Turn Finishes ----
         activityModel.applyActivity({
             is_active: false,

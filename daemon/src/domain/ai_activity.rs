@@ -138,6 +138,44 @@ pub fn resolve_model_metadata(raw_model: &str, tool_source: &str) -> AiAgentIden
         };
     }
 
+    // 0d. ZCode
+    if lower_tool.contains("zcode") {
+        let display = if !raw_model.is_empty() {
+            let inner = resolve_model_metadata(raw_model, "");
+            let model_title = if inner.display_name != "AI Agent" && !inner.display_name.is_empty() {
+                inner.display_name
+            } else {
+                format_clean_model_name(raw_model)
+            };
+            format!("ZCode · {}", model_title)
+        } else {
+            "ZCode Agent".to_string()
+        };
+        let (color, icon) = if !raw_model.is_empty() {
+            let inner = resolve_model_metadata(raw_model, "");
+            let c = if inner.brand_color != "#10B981" && inner.brand_color != "#9bcbfb" {
+                inner.brand_color
+            } else {
+                "#3B82F6".to_string() // ZCode Electric Blue
+            };
+            let ic = if inner.brand_icon != "token" && inner.brand_icon != "code" {
+                inner.brand_icon
+            } else {
+                "code".to_string()
+            };
+            (c, ic)
+        } else {
+            ("#3B82F6".to_string(), "code".to_string())
+        };
+        return AiAgentIdentity {
+            tool_source: "zcode".to_string(),
+            model_id: if raw_model.is_empty() { "zcode".to_string() } else { raw_model.to_string() },
+            display_name: display,
+            brand_color: color,
+            brand_icon: icon,
+        };
+    }
+
     // 1. Claude / Anthropic
     if lower_model.contains("claude") || lower_tool.contains("claude") {
         let display = if lower_model.contains("3-7") || lower_model.contains("3.7") {

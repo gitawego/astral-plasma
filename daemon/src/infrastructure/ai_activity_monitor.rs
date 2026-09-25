@@ -309,6 +309,10 @@ impl AiActivityMonitor {
             if let Some(pi_defaults) = read_pi_default_settings() {
                 return Some(pi_defaults);
             }
+        } else if lower.contains(".zcode") || lower.contains("zcode") {
+            if let Some(zcode_defaults) = read_zcode_default_settings() {
+                return Some(zcode_defaults);
+            }
         } else if lower.contains(".codex") {
             if let Some(codex_defaults) = read_codex_default_settings() {
                 return Some(codex_defaults);
@@ -359,6 +363,8 @@ impl AiActivityMonitor {
             "codex"
         } else if hint_lower.contains("antigravity") || hint_lower.contains("gemini") {
             "antigravity"
+        } else if hint_lower.contains("zcode") {
+            "zcode"
         } else if hint_lower.contains("opencode") {
             "opencode"
         } else if hint_lower.contains(".dsh") {
@@ -384,7 +390,7 @@ impl AiActivityMonitor {
 
             // Check for direct JSON structure
             if let Some((m, prov)) = extract_model_from_json_line(trimmed) {
-                let resolved_tool = if !prov.is_empty() {
+                let resolved_tool = if !prov.is_empty() && tool_source != "zcode" {
                     prov
                 } else if tool_source == "codex" {
                     "openai".to_string()
@@ -423,6 +429,7 @@ impl AiActivityMonitor {
         // Fallback by tool source if file was actively modified and verified settings exist
         match tool_source {
             "claude" => Some(("claude-3-7-sonnet".to_string(), "claude".to_string())),
+            "zcode" => read_zcode_default_settings().or_else(|| Some(("MiniMax-M3".to_string(), "zcode".to_string()))),
             "pi" => read_pi_default_settings(),
             "codex" => read_codex_default_settings().or_else(|| Some(("gpt-5.5".to_string(), "openai".to_string()))),
             "antigravity" => Some(("Gemini Flash 3.8".to_string(), "gemini".to_string())),
@@ -480,6 +487,56 @@ impl AiActivityMonitor {
         Some((model_id, tokens_in + tokens_out, time_updated))
     }
 
+    /// Extracts the latest session from ZCode's SQLite database (~/.zcode/cli/db/db.sqlite).
+    /// Returns (model_id, tokens, time_updated_ms, is_completed).
+    pub fn query_zcode_latest_session(home: &Path) -> Option<(String, u64, u64, bool)> {
+        let db_path = home.join(".zcode/cli/db/db.sqlite");
+        if !db_path.exists() {
+            return None;
+        }
+
+        let uri = format!("file:{}?mode=ro", db_path.to_string_lossy());
+        let output = std::process::Command::new("sqlite3")
+            .arg(&uri)
+            .arg("SELECT model_id, status, started_at, coalesce(completed_at, started_at), output_tokens, finish_reason FROM model_usage ORDER BY started_at DESC LIMIT 1;")
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let trimmed = stdout.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let parts: Vec<&str> = trimmed.split('|').collect();
+        if parts.len() < 5 {
+            return None;
+        }
+
+        let raw_model = parts[0].trim();
+        let status = parts[1].trim();
+        let _started_at: u64 = parts[2].trim().parse().unwrap_or(0);
+        let time_updated: u64 = parts[3].trim().parse().unwrap_or(0);
+        let tokens: u64 = parts[4].trim().parse().unwrap_or(0);
+        let finish_reason = parts.get(5).map(|s| s.trim()).unwrap_or("");
+
+        let model_id = if let Some(slash_pos) = raw_model.rfind('/') {
+            raw_model[slash_pos + 1..].to_string()
+        } else {
+            raw_model.to_string()
+        };
+
+        let is_completed = (status == "completed" && (finish_reason == "stop" || finish_reason.is_empty()))
+            || status == "error"
+            || status == "cancelled";
+
+        Some((model_id, tokens, time_updated, is_completed))
+    }
+
     pub fn start_background_watcher(self: Arc<Self>) {
         tokio::spawn(async move {
             self.run_inotify_loop().await;
@@ -504,6 +561,9 @@ impl AiActivityMonitor {
             home.join(".omp/agent/sessions"),
             home.join(".local/share/opencode"),
             home.join(".config/ai.opencode.desktop"),
+            home.join(".zcode/cli/log"),
+            home.join(".zcode/cli/db"),
+            home.join(".zcode/v2"),
             home.join(".config/Cursor"),
             home.join(".config/Windsurf"),
         ];
@@ -570,6 +630,10 @@ impl AiActivityMonitor {
         let mut last_seen_opencode_tokens: u64 = 0;
         let mut last_seen_opencode_mtime: u64 = 0;
         let mut last_seen_opencode_size: u64 = 0;
+        let mut last_seen_zcode_time: u64 = 0;
+        let mut last_seen_zcode_tokens: u64 = 0;
+        let mut last_seen_zcode_mtime: u64 = 0;
+        let mut last_seen_zcode_size: u64 = 0;
 
         // Synchronize initial ground-truth state across all active agents
         let now_ms = current_epoch_ms();
@@ -590,6 +654,17 @@ impl AiActivityMonitor {
             last_seen_opencode_tokens = tokens;
             if now_epoch.saturating_sub(time_updated) < ACTIVE_AGENT_WINDOW_MS {
                 self.record_activity_with_tokens(&model, "opencode", Some(tokens)).await;
+            }
+        }
+
+        // ZCode initial ground-truth check
+        if let Some((model, tokens, time_updated, is_completed)) = Self::query_zcode_latest_session(&home) {
+            let now_epoch = current_epoch_ms();
+            last_seen_zcode_time = time_updated;
+            last_seen_zcode_tokens = tokens;
+            let window = if is_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
+            if now_epoch.saturating_sub(time_updated) < window {
+                self.record_activity_full(&model, "zcode", Some(tokens), is_completed).await;
             }
         }
 
@@ -706,6 +781,29 @@ impl AiActivityMonitor {
                                                 }
                                             }
                                         }
+                                    } else if name_str.starts_with("db.sqlite") && full_path.to_string_lossy().contains(".zcode") {
+                                        let is_fresh = full_path.metadata().ok()
+                                            .and_then(|m| m.modified().ok())
+                                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < ACTIVE_AGENT_WINDOW_MS)
+                                            .unwrap_or(false);
+                                        if is_fresh {
+                                            if let Some((model, tokens, time_updated, is_completed)) = Self::query_zcode_latest_session(&home) {
+                                                let now_epoch = current_epoch_ms();
+                                                let window = if is_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
+                                                if now_epoch.saturating_sub(time_updated) < window
+                                                    && (time_updated > last_seen_zcode_time || tokens != last_seen_zcode_tokens)
+                                                {
+                                                    let delta = tokens.saturating_sub(last_seen_zcode_tokens);
+                                                    last_seen_zcode_time = time_updated;
+                                                    last_seen_zcode_tokens = tokens;
+                                                    let reported = if delta > 0 { delta } else { tokens.min(5000) };
+                                                    self.record_activity_full(&model, "zcode", Some(reported), is_completed).await;
+                                                    let curr = self.get_state().await;
+                                                    emit_activity_payload(&curr);
+                                                }
+                                            }
+                                        }
                                     } else if name_str.ends_with(".jsonl") || name_str.ends_with(".log") || name_str == "session.lock" {
                                         if (name_str.contains("antigravity") || full_path.to_string_lossy().contains("antigravity")) && name_str != "transcript.jsonl" {
                                             offset += std::mem::size_of::<libc::inotify_event>() + name_len;
@@ -783,6 +881,36 @@ impl AiActivityMonitor {
                                         let reported = if delta > 0 { delta } else { tokens.min(5000) };
                                         let is_completed = now_epoch.saturating_sub(time_updated) >= 3_000;
                                         self.record_activity_full(&model, "opencode", Some(reported), is_completed).await;
+                                        should_emit = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2b. Resilient poll: check ZCode database updates
+                    let zcode_wal = home.join(".zcode/cli/db/db.sqlite-wal");
+                    let zcode_db = home.join(".zcode/cli/db/db.sqlite");
+                    let zwal_target = if zcode_wal.exists() { &zcode_wal } else { &zcode_db };
+                    if let Ok(meta) = zwal_target.metadata() {
+                        let mtime = meta.modified().ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+                        let size = meta.len();
+                        if mtime > last_seen_zcode_mtime || size != last_seen_zcode_size {
+                            last_seen_zcode_mtime = mtime;
+                            last_seen_zcode_size = size;
+                            if let Some((model, tokens, time_updated, is_completed)) = Self::query_zcode_latest_session(&home) {
+                                let now_epoch = current_epoch_ms();
+                                let window = if is_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
+                                if now_epoch.saturating_sub(time_updated) < window {
+                                    if time_updated > last_seen_zcode_time || tokens != last_seen_zcode_tokens {
+                                        let delta = tokens.saturating_sub(last_seen_zcode_tokens);
+                                        last_seen_zcode_time = time_updated;
+                                        last_seen_zcode_tokens = tokens;
+                                        let reported = if delta > 0 { delta } else { tokens.min(5000) };
+                                        self.record_activity_full(&model, "zcode", Some(reported), is_completed).await;
                                         should_emit = true;
                                     }
                                 }
@@ -910,6 +1038,19 @@ impl AiActivityMonitor {
             }
         }
 
+        // 7. ZCode session logs
+        let zcode_logs = home.join(".zcode/cli/log");
+        if zcode_logs.exists() {
+            if let Ok(files) = std::fs::read_dir(&zcode_logs) {
+                for f in files.flatten() {
+                    let fp = f.path();
+                    if fp.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                        candidates.push(fp);
+                    }
+                }
+            }
+        }
+
         let mut newest_time = 0u64;
         let mut newest_entry = None;
 
@@ -1016,6 +1157,19 @@ impl AiActivityMonitor {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // 7. ZCode session logs
+        let zcode_logs = home.join(".zcode/cli/log");
+        if zcode_logs.exists() {
+            if let Ok(files) = std::fs::read_dir(&zcode_logs) {
+                for f in files.flatten() {
+                    let fp = f.path();
+                    if fp.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                        check_file(&fp);
                     }
                 }
             }
@@ -1187,6 +1341,35 @@ pub fn check_turn_completed_from_tail(tail: &str, path_hint: &str) -> bool {
         return false;
     }
 
+    // 4. ZCode JSONL logs
+    if lower_hint.contains("zcode") {
+        for line in tail.lines().rev() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                let event = v.get("event").and_then(|e| e.as_str()).unwrap_or("");
+                if event == "turn.completed" || event == "turn.failed" {
+                    return true;
+                }
+                if event == "turn.started" || event == "model.request.started" || event == "tool.call.started" {
+                    return false;
+                }
+                if let Some(ctx) = v.get("context") {
+                    if let Some(finish_reason) = ctx.get("finishReason").and_then(|f| f.as_str()) {
+                        if finish_reason == "stop" {
+                            return true;
+                        } else if finish_reason == "tool-calls" {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     false
 }
 
@@ -1280,11 +1463,31 @@ pub fn extract_model_from_json_line(line: &str) -> Option<(String, String)> {
                 .or_else(|| p.get("collaboration_mode").and_then(|c| c.get("settings")).and_then(|s| s.get("model")))
         }).and_then(|s| s.as_str());
 
-        let model = direct_model.or(msg_model).or(payload_model)?;
+        // Nested context.model or context.modelId (ZCode and structured event logs)
+        let ctx = v.get("context");
+        let ctx_model = ctx.and_then(|c| {
+            c.get("model")
+                .or_else(|| c.get("modelId"))
+                .or_else(|| c.get("model_id"))
+                .or_else(|| c.get("modelName"))
+                .or_else(|| c.get("model_name"))
+        }).and_then(|s| s.as_str());
+
+        let raw_m = direct_model.or(msg_model).or(payload_model).or(ctx_model)?;
+        let model = if let Some((prefix, rest)) = raw_m.split_once('/') {
+            if prefix.len() == 36 && prefix.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+                rest
+            } else {
+                raw_m
+            }
+        } else {
+            raw_m
+        };
 
         let prov = v.get("provider")
             .or_else(|| msg.and_then(|m| m.get("provider")))
             .or_else(|| payload.and_then(|p| p.get("provider").or_else(|| p.get("model_provider"))))
+            .or_else(|| ctx.and_then(|c| c.get("providerId").or_else(|| c.get("provider"))))
             .and_then(|p| p.as_str())
             .unwrap_or("")
             .to_string();
@@ -1300,7 +1503,16 @@ pub fn extract_model_from_json_line(line: &str) -> Option<(String, String)> {
             if let Some(quote_start) = trimmed_rem.find('"') {
                 let inner = &trimmed_rem[quote_start + 1..];
                 if let Some(quote_end) = inner.find('"') {
-                    let model = &inner[..quote_end];
+                    let raw_m = &inner[..quote_end];
+                    let model = if let Some((prefix, rest)) = raw_m.split_once('/') {
+                        if prefix.len() == 36 && prefix.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+                            rest
+                        } else {
+                            raw_m
+                        }
+                    } else {
+                        raw_m
+                    };
                     if !model.is_empty() {
                         return Some((model.to_string(), String::new()));
                     }
@@ -1310,6 +1522,55 @@ pub fn extract_model_from_json_line(line: &str) -> Option<(String, String)> {
     }
 
     None
+}
+
+/// Reads default model and provider configured in ~/.zcode/v2/bot-state.v3.json or ~/.zcode/v2/config.json
+pub fn read_zcode_default_settings() -> Option<(String, String)> {
+    let home = std::env::var("HOME").ok()?;
+    let bot_state_path = PathBuf::from(&home).join(".zcode/v2/bot-state.v3.json");
+    if let Ok(content) = std::fs::read_to_string(&bot_state_path) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(bots) = v.get("bots").and_then(|b| b.as_object()) {
+                let mut best_model: Option<(String, u64)> = None;
+                for (_, bot) in bots {
+                    let updated = bot.get("updatedAt").and_then(|u| u.as_u64()).unwrap_or(0);
+                    if let Some(model) = bot.get("draftOptions")
+                        .and_then(|d| d.get("modelSelection"))
+                        .and_then(|m| m.get("modelId"))
+                        .and_then(|s| s.as_str())
+                    {
+                        if best_model.as_ref().map(|(_, t)| updated > *t).unwrap_or(true) {
+                            best_model = Some((model.to_string(), updated));
+                        }
+                    }
+                }
+                if let Some((m, _)) = best_model {
+                    return Some((m, "zcode".to_string()));
+                }
+            }
+        }
+    }
+
+    // Fallback: check ~/.zcode/v2/config.json
+    let config_path = PathBuf::from(&home).join(".zcode/v2/config.json");
+    if let Ok(content) = std::fs::read_to_string(&config_path) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(providers) = v.get("provider").or_else(|| v.get("providers")).and_then(|p| p.as_object()) {
+                for (_, p) in providers {
+                    if let Some(models) = p.get("models").and_then(|m| m.as_object()) {
+                        for (model_name, _) in models {
+                            if !model_name.is_empty() {
+                                return Some((model_name.clone(), "zcode".to_string()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Default fallback
+    Some(("MiniMax-M3".to_string(), "zcode".to_string()))
 }
 
 /// Reads default model and provider configured in ~/.pi/agent/settings.json

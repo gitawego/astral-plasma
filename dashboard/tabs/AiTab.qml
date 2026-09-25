@@ -47,6 +47,7 @@ Item {
         const pid = (p.provider_id || p.provider || "").toLowerCase();
         if (pid === "gemini") return "Gemini";
         if (pid === "opencode-go" || pid === "opencode") return "OpenCode";
+        if (pid === "zcode" || pid.indexOf("zcode") !== -1) return "ZCode";
         if (pid.indexOf("minimax") !== -1) return "MiniMax";
         if (pid.indexOf("xiaomi") !== -1 || pid.indexOf("mimo") !== -1) return "MiMo";
         if (pid.indexOf("deepseek") !== -1) return "DeepSeek";
@@ -59,6 +60,7 @@ Item {
         if (!p) return "auto_awesome";
         const pid = (p.provider_id || p.provider || "").toLowerCase();
         if (pid === "gemini") return "auto_awesome";
+        if (pid.indexOf("zcode") !== -1) return "code";
         if (pid.indexOf("opencode") !== -1) return "terminal";
         if (pid.indexOf("minimax") !== -1) return "bolt";
         if (pid.indexOf("xiaomi") !== -1 || pid.indexOf("mimo") !== -1) return "smartphone";
@@ -72,6 +74,7 @@ Item {
         if (pid === "gemini") return "Antigravity Cockpit & Keyring";
         if (pid === "minimax-cn") return "Pi Agent Sessions";
         if (pid === "opencode-go" || pid === "opencode") return "OpenCode & Pi Sessions";
+        if (pid === "zcode" || pid.indexOf("zcode") !== -1) return "ZCode Config (~/.zcode)";
         if (pid.indexOf("mimo") !== -1 || pid.indexOf("xiaomi") !== -1) return "OMP Agent (~/.omp/agent)";
         return "Agent Tool Scanner";
     }
@@ -87,6 +90,9 @@ Item {
         }
         if (pid === "opencode-go" || pid === "opencode") {
             return "● OpenCode Config (~/.config/opencode)   ● Pi Agent (~/.pi/agent)";
+        }
+        if (pid === "zcode" || pid.indexOf("zcode") !== -1) {
+            return "● ZCode Rules (~/.zcode/v2)   ● ZCode Sessions (~/.zcode/cli)";
         }
         if (pid.indexOf("mimo") !== -1 || pid.indexOf("xiaomi") !== -1) {
             return "● OMP Agent Config (~/.omp/agent)";

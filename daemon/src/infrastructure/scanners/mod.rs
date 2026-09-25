@@ -2,12 +2,14 @@ pub mod antigravity_scanner;
 pub mod omp_scanner;
 pub mod opencode_scanner;
 pub mod pi_scanner;
+pub mod zcode_scanner;
 
 use crate::domain::tool_scanner::{DiscoveredCredential, ToolConfigScanner};
 pub use antigravity_scanner::AntigravityScanner;
 pub use omp_scanner::OmpScanner;
 pub use opencode_scanner::OpenCodeScanner;
 pub use pi_scanner::PiScanner;
+pub use zcode_scanner::ZCodeScanner;
 
 /// Aggregates and coordinates deterministic scans across all supported AI agent tools.
 pub struct ToolConfigAggregator {
@@ -29,6 +31,7 @@ impl ToolConfigAggregator {
                 Box::new(OmpScanner::new()),
                 Box::new(OpenCodeScanner::new()),
                 Box::new(AntigravityScanner::new()),
+                Box::new(ZCodeScanner::new()),
             ],
         }
     }

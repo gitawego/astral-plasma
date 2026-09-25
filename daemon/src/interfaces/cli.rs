@@ -657,6 +657,21 @@ pub async fn run_cli() -> DynResult<()> {
                             }
                         }
 
+                        if let Some((model, tokens, time_updated, is_completed)) = AiActivityMonitor::query_zcode_latest_session(&home) {
+                            let window = if is_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
+                            let is_recent = now_ms.saturating_sub(time_updated) < window;
+                            if is_recent {
+                                monitor.record_activity_full(&model, "zcode", Some(tokens), is_completed).await;
+                            } else if monitor.state.read().await.last_event_epoch_ms < time_updated && monitor.get_state().await.active_agents.is_empty() {
+                                let mut st = monitor.state.write().await;
+                                st.identity = crate::domain::ai_activity::resolve_model_metadata(&model, "zcode");
+                                st.is_active = false;
+                                st.intensity = 0.0;
+                                st.request_rate_rpm = 0.0;
+                                st.last_event_epoch_ms = time_updated;
+                            }
+                        }
+
                         if monitor.get_state().await.active_agents.is_empty() {
                             if let Some((path, mtime, _)) = AiActivityMonitor::find_latest_session_file(&home) {
                                 if let Some((m, t, _)) = AiActivityMonitor::parse_model_and_tokens_from_file(&path) {

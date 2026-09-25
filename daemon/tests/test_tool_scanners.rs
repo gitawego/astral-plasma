@@ -170,3 +170,100 @@ providers:
     let missing = aggregator.find_credential_for("non-existent-provider", &[]);
     assert!(missing.is_none());
 }
+
+#[test]
+fn test_zcode_scanner_deterministic_extraction() {
+    use astral_plasma::infrastructure::scanners::ZCodeScanner;
+
+    let dir = tempdir().expect("Failed to create tempdir");
+    let v2_dir = dir.path().join("v2");
+    fs::create_dir_all(&v2_dir).expect("Failed to create v2 dir");
+
+    let prov_config_content = r#"{
+      "schemaVersion": 1,
+      "config": {
+        "providerConfigRules": {
+          "providerRules": [
+            {
+              "providerId": "rule-1",
+              "providerName": "MiniMax",
+              "config": {
+                "access": {
+                  "type": "api-key",
+                  "apiKey": "sk-cp-minimax-zcode-12345"
+                },
+                "api": {
+                  "type": "anthropic-messages",
+                  "baseUrl": "https://api.minimaxi.com/anthropic"
+                },
+                "personalModelIds": ["MiniMax-M3"]
+              }
+            },
+            {
+              "providerId": "rule-2",
+              "providerName": "DeepSeek",
+              "config": {
+                "access": {
+                  "type": "api-key",
+                  "apiKey": "sk-deepseek-zcode-67890"
+                },
+                "api": {
+                  "type": "anthropic-messages",
+                  "baseUrl": "https://api.deepseek.com/anthropic"
+                }
+              }
+            },
+            {
+              "providerId": "rule-3",
+              "providerName": "EncryptedProvider",
+              "config": {
+                "access": {
+                  "type": "api-key",
+                  "apiKey": "enc:v1:should-be-ignored"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }"#;
+    fs::write(v2_dir.join("provider_config.json"), prov_config_content).unwrap();
+
+    let config_content = r#"{
+      "provider": {
+        "builtin:bigmodel": {
+          "name": "Bigmodel - API Key",
+          "options": {
+            "apiKey": "glm-test-key-zcode-abcde",
+            "baseURL": "https://open.bigmodel.cn/api/anthropic"
+          }
+        }
+      }
+    }"#;
+    fs::write(v2_dir.join("config.json"), config_content).unwrap();
+
+    let scanner = ZCodeScanner::with_base_dir(dir.path().to_path_buf());
+    let creds = scanner.scan();
+
+    assert_eq!(creds.len(), 3, "Expected 3 valid credentials from ZCodeScanner");
+
+    let minimax = creds.iter().find(|c| c.provider_id == "minimax-cn");
+    assert!(minimax.is_some());
+    assert_eq!(minimax.unwrap().credential, "sk-cp-minimax-zcode-12345");
+    assert_eq!(minimax.unwrap().tool_source, "zcode");
+    assert_eq!(minimax.unwrap().base_url.as_deref(), Some("https://api.minimaxi.com/anthropic"));
+
+    let deepseek = creds.iter().find(|c| c.provider_id == "deepseek");
+    assert!(deepseek.is_some());
+    assert_eq!(deepseek.unwrap().credential, "sk-deepseek-zcode-67890");
+    assert_eq!(deepseek.unwrap().tool_source, "zcode");
+
+    let glm = creds.iter().find(|c| c.provider_id == "glm");
+    assert!(glm.is_some());
+    assert_eq!(glm.unwrap().credential, "glm-test-key-zcode-abcde");
+    assert_eq!(glm.unwrap().tool_source, "zcode");
+
+    // Encrypted keys must be filtered out
+    let encrypted = creds.iter().find(|c| c.credential.starts_with("enc:"));
+    assert!(encrypted.is_none(), "Encrypted keys must be excluded");
+}

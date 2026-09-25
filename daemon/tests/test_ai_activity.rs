@@ -641,3 +641,50 @@ async fn test_turn_completion_decays_promptly() {
     assert!(!st3.is_active, "Monitor must immediately transition to inactive when all agents complete");
     assert_eq!(st3.intensity, 0.0);
 }
+
+#[test]
+fn test_resolve_zcode_agent_identity() {
+    let id1 = resolve_model_metadata("MiniMax-M3", "zcode");
+    assert_eq!(id1.tool_source, "zcode");
+    assert_eq!(id1.brand_icon, "bolt"); // Resolves MiniMax inner brand icon
+    assert!(id1.display_name.starts_with("ZCode · "));
+
+    let id2 = resolve_model_metadata("086f09bb-fee7-4ce7-95e5-ebb86f376775/deepseek-v4-pro", "zcode");
+    assert_eq!(id2.tool_source, "zcode");
+    assert_eq!(id2.brand_icon, "smart_toy");
+    assert_eq!(id2.brand_color, "#2563EB");
+    assert_eq!(id2.display_name, "ZCode · DeepSeek V4");
+}
+
+#[test]
+fn test_check_turn_completed_zcode() {
+    use astral_plasma::infrastructure::ai_activity_monitor::check_turn_completed_from_tail;
+
+    let path = "/home/hlu/.zcode/cli/log/zcode-2026-09-25.jsonl";
+
+    let tail_started = r#"{"timestamp":"2026-09-25T10:00:00.000Z","event":"turn.started","context":{"turnNumber":0}}"#;
+    assert!(!check_turn_completed_from_tail(tail_started, path));
+
+    let tail_tool = r#"{"timestamp":"2026-09-25T10:00:05.000Z","event":"model.request.completed","context":{"finishReason":"tool-calls"}}"#;
+    assert!(!check_turn_completed_from_tail(tail_tool, path));
+
+    let tail_stop = r#"{"timestamp":"2026-09-25T10:00:10.000Z","event":"model.request.completed","context":{"finishReason":"stop"}}"#;
+    assert!(check_turn_completed_from_tail(tail_stop, path));
+
+    let tail_completed = r#"{"timestamp":"2026-09-25T10:00:15.000Z","event":"turn.completed","context":{"turnNumber":0,"toolCallCount":5}}"#;
+    assert!(check_turn_completed_from_tail(tail_completed, path));
+}
+
+#[test]
+fn test_extract_model_from_zcode_jsonl() {
+    use astral_plasma::infrastructure::ai_activity_monitor::extract_model_from_json_line;
+
+    let line1 = r#"{"event":"model.request.completed","context":{"modelId":"muse-spark-1.3-contributor","providerId":"opencode-go-responses"}}"#;
+    let res1 = extract_model_from_json_line(line1);
+    assert_eq!(res1, Some(("muse-spark-1.3-contributor".to_string(), "opencode-go-responses".to_string())));
+
+    let line2 = r#"{"event":"bootstrap.app.startup","context":{"model":"086f09bb-fee7-4ce7-95e5-ebb86f376775/deepseek-v4-pro"}}"#;
+    let res2 = extract_model_from_json_line(line2);
+    assert_eq!(res2, Some(("deepseek-v4-pro".to_string(), String::new())));
+}
+

@@ -181,6 +181,12 @@ Item {
         assert(minimaxBadges.indexOf("Pi Agent Sessions") !== -1, "MiniMax discovery must reference Pi Agent");
         assert(minimaxBadges.indexOf("Cockpit") === -1, "MiniMax discovery must NEVER reference Cockpit");
 
+        let zcodeBadges = aiTab.getProviderDiscoveryBadges({ provider_id: "zcode" });
+        assert(zcodeBadges.indexOf("ZCode Rules") !== -1, "ZCode discovery must reference ZCode Rules");
+        assert(zcodeBadges.indexOf("ZCode Sessions") !== -1, "ZCode discovery must reference ZCode Sessions");
+        assert(aiTab.getProviderShortName({ provider_id: "zcode" }) === "ZCode", "ZCode short name must be ZCode");
+        assert(aiTab.getProviderIcon({ provider_id: "zcode" }) === "code", "ZCode icon must be code");
+
         console.log("PASS: All AiTab & CentralDropdown 5-Tab Unit Tests passed successfully!");
         Qt.exit(0);
     }
