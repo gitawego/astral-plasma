@@ -1,4 +1,5 @@
 import QtQuick
+import "../components"
 
 // ============================================================================
 // Shell Exit Contract
@@ -12,6 +13,16 @@ import QtQuick
 // The quit itself is pinned by daemon/tests/test_shell_lifecycle.rs.
 Item {
     id: testRoot
+
+    MaterialIcon {
+        id: testExitToAppIcon
+        text: "exit_to_app"
+    }
+
+    MaterialIcon {
+        id: testExitIcon
+        text: "exit"
+    }
 
     function readLocalFile(relUrl) {
         const xhr = new XMLHttpRequest();
@@ -75,7 +86,19 @@ Item {
         assert(/label:\s*"Exit Astral Plasma"[\s\S]{0,200}Config\.exitShell\(\)/.test(power),
             "the power menu must offer Exit Astral Plasma");
 
-        console.log("PASS: Shell Exit Contract (shell IPC + daemon quit, offered by "
+        // Icon Contract: Exit Astral Plasma must have a valid, resolved icon across all surfaces
+        assert(testExitToAppIcon.hasIcon && testExitToAppIcon.displaySymbol === "󰈆",
+            "MaterialIcon must resolve 'exit_to_app' to the 󰈆 glyph");
+        assert(testExitIcon.hasIcon && testExitIcon.displaySymbol === "󰈆",
+            "MaterialIcon must resolve 'exit' to the 󰈆 glyph");
+        assert(/icon:\s*"exit_to_app"[\s\S]{0,50}label:\s*"Exit Astral Plasma"/.test(power),
+            "the power menu must use icon: 'exit_to_app' for Exit Astral Plasma");
+        assert(/id:\s*"exit"[\s\S]{0,200}icon:\s*"exit_to_app"/.test(launcher),
+            "the launcher exit suggestion must use icon: 'exit_to_app'");
+        assert(/id:\s*exitShellButton[\s\S]{0,200}iconText:\s*"exit_to_app"/.test(settings),
+            "the settings exit button must use iconText: 'exit_to_app'");
+
+        console.log("PASS: Shell Exit Contract (shell IPC + daemon quit + icons, offered by "
             + "settings, launcher and power menu)");
         Qt.exit(0);
     }

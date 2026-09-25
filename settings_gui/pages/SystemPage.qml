@@ -172,7 +172,7 @@ ColumnLayout {
         PillButton {
             id: exitShellButton
             label: "Exit Astral Plasma"
-            iconText: "logout"
+            iconText: "exit_to_app"
             active: true
             activeColor: root.errorContainerColor
             activeTextColor: root.onErrorContainerColor

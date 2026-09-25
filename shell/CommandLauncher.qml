@@ -183,7 +183,7 @@ PanelWindow {
             id: "exit",
             name: "Exit Astral Plasma",
             description: "Leave the shell and restore the Plasma desktop",
-            icon: "logout",
+            icon: "exit_to_app",
             aliases: ["exit", "quit", "leave"]
         }
     ]

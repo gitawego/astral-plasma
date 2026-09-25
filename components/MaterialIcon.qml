@@ -113,6 +113,9 @@ Item {
         "speaker": "󰕾",
         "lock": "󰌾",
         "logout": "󰍃",
+        "exit_to_app": "󰈆",
+        "exit": "󰈆",
+        "quit": "󰈆",
         "restart_alt": "󰑓",
         "terminal": "󰆍",
         "code": "󰅩",
@@ -208,6 +211,7 @@ Item {
         if (text && (text.includes("delete") || text.includes("trash"))) return "󰆴";
         if (text && (text.includes("check_circle") || text === "check")) return "󰄳";
         if (text && (text.includes("account") || text.includes("person") || text.includes("user"))) return "󰀉";
+        if (text && (text.includes("exit") || text.includes("leave") || text === "quit")) return "󰈆";
         return "";
     }
 
