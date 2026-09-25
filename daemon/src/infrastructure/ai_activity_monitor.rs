@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
-pub const IN_FLIGHT_WINDOW_MS: u64 = 12_000;   // 12s active window during in-flight reasoning and tool execution
+pub const IN_FLIGHT_WINDOW_MS: u64 = 120_000;  // 120s active window during in-flight reasoning and tool execution
 pub const COMPLETED_WINDOW_MS: u64 = 3_000;    // 3s active window after turn completion (shows completion state, then promptly decays)
-pub const ACTIVE_AGENT_WINDOW_MS: u64 = 12_000; // alias for in-flight / active sessions scan
+pub const ACTIVE_AGENT_WINDOW_MS: u64 = 120_000; // alias for in-flight / active sessions scan
 pub const TRACK_RETENTION_MS: u64 = 120_000;   // 120s track retention for rolling metrics
 
 /// Track state for an individual agent tool during concurrent execution.
@@ -586,6 +586,7 @@ impl AiActivityMonitor {
         // Antigravity transcripts live in ~/.gemini/antigravity/brain/<id>/.system_generated/logs
         let brain = home.join(".gemini/antigravity/brain");
         if brain.exists() && brain.is_dir() {
+            candidate_dirs.push(brain.clone());
             if let Ok(entries) = std::fs::read_dir(&brain) {
                 for e in entries.flatten() {
                     let logs = e.path().join(".system_generated/logs");
@@ -696,6 +697,8 @@ impl AiActivityMonitor {
 
         let mut decay_tick = tokio::time::interval(tokio::time::Duration::from_millis(500));
         let mut buffer = [0u8; 8192];
+        let mut last_heartbeat_epoch_ms: u64 = 0;
+        let mut last_brain_scan_ms: u64 = 0;
 
         loop {
             tokio::select! {
@@ -837,6 +840,42 @@ impl AiActivityMonitor {
                 }
                 _ = decay_tick.tick() => {
                     let mut should_emit = false;
+                    let now_ms = current_epoch_ms();
+
+                    // Heartbeat: while an agent is active in-flight, emit state every 2000ms so QML is never starved
+                    if self.get_state().await.is_active && now_ms.saturating_sub(last_heartbeat_epoch_ms) >= 2000 {
+                        last_heartbeat_epoch_ms = now_ms;
+                        should_emit = true;
+                    }
+
+                    // Dynamically register newly created Antigravity session directories with inotify
+                    if now_ms.saturating_sub(last_brain_scan_ms) >= 5000 {
+                        last_brain_scan_ms = now_ms;
+                        let brain_dir = home.join(".gemini/antigravity/brain");
+                        if brain_dir.exists() && brain_dir.is_dir() {
+                            if let Ok(entries) = std::fs::read_dir(&brain_dir) {
+                                for e in entries.flatten() {
+                                    let logs = e.path().join(".system_generated/logs");
+                                    if logs.exists() && logs.is_dir() && !watch_map.values().any(|v| v == &logs) {
+                                        if let Ok(c_str) = std::ffi::CString::new(logs.to_string_lossy().as_bytes()) {
+                                            let new_wd = unsafe {
+                                                libc::inotify_add_watch(
+                                                    inotify_fd,
+                                                    c_str.as_ptr(),
+                                                    libc::IN_MODIFY | libc::IN_CREATE | libc::IN_CLOSE_WRITE,
+                                                )
+                                            };
+                                            if new_wd >= 0 {
+                                                watch_map.insert(new_wd, logs.clone());
+                                                let mut wds = self.watch_descriptors.write().await;
+                                                *wds = watch_map.clone();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     // 1. Resilient concurrent poll: scan ALL active sessions across all agent tools
                     let active_files = Self::scan_all_active_session_files(&home, ACTIVE_AGENT_WINDOW_MS);

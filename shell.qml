@@ -23,6 +23,11 @@ ShellRoot {
             Config.activeDashboardTab = tab;
             Config.dashboardVisible = true;
         }
+        function setPerfDevice(dev: string): void {
+            Config.perfSelectedDevice = dev;
+            Config.activeDashboardTab = "performance";
+            Config.dashboardVisible = true;
+        }
     }
 
     IpcHandler {

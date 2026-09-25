@@ -79,10 +79,79 @@ pub struct Desktop {
     pub active: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct CpuMetrics {
+    pub usage: f64,               // 0.0 - 1.0
+    pub temperature: f64,         // °C (e.g. 74.0)
+    pub frequency_ghz: f64,       // GHz (e.g. 3.98)
+    pub model: String,            // e.g. "12th Gen Intel(R) Core(TM) i9-12900HX"
+    pub processes: u32,
+    pub threads: u32,
+    pub load_1m: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct MemoryMetrics {
+    pub usage: f64,               // 0.0 - 1.0
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub available_bytes: u64,
+    pub cached_bytes: u64,
+    pub swap_usage: f64,          // 0.0 - 1.0
+    pub swap_total_bytes: u64,
+    pub swap_used_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct GpuMetrics {
+    #[serde(default)]
+    pub id: String,                // e.g. "gpu-0", "gpu-1"
+    #[serde(default)]
+    pub index: u32,                // e.g. 0, 1
+    #[serde(default)]
+    pub name: String,              // e.g. "GPU 0", "GPU 1"
+    #[serde(default)]
+    pub vendor: String,            // e.g. "Intel", "NVIDIA", "AMD"
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub gpu_type: String,          // "integrated" or "discrete"
+    #[serde(default)]
+    pub driver: String,            // "i915", "nvidia", "amdgpu", etc.
+    #[serde(default)]
+    pub pci_slot: String,          // e.g. "0000:00:02.0"
+    pub usage: f64,                // 0.0 - 1.0
+    pub temperature: f64,          // °C
+    pub memory_used_bytes: u64,
+    pub memory_total_bytes: u64,
+    pub clock_ghz: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct BatteryMetrics {
+    pub percentage: u32,
+    pub is_charging: bool,
+    pub power_watts: f64,
+    pub voltage_volts: f64,
+    pub health_percent: u32,
+    pub profile: String,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SystemMetrics {
     pub uptime: String,
     pub ram: f64,
+    #[serde(default)]
+    pub cpu: CpuMetrics,
+    #[serde(default)]
+    pub memory: MemoryMetrics,
+    #[serde(default)]
+    pub gpu: GpuMetrics,
+    #[serde(default)]
+    pub gpus: Vec<GpuMetrics>,
+    #[serde(default)]
+    pub battery: BatteryMetrics,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

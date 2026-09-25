@@ -749,6 +749,7 @@ Singleton {
 
     // Active selected dashboard tab ("dashboard", "media", "performance", "workspaces")
     property string activeDashboardTab: (root.settings.dashboard && root.settings.dashboard.defaultTab) ? root.settings.dashboard.defaultTab : "dashboard"
+    property string perfSelectedDevice: "cpu"
 
     onSettingsChanged: {
         if (root.settings.dashboard && root.settings.dashboard.defaultTab) {

@@ -260,8 +260,8 @@ Item {
             "AiActivityService must declare activeAgents list for multi-agent support");
         assert(/Math\.max\(1350,\s*Math\.min\(3200/.test(serviceSrc),
             "AiActivityService must use slowed down travel duration (1350ms to 3200ms)");
-        assert(/interval:\s*8000\b/.test(serviceSrc),
-            "AiActivityService must use responsive 8000ms watchdog timer");
+        assert(/interval:\s*25000\b/.test(serviceSrc),
+            "AiActivityService must use responsive 25000ms watchdog timer");
 
         // ---- 7. Source Contract: dock/components/DockStatusIcons.qml ----
         const dockSrc = readLocalFile("../dock/components/DockStatusIcons.qml");

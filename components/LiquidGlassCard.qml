@@ -39,7 +39,7 @@ Rectangle {
     radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
     border.width: root.showBorder && !root.bare ? (selected ? 1.5 : 1) : 0
     border.color: selected 
-        ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb")
+        ? root.accentGlint
         : (hovered 
             ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.70))
             : ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Qt.alpha(Colors.glassBorderSpecular, Colors.isDarkMode ? 0.45 : 0.60) : Qt.rgba(1, 1, 1, 0.25)))

@@ -688,3 +688,46 @@ fn test_extract_model_from_zcode_jsonl() {
     assert_eq!(res2, Some(("deepseek-v4-pro".to_string(), String::new())));
 }
 
+#[tokio::test]
+async fn test_in_flight_sustains_across_multi_second_tool_runs() {
+    use astral_plasma::infrastructure::ai_activity_monitor::AiActivityMonitor;
+
+    let monitor = AiActivityMonitor::new();
+    // Simulate an in-flight tool execution (is_completed = false)
+    monitor.record_activity_full("gemini-3.8-flash", "gemini", Some(500), false).await;
+
+    let st1 = monitor.get_state().await;
+    assert!(st1.is_active, "Monitor must be active when in-flight tool starts");
+
+    // Advance time by 20 seconds (greater than old 12s timeout)
+    {
+        let mut tracks = monitor.agent_tracks_for_test().await;
+        for (_, t) in tracks.iter_mut() {
+            t.last_event_epoch_ms = t.last_event_epoch_ms.saturating_sub(20_000);
+        }
+    }
+
+    // Tick decay: since IN_FLIGHT_WINDOW_MS is 120s, it MUST remain active!
+    monitor.tick_decay().await;
+    let st2 = monitor.get_state().await;
+    assert!(st2.is_active, "In-flight tool execution at 20s must NOT decay prematurely");
+    assert_eq!(st2.active_agents.len(), 1, "Agent track must be retained during in-flight operation");
+
+    // Now turn finishes (is_completed = true)
+    monitor.record_activity_full("gemini-3.8-flash", "gemini", Some(120), true).await;
+
+    // Advance by 4 seconds (greater than 3s COMPLETED_WINDOW_MS)
+    {
+        let mut tracks = monitor.agent_tracks_for_test().await;
+        for (_, t) in tracks.iter_mut() {
+            t.last_event_epoch_ms = t.last_event_epoch_ms.saturating_sub(4_000);
+        }
+    }
+
+    monitor.tick_decay().await;
+    let st3 = monitor.get_state().await;
+    assert!(!st3.is_active, "Turn completion must promptly decay after the 3s completion window");
+    assert_eq!(st3.active_agents.len(), 0);
+}
+
+
