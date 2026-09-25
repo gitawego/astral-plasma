@@ -1042,7 +1042,10 @@ pub async fn run_cli() -> DynResult<()> {
                 use std::io::Write;
                 let _ = std::io::stdout().flush();
 
-                // 2. Perform parallel batch capture
+                // 2. Brief grace period so the shell entrance animation completes smoothly with zero GPU contention
+                tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+
+                // 3. Perform parallel batch capture
                 if let Err(e) = crate::infrastructure::preview_capture::capture_windows_batch(&window_ids, width).await {
                     eprintln!("Batch preview capture failed: {}", e);
                     std::process::exit(1);

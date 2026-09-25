@@ -31,15 +31,15 @@ PanelWindow {
     property string pickedWindowId: ""
 
     // Entrance/exit progress. The window stays mapped while the close
-    // animation still has frames (CentralDropdown's proven pattern), driven
-    // by the M3 slow-spatial token - DESIGN.md assigns that token to large
-    // overlays such as this one.
+    // animation still has frames (CentralDropdown's proven pattern).
+    // Snappy 280ms entrance / 220ms exit with custom smooth decel curve
+    // ensures instant responsiveness without animation lag at 240Hz.
     property real offsetProgress: openRequested ? 1.0 : 0.0
     Behavior on offsetProgress {
         NumberAnimation {
-            duration: Theme.animExpressiveSlowSpatial
+            duration: root.openRequested ? 280 : 220
             easing.type: Easing.BezierSpline
-            easing.bezierCurve: Theme.curveExpressiveSlowSpatial
+            easing.bezierCurve: [0.22, 1.0, 0.36, 1.0]
         }
     }
 
@@ -52,8 +52,8 @@ PanelWindow {
         right: true
     }
 
-    // Dim scrim, fading with the entrance (never an opaque slab).
-    color: Qt.rgba(0, 0, 0, 0.55 * root.offsetProgress)
+    // Transparent root surface - background scrim is handled by child Rectangle
+    color: "transparent"
 
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: openRequested ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -285,7 +285,14 @@ PanelWindow {
         }
     }
 
-    // Subtle radial depth gradient behind cards for authentic dark glass depth
+    // Dim scrim fading smoothly with entrance (never an opaque slab)
+    Rectangle {
+        anchors.fill: parent
+        color: Qt.rgba(0, 0, 0, 0.55)
+        opacity: root.offsetProgress
+    }
+
+    // Subtle vertical depth gradient behind cards for authentic dark glass depth
     Rectangle {
         anchors.fill: parent
         opacity: root.offsetProgress
@@ -535,18 +542,24 @@ PanelWindow {
         anchors.fill: parent
         visible: root.searchQuery.length === 0
         opacity: (root.searchQuery.length === 0 ? 1.0 : 0.0) * root.offsetProgress
-        scale: 0.90 + 0.10 * root.offsetProgress
+        scale: 0.94 + 0.06 * root.offsetProgress
         transform: Translate {
-            y: (1.0 - root.offsetProgress) * 32
+            y: (1.0 - root.offsetProgress) * 20
         }
         transformOrigin: Item.Center
+
+        // Hardware-accelerated GPU layer caching during entrance/exit transitions:
+        // Caches the complex grid and all card geometries into an offscreen texture FBO,
+        // transforming a single quad at 240Hz without re-tessellating 70+ items per vsync tick.
+        layer.enabled: root.offsetProgress > 0.001 && root.offsetProgress < 0.999
+        layer.smooth: true
 
         Behavior on opacity { NumberAnimation { duration: Theme.animExpressiveFastEffects } }
 
         GridView {
             id: gridV
             visible: root.grid.cols > 0
-            clip: true
+            clip: root.gridOverflow
             width: root.grid.cols > 0 ? root.grid.gridW + root.gridGap : 0
             height: root.gridOverflow ? root.availH : root.grid.gridH + root.gridGap
             x: (root.width - width) / 2 + root.gridGap / 2
@@ -831,6 +844,13 @@ PanelWindow {
         scale: root.searchQuery.length > 0 ? 1.0 : 0.96
         transform: Translate {
             y: root.searchQuery.length > 0 ? 0 : 16
+            Behavior on y {
+                NumberAnimation {
+                    duration: Theme.animExpressiveFastSpatial
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                }
+            }
         }
 
         Behavior on height {
@@ -842,13 +862,6 @@ PanelWindow {
         }
         Behavior on opacity { NumberAnimation { duration: Theme.animExpressiveFastEffects } }
         Behavior on scale {
-            NumberAnimation {
-                duration: Theme.animExpressiveFastSpatial
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
-            }
-        }
-        Behavior on transform {
             NumberAnimation {
                 duration: Theme.animExpressiveFastSpatial
                 easing.type: Easing.BezierSpline

@@ -46,11 +46,18 @@ Item {
             bufB.source = "";
             return;
         }
+        // If the active visible buffer already holds this exact source, ignore redundant reload
+        if ((root.activeBuffer === "A" && bufA.source === root.source && bufA.status === Image.Ready) ||
+            (root.activeBuffer === "B" && bufB.source === root.source && bufB.status === Image.Ready)) {
+            return;
+        }
         // New frame goes into the buffer that is NOT on top; it becomes
         // active when it reports Ready.
         if (root.activeBuffer === "A") {
+            if (bufB.source === root.source) return;
             bufB.source = root.source;
         } else {
+            if (bufA.source === root.source) return;
             bufA.source = root.source;
         }
     }
@@ -61,6 +68,7 @@ Item {
         fillMode: root.fillMode
         asynchronous: true
         cache: false
+        sourceSize.width: 480
         z: root.activeBuffer === "A" ? 2 : 1
         visible: root.hasLoadedPreview ? (root.activeBuffer === "A" || root.activeBuffer === "B") : (status === Image.Ready)
 
@@ -80,6 +88,7 @@ Item {
         fillMode: root.fillMode
         asynchronous: true
         cache: false
+        sourceSize.width: 480
         z: root.activeBuffer === "B" ? 2 : 1
         visible: root.hasLoadedPreview ? (root.activeBuffer === "A" || root.activeBuffer === "B") : (status === Image.Ready)
 

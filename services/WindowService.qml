@@ -430,6 +430,26 @@ Singleton {
         onExited: overviewCycle.advance()
     }
 
+    property var _pendingOverviewThumbs: ({})
+
+    Timer {
+        id: thumbBatchTimer
+        interval: 16
+        repeat: false
+        onTriggered: root._flushOverviewThumbnails()
+    }
+
+    function _flushOverviewThumbnails() {
+        const keys = Object.keys(root._pendingOverviewThumbs);
+        if (keys.length === 0) return;
+        const next = Object.assign({}, root.overviewThumbnails);
+        for (let i = 0; i < keys.length; i++) {
+            next[keys[i]] = root._pendingOverviewThumbs[keys[i]];
+        }
+        root._pendingOverviewThumbs = {};
+        root.overviewThumbnails = next;
+    }
+
     Process {
         id: overviewBatchProc
         stdout: SplitParser {
@@ -442,7 +462,10 @@ Singleton {
                     const key = parts[1];
                     const path = parts.slice(2).join(":");
                     if (path.startsWith("/")) {
-                        root._storeOverviewThumbnail(key, "file://" + path);
+                        root._pendingOverviewThumbs[key] = "file://" + path;
+                        if (!thumbBatchTimer.running) {
+                            thumbBatchTimer.start();
+                        }
                     }
                 }
             }
@@ -454,6 +477,7 @@ Singleton {
             }
         }
         onExited: (exitCode, exitStatus) => {
+            root._flushOverviewThumbnails();
             if (root.overviewActive) {
                 overviewCycle.items = root._overviewKeys();
                 if (!overviewCycle.active) overviewCycle.start();
@@ -462,6 +486,7 @@ Singleton {
     }
 
     function _storeOverviewThumbnail(key, url) {
+        if (root.overviewThumbnails[key] === url) return;
         const next = Object.assign({}, root.overviewThumbnails);
         next[key] = url;
         root.overviewThumbnails = next;
