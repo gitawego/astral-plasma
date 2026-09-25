@@ -62,6 +62,14 @@ fn spawn_mock_hyprland_socket(socket_dir: PathBuf) -> thread::JoinHandle<()> {
                     "workspace": { "id": 1, "name": "1" },
                     "floating": false,
                     "fullscreen": 2
+                }, {
+                    "address": "0x55a4336b1111",
+                    "class": "quickshell",
+                    "title": "Astral Plasma Shell",
+                    "initialClass": "org.quickshell",
+                    "workspace": { "id": 1, "name": "1" },
+                    "floating": true,
+                    "fullscreen": 0
                 }]"#,
                 "j/activewindow" => r#"{
                     "address": "0x55a4336b65d0",
@@ -86,6 +94,7 @@ fn test_hyprland_adapter_window_manager_port() {
     let adapter = HyprlandAdapter::with_socket_dir(temp_dir.path().to_path_buf());
 
     let (windows, active) = adapter.query_windows().expect("query windows");
+    // quickshell surface must be filtered out, so length remains 2!
     assert_eq!(windows.len(), 2);
 
     assert_eq!(windows[0].id, "0x55a4336b65d0");

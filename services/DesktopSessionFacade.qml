@@ -24,6 +24,7 @@ Singleton {
     property var capabilities: ({})
 
     // Active window projection (for backwards compatibility & quick access)
+    property string activeId: ""
     property string activeTitle: ""
     property string activeAppId: ""
     property string activeIconName: ""
@@ -100,6 +101,7 @@ Singleton {
                 const w = snap.windows[i];
                 if (w.isMaximized || w.maximized) foundMax = true;
                 if (w.isActive || w.active) {
+                    root.activeId = w.id || "";
                     root.activeTitle = w.title || "";
                     root.activeAppId = w.appId || "";
                     root.activeIconName = w.iconName || "";
@@ -109,6 +111,7 @@ Singleton {
             }
             root.hasMaximizedWindow = foundMax;
             if (!foundActive && snap.windows.length === 0) {
+                root.activeId = "";
                 root.activeTitle = "";
                 root.activeAppId = "";
                 root.activeIconName = "";

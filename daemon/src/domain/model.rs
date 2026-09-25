@@ -97,6 +97,8 @@ pub struct FullStatePayload {
     pub active_icon_name: String,
     #[serde(rename = "activeAppId")]
     pub active_app_id: String,
+    #[serde(rename = "activeId", default)]
+    pub active_id: String,
     #[serde(rename = "hasMaximizedWindow", default)]
     pub has_maximized_window: bool,
 }
@@ -133,6 +135,8 @@ pub struct WindowsListPayload {
     pub active_icon_name: String,
     #[serde(rename = "activeAppId")]
     pub active_app_id: String,
+    #[serde(rename = "activeId", default)]
+    pub active_id: String,
     #[serde(rename = "hasMaximizedWindow", default)]
     pub has_maximized_window: bool,
 }

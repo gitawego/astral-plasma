@@ -282,6 +282,13 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "app"
+        function launch(target: string): void {
+            WindowService.launchApp(target);
+        }
+    }
+
+    IpcHandler {
         target: "power"
         function logout(): void { PowerService.requestLogout(); }
         function reboot(): void { PowerService.requestReboot(); }

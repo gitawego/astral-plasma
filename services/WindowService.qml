@@ -11,6 +11,7 @@ Singleton {
 
     property var windows: []
     property var tray: []
+    property var pendingLaunches: []
     property string activeTitle: "Desktop"
     property string activeMaterialIcon: "desktop_windows"
     property string activeIconName: ""
@@ -60,10 +61,39 @@ Singleton {
         activateProc.running = true;
     }
 
-    function launchApp(target) {
+    function launchApp(target, meta) {
         if (!target) return;
         activateProc.command = [root.daemonBin, "launch", target];
         activateProc.running = true;
+
+        const appName = (meta && (meta.appName || meta.name)) || target;
+        const iconName = (meta && (meta.iconName || meta.icon || meta.icon_name)) || target;
+        const materialIcon = (meta && (meta.materialIcon || meta.material_icon)) || "rocket_launch";
+        const desktopFile = (meta && (meta.desktopFile || meta.desktop_file)) || target;
+        const appId = (meta && (meta.appId || meta.app_id)) || target;
+
+        const launchObj = {
+            target: target,
+            appName: appName,
+            iconName: iconName,
+            materialIcon: materialIcon,
+            desktopFile: desktopFile,
+            appId: appId,
+            timestamp: Date.now()
+        };
+
+        const next = (root.pendingLaunches || []).slice();
+        let exists = false;
+        for (let i = 0; i < next.length; i++) {
+            if (next[i].target === target || (next[i].desktopFile && next[i].desktopFile === desktopFile)) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) {
+            next.push(launchObj);
+            root.pendingLaunches = next;
+        }
     }
 
     // Dedicated process for calendar launches: sharing activateProc meant a
@@ -412,8 +442,69 @@ Singleton {
         // into a double-advance (a skipped window in the new rotation).
     }
 
+    function _resolvePendingLaunches() {
+        if (!root.pendingLaunches || root.pendingLaunches.length === 0) return;
+        const wins = root.windows || [];
+        const now = Date.now();
+        const next = [];
+
+        for (let i = 0; i < root.pendingLaunches.length; i++) {
+            const p = root.pendingLaunches[i];
+            // Expire after 15 seconds so an unlaunchable app doesn't spin forever
+            if (now - p.timestamp > 15000) {
+                continue;
+            }
+
+            const pId = (p.appId || "").toLowerCase();
+            const pDesk = (p.desktopFile || "").toLowerCase();
+            const pName = (p.appName || "").toLowerCase();
+            const pTarget = (p.target || "").toLowerCase();
+
+            let matched = false;
+            for (let j = 0; j < wins.length; j++) {
+                const w = wins[j];
+                if (!w) continue;
+                const wId = (w.appId || "").toLowerCase();
+                const wDesk = (w.desktopFile || "").toLowerCase();
+                const wName = (w.appName || "").toLowerCase();
+                const wCls = (w.cls || "").toLowerCase();
+
+                if ((pId && (wId === pId || wDesk === pId || wCls === pId))
+                    || (pDesk && (wDesk === pDesk || wId === pDesk || wCls === pDesk))
+                    || (pTarget && (wId === pTarget || wDesk === pTarget || wCls === pTarget))
+                    || (pName && wName === pName)) {
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched) {
+                next.push(p);
+            }
+        }
+
+        if (next.length !== root.pendingLaunches.length) {
+            root.pendingLaunches = next;
+        }
+    }
+
+    Timer {
+        id: pendingLaunchesTimer
+        interval: 1000
+        repeat: true
+        running: root.pendingLaunches && root.pendingLaunches.length > 0
+        onTriggered: root._resolvePendingLaunches()
+    }
+
+    onActiveIdChanged: {
+        if (typeof DesktopSessionFacade !== "undefined") {
+            DesktopSessionFacade.activeId = root.activeId;
+        }
+    }
+
     onWindowsChanged: {
         if (root.overviewActive) root.refreshOverviewThumbnails();
+        root._resolvePendingLaunches();
     }
 
     function triggerTrayMenuItem(service, menuPath, itemId) {
@@ -460,6 +551,7 @@ Singleton {
                     if (data.tray) root.tray = data.tray;
 
                     if (typeof DesktopSessionFacade !== "undefined") {
+                        DesktopSessionFacade.activeId = root.activeId;
                         DesktopSessionFacade.activeTitle = root.activeTitle;
                         DesktopSessionFacade.activeMaterialIcon = root.activeMaterialIcon;
                         DesktopSessionFacade.activeIconName = root.activeIconName;

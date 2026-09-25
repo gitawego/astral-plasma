@@ -18,6 +18,7 @@ Item {
         const _actApp = WindowService.activeAppId;
         const wins = WindowService.windows || [];
         const pinned = Config.pinnedApps || [];
+        const pending = WindowService.pendingLaunches || [];
         const result = [];
         const matchedWinIds = new Set();
 
@@ -44,6 +45,21 @@ Item {
                 }
             }
 
+            let isPendingLaunch = false;
+            if (!found) {
+                for (let k = 0; k < pending.length; k++) {
+                    const pl = pending[k];
+                    const plId = (pl.appId || "").toLowerCase();
+                    const plDesk = (pl.desktopFile || "").toLowerCase();
+                    const plTarget = (pl.target || "").toLowerCase();
+                    if ((pId && (plId === pId || plDesk === pId || plTarget === pId))
+                        || (pDesk && (plDesk === pDesk || plId === pDesk || plTarget === pDesk))) {
+                        isPendingLaunch = true;
+                        break;
+                    }
+                }
+            }
+
             if (found) {
                 matchedWinIds.add(found.id);
                 const isAct = Boolean(found.isActive)
@@ -52,6 +68,7 @@ Item {
                 result.push({
                     isPinned: true,
                     isRunning: true,
+                    isLoading: false,
                     id: found.id,
                     appId: p.appId,
                     appName: p.appName || found.appName,
@@ -65,6 +82,7 @@ Item {
                 result.push({
                     isPinned: true,
                     isRunning: false,
+                    isLoading: isPendingLaunch,
                     id: null,
                     appId: p.appId,
                     appName: p.appName,
@@ -84,6 +102,7 @@ Item {
         const _actApp = WindowService.activeAppId;
         const wins = WindowService.windows || [];
         const pinned = Config.pinnedApps || [];
+        const pending = WindowService.pendingLaunches || [];
         const result = [];
         const matchedWinIds = new Set();
 
@@ -119,6 +138,7 @@ Item {
                 result.push({
                     isPinned: false,
                     isRunning: true,
+                    isLoading: false,
                     id: w.id,
                     appId: w.appId || (w.appName ? w.appName.toLowerCase() : "window"),
                     appName: w.appName,
@@ -129,6 +149,57 @@ Item {
                     isActive: isAct
                 });
             }
+        }
+
+        // Add unpinned pending launches
+        for (let pIdx = 0; pIdx < pending.length; pIdx++) {
+            const pl = pending[pIdx];
+            const plId = (pl.appId || "").toLowerCase();
+            const plDesk = (pl.desktopFile || "").toLowerCase();
+            const plTarget = (pl.target || "").toLowerCase();
+
+            let isPinnedApp = false;
+            for (let i = 0; i < pinned.length; i++) {
+                const p = pinned[i];
+                const pId = (p.appId || "").toLowerCase();
+                const pDesk = (p.desktopFile || "").toLowerCase();
+                if ((pId && (plId === pId || plDesk === pId || plTarget === pId))
+                    || (pDesk && (plDesk === pDesk || plId === pDesk || plTarget === pDesk))) {
+                    isPinnedApp = true;
+                    break;
+                }
+            }
+            if (isPinnedApp) continue;
+
+            let isRunningApp = false;
+            for (let j = 0; j < wins.length; j++) {
+                const w = wins[j];
+                const wId = (w.appId || "").toLowerCase();
+                const wDesk = (w.desktopFile || "").toLowerCase();
+                const wName = (w.appName || "").toLowerCase();
+                const wCls = (w.cls || "").toLowerCase();
+                if ((plId && (wId === plId || wDesk === plId || wCls === plId))
+                    || (plDesk && (wDesk === plDesk || wId === plDesk || wCls === plDesk))
+                    || (plTarget && (wId === plTarget || wDesk === plTarget || wCls === plTarget))) {
+                    isRunningApp = true;
+                    break;
+                }
+            }
+            if (isRunningApp) continue;
+
+            result.push({
+                isPinned: false,
+                isRunning: false,
+                isLoading: true,
+                id: null,
+                appId: pl.appId,
+                appName: pl.appName,
+                iconName: pl.iconName,
+                materialIcon: pl.materialIcon,
+                desktopFile: pl.desktopFile,
+                title: "Starting...",
+                isActive: false
+            });
         }
 
         return result;
@@ -612,7 +683,7 @@ Item {
                     implicitWidth: itemSize
                     implicitHeight: itemSize
                     radius: Math.max(8, Math.round(itemSize * 0.28))
-                    color: modelData.isActive ? Colors.primaryContainer : (appHover.containsMouse ? Colors.surfaceContainerHigh : "transparent")
+                    color: modelData.isActive ? Colors.primaryContainer : (appHover.containsMouse ? Colors.surfaceContainerHigh : (modelData.isLoading ? Qt.alpha(Colors.primary, 0.12) : "transparent"))
 
                     // Active left pill indicator
                     Rectangle {
@@ -642,25 +713,66 @@ Item {
                         visible: modelData.isRunning && !modelData.isActive
                     }
 
+                    // Loading Pulsing Ring (Material 3 Expressive motion tokens)
+                    Rectangle {
+                        id: loadingRing
+                        anchors.centerIn: parent
+                        width: root.iconS + 4
+                        height: root.iconS + 4
+                        radius: width / 2
+                        color: "transparent"
+                        border.color: Colors.primary
+                        border.width: 1.5
+                        visible: Boolean(modelData.isLoading)
+                        opacity: 0.85
+
+                        SequentialAnimation on scale {
+                            running: loadingRing.visible
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 1.14; duration: 700; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveDefaultSpatial }
+                            NumberAnimation { to: 0.90; duration: 700; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveDefaultSpatial }
+                        }
+                        SequentialAnimation on opacity {
+                            running: loadingRing.visible
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.85; duration: 700; easing.type: Easing.InOutQuad }
+                            NumberAnimation { to: 0.20; duration: 700; easing.type: Easing.InOutQuad }
+                        }
+                    }
+
                     // App Icon
                     Image {
                         id: appIconImg
                         anchors.centerIn: parent
                         width: root.iconS
                         height: root.iconS
-                        opacity: modelData.isRunning ? 1.0 : 0.65
+                        opacity: modelData.isRunning ? 1.0 : (modelData.isLoading ? 0.95 : 0.65)
                         source: Config.iconUrl(modelData.iconName)
                         fillMode: Image.PreserveAspectFit
                         visible: status === Image.Ready
+
+                        SequentialAnimation on scale {
+                            running: Boolean(modelData.isLoading)
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 1.06; duration: 700; easing.type: Easing.InOutQuad }
+                            NumberAnimation { to: 0.94; duration: 700; easing.type: Easing.InOutQuad }
+                        }
                     }
 
                     MaterialIcon {
                         anchors.centerIn: parent
                         text: modelData.materialIcon || "desktop_windows"
                         size: Math.round(root.iconS * 0.82)
-                        opacity: modelData.isRunning ? 1.0 : 0.65
+                        opacity: modelData.isRunning ? 1.0 : (modelData.isLoading ? 0.95 : 0.65)
                         color: modelData.isActive ? Colors.primary : Colors.onSurfaceVariant
                         visible: !appIconImg.visible || appIconImg.status !== Image.Ready
+
+                        SequentialAnimation on scale {
+                            running: Boolean(modelData.isLoading)
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 1.06; duration: 700; easing.type: Easing.InOutQuad }
+                            NumberAnimation { to: 0.94; duration: 700; easing.type: Easing.InOutQuad }
+                        }
                     }
 
                     MouseArea {
@@ -690,7 +802,7 @@ Item {
                                 if (modelData.isRunning) {
                                     WindowService.activateWindow(modelData.id);
                                 } else {
-                                    WindowService.launchApp(modelData.desktopFile || modelData.appId);
+                                    WindowService.launchApp(modelData.desktopFile || modelData.appId, modelData);
                                 }
                                 Config.closeBottomPopout();
                             }
@@ -715,7 +827,9 @@ Item {
                             id: tipText
                             anchors.centerIn: parent
                             text: {
-                                if (modelData.isPinned && modelData.isRunning) {
+                                if (modelData.isLoading) {
+                                    return modelData.appName + " (Starting...)";
+                                } else if (modelData.isPinned && modelData.isRunning) {
                                     return (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : "")) + " (Pinned)";
                                 } else if (modelData.isPinned && !modelData.isRunning) {
                                     return modelData.appName + " (Click to launch)";

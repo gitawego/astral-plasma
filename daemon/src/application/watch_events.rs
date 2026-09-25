@@ -5,7 +5,7 @@ use crate::domain::branding;
 use crate::domain::meta_resolver::resolve_window_meta_with;
 use crate::application::wine_mpris::{parse_wine_media, WineMprisService, WineMprisSlot, WINE_MPRIS_BUS_NAME};
 use crate::domain::model::{
-    ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowsListPayload,
+    ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowMeta, WindowsListPayload,
 };
 use crate::domain::ports::{DynResult, TrayPort, WindowManagerPort};
 use crate::infrastructure::window_icons;
@@ -240,8 +240,8 @@ impl WatcherService {
         let index = shared_index();
         let mut enriched = Vec::new();
         let mut st = self.state.lock().await;
-        let active_wid = st.active_id.trim_matches(|c| c == '{' || c == '}').to_string();
         let mut seen_ids = HashSet::new();
+        let mut kwin_active_window_meta: Option<(String, WindowMeta)> = None;
 
         for item in items {
             let raw_wid = item["id"].as_str().unwrap_or_default();
@@ -265,11 +265,11 @@ impl WatcherService {
             if let Some(icon) = window_icons::resolve_window_icon(c, &meta.icon_name) {
                 meta.icon_name = icon.to_string_lossy().to_string();
             }
-            let is_active = if !active_wid.is_empty() {
-                wid == active_wid
-            } else {
-                item["active"].as_bool().unwrap_or(false)
-            };
+
+            let is_kwin_active = item["active"].as_bool().unwrap_or(false);
+            if is_kwin_active {
+                kwin_active_window_meta = Some((wid.clone(), meta.clone()));
+            }
 
             let is_maximized = item["maximized"].as_bool().unwrap_or(false);
             let is_fullscreen = item["fullScreen"].as_bool().unwrap_or(false);
@@ -282,10 +282,37 @@ impl WatcherService {
                 material_icon: meta.material_icon,
                 app_id: meta.app_id,
                 desktop_file: meta.desktop_file,
-                is_active,
+                is_active: is_kwin_active,
                 is_maximized,
                 is_fullscreen,
             });
+        }
+
+        // If KWin reported an active window, update the daemon's active state from it.
+        // If KWin reported NO active window (e.g. desktop clicked or active window closed),
+        // check whether the previous st.active_id still exists among windows.
+        if let Some((active_wid, meta)) = kwin_active_window_meta {
+            st.active_id = active_wid;
+            st.active_title = meta.app_name;
+            st.active_material_icon = meta.material_icon;
+            st.active_icon_name = meta.icon_name;
+            st.active_app_id = meta.app_id;
+        } else {
+            let active_wid = st.active_id.trim_matches(|c| c == '{' || c == '}');
+            let still_exists = !active_wid.is_empty() && enriched.iter().any(|w| w.id == active_wid);
+            if still_exists {
+                for w in &mut enriched {
+                    if w.id == active_wid {
+                        w.is_active = true;
+                    }
+                }
+            } else if enriched.is_empty() {
+                st.active_id.clear();
+                st.active_title = "Desktop".to_string();
+                st.active_material_icon = "desktop_windows".to_string();
+                st.active_icon_name.clear();
+                st.active_app_id.clear();
+            }
         }
 
         st.cached_windows = enriched.clone();
@@ -298,6 +325,7 @@ impl WatcherService {
             active_material_icon: st.active_material_icon.clone(),
             active_icon_name: st.active_icon_name.clone(),
             active_app_id: st.active_app_id.clone(),
+            active_id: st.active_id.clone(),
             has_maximized_window: has_max,
         };
 
@@ -347,6 +375,7 @@ impl WatcherService {
                 active_material_icon: st.active_material_icon.clone(),
                 active_icon_name: st.active_icon_name.clone(),
                 active_app_id: st.active_app_id.clone(),
+                active_id: st.active_id.clone(),
                 has_maximized_window: has_max,
             };
             if let Ok(serialized) = serde_json::to_string(&payload) {
@@ -659,6 +688,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
             active_material_icon: st.active_material_icon.clone(),
             active_icon_name: st.active_icon_name.clone(),
             active_app_id: st.active_app_id.clone(),
+            active_id: st.active_id.clone(),
             has_maximized_window: has_max,
         };
 

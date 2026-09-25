@@ -69,6 +69,7 @@ fn test_windows_list_payload_serialization() {
         active_material_icon: "terminal".to_string(),
         active_icon_name: "com.mitchellh.ghostty".to_string(),
         active_app_id: "com.mitchellh.ghostty".to_string(),
+        active_id: "win-789".to_string(),
         has_maximized_window: false,
     };
 
@@ -76,6 +77,12 @@ fn test_windows_list_payload_serialization() {
     assert!(json_str.contains(r#""activeTitle":"Terminal""#));
     assert!(json_str.contains(r#""activeMaterialIcon":"terminal""#));
     assert!(json_str.contains(r#""activeIconName":"com.mitchellh.ghostty""#));
+    assert!(json_str.contains(r#""activeId":"win-789""#));
+
+    let deserialized: WindowsListPayload =
+        serde_json::from_str(&json_str).expect("must deserialize");
+    assert_eq!(deserialized.active_id, "win-789");
+    assert_eq!(deserialized.active_title, "Terminal");
 }
 
 #[test]
@@ -87,12 +94,19 @@ fn test_full_state_payload_serialization() {
         active_material_icon: "desktop_windows".to_string(),
         active_icon_name: "".to_string(),
         active_app_id: "".to_string(),
+        active_id: "win-init".to_string(),
         has_maximized_window: false,
     };
 
     let json_str = serde_json::to_string(&payload).expect("must serialize");
     assert!(json_str.contains(r#""activeTitle":"Desktop""#));
     assert!(json_str.contains(r#""activeMaterialIcon":"desktop_windows""#));
+    assert!(json_str.contains(r#""activeId":"win-init""#));
+
+    let deserialized: FullStatePayload =
+        serde_json::from_str(&json_str).expect("must deserialize");
+    assert_eq!(deserialized.active_id, "win-init");
+    assert_eq!(deserialized.active_title, "Desktop");
 }
 
 #[test]

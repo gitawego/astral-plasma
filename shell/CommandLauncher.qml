@@ -964,7 +964,7 @@ PanelWindow {
     function launchApp(app) {
         if (!app) return;
         if (!root.testMode && typeof WindowService !== "undefined" && WindowService.launchApp) {
-            WindowService.launchApp(app.desktop_file || app.exec || app.name);
+            WindowService.launchApp(app.desktop_file || app.exec || app.name, app);
         }
         root.closeLauncher();
     }
