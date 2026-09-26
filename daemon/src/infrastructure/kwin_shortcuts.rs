@@ -135,8 +135,14 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
             ("kwin", branding::SHORTCUT_LAUNCHER_KEY),
             ("kwin", branding::SHORTCUT_WALLPAPER_KEY),
             ("kwin", branding::SHORTCUT_OVERVIEW_KEY),
+            ("kwin", branding::SHORTCUT_ASSISTANT_KEY),
+            ("kwin", branding::SHORTCUT_DASHBOARD_KEY),
+            ("kwin", branding::SHORTCUT_SETTINGS_KEY),
             ("services", "astral-launcher.desktop"),
             ("services", "astral-wallpaper.desktop"),
+            ("services", "astral-assistant.desktop"),
+            ("services", "astral-dashboard.desktop"),
+            ("services", "astral-settings.desktop"),
             ("plasmashell", "activate application launcher"),
         ];
 
@@ -281,8 +287,14 @@ try:
     accel.setForeignShortcut(['kwin', '{launcher}', 'default', '{launcher_label}'], [dbus.Int32(0)])
     accel.setForeignShortcut(['kwin', '{wallpaper}', 'default', '{wallpaper_label}'], [dbus.Int32(0)])
     accel.setForeignShortcut(['kwin', '{overview}', 'default', '{overview_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['kwin', '{assistant}', 'default', '{assistant_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['kwin', '{dashboard}', 'default', '{dashboard_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['kwin', '{settings}', 'default', '{settings_label}'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-launcher.desktop', '_launch', 'default', '{launcher_label}'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-wallpaper.desktop', '_launch', 'default', '{wallpaper_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-assistant.desktop', '_launch', 'default', '{assistant_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-dashboard.desktop', '_launch', 'default', '{dashboard_label}'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-settings.desktop', '_launch', 'default', '{settings_label}'], [dbus.Int32(0)])
 except Exception:
     pass
 "#,
@@ -292,6 +304,12 @@ except Exception:
                 wallpaper_label = branding::SHORTCUT_WALLPAPER_LABEL,
                 overview = branding::SHORTCUT_OVERVIEW_KEY,
                 overview_label = branding::SHORTCUT_OVERVIEW_LABEL,
+                assistant = branding::SHORTCUT_ASSISTANT_KEY,
+                assistant_label = branding::SHORTCUT_ASSISTANT_LABEL,
+                dashboard = branding::SHORTCUT_DASHBOARD_KEY,
+                dashboard_label = branding::SHORTCUT_DASHBOARD_LABEL,
+                settings = branding::SHORTCUT_SETTINGS_KEY,
+                settings_label = branding::SHORTCUT_SETTINGS_LABEL,
             );
             let _ = Command::new("python3").args(["-c", &clear_py]).status();
         }
@@ -320,6 +338,21 @@ except Exception:
                 "kwin",
                 branding::SHORTCUT_WALLPAPER_KEY,
                 &format!("Meta+Shift+W,none,{}", branding::SHORTCUT_WALLPAPER_LABEL),
+            );
+            ini.set(
+                "kwin",
+                branding::SHORTCUT_ASSISTANT_KEY,
+                &format!("Meta+C,none,{}", branding::SHORTCUT_ASSISTANT_LABEL),
+            );
+            ini.set(
+                "kwin",
+                branding::SHORTCUT_DASHBOARD_KEY,
+                &format!("Meta+D,none,{}", branding::SHORTCUT_DASHBOARD_LABEL),
+            );
+            ini.set(
+                "kwin",
+                branding::SHORTCUT_SETTINGS_KEY,
+                &format!("Meta+,,none,{}", branding::SHORTCUT_SETTINGS_LABEL),
             );
             fs::write(&kglobal_path, ini.serialize())?;
             return Ok(());

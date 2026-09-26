@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import "../theme"
 import "../config"
@@ -639,6 +640,105 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 8
         anchors.bottomMargin: 8
+
+        // 0. ASTRAL COPILOT DOCK CAPSULE (Visible when open or minimized)
+        Item {
+            id: copilotDockItem
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: root.iconS + 8
+            height: root.iconS + 8
+            implicitWidth: root.iconS + 8
+            implicitHeight: root.iconS + 8
+            visible: Boolean(typeof Config !== "undefined" && (Config.assistantVisible || Config.assistantMinimized))
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Math.round(parent.width * 0.32)
+                color: (typeof Config !== "undefined" && Config.assistantVisible)
+                    ? Qt.alpha(Colors.primary, 0.22)
+                    : (copilotHover.containsMouse ? Colors.glassCardHover : Colors.glassCard)
+                border.width: 1
+                border.color: (typeof Config !== "undefined" && Config.assistantVisible)
+                    ? Qt.alpha(Colors.primary, 0.55)
+                    : Colors.glassBorderSpecular
+
+                // Minimized breathing dot indicator (centered at bottom)
+                Rectangle {
+                    id: minDot
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 3
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 4
+                    height: 4
+                    radius: 2
+                    color: Colors.primary
+                    visible: typeof Config !== "undefined" && Config.assistantMinimized && !Config.assistantVisible
+
+                    SequentialAnimation on opacity {
+                        running: minDot.visible
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
+                        NumberAnimation { to: 0.25; duration: 600; easing.type: Easing.InOutQuad }
+                    }
+                }
+
+                // Crisp Vector MaterialIcon Sparkles
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    iconName: "auto_awesome"
+                    size: Math.round(root.iconS * 0.70)
+                    color: (typeof Config !== "undefined" && Config.assistantVisible)
+                        ? Colors.primary
+                        : (copilotHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant)
+                    scale: copilotHover.pressed ? 0.90 : (copilotHover.containsMouse ? 1.08 : 1.0)
+
+                    Behavior on scale {
+                        NumberAnimation { duration: Theme.animDurationFast; easing.type: Easing.OutQuad }
+                    }
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animDurationFast }
+                    }
+                }
+
+                MouseArea {
+                    id: copilotHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof Config !== "undefined") {
+                            Config.toggleAssistant();
+                        }
+                    }
+                }
+
+                // Tooltip on hover
+                Rectangle {
+                    z: 100
+                    visible: copilotHover.containsMouse && !Config.bottomPopoutVisible
+                    anchors.left: parent.right
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: copilotTipText.implicitWidth + 16
+                    implicitHeight: copilotTipText.implicitHeight + 10
+                    radius: 7
+                    color: Colors.surfaceContainerHighest
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+
+                    Text {
+                        id: copilotTipText
+                        anchors.centerIn: parent
+                        text: (typeof Config !== "undefined" && Config.assistantMinimized)
+                            ? "Astral Copilot (Minimized - Click to restore)"
+                            : "Astral Copilot (Click to minimize)"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Colors.onSurface
+                    }
+                }
+            }
+        }
 
         // 1. APPS CONTAINER (Taskbar)
         //

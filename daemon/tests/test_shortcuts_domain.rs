@@ -103,6 +103,21 @@ _launch=Meta+Shift+B,none,Firefox
         None,
         "wallpaper shortcut must be cleanly removed"
     );
+    assert_eq!(
+        final_ini.get("kwin", branding::SHORTCUT_ASSISTANT_KEY),
+        None,
+        "assistant shortcut must be cleanly removed"
+    );
+    assert_eq!(
+        final_ini.get("kwin", branding::SHORTCUT_DASHBOARD_KEY),
+        None,
+        "dashboard shortcut must be cleanly removed"
+    );
+    assert_eq!(
+        final_ini.get("kwin", branding::SHORTCUT_SETTINGS_KEY),
+        None,
+        "settings shortcut must be cleanly removed"
+    );
 
     // USER MODIFICATIONS MUST BE PRESERVED:
     assert_eq!(

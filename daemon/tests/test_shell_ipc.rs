@@ -45,6 +45,11 @@ fn known_actions_map_to_the_shell_ipc_command() {
         Some(vec!["call", "overview", "toggle"]),
         "Meta must toggle the active-apps overview"
     );
+    assert_eq!(
+        shell_ipc_arguments("assistant.toggle"),
+        Some(vec!["call", "assistant", "toggle"]),
+        "Meta+C must toggle the AI assistant copilot"
+    );
 }
 
 #[test]

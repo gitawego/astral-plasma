@@ -7,9 +7,10 @@ Item {
 
     property string text: ""
     property string iconName: ""
-    property color color: Colors.m3onSurface
+    property color color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#F3EDF6"
     property int size: 18
 
+    readonly property string iconKey: root.text !== "" ? root.text : root.iconName
     readonly property bool hasIcon: displaySymbol !== "" || resolvedIconUrl !== ""
     visible: hasIcon
     implicitWidth: hasIcon ? size : 0
@@ -105,6 +106,14 @@ Item {
         "desktop_windows": "󰍹",
         "headphones": "󰋋",
         "devices": "󰌢",
+        "attach_file": "󰁦",
+        "attachment": "󰁦",
+        "image": "󰋩",
+        "photo": "󰋩",
+        "content_copy": "󰆏",
+        "copy": "󰆏",
+        "schema": "󰅩",
+        "visibility_off": "󰈉",
         "send": "󰒭",
         "history": "󰋚",
         "lan": "󰌘",
@@ -173,6 +182,11 @@ Item {
         "navigate_before": "󰅁",
         "arrow_back": "󰁍",
         "arrow_forward": "󰁔",
+        "arrow_upward": "󰁝",
+        "arrow_up": "󰁝",
+        "arrow_downward": "󰁅",
+        "arrow_down": "󰁅",
+        "stop": "󰓛",
         "radio_button_checked": "󰗌",
         "radio_button_unchecked": "󰄰",
         "check_box": "󰄲",
@@ -198,24 +212,33 @@ Item {
     })
 
     readonly property string displaySymbol: {
-        if (symbolMap[text]) return symbolMap[text];
-        if (text && text.length <= 2) return text;
-        if (text && (text.startsWith("wifi") || text.startsWith("network_wifi"))) return "󰤨";
-        if (text && (text.includes("refresh") || text.includes("sync"))) return "󰑓";
-        if (text && text.includes("drag")) return "󰇙";
-        if (text && (text.includes("psychology") || text.includes("brain") || text === "ai")) return "󰧑";
-        if (text && (text.includes("spark") || text.includes("auto_awesome"))) return "󰄧";
-        if (text && (text.includes("token") || text.includes("toll") || text.includes("coin"))) return "\uf51e";
-        if (text && (text === "add" || text.includes("plus"))) return "󰐕";
-        if (text && (text.includes("key") || text.includes("vpn_key"))) return "󰌆";
-        if (text && (text.includes("delete") || text.includes("trash"))) return "󰆴";
-        if (text && (text.includes("check_circle") || text === "check")) return "󰄳";
-        if (text && (text.includes("account") || text.includes("person") || text.includes("user"))) return "󰀉";
-        if (text && (text.includes("exit") || text.includes("leave") || text === "quit")) return "󰈆";
+        let key = iconKey;
+        if (symbolMap[key]) return symbolMap[key];
+        if (key && key.length <= 2) return key;
+        if (key && (key.startsWith("wifi") || key.startsWith("network_wifi"))) return "󰤨";
+        if (key && (key.includes("refresh") || key.includes("sync"))) return "󰑓";
+        if (key && key.includes("drag")) return "󰇙";
+        if (key && (key.includes("psychology") || key.includes("brain") || key === "ai")) return "󰧑";
+        if (key && (key.includes("spark") || key.includes("auto_awesome"))) return "󰄧";
+        if (key && (key.includes("token") || key.includes("toll") || key.includes("coin"))) return "\uf51e";
+        if (key && (key === "add" || key.includes("plus"))) return "󰐕";
+        if (key && (key.includes("key") || key.includes("vpn_key"))) return "󰌆";
+        if (key && (key.includes("delete") || key.includes("trash"))) return "󰆴";
+        if (key && (key.includes("check_circle") || key === "check")) return "󰄳";
+        if (key && (key.includes("account") || key.includes("person") || key.includes("user"))) return "󰀉";
+        if (key && (key.includes("arrow_up") || key === "arrow_upward")) return "󰁝";
+        if (key && (key.includes("arrow_down") || key === "arrow_downward")) return "󰁅";
+        if (key && (key === "stop" || key.includes("stop"))) return "󰓛";
+        if (key && (key === "send" || key.includes("send"))) return "󰒭";
+        if (key && (key.includes("attach") || key.includes("clip"))) return "󰁦";
+        if (key && (key.includes("image") || key.includes("photo") || key.includes("picture"))) return "󰋩";
+        if (key && (key.includes("copy"))) return "󰆏";
+        if (key && (key === "schema" || key.includes("diagram"))) return "󰅩";
+        if (key && (key.includes("exit") || key.includes("leave") || key === "quit")) return "󰈆";
         return "";
     }
 
-    readonly property string resolvedIconUrl: root.iconName !== "" ? Config.iconUrl(root.iconName) : ""
+    readonly property string resolvedIconUrl: (root.iconName !== "" && typeof Config !== "undefined" && typeof Config.iconUrl === "function") ? Config.iconUrl(root.iconName) : ""
 
     Loader {
         anchors.fill: parent

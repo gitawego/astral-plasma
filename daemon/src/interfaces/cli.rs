@@ -1023,6 +1023,207 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "assistant" => {
+            use crate::application::assistant_service::AssistantService;
+            let assistant_svc = AssistantService::new();
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
+            match sub {
+                "status" => {
+                    let harnesses = assistant_svc.list_harnesses();
+                    let skills = assistant_svc.list_skills();
+                    let (def_provider, def_model) = assistant_svc.get_defaults();
+                    let providers = assistant_svc.list_providers();
+                    let payload = serde_json::json!({
+                        "harnesses": harnesses,
+                        "skills_count": skills.len(),
+                        "default_provider": def_provider,
+                        "default_model": def_model,
+                        "providers": providers,
+                        "status": "ready"
+                    });
+                    println!("{}", serde_json::to_string(&payload)?);
+                }
+                "sessions" => {
+                    let list = assistant_svc.list_sessions()?;
+                    println!("{}", serde_json::to_string(&list)?);
+                }
+                "get-session" => {
+                    let id = args.get(3).map(|s| s.as_str()).unwrap_or("");
+                    if id.is_empty() {
+                        eprintln!("Usage: astral-plasma assistant get-session <id>");
+                        std::process::exit(1);
+                    }
+                    let session = assistant_svc.get_session(id)?;
+                    println!("{}", serde_json::to_string(&session)?);
+                }
+                "save-session" => {
+                    let raw = if let Some(arg) = args.get(3) {
+                        arg.clone()
+                    } else {
+                        use std::io::Read;
+                        let mut buf = String::new();
+                        std::io::stdin().read_to_string(&mut buf)?;
+                        buf
+                    };
+                    let session: crate::domain::assistant::ChatSession = serde_json::from_str(&raw)
+                        .map_err(|e| format!("Invalid session json: {}", e))?;
+                    assistant_svc.save_session(&session)?;
+                    let res = serde_json::json!({
+                        "success": true,
+                        "id": session.id
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "delete-session" => {
+                    let id = args.get(3).map(|s| s.as_str()).unwrap_or("");
+                    if id.is_empty() {
+                        eprintln!("Usage: astral-plasma assistant delete-session <id>");
+                        std::process::exit(1);
+                    }
+                    let deleted = assistant_svc.delete_session(id)?;
+                    let res = serde_json::json!({
+                        "success": deleted,
+                        "id": id
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "active-session" => {
+                    if let Some(new_id) = args.get(3) {
+                        assistant_svc.set_active_session_id(new_id)?;
+                        let res = serde_json::json!({
+                            "success": true,
+                            "active_session_id": new_id
+                        });
+                        println!("{}", serde_json::to_string(&res)?);
+                    } else {
+                        let active = assistant_svc.get_active_session_id();
+                        let payload = serde_json::json!({
+                            "active_session_id": active
+                        });
+                        println!("{}", serde_json::to_string(&payload)?);
+                    }
+                }
+                "set-model" => {
+                    let provider = args.get(3).map(|s| s.as_str()).unwrap_or("");
+                    let model = args.get(4).map(|s| s.as_str()).unwrap_or("");
+                    if provider.is_empty() || model.is_empty() {
+                        eprintln!("Usage: astral-plasma assistant set-model <provider> <model>");
+                        std::process::exit(1);
+                    }
+                    assistant_svc.set_defaults(provider, model)?;
+                    let res = serde_json::json!({
+                        "success": true,
+                        "provider": provider,
+                        "model": model
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "skills" => {
+                    let skills = assistant_svc.list_skills();
+                    println!("{}", serde_json::to_string(&skills)?);
+                }
+                "sync-skills" => {
+                    let linked = assistant_svc.sync_skills_to_user_agents()?;
+                    println!(r#"{{"success":true,"synced":{}}}"#, linked);
+                }
+                "crashes" => {
+                    let limit = args.get(3).and_then(|s| s.parse::<usize>().ok()).unwrap_or(5);
+                    let crashes = assistant_svc.get_recent_crashes(limit);
+                    println!("{}", serde_json::to_string(&crashes)?);
+                }
+                "provision" => {
+                    assistant_svc.ensure_provisioning()?;
+                    let st = crate::infrastructure::assistant_harness::runtime_provisioner::RuntimeProvisioner::get_status();
+                    let payload = serde_json::json!({
+                        "pi_executable": st.pi_executable.map(|p| p.to_string_lossy().to_string()),
+                        "hermes_executable": st.hermes_executable.map(|p| p.to_string_lossy().to_string()),
+                        "has_mcp_adapter": st.has_mcp_adapter,
+                        "has_subagents": st.has_subagents,
+                        "status": "ok"
+                    });
+                    println!("{}", serde_json::to_string(&payload)?);
+                }
+                "exec" => {
+                    if let Some(cmd) = args.get(3) {
+                        let sudo = args.iter().skip(4).any(|a| a == "--sudo");
+                        let (stdout, stderr, code) = assistant_svc.execute_command(cmd, sudo).await?;
+                        let res = serde_json::json!({
+                            "stdout": stdout,
+                            "stderr": stderr,
+                            "code": code
+                        });
+                        println!("{}", serde_json::to_string(&res)?);
+                    } else {
+                        eprintln!("Usage: astral-plasma assistant exec <command> [--sudo]");
+                    }
+                }
+                "chat" => {
+                    let mut prompt = String::new();
+                    let mut provider = None;
+                    let mut model = None;
+                    let mut harness = None;
+
+                    let mut i = 3;
+                    while i < args.len() {
+                        match args[i].as_str() {
+                            "--prompt" | "-p" => {
+                                if i + 1 < args.len() {
+                                    prompt = args[i + 1].clone();
+                                    i += 1;
+                                }
+                            }
+                            "--provider" => {
+                                if i + 1 < args.len() {
+                                    provider = Some(args[i + 1].as_str());
+                                    i += 1;
+                                }
+                            }
+                            "--model" => {
+                                if i + 1 < args.len() {
+                                    model = Some(args[i + 1].as_str());
+                                    i += 1;
+                                }
+                            }
+                            "--harness" => {
+                                if i + 1 < args.len() {
+                                    harness = Some(args[i + 1].as_str());
+                                    i += 1;
+                                }
+                            }
+                            other => {
+                                if prompt.is_empty() && !other.starts_with('-') {
+                                    prompt = other.to_string();
+                                }
+                            }
+                        }
+                        i += 1;
+                    }
+
+                    if prompt.is_empty() {
+                        eprintln!("Usage: astral-plasma assistant chat --prompt \"<prompt>\" [--provider ...] [--model ...] [--harness ...]");
+                        std::process::exit(1);
+                    }
+
+                    let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+                    let printer = tokio::spawn(async move {
+                        while let Some(event) = rx.recv().await {
+                            if let Ok(line) = serde_json::to_string(&event) {
+                                println!("{}", line);
+                                use std::io::Write;
+                                let _ = std::io::stdout().flush();
+                            }
+                        }
+                    });
+
+                    let turn_result = assistant_svc.stream_turn(&prompt, harness, provider, model, tx).await;
+                    let _ = printer.await;
+                    turn_result?;
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma assistant <status|skills|sync-skills|crashes|provision|exec|chat> [args...]");
+                }
+            }
+        }
         _ => {
             eprintln!("Unknown command: {}", args[1]);
             print_usage();

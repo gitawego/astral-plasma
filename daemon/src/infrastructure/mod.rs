@@ -22,4 +22,6 @@ pub mod ai_activity_monitor;
 pub mod desktop_factory;
 pub mod hyprland_adapter;
 pub mod ai_adapters;
+pub mod assistant_harness;
+pub mod crash_monitor;
 

@@ -204,6 +204,227 @@ ColumnLayout {
         }
     }
 
+    // AI Copilot & Chat Configuration Card
+    Rectangle {
+        Layout.fillWidth: true
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+        implicitHeight: copilotCol.implicitHeight + Theme.padLarge * 2
+        Layout.preferredHeight: implicitHeight
+
+        ColumnLayout {
+            id: copilotCol
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: Theme.padLarge
+            spacing: 16
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                MaterialIcon {
+                    text: "smart_toy"
+                    size: 20
+                    color: Colors.primary
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        text: "AI Copilot & Assistant Configuration"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 13
+                        font.weight: Font.Bold
+                        color: Colors.m3onSurface
+                    }
+
+                    Text {
+                        text: "Default engine harness, provider, and model for system diagnostics and chat"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.m3onSurfaceVariant
+                    }
+                }
+            }
+
+            // Harness Selection
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Text {
+                    text: "Engine Harness"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+
+                RowLayout {
+                    spacing: 8
+
+                    Repeater {
+                        model: [
+                            { id: "pi", label: "Pi Agent (Default)", desc: "Autonomous agent harness with skills" },
+                            { id: "hermes", label: "Hermes Agent", desc: "Local / research agent harness" }
+                        ]
+
+                        delegate: Rectangle {
+                            implicitHeight: 36
+                            implicitWidth: harnessTxt.implicitWidth + 24
+                            radius: 8
+                            readonly property bool isSelected: (typeof AssistantService !== "undefined") ? (AssistantService.selectedHarness === modelData.id) : (modelData.id === "pi")
+                            color: isSelected ? Colors.m3primaryContainer : (harnessHover.containsMouse ? Colors.glassCardHover : Colors.glassCard)
+                            border.width: 1
+                            border.color: isSelected ? Colors.primary : Colors.glassBorderSpecular
+
+                            Text {
+                                id: harnessTxt
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: isSelected ? Font.Bold : Font.Normal
+                                color: isSelected ? Colors.m3onPrimaryContainer : Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                id: harnessHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof AssistantService !== "undefined") {
+                                        AssistantService.selectedHarness = modelData.id;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Provider Selection
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Text {
+                    text: "AI Provider"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Repeater {
+                        model: (typeof AssistantService !== "undefined" && AssistantService.availableProviders) ? AssistantService.availableProviders : []
+
+                        delegate: Rectangle {
+                            implicitHeight: 32
+                            implicitWidth: provTxt.implicitWidth + 20
+                            radius: 8
+                            readonly property bool isSelected: (typeof AssistantService !== "undefined") ? (AssistantService.selectedProviderId === modelData.id) : (modelData.id === "opencode-go")
+                            color: isSelected ? Colors.m3primaryContainer : (provHover.containsMouse ? Colors.glassCardHover : Colors.glassCard)
+                            border.width: 1
+                            border.color: isSelected ? Colors.primary : Colors.glassBorderSpecular
+
+                            Text {
+                                id: provTxt
+                                anchors.centerIn: parent
+                                text: modelData.name || modelData.id
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: isSelected ? Font.Bold : Font.Normal
+                                color: isSelected ? Colors.m3onPrimaryContainer : Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                id: provHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof AssistantService !== "undefined") {
+                                        AssistantService.selectProvider(modelData.id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Model Selection
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                readonly property string currentProv: (typeof AssistantService !== "undefined") ? AssistantService.selectedProviderId : "opencode-go"
+                readonly property var modelsList: (typeof AssistantService !== "undefined") ? AssistantService.getModelsForProvider(currentProv) : []
+
+                Text {
+                    text: "Active Model"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Repeater {
+                        model: parent.modelsList
+
+                        delegate: Rectangle {
+                            implicitHeight: 28
+                            implicitWidth: modelTxt.implicitWidth + 16
+                            radius: 6
+                            readonly property bool isSelected: (typeof AssistantService !== "undefined") ? (AssistantService.selectedModelId === modelData) : false
+                            color: isSelected ? Colors.primary : (modelHover.containsMouse ? Colors.glassCardHover : Colors.glassCard)
+                            border.width: 1
+                            border.color: isSelected ? Colors.primary : Colors.glassBorderSpecular
+
+                            Text {
+                                id: modelTxt
+                                anchors.centerIn: parent
+                                text: modelData
+                                font.family: Theme.fontMonospace
+                                font.pixelSize: 10
+                                font.weight: isSelected ? Font.Bold : Font.Normal
+                                color: isSelected ? Colors.textOnPrimary : Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                id: modelHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof AssistantService !== "undefined") {
+                                        AssistantService.selectModel(modelData);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Preferences & Theme Integration Card
     Rectangle {
         Layout.fillWidth: true

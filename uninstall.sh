@@ -48,7 +48,7 @@ fi
 
 # Unbind global shortcuts and drop the plugin toggle (if KDE tools available)
 if command -v kwriteconfig6 >/dev/null 2>&1; then
-    for key in AstralLauncher AstralWallpaper AstralOverview; do
+    for key in AstralLauncher AstralWallpaper AstralOverview AstralAssistant AstralDashboard AstralSettings; do
         kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "$key" --delete 2>/dev/null || true
     done
     kwriteconfig6 --file kwinrc --group "Plugins" --key "astral-plasma-shortcutsEnabled" --delete 2>/dev/null || true

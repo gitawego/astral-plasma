@@ -763,6 +763,52 @@ Singleton {
     property string activeSettingsPage: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_SETTINGS_PAGE")) ? Quickshell.env("ASTRAL_PLASMA_SETTINGS_PAGE") : "wallpaper"
     property string activePopout: "" // legacy popout tracker
 
+    // Assistant State
+    property bool assistantVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_ASSISTANT_OPEN") === "1") ? true : false
+    property bool assistantMinimized: false
+    readonly property string assistantHarness: (root.settings && root.settings.assistant && root.settings.assistant.harness) ? root.settings.assistant.harness : "pi"
+    readonly property string assistantDefaultProvider: (root.settings && root.settings.assistant && root.settings.assistant.defaultProvider) ? root.settings.assistant.defaultProvider : ""
+    readonly property string assistantDefaultModel: (root.settings && root.settings.assistant && root.settings.assistant.defaultModel) ? root.settings.assistant.defaultModel : ""
+    readonly property bool assistantAutoProactiveCrash: (root.settings && root.settings.assistant && root.settings.assistant.autoProactiveCrash !== undefined) ? root.settings.assistant.autoProactiveCrash : true
+
+    function toggleAssistant() {
+        if (root.assistantMinimized) {
+            root.restoreAssistant();
+        } else if (root.assistantVisible) {
+            root.minimizeAssistant();
+        } else {
+            root.openAssistant();
+        }
+    }
+
+    function openAssistant() {
+        root.assistantVisible = true;
+        root.assistantMinimized = false;
+        root.dashboardVisible = false;
+        root.settingsVisible = false;
+        root.commandLauncherVisible = false;
+        root.closeBottomPopout();
+    }
+
+    function minimizeAssistant() {
+        root.assistantMinimized = true;
+        root.assistantVisible = false;
+    }
+
+    function restoreAssistant() {
+        root.assistantMinimized = false;
+        root.assistantVisible = true;
+        root.dashboardVisible = false;
+        root.settingsVisible = false;
+        root.commandLauncherVisible = false;
+        root.closeBottomPopout();
+    }
+
+    function closeAssistant() {
+        root.assistantVisible = false;
+        root.assistantMinimized = false;
+    }
+
     // Command Launcher State
     property bool commandLauncherVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_LAUNCHER_OPEN") === "1") ? true : false
     property string commandLauncherMode: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_LAUNCHER_MODE")) ? Quickshell.env("ASTRAL_PLASMA_LAUNCHER_MODE") : "apps"
@@ -782,6 +828,7 @@ Singleton {
         root.commandLauncherVisible = true;
         root.overviewVisible = false;
         root.dashboardVisible = false;
+        root.assistantVisible = false;
         root.closeBottomPopout();
     }
 

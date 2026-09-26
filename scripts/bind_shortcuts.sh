@@ -55,6 +55,7 @@ bind = $mainMod, SPACE, exec, quickshell ipc call launcher open apps
 bind = $mainMod, TAB, exec, quickshell ipc call overview toggle
 bind = $mainMod, D, exec, quickshell ipc call dashboard toggle
 bind = $mainMod, COMMA, exec, quickshell ipc call settings toggle
+bind = $mainMod, C, exec, quickshell ipc call assistant toggle
 bind = $mainMod SHIFT, W, exec, quickshell ipc call wallpaper open
 HYPREOF
         echo "[✓] Generated Hyprland keybindings file: $HYPR_BINDS_FILE"
@@ -75,14 +76,13 @@ esac
 # means neither reliably fires.
 kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralLauncher" "$LAUNCHER_KEY,none,Astral Plasma: Toggle Launcher"
 kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralWallpaper" "Meta+Shift+W,none,Astral Plasma: Open Wallpaper Picker"
+kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralAssistant" "Meta+C,none,Astral Plasma: Toggle AI Copilot"
+kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralOverview" "Meta+W,none,Astral Plasma: Active Apps Overview"
+kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralDashboard" "Meta+D,none,Astral Plasma: Toggle Dashboard"
+kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralSettings" "Meta+\\,,none,Astral Plasma: Toggle Settings"
 
-# The active-apps overview owns the bare Meta key. plasmashell's launcher
-# releases Meta but keeps Alt+F1, its historical secondary binding (mode
-# "meta" above overrides this to none because AstralLauncher claims Alt+F1).
-PLASMA_LAUNCHER_BIND="${PLASMA_LAUNCHER_BIND:-Alt+F1,Meta	Alt+F1,Activate Application Launcher}"
-kwriteconfig6 --file kglobalshortcutsrc --group "plasmashell" --key "activate application launcher" "$PLASMA_LAUNCHER_BIND"
-kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralOverview" "Meta,none,Astral Plasma: Active Apps Overview"
-for entry in astral-launcher.desktop astral-wallpaper.desktop; do
+# Clear .desktop services so KWin action has single conflict-free ownership
+for entry in astral-launcher.desktop astral-wallpaper.desktop astral-assistant.desktop astral-dashboard.desktop astral-settings.desktop; do
     kwriteconfig6 --file kglobalshortcutsrc --group "services" --group "$entry" --key "_launch" --delete 2>/dev/null || true
 done
 
@@ -116,32 +116,40 @@ KEY_CODES = {
 mode = "$MODE"
 launcher_key = KEY_CODES.get(mode, 268435488)
 wallpaper_key = 301989975       # Meta+Shift+W
+assistant_key = 268435523       # Meta+C
+overview_key = 268435543        # Meta+W
+dashboard_key = 268435524       # Meta+D
+settings_key = 268435500        # Meta+,
 
 try:
     bus = dbus.SessionBus()
     accel = dbus.Interface(bus.get_object('org.kde.kglobalaccel', '/kglobalaccel'), 'org.kde.KGlobalAccel')
 
     # Register desktop targets for launch invocation
-    accel.doRegister(['astral-launcher.desktop', '_launch', 'astral-launcher.desktop', 'Astral Plasma Launcher'])
-    accel.doRegister(['astral-wallpaper.desktop', '_launch', 'astral-wallpaper.desktop', 'Astral Plasma Wallpaper Picker'])
+    for desktop, label in [
+        ('astral-launcher.desktop', 'Astral Plasma Launcher'),
+        ('astral-wallpaper.desktop', 'Astral Plasma Wallpaper Picker'),
+        ('astral-assistant.desktop', 'Astral Plasma AI Copilot'),
+        ('astral-dashboard.desktop', 'Astral Dashboard'),
+        ('astral-settings.desktop', 'Astral Settings')
+    ]:
+        accel.doRegister([desktop, '_launch', desktop, label])
 
-    # Clear the .desktop services so the KWin action has sole ownership of the key
+    # Explicitly clear .desktop services so KWin action has single ownership
     accel.setForeignShortcut(['astral-launcher.desktop', '_launch', 'default', 'Astral Plasma Launcher'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-wallpaper.desktop', '_launch', 'default', 'Astral Plasma Wallpaper Picker'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-assistant.desktop', '_launch', 'default', 'Astral Plasma AI Copilot'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-dashboard.desktop', '_launch', 'default', 'Astral Dashboard'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-settings.desktop', '_launch', 'default', 'Astral Settings'], [dbus.Int32(0)])
 
     # The KWin actions own the shortcuts; their script forwards to the daemon,
     # which runs the shell IPC.
     accel.setForeignShortcut(['kwin', 'AstralLauncher', 'default', 'Astral Plasma: Toggle Launcher'], [dbus.Int32(launcher_key)])
     accel.setForeignShortcut(['kwin', 'AstralWallpaper', 'default', 'Astral Plasma: Open Wallpaper Picker'], [dbus.Int32(wallpaper_key)])
-    # Active-apps overview: bare Meta. Qt::Key_Meta = 0x01000022 = 16777250
-    # (NOT 0x01000000) - plasmashell's own former Meta binding uses exactly
-    # this code, and a wrong code never matches a physical Super press.
-    accel.setForeignShortcut(['kwin', 'AstralOverview', 'default', 'Astral Plasma: Active Apps Overview'], [dbus.Int32(16777250)])
-    # plasmashell must RELEASE Meta in-memory as well: kwriteconfig above
-    # updates the file, but the running component keeps its old keys until
-    # something re-registers them - so the stock launcher would keep stealing
-    # every Super press.
-    accel.setForeignShortcut(['plasmashell', 'activate application launcher', 'default', 'Activate Application Launcher'], [dbus.Int32(150994992)])
+    accel.setForeignShortcut(['kwin', 'AstralAssistant', 'default', 'Astral Plasma: Toggle AI Copilot'], [dbus.Int32(assistant_key)])
+    accel.setForeignShortcut(['kwin', 'AstralOverview', 'default', 'Astral Plasma: Active Apps Overview'], [dbus.Int32(overview_key)])
+    accel.setForeignShortcut(['kwin', 'AstralDashboard', 'default', 'Astral Plasma: Toggle Dashboard'], [dbus.Int32(dashboard_key)])
+    accel.setForeignShortcut(['kwin', 'AstralSettings', 'default', 'Astral Plasma: Toggle Settings'], [dbus.Int32(settings_key)])
 
     print("[✓] Dynamically registered in KWin compositor & KGlobalAccel")
 except Exception as e:

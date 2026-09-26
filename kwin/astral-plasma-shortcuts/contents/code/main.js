@@ -37,12 +37,12 @@ registerShortcut(
     }
 );
 
-// Active-apps overview: the bare Super/Meta key toggles the fullscreen
-// overview of running windows with live thumbnails (GNOME-style).
+// Active-apps overview: Meta+W toggles the fullscreen overview of running windows
+// with live thumbnails, cleanly replacing Plasma's native Overview without modifier hijacking.
 registerShortcut(
     "AstralOverview",
     "Astral Plasma: Active Apps Overview",
-    "Meta",
+    "Meta+W",
     function() {
         console.info("Astral Plasma: Triggering active apps overview");
         callDBus(
@@ -54,3 +54,55 @@ registerShortcut(
         );
     }
 );
+
+// AI Assistant Copilot: Meta+C toggles the right slide-out AI copilot drawer
+registerShortcut(
+    "AstralAssistant",
+    "Astral Plasma: Toggle AI Copilot",
+    "Meta+C",
+    function() {
+        console.info("Astral Plasma: Triggering AI copilot toggle");
+        callDBus(
+            "org.astralplasma.WindowWatcher",
+            "/Watcher",
+            "org.astralplasma.WindowWatcher",
+            "ShellIpc",
+            "assistant.toggle"
+        );
+    }
+);
+
+// Central Dashboard: Meta+D toggles the central dropdown dashboard
+registerShortcut(
+    "AstralDashboard",
+    "Astral Plasma: Toggle Dashboard",
+    "Meta+D",
+    function() {
+        console.info("Astral Plasma: Triggering dashboard toggle");
+        callDBus(
+            "org.astralplasma.WindowWatcher",
+            "/Watcher",
+            "org.astralplasma.WindowWatcher",
+            "ShellIpc",
+            "dashboard.toggle"
+        );
+    }
+);
+
+// Settings Hub: Meta+, toggles the Nexus settings dialog
+registerShortcut(
+    "AstralSettings",
+    "Astral Plasma: Toggle Settings",
+    "Meta+,",
+    function() {
+        console.info("Astral Plasma: Triggering settings toggle");
+        callDBus(
+            "org.astralplasma.WindowWatcher",
+            "/Watcher",
+            "org.astralplasma.WindowWatcher",
+            "ShellIpc",
+            "settings.toggle"
+        );
+    }
+);
+

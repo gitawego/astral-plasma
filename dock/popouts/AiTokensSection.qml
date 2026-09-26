@@ -252,6 +252,36 @@ Item {
                     }
                 }
             }
+
+            // Open Copilot Button
+            Rectangle {
+                width: 28
+                height: 28
+                radius: 14
+                color: copilotHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.16) : Qt.rgba(1.0, 1.0, 1.0, 0.06)
+                border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular)
+                    ? Qt.alpha(Colors.glassBorderSpecular, 0.25)
+                    : Qt.rgba(1.0, 1.0, 1.0, 0.12)
+                border.width: 1
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: "chat"
+                    size: 15
+                    color: Colors.primary
+                }
+
+                MouseArea {
+                    id: copilotHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Config.closeBottomPopout();
+                        Config.openAssistant();
+                    }
+                }
+            }
         }
 
         // Horizontal Segmented Provider Tabs (Responsive Chip Bar for 2, 3, 4, 5+ providers)

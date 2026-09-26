@@ -359,6 +359,12 @@ Singleton {
     readonly property color m3primaryContainer: root.accentPrimaryContainer
     readonly property color m3secondary: root.accentSecondary
     readonly property color m3secondaryContainer: root.accentSecondaryContainer
+    readonly property color m3error: root.accentError
+    readonly property color m3onError: root.accentOnError
+    readonly property color m3errorContainer: root.accentErrorContainer
+    readonly property color m3onErrorContainer: root.accentOnErrorContainer
+    readonly property color m3outline: root.outlineColor
+    readonly property color m3outlineVariant: root.outlineVariantColor
 
     readonly property color tertiary: getColor("tertiary", "#386A20", "#E0BBDD")
     readonly property color tertiaryContainer: getColor("tertiary_container", "#B7F397", "#593D59")

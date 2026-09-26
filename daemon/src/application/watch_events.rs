@@ -75,6 +75,7 @@ pub fn shell_ipc_arguments(action: &str) -> Option<Vec<&'static str>> {
         "dashboard.toggle" => Some(vec!["call", "dashboard", "toggle"]),
         "settings.toggle" => Some(vec!["call", "settings", "toggle"]),
         "overview.toggle" => Some(vec!["call", "overview", "toggle"]),
+        "assistant.toggle" => Some(vec!["call", "assistant", "toggle"]),
         _ => None,
     }
 }

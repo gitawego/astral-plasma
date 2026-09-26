@@ -31,7 +31,7 @@ backup_file = os.path.expanduser("~/.local/share/astral-plasma/shortcuts-backup/
 if not os.path.exists(backup_file):
     print("[*] No active shortcuts backup file found. Ensuring Astral shortcuts are deactivated.")
     # Safe cleanup even if no backup file exists
-    for key in ("AstralLauncher", "AstralWallpaper"):
+    for key in ("AstralLauncher", "AstralWallpaper", "AstralOverview", "AstralAssistant", "AstralDashboard", "AstralSettings"):
         subprocess.run(["kwriteconfig6", "--file", "kglobalshortcutsrc", "--group", "kwin", "--key", key, "--delete"], check=False)
     subprocess.run(["kwriteconfig6", "--file", "kwinrc", "--group", "Plugins", "--key", "astral-plasma-shortcutsEnabled", "false"], check=False)
 else:
@@ -82,10 +82,17 @@ try:
     for key, label in (
         ("AstralLauncher", "Astral Plasma Launcher"),
         ("AstralWallpaper", "Astral Plasma Wallpaper Picker"),
+        ("AstralOverview", "Astral Plasma: Active Apps Overview"),
+        ("AstralAssistant", "Astral Plasma: Toggle AI Copilot"),
+        ("AstralDashboard", "Astral Plasma: Toggle Dashboard"),
+        ("AstralSettings", "Astral Plasma: Toggle Settings"),
     ):
         accel.setForeignShortcut(['kwin', key, 'default', label], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-launcher.desktop', '_launch', 'default', 'Astral Plasma Launcher'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-wallpaper.desktop', '_launch', 'default', 'Astral Plasma Wallpaper Picker'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-assistant.desktop', '_launch', 'default', 'Astral Plasma AI Copilot'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-dashboard.desktop', '_launch', 'default', 'Astral Dashboard'], [dbus.Int32(0)])
+    accel.setForeignShortcut(['astral-settings.desktop', '_launch', 'default', 'Astral Settings'], [dbus.Int32(0)])
 except Exception:
     pass
 

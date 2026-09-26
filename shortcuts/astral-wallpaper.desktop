@@ -7,4 +7,3 @@ Terminal=false
 Type=Application
 Categories=Utility;
 StartupNotify=false
-X-KDE-Shortcuts=Meta+Shift+W

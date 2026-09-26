@@ -68,10 +68,22 @@ pub const SHORTCUT_WALLPAPER_KEY: &str = "AstralWallpaper";
 pub const SHORTCUT_LAUNCHER_LABEL: &str = "Astral Plasma Launcher";
 /// Display label of the wallpaper picker shortcut.
 pub const SHORTCUT_WALLPAPER_LABEL: &str = "Astral Plasma Wallpaper Picker";
-/// KWin global shortcut key for the active-apps overview (bare Meta).
+/// KWin global shortcut key for the active-apps overview.
 pub const SHORTCUT_OVERVIEW_KEY: &str = "AstralOverview";
 /// Display label of the active-apps overview shortcut.
 pub const SHORTCUT_OVERVIEW_LABEL: &str = "Astral Plasma: Active Apps Overview";
+/// KWin global shortcut key for the AI Copilot.
+pub const SHORTCUT_ASSISTANT_KEY: &str = "AstralAssistant";
+/// Display label of the AI Copilot shortcut.
+pub const SHORTCUT_ASSISTANT_LABEL: &str = "Astral Plasma: Toggle AI Copilot";
+/// KWin global shortcut key for the central dashboard dropdown.
+pub const SHORTCUT_DASHBOARD_KEY: &str = "AstralDashboard";
+/// Display label of the central dashboard shortcut.
+pub const SHORTCUT_DASHBOARD_LABEL: &str = "Astral Plasma: Toggle Dashboard";
+/// KWin global shortcut key for settings.
+pub const SHORTCUT_SETTINGS_KEY: &str = "AstralSettings";
+/// Display label of the settings shortcut.
+pub const SHORTCUT_SETTINGS_LABEL: &str = "Astral Plasma: Toggle Settings";
 
 // --- Wayland -----------------------------------------------------------------
 

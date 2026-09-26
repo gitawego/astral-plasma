@@ -9,6 +9,7 @@ import "theme"
 import "shell"
 import "settings_gui"
 import "services"
+import "assistant"
 
 ShellRoot {
     id: root
@@ -172,6 +173,52 @@ ShellRoot {
         property string activeAgentsSummary: {
             if (typeof AiActivityService === "undefined" || !AiActivityService.activeAgents) return "";
             return AiActivityService.activeAgents.map(function(a) { return a.display_name; }).join(", ");
+        }
+    }
+
+    IpcHandler {
+        target: "assistant"
+        function toggle(): void { Config.toggleAssistant(); }
+        function open(): void { Config.openAssistant(); }
+        function close(): void { Config.closeAssistant(); }
+        function send(prompt: string): void {
+            Config.openAssistant();
+            AssistantService.sendMessage(prompt);
+        }
+        function sendWithImage(prompt: string, imagePath: string): void {
+            Config.openAssistant();
+            AssistantService.sendMessage(prompt, [imagePath]);
+        }
+        function openPicker(): void {
+            Config.openAssistant();
+            if (assistantWindow && assistantWindow.drawerItem) {
+                assistantWindow.drawerItem.imagePickerVisible = true;
+            }
+        }
+        function togglePicker(): void {
+            Config.openAssistant();
+            if (assistantWindow && assistantWindow.drawerItem) {
+                assistantWindow.drawerItem.imagePickerVisible = !assistantWindow.drawerItem.imagePickerVisible;
+            }
+        }
+        function toggleSessions(): void {
+            Config.openAssistant();
+            if (assistantWindow && assistantWindow.drawerItem) {
+                assistantWindow.drawerItem.sessionsVisible = !assistantWindow.drawerItem.sessionsVisible;
+            }
+        }
+        function newChat(): void {
+            Config.openAssistant();
+            AssistantService.createNewSession();
+            if (assistantWindow && assistantWindow.drawerItem) {
+                assistantWindow.drawerItem.sessionsVisible = false;
+            }
+        }
+        function openFileDialog(): void {
+            Config.openAssistant();
+            if (assistantWindow && assistantWindow.drawerItem && assistantWindow.drawerItem.chatInputItem) {
+                assistantWindow.drawerItem.chatInputItem.openNativeFileDialog();
+            }
         }
     }
 
@@ -372,6 +419,12 @@ ShellRoot {
     // Settings GUI Window
     SettingsWindow {
         id: settingsWindow
+        targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+    }
+
+    // AI Assistant Copilot Window
+    AssistantWindow {
+        id: assistantWindow
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
 
