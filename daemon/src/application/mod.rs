@@ -17,4 +17,5 @@ pub mod settings_service;
 pub mod shortcut_service;
 pub mod doctor_service;
 pub mod ai_quota_service;
+pub mod ai_activity_service;
 pub mod desktop_session_coordinator;

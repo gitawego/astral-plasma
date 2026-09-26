@@ -831,6 +831,7 @@ PanelWindow {
     // Dropdown Dashboard Geometry
     readonly property real dropW: Config.dashboardWidth
     readonly property real dropH: dropdownContainer.dropH
+    readonly property real targetDropH: dropdownContainer ? dropdownContainer.targetDropH : 440
     readonly property real dropX: (root.width - root.dropW) / 2
     readonly property real currentDropH: dropdownContainer.currentDropH
 
@@ -937,6 +938,104 @@ PanelWindow {
         }
     }
 
+    // =========================================================================
+    // Active Frame Commit Pump for Wayland Blur Region Synchronization
+    // =========================================================================
+    // In the Wayland protocol (ext-background-effect-v1), set_blur_region is double-
+    // buffered client state applied strictly upon the next wl_surface.commit.
+    // When a drawer or popout finishes its closing animation, visual items become
+    // invisible (visible: offsetProgress > 0.001) and Qt Quick's threaded renderer halts.
+    // Without an active scene graph update, Mesa EGL emits NO buffer swaps and NO
+    // wl_surface.commit. The pending empty/reduced blur region sits in KWin unapplied
+    // until an unrelated periodic timer fires (e.g. 2000ms background audio polling),
+    // causing a visible blur layer to float in place for up to 2 seconds after drawer close.
+    //
+    // The Active Commit Pump solves this at the protocol boundary:
+    // 1. While any drawer offsetProgress is in transit (0.0001 < progress < 0.9999),
+    //    or while commitFlushTimer is running (400ms post-close window), the pump is active.
+    // 2. While active, commitPumpItem alternates opacity on vsync via FrameAnimation,
+    //    dirtying a 1x1 subpixel (#01000000) so Qt Quick renders and Mesa EGL commits
+    //    wl_surface.commit on EVERY frame in real-time.
+    // 3. Any change in blur active states or drawer visibility restarts commitFlushTimer,
+    //    guaranteeing that the compositor clears blur synchronously with zero residual lag.
+    // 4. When idle, the animation and timer are stopped, consuming 0.0% CPU.
+    Timer {
+        id: commitFlushTimer
+        interval: 700
+        repeat: false
+        running: false
+    }
+
+    function flushCommitPump(ms) {
+        const dur = (ms !== undefined && ms > 0) ? ms : 700;
+        commitFlushTimer.interval = dur;
+        if (!commitFlushTimer.running) {
+            commitFlushTimer.start();
+        } else {
+            commitFlushTimer.restart();
+        }
+    }
+
+    readonly property bool isCommitPumpActive: commitFlushTimer.running
+        || (dropdownContainer.offsetProgress > 0.0001 && dropdownContainer.offsetProgress < 0.9999)
+        || (fusedBottomPopoutWrapper.offsetProgress > 0.0001 && fusedBottomPopoutWrapper.offsetProgress < 0.9999)
+        || (rightEdgeControlWrapper.offsetProgress > 0.0001 && rightEdgeControlWrapper.offsetProgress < 0.9999)
+        || (Math.abs(dropdownContainer.offsetProgress - (dropdownContainer.isOpen ? 1.0 : 0.0)) > 0.001)
+        || (Math.abs(fusedBottomPopoutWrapper.offsetProgress - (Config.bottomPopoutVisible ? 1.0 : 0.0)) > 0.001)
+        || (Math.abs(rightEdgeControlWrapper.offsetProgress - (Config.rightEdgeControlVisible ? 1.0 : 0.0)) > 0.001)
+
+    onIsCommitPumpActiveChanged: {
+        if (typeof Config !== "undefined" && Config.debugMode) {
+            console.log("[CommitPump] isCommitPumpActive=" + isCommitPumpActive
+                + " flushTimer=" + commitFlushTimer.running
+                + " dropProg=" + dropdownContainer.offsetProgress.toFixed(3)
+                + " popProg=" + fusedBottomPopoutWrapper.offsetProgress.toFixed(3));
+        }
+    }
+
+    onBlurRegionActiveChanged: flushCommitPump(700)
+    onBlurPopoutActiveChanged: flushCommitPump(700)
+    onBlurRightEdgeActiveChanged: flushCommitPump(700)
+
+    Connections {
+        target: Config
+        function onDashboardVisibleChanged() {
+            root.flushCommitPump(700);
+        }
+        function onBottomPopoutVisibleChanged() {
+            root.flushCommitPump(700);
+        }
+        function onRightEdgeControlVisibleChanged() {
+            root.flushCommitPump(700);
+        }
+    }
+
+    Connections {
+        target: dropdownContainer
+        function onOffsetProgressChanged() {
+            if (dropdownContainer.offsetProgress <= 0.001 && !dropdownContainer.isOpen) {
+                root.flushCommitPump(250);
+            }
+        }
+    }
+    Connections {
+        target: fusedBottomPopoutWrapper
+        function onOffsetProgressChanged() {
+            if (fusedBottomPopoutWrapper.offsetProgress <= 0.001 && !Config.bottomPopoutVisible) {
+                root.isFusedToBottom = false;
+                root.flushCommitPump(250);
+            }
+        }
+    }
+    Connections {
+        target: rightEdgeControlWrapper
+        function onOffsetProgressChanged() {
+            if (rightEdgeControlWrapper.offsetProgress <= 0.001 && !Config.rightEdgeControlVisible) {
+                root.flushCommitPump(250);
+            }
+        }
+    }
+
     // Bottom Popout Geometry & Domain Fusion Math
     readonly property real currentPopW: (typeof fusedPopout !== "undefined" ? fusedPopout.popWidth : 280) * fusedBottomPopoutWrapper.offsetProgress
     readonly property real popoutH: (typeof fusedPopout !== "undefined" ? fusedPopout.implicitHeight : 240)
@@ -995,12 +1094,12 @@ PanelWindow {
     readonly property real popoutDistToBottom: Math.max(0, (root.height - root.borderT) - (fusedBottomPopoutWrapper.y + fusedBottomPopoutWrapper.height))
     readonly property bool isPopoutAtBottom: isPopoutFusedBottom && Config.bottomPopoutVisible && ((fusedBottomPopoutWrapper.offsetProgress <= 0.01) || (popoutDistToBottom <= 3.0))
 
-    property bool isFusedToBottom: isPopoutAtBottom
+    property bool isFusedToBottom: false
 
     onIsPopoutAtBottomChanged: {
         if (isPopoutAtBottom) {
             isFusedToBottom = true;
-        } else if (!isPopoutFusedBottom || !Config.bottomPopoutVisible) {
+        } else if (!isPopoutFusedBottom && Config.bottomPopoutVisible) {
             isFusedToBottom = false;
         }
     }
@@ -1008,9 +1107,8 @@ PanelWindow {
     Connections {
         target: Config
         function onBottomPopoutVisibleChanged() {
-            if (!Config.bottomPopoutVisible) {
-                isFusedToBottom = false;
-            }
+            // Keep isFusedToBottom latched while closing!
+            // When closing, isFusedToBottom is reset only after fusedBottomPopoutWrapper.offsetProgress <= 0.001
         }
         function onBottomPopoutModeChanged() {
             if (!isPopoutFusedBottom) {
@@ -1292,6 +1390,7 @@ PanelWindow {
         id: appContextMenu
         dockW: root.dockW
         screenH: root.height
+        onMenuCardVisibleChanged: root.flushCommitPump(400)
     }
 
     // 4b. SYSTEM TRAY CONTEXT MENU
@@ -1299,6 +1398,7 @@ PanelWindow {
         id: trayContextMenu
         dockW: root.dockW
         screenH: root.height
+        onMenuCardVisibleChanged: root.flushCommitPump(400)
     }
 
     // 5. SYSTEM NOTIFICATIONS POPUP (TOP-RIGHT FUSED)
@@ -1308,6 +1408,7 @@ PanelWindow {
         y: 0
         z: 1000
         visible: NotificationService.hasNotification
+        onVisibleChanged: root.flushCommitPump(400)
         summary: NotificationService.currentSummary
         body: NotificationService.currentBody
         appName: NotificationService.currentAppName
@@ -1765,5 +1866,62 @@ PanelWindow {
         id: powerConfirmDialog
         anchors.fill: parent
         z: 2000
+    }
+
+    // 11. ACTIVE FRAME COMMIT PUMP & DRAWER DAMAGE EMITTER FOR WAYLAND BLUR SYNCHRONIZATION
+    // In Wayland compositing (KWin), set_blur_region is double-buffered client state applied
+    // strictly upon wl_surface.commit. Furthermore, KWin tracks damage regions to selectively
+    // repaint the screen. If a drawer closes and its items become invisible (visible: false),
+    // Qt Quick stops damaging that screen area. Without client buffer damage covering the
+    // closed drawer bounding box, KWin skips redrawing the desktop background behind it, leaving
+    // stale blurred pixels in the framebuffer until an unrelated periodic timer fires.
+    //
+    // The Active Damage Pump guarantees:
+    // 1. Full bounding-box damage coverage across all drawer regions (Central Dropdown,
+    //    Fused Bottom Popout, and Right Edge Control) while in transit and during the post-close window.
+    // 2. Continuous frame rendering and vsync commits (via FrameAnimation) while active.
+    // 3. Invisible alternating alpha quads (#01000000 vs #02000000) that force Mesa EGL to emit
+    //    wl_surface.damage_buffer covering the exact vacated areas.
+    // 4. Zero CPU consumption when idle (running: root.isCommitPumpActive).
+    Item {
+        id: commitPumpItem
+        z: -9999
+        visible: root.isCommitPumpActive
+
+        property bool pumpToggle: false
+
+        // 1. Central Dropdown Dashboard vacating damage rect
+        Rectangle {
+            x: root.dropX - root.filletR
+            y: 0
+            width: root.dropW + root.filletR * 2
+            height: Math.max(root.borderT, root.targetDropH + root.filletR)
+            color: commitPumpItem.pumpToggle ? "#01000000" : "#02000000"
+        }
+
+        // 2. Fused / Floating Bottom Popout vacating damage rect
+        Rectangle {
+            x: root.dockW
+            y: Math.max(0, root.idealPopoutY - root.filletR)
+            width: (typeof fusedPopout !== "undefined" ? fusedPopout.popWidth : 350) + root.filletR * 2
+            height: root.popoutH + root.filletR * 2
+            color: commitPumpItem.pumpToggle ? "#01000000" : "#02000000"
+        }
+
+        // 3. Right Edge Control vacating damage rect
+        Rectangle {
+            x: root.width - root.borderT - root.rightControlW - root.filletR
+            y: root.rightControlY - root.filletR
+            width: root.rightControlW + root.borderT + root.filletR
+            height: root.rightControlH + root.filletR * 2
+            color: commitPumpItem.pumpToggle ? "#01000000" : "#02000000"
+        }
+
+        FrameAnimation {
+            running: root.isCommitPumpActive
+            onTriggered: {
+                commitPumpItem.pumpToggle = !commitPumpItem.pumpToggle;
+            }
+        }
     }
 }

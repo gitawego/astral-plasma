@@ -730,4 +730,194 @@ async fn test_in_flight_sustains_across_multi_second_tool_runs() {
     assert_eq!(st3.active_agents.len(), 0);
 }
 
+#[test]
+fn test_zcode_idle_memory_sample_log_is_not_active() {
+    use astral_plasma::infrastructure::ai_activity_monitor::check_turn_completed_from_tail;
+
+    let path = "/home/hlu/.zcode/cli/log/zcode-2026-09-25.jsonl";
+    let tail_memory_sample = r#"
+{"timestamp":"2026-09-25T20:52:23.951Z","level":"info","event":"zcode_protocol.process.memory_sample","module":"bootstrap.zcode_protocol","message":"Process memory sample","context":{"entrypoint":"zcode_protocol","reason":"heartbeat","rssKb":197096}}
+{"timestamp":"2026-09-25T20:52:28.392Z","level":"info","event":"zcode_protocol.process.memory_sample","module":"bootstrap.zcode_protocol","message":"Process memory sample","context":{"entrypoint":"zcode_protocol","reason":"changed","rssKb":197368}}
+"#;
+
+    // Periodic memory sample heartbeat must be completed/idle, NEVER in-flight
+    assert!(check_turn_completed_from_tail(tail_memory_sample, path),
+        "ZCode memory samples must be treated as completed/idle, never in-flight");
+}
+
+#[test]
+fn test_zcode_rollout_model_io_detection() {
+    use astral_plasma::infrastructure::ai_activity_monitor::{check_turn_completed_from_tail, extract_model_from_json_line, extract_tokens_from_json_line};
+
+    let path = "/home/hlu/.zcode/cli/rollout/model-io-sess_dcce4627-4286-456b-9203-d3fc612e8d85.jsonl";
+
+    // 1. Tool execution in flight
+    let tail_tool = r#"{"type":"model_io","sessionId":"sess_1","turnId":"turn_1","response":{"modelId":"deepseek-v4.1-flash","finishReason":"tool-calls","usage":{"inputTokens":800,"outputTokens":200,"totalTokens":1000}}}"#;
+    assert!(!check_turn_completed_from_tail(tail_tool, path), "tool-calls finishReason must be in-flight");
+
+    let model = extract_model_from_json_line(tail_tool);
+    assert_eq!(model, Some(("deepseek-v4.1-flash".to_string(), String::new())));
+
+    let tokens = extract_tokens_from_json_line(tail_tool);
+    assert_eq!(tokens, Some(1000));
+
+    // 2. Turn completed
+    let tail_stop = r#"{"type":"model_io","sessionId":"sess_1","turnId":"turn_1","response":{"modelId":"deepseek-v4.1-flash","finishReason":"stop","usage":{"inputTokens":800,"outputTokens":500,"totalTokens":1300}}}"#;
+    assert!(check_turn_completed_from_tail(tail_stop, path), "stop finishReason must be completed");
+}
+
+#[test]
+fn test_pi_omp_turn_completion_detection() {
+    use astral_plasma::infrastructure::ai_activity_monitor::check_turn_completed_from_tail;
+
+    let pi_path = "/home/hlu/.pi/agent/sessions/--test--/session.jsonl";
+    let omp_path = "/home/hlu/.omp/agent/sessions/--test--/session.jsonl";
+
+    // 1. Assistant tool call in progress -> in-flight
+    let tail_tool = r#"{"type":"message","message":{"role":"assistant","stopReason":"toolUse","model":"mimo-v2.6-flash"}}"#;
+    assert!(!check_turn_completed_from_tail(tail_tool, pi_path), "toolUse in Pi session must be in-flight");
+    assert!(!check_turn_completed_from_tail(tail_tool, omp_path), "toolUse in OMP session must be in-flight");
+
+    // 2. User input sent -> in-flight
+    let tail_user = r#"{"type":"message","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}"#;
+    assert!(!check_turn_completed_from_tail(tail_user, pi_path), "User input in Pi session must be in-flight");
+
+    // 3. Final stop -> completed
+    let tail_stop = r#"{"type":"message","message":{"role":"assistant","stopReason":"stop","model":"mimo-v2.6-flash"}}"#;
+    assert!(check_turn_completed_from_tail(tail_stop, pi_path), "stop in Pi session must be completed");
+    assert!(check_turn_completed_from_tail(tail_stop, omp_path), "stop in OMP session must be completed");
+}
+
+#[test]
+fn test_idle_transcript_defaults_to_completed() {
+    use astral_plasma::infrastructure::ai_activity_monitor::check_turn_completed_from_tail;
+
+    // A transcript tail that doesn't have an active in-flight request must return completed (true)
+    let idle_tail = r#"{"status":"idle","message":"session initialized"}"#;
+    assert!(check_turn_completed_from_tail(idle_tail, "/home/hlu/.gemini/antigravity/brain/sess/logs/transcript.jsonl"),
+        "Idle transcript without active input/tools must default to completed");
+    assert!(check_turn_completed_from_tail(idle_tail, "/home/hlu/.claude/projects/sess.jsonl"),
+        "Idle Claude log without tool_use must default to completed");
+}
+
+#[test]
+fn test_ai_activity_use_case_application_port_contract() {
+    use astral_plasma::application::ai_activity_service::AiActivityUseCase;
+    use astral_plasma::domain::ports::AiActivityPort;
+    use astral_plasma::domain::ai_activity::AiActivityState;
+    use std::sync::Arc;
+
+    struct MockAiPort {
+        state: std::sync::Mutex<AiActivityState>,
+    }
+
+    impl AiActivityPort for MockAiPort {
+        fn get_state_sync(&self) -> AiActivityState {
+            self.state.lock().unwrap().clone()
+        }
+        fn record_activity_sync(&self, raw_model: &str, tool_source: &str, _tokens: Option<u64>, _is_completed: bool) {
+            let mut st = self.state.lock().unwrap();
+            st.identity.model_id = raw_model.to_string();
+            st.identity.tool_source = tool_source.to_string();
+            st.is_active = true;
+        }
+        fn tick_decay_sync(&self) -> bool {
+            true
+        }
+        fn query_active_state_sync(&self) -> AiActivityState {
+            self.get_state_sync()
+        }
+        fn start_background_watcher(&self) {}
+    }
+
+    let mock_port = Arc::new(MockAiPort {
+        state: std::sync::Mutex::new(AiActivityState::default()),
+    });
+
+    let use_case = AiActivityUseCase::new(mock_port);
+    let initial = use_case.get_state();
+    assert!(!initial.is_active);
+
+    use_case.record_activity("custom-model-v1", "test-tool", Some(100), false);
+    let after = use_case.query_current_state();
+    assert!(after.is_active);
+    assert_eq!(after.identity.model_id, "custom-model-v1");
+    assert_eq!(after.identity.tool_source, "test-tool");
+    assert!(use_case.tick_decay());
+}
+
+#[test]
+fn test_adapter_registry_routes_to_specialized_adapters() {
+    use astral_plasma::infrastructure::ai_adapters::AdapterRegistry;
+    use std::path::Path;
+
+    let registry = AdapterRegistry::new();
+    assert!(registry.adapters().len() >= 9, "Registry must contain all specialized adapters");
+
+    // Antigravity
+    let ad_anti = registry.find_adapter_for_path(Path::new("/home/user/.gemini/antigravity/brain/session1/.system_generated/logs/transcript.jsonl"));
+    assert!(ad_anti.is_some());
+    assert_eq!(ad_anti.unwrap().tool_id(), "antigravity");
+
+    // Claude
+    let ad_claude = registry.find_adapter_for_path(Path::new("/home/user/.claude/sessions/session1.jsonl"));
+    assert!(ad_claude.is_some());
+    assert_eq!(ad_claude.unwrap().tool_id(), "claude");
+
+    // Codex
+    let ad_codex = registry.find_adapter_for_path(Path::new("/home/user/.codex/sessions/session1.jsonl"));
+    assert!(ad_codex.is_some());
+    assert_eq!(ad_codex.unwrap().tool_id(), "codex");
+
+    // Pi
+    let ad_pi = registry.find_adapter_for_path(Path::new("/home/user/.pi/agent/sessions/test/session.jsonl"));
+    assert!(ad_pi.is_some());
+    assert_eq!(ad_pi.unwrap().tool_id(), "pi");
+
+    // Omp
+    let ad_omp = registry.find_adapter_for_path(Path::new("/home/user/.omp/agent/sessions/test/session.jsonl"));
+    assert!(ad_omp.is_some());
+    assert_eq!(ad_omp.unwrap().tool_id(), "omp");
+
+    // ZCode
+    let ad_zcode = registry.find_adapter_for_path(Path::new("/home/user/.zcode/cli/rollout/model-io.jsonl"));
+    assert!(ad_zcode.is_some());
+    assert_eq!(ad_zcode.unwrap().tool_id(), "zcode");
+
+    // OpenCode
+    let ad_open = registry.find_adapter_for_path(Path::new("/home/user/.local/share/opencode/opencode.db"));
+    assert!(ad_open.is_some());
+    assert_eq!(ad_open.unwrap().tool_id(), "opencode");
+
+    // Dsh
+    let ad_dsh = registry.find_adapter_for_path(Path::new("/home/user/.dsh/sessions/s1/sub/session.lock"));
+    assert!(ad_dsh.is_some());
+    assert_eq!(ad_dsh.unwrap().tool_id(), "dsh");
+
+    // IDE
+    let ad_cursor = registry.find_adapter_for_path(Path::new("/home/user/.config/Cursor/session.json"));
+    assert!(ad_cursor.is_some());
+    assert_eq!(ad_cursor.unwrap().tool_id(), "ide");
+}
+
+#[test]
+fn test_data_driven_catalog_table_declarative() {
+    use astral_plasma::domain::ai_activity::STATIC_BRAND_RULES;
+
+    assert!(STATIC_BRAND_RULES.len() >= 15, "Static brand catalog must contain all defined agent brand rules");
+
+    let claude_rule = STATIC_BRAND_RULES.iter().find(|r| r.tool_id == "claude");
+    assert!(claude_rule.is_some());
+    let cr = claude_rule.unwrap();
+    assert_eq!(cr.brand_color, "#D97706");
+    assert_eq!(cr.brand_icon, "psychology");
+
+    let gemini_rule = STATIC_BRAND_RULES.iter().find(|r| r.tool_id == "gemini");
+    assert!(gemini_rule.is_some());
+    let gr = gemini_rule.unwrap();
+    assert_eq!(gr.brand_color, "#818CF8");
+    assert_eq!(gr.brand_icon, "auto_awesome");
+}
+
+
 

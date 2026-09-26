@@ -1,16 +1,25 @@
 use crate::domain::ai_activity::{resolve_model_metadata, AiActivityState};
+use crate::domain::ports::{ActiveSessionDescriptor, AgentSessionAdapter, AiActivityPort};
+use crate::infrastructure::ai_adapters::{
+    self, AdapterRegistry, CodexAdapter, DshAdapter, OpenCodeAdapter, PiAdapter, ZCodeAdapter,
+};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
-pub const IN_FLIGHT_WINDOW_MS: u64 = 120_000;  // 120s active window during in-flight reasoning and tool execution
-pub const COMPLETED_WINDOW_MS: u64 = 3_000;    // 3s active window after turn completion (shows completion state, then promptly decays)
+pub const IN_FLIGHT_WINDOW_MS: u64 = 120_000; // 120s active window during in-flight reasoning and tool execution
+pub const COMPLETED_WINDOW_MS: u64 = 3_000; // 3s active window after turn completion (shows completion state, then promptly decays)
 pub const ACTIVE_AGENT_WINDOW_MS: u64 = 120_000; // alias for in-flight / active sessions scan
-pub const TRACK_RETENTION_MS: u64 = 120_000;   // 120s track retention for rolling metrics
+pub const TRACK_RETENTION_MS: u64 = 120_000; // 120s track retention for rolling metrics
+
+pub type ActiveSessionFile = ActiveSessionDescriptor;
+
+pub use ai_adapters::{
+    extract_model_from_json_line, extract_tokens_from_json_line, extract_tokens_from_tail,
+    read_head_string, read_tail_string, scan_dirs_recursive, scan_jsonl_recursive,
+};
 
 /// Track state for an individual agent tool during concurrent execution.
 #[derive(Debug, Clone)]
@@ -22,10 +31,12 @@ pub struct AgentTrack {
     pub is_turn_completed: bool,
 }
 
-/// Tail reader that extracts the most recent model identifier in <0.1ms without loading entire files.
+/// Tail reader that monitors agent transcript activity and tracks real-time model metrics.
+#[derive(Clone)]
 pub struct AiActivityMonitor {
     pub state: Arc<RwLock<AiActivityState>>,
     pub agent_tracks: Arc<RwLock<HashMap<String, AgentTrack>>>,
+    pub registry: Arc<AdapterRegistry>,
     watch_descriptors: Arc<RwLock<HashMap<i32, PathBuf>>>,
     recent_events_window: Arc<RwLock<Vec<u64>>>,
     recent_tokens_window: Arc<RwLock<Vec<(u64, u64)>>>,
@@ -42,6 +53,18 @@ impl AiActivityMonitor {
         Self {
             state: Arc::new(RwLock::new(AiActivityState::default())),
             agent_tracks: Arc::new(RwLock::new(HashMap::new())),
+            registry: Arc::new(AdapterRegistry::new()),
+            watch_descriptors: Arc::new(RwLock::new(HashMap::new())),
+            recent_events_window: Arc::new(RwLock::new(Vec::new())),
+            recent_tokens_window: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    pub fn with_registry(registry: Arc<AdapterRegistry>) -> Self {
+        Self {
+            state: Arc::new(RwLock::new(AiActivityState::default())),
+            agent_tracks: Arc::new(RwLock::new(HashMap::new())),
+            registry,
             watch_descriptors: Arc::new(RwLock::new(HashMap::new())),
             recent_events_window: Arc::new(RwLock::new(Vec::new())),
             recent_tokens_window: Arc::new(RwLock::new(Vec::new())),
@@ -52,22 +75,37 @@ impl AiActivityMonitor {
         self.state.read().await.clone()
     }
 
-    pub async fn agent_tracks_for_test(&self) -> tokio::sync::RwLockWriteGuard<'_, HashMap<String, AgentTrack>> {
+    pub async fn agent_tracks_for_test(
+        &self,
+    ) -> tokio::sync::RwLockWriteGuard<'_, HashMap<String, AgentTrack>> {
         self.agent_tracks.write().await
     }
 
     /// Records a new request event for the specified model and tool, updating activity metrics.
     pub async fn record_activity(&self, raw_model: &str, tool_source: &str) {
-        self.record_activity_full(raw_model, tool_source, None, false).await;
+        self.record_activity_full(raw_model, tool_source, None, false)
+            .await;
     }
 
     /// Records a new request event with optional token quantity, updating RPM and TPM metrics.
-    pub async fn record_activity_with_tokens(&self, raw_model: &str, tool_source: &str, tokens: Option<u64>) {
-        self.record_activity_full(raw_model, tool_source, tokens, false).await;
+    pub async fn record_activity_with_tokens(
+        &self,
+        raw_model: &str,
+        tool_source: &str,
+        tokens: Option<u64>,
+    ) {
+        self.record_activity_full(raw_model, tool_source, tokens, false)
+            .await;
     }
 
     /// Records a new request event with token quantity and turn completion status.
-    pub async fn record_activity_full(&self, raw_model: &str, tool_source: &str, tokens: Option<u64>, is_completed: bool) {
+    pub async fn record_activity_full(
+        &self,
+        raw_model: &str,
+        tool_source: &str,
+        tokens: Option<u64>,
+        is_completed: bool,
+    ) {
         let now_ms = current_epoch_ms();
         let identity = resolve_model_metadata(raw_model, tool_source);
 
@@ -116,7 +154,11 @@ impl AiActivityMonitor {
             t.recent_events_window.retain(|&ev| now_ms.saturating_sub(ev) < 60_000);
             t.recent_tokens_window.retain(|&(ev, _)| now_ms.saturating_sub(ev) < 60_000);
             let agent_tokens: u64 = t.recent_tokens_window.iter().map(|&(_, c)| c).sum();
-            let window = if t.is_turn_completed { COMPLETED_WINDOW_MS } else { IN_FLIGHT_WINDOW_MS };
+            let window = if t.is_turn_completed {
+                COMPLETED_WINDOW_MS
+            } else {
+                IN_FLIGHT_WINDOW_MS
+            };
             if now_ms.saturating_sub(t.last_event_epoch_ms) < window {
                 active_slots.push(crate::domain::ai_activity::ActiveAgentSlot {
                     tool_source: t.identity.tool_source.clone(),
@@ -131,7 +173,6 @@ impl AiActivityMonitor {
                 });
             }
         }
-        // Sort with most recently active first
         active_slots.sort_by(|a, b| b.last_event_epoch_ms.cmp(&a.last_event_epoch_ms));
 
         let mut st = self.state.write().await;
@@ -145,41 +186,30 @@ impl AiActivityMonitor {
         st.active_agents = active_slots;
     }
 
-    /// Advances activity decay math. Returns `true` if state transitioned from active to inactive.
+    /// Progresses exponential decay on intensity and request rate. Returns true if state transitioned.
     pub async fn tick_decay(&self) -> bool {
         let now_ms = current_epoch_ms();
         let mut st = self.state.write().await;
-
-        if !st.is_active {
-            return false;
-        }
-
-        let _elapsed = now_ms.saturating_sub(st.last_event_epoch_ms);
-
-        // Decay global rolling windows
-        let mut window = self.recent_events_window.write().await;
-        window.retain(|&t| now_ms.saturating_sub(t) < 60_000);
-        st.request_rate_rpm = window.len() as f64;
-
-        let mut tok_window = self.recent_tokens_window.write().await;
-        tok_window.retain(|&(t, _)| now_ms.saturating_sub(t) < 60_000);
-        let total_tokens: u64 = tok_window.iter().map(|&(_, cnt)| cnt).sum();
-        st.token_rate_tpm = total_tokens as f64;
-        st.recent_tokens = total_tokens;
-
-        // Decay per-agent tracks
         let mut tracks = self.agent_tracks.write().await;
+
+        let prev_active_count = st.active_agents.len();
+        let prev_active = st.is_active;
+
+        // Prune tracks older than retention window
+        tracks.retain(|_, t| now_ms.saturating_sub(t.last_event_epoch_ms) < TRACK_RETENTION_MS);
+
+        // Update active_agents list
         let mut active_slots = Vec::new();
-        tracks.retain(|_, t| {
+        for (_, t) in tracks.iter_mut() {
             t.recent_events_window.retain(|&ev| now_ms.saturating_sub(ev) < 60_000);
             t.recent_tokens_window.retain(|&(ev, _)| now_ms.saturating_sub(ev) < 60_000);
-            now_ms.saturating_sub(t.last_event_epoch_ms) < TRACK_RETENTION_MS
-        });
-
-        for (_, t) in tracks.iter() {
-            let window = if t.is_turn_completed { COMPLETED_WINDOW_MS } else { IN_FLIGHT_WINDOW_MS };
+            let agent_tokens: u64 = t.recent_tokens_window.iter().map(|&(_, c)| c).sum();
+            let window = if t.is_turn_completed {
+                COMPLETED_WINDOW_MS
+            } else {
+                IN_FLIGHT_WINDOW_MS
+            };
             if now_ms.saturating_sub(t.last_event_epoch_ms) < window {
-                let agent_tokens: u64 = t.recent_tokens_window.iter().map(|&(_, c)| c).sum();
                 active_slots.push(crate::domain::ai_activity::ActiveAgentSlot {
                     tool_source: t.identity.tool_source.clone(),
                     model_id: t.identity.model_id.clone(),
@@ -194,352 +224,105 @@ impl AiActivityMonitor {
             }
         }
         active_slots.sort_by(|a, b| b.last_event_epoch_ms.cmp(&a.last_event_epoch_ms));
-        let active_slots_changed = st.active_agents != active_slots;
-        st.active_agents = active_slots.clone();
+        st.active_agents = active_slots;
 
-        if active_slots.is_empty() {
-            // Immediate clean transition to inactive when no agents are active
-            let was_active = st.is_active;
-            st.intensity = 0.0;
+        // Update global active state and primary identity from newest active agent
+        let top_agent_info = st.active_agents.first().map(|t| (
+            crate::domain::ai_activity::AiAgentIdentity {
+                tool_source: t.tool_source.clone(),
+                model_id: t.model_id.clone(),
+                display_name: t.display_name.clone(),
+                brand_color: t.brand_color.clone(),
+                brand_icon: t.brand_icon.clone(),
+            },
+            t.last_event_epoch_ms,
+        ));
+
+        if let Some((top_id, top_epoch)) = top_agent_info {
+            st.identity = top_id;
+            st.is_active = true;
+            let elapsed_since_primary = now_ms.saturating_sub(top_epoch);
+            let window = IN_FLIGHT_WINDOW_MS;
+            st.intensity = (1.0 - (elapsed_since_primary as f64 / window as f64)).clamp(0.0, 1.0);
+        } else {
             st.is_active = false;
+            st.intensity = 0.0;
             st.request_rate_rpm = 0.0;
             st.token_rate_tpm = 0.0;
             st.recent_tokens = 0;
-            st.active_agents.clear();
-            return was_active; // Transitioned from active to inactive
         }
-        active_slots_changed
+
+        prev_active != st.is_active || prev_active_count != st.active_agents.len()
     }
 
-    /// Reads up to `max_bytes` from the beginning of the file.
-    pub fn read_head_string(path: &Path, max_bytes: usize) -> Option<String> {
-        let mut file = File::open(path).ok()?;
-        let len = file.metadata().ok()?.len();
-        if len == 0 {
-            return None;
-        }
-
-        let read_bytes = (max_bytes as u64).min(len);
-        let mut buf = vec![0u8; read_bytes as usize];
-        file.read_exact(&mut buf).ok()?;
-        Some(String::from_utf8_lossy(&buf).to_string())
-    }
-
-    /// Reads up to `max_bytes` from the end of the file.
-    pub fn read_tail_string(path: &Path, max_bytes: usize) -> Option<String> {
-        let mut file = File::open(path).ok()?;
-        let len = file.metadata().ok()?.len();
-        if len == 0 {
-            return None;
-        }
-
-        let seek_bytes = (max_bytes as u64).min(len);
-        file.seek(SeekFrom::End(-(seek_bytes as i64))).ok()?;
-
-        let mut buf = Vec::with_capacity(seek_bytes as usize);
-        file.read_to_end(&mut buf).ok()?;
-        Some(String::from_utf8_lossy(&buf).to_string())
-    }
-
-    /// Comprehensive file parser: examines tail, head (for initial model_change), and tool settings.
-    pub fn parse_model_from_file(path: &Path) -> Option<(String, String)> {
-        let path_hint = path.to_string_lossy();
-        if path_hint.ends_with(".log")
-            || path_hint.ends_with(".db")
-            || path_hint.contains("context-mode")
-            || path_hint.contains("stats-pid")
-        {
-            return None;
-        }
-
-        // Special handling for DSH: session.lock or session files
-        if path_hint.contains(".dsh") {
-            if let Some(dsh_defaults) = read_dsh_default_settings() {
-                return Some(dsh_defaults);
-            }
-            return Some(("DSH Agent".to_string(), "dsh".to_string()));
-        }
-
-        if path_hint.ends_with(".lock") {
-            return None;
-        }
-
-        if path_hint.contains("antigravity") && !path_hint.ends_with("transcript.jsonl") {
-            return None;
-        }
-
-        // 1. Try reading tail (up to 32KB)
-        if let Some(tail) = Self::read_tail_string(path, 32768) {
-            for line in tail.lines().rev() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if let Some((m, prov)) = extract_model_from_json_line(trimmed) {
-                    let prov = if prov.is_empty() && path_hint.contains(".codex") { "openai".to_string() } else { prov };
-                    return Some((m, prov));
-                }
-            }
-        }
-
-        // 2. Try reading head (up to 8KB) - in pi and omp, session header has model_change on line 2
-        if let Some(head) = Self::read_head_string(path, 8192) {
-            for line in head.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if let Some((m, prov)) = extract_model_from_json_line(trimmed) {
-                    let prov = if prov.is_empty() && path_hint.contains(".codex") { "openai".to_string() } else { prov };
-                    return Some((m, prov));
-                }
-            }
-        }
-
-        // 3. Fallback to tail keyword analysis or tool fallback
-        if let Some(tail) = Self::read_tail_string(path, 32768) {
-            if let Some(res) = Self::parse_model_from_tail(&tail, &path_hint) {
-                return Some(res);
-            }
-        }
-
-        // 4. Default settings fallback based on tool source
-        let lower = path_hint.to_lowercase();
-        if lower.contains(".pi") {
-            if let Some(pi_defaults) = read_pi_default_settings() {
-                return Some(pi_defaults);
-            }
-        } else if lower.contains(".zcode") || lower.contains("zcode") {
-            if let Some(zcode_defaults) = read_zcode_default_settings() {
-                return Some(zcode_defaults);
-            }
-        } else if lower.contains(".codex") {
-            if let Some(codex_defaults) = read_codex_default_settings() {
-                return Some(codex_defaults);
-            }
-        } else if lower.contains(".dsh") {
-            if let Some(dsh_defaults) = read_dsh_default_settings() {
-                return Some(dsh_defaults);
-            }
-        }
-
-        None
-    }
-
-    /// Comprehensive file parser: extracts active model, provider, and recent token throughput.
-    pub fn parse_model_and_tokens_from_file(path: &Path) -> Option<(String, String, Option<u64>)> {
-        Self::parse_model_tokens_and_status_from_file(path).map(|(m, t, tok, _)| (m, t, tok))
-    }
-
-    /// Extended file parser: extracts active model, provider, recent tokens, and turn completion status.
-    pub fn parse_model_tokens_and_status_from_file(path: &Path) -> Option<(String, String, Option<u64>, bool)> {
-        let path_hint = path.to_string_lossy();
-        if path_hint.ends_with(".log")
-            || path_hint.ends_with(".db")
-            || path_hint.contains("context-mode")
-            || path_hint.contains("stats-pid")
-        {
-            return None;
-        }
-
-        if path_hint.contains("antigravity") && !path_hint.ends_with("transcript.jsonl") {
-            return None;
-        }
-
-        let tail = Self::read_tail_string(path, 32768);
-        let tokens = tail.as_deref().and_then(extract_tokens_from_tail);
-        let is_completed = tail.as_deref().map(|t| check_turn_completed_from_tail(t, &path_hint)).unwrap_or(false);
-
-        let (model, tool) = Self::parse_model_from_file(path)?;
-        Some((model, tool, tokens, is_completed))
-    }
-
-    /// Extracts the most recent model identifier from the tail of a session or log file.
-    pub fn parse_model_from_tail(tail: &str, path_hint: &str) -> Option<(String, String)> {
-        let hint_lower = path_hint.to_lowercase();
-        let tool_source = if hint_lower.contains("claude") {
-            "claude"
-        } else if hint_lower.contains("codex") {
-            "codex"
-        } else if hint_lower.contains("antigravity") || hint_lower.contains("gemini") {
-            "antigravity"
-        } else if hint_lower.contains("zcode") {
-            "zcode"
-        } else if hint_lower.contains("opencode") {
-            "opencode"
-        } else if hint_lower.contains(".dsh") {
-            "dsh"
-        } else if hint_lower.contains("cursor") {
-            "cursor"
-        } else if hint_lower.contains("windsurf") {
-            "windsurf"
-        } else if hint_lower.contains(".omp") {
-            "omp"
-        } else if hint_lower.contains(".pi") {
-            "pi"
-        } else {
-            "agent"
+    /// Queries the full ground-truth state across all adapters and active session files.
+    pub async fn query_active_state(&self) -> AiActivityState {
+        let home = match std::env::var("HOME").ok().map(PathBuf::from) {
+            Some(h) => h,
+            None => return self.get_state().await,
         };
+        let now_ms = current_epoch_ms();
 
-        // Scan lines in reverse order to find the latest model change or usage message
-        for line in tail.lines().rev() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-
-            // Check for direct JSON structure
-            if let Some((m, prov)) = extract_model_from_json_line(trimmed) {
-                let resolved_tool = if !prov.is_empty() && tool_source != "zcode" {
-                    prov
-                } else if tool_source == "codex" {
-                    "openai".to_string()
-                } else {
-                    tool_source.to_string()
-                };
-                return Some((m, resolved_tool));
-            }
-        }
-
-        // Antigravity special handling: check for "Model Selection" or planner steps
-        if hint_lower.contains("antigravity") || hint_lower.contains("gemini") {
-            for line in tail.lines().rev() {
-                if let Some(pos) = line.find("Model Selection` from None to ") {
-                    let rem = &line[pos + 30..];
-                    let candidate = rem.split(['`', '\n', '\r']).next().unwrap_or("Gemini Flash 3.8").trim();
-                    let clean = candidate.trim_end_matches('.').split('(').next().unwrap_or(candidate).trim();
-                    if !clean.is_empty() && clean.len() < 30 && !clean.contains('\\') && !clean.contains('{') && !clean.contains("let ") {
-                        let final_name = if clean == "Gemini Flash" {
-                            "Gemini Flash 3.8".to_string()
-                        } else if clean == "Gemini Pro" {
-                            "Gemini Pro 3.8".to_string()
-                        } else {
-                            clean.to_string()
-                        };
-                        return Some((final_name, "gemini".to_string()));
-                    }
+        // 1. Scan active session files across all adapters
+        let active_files = self.registry.scan_all_active_files(&home, ACTIVE_AGENT_WINDOW_MS);
+        for f in active_files {
+            if let Some((m, t, tok, is_completed)) = self.registry.parse_model_tokens_and_status(&f.path) {
+                if !is_completed || now_ms.saturating_sub(f.mtime) < COMPLETED_WINDOW_MS {
+                    self.record_activity_full(&m, &t, tok, is_completed).await;
                 }
             }
-            if let Some(state_model) = read_antigravity_state_model() {
-                return Some((state_model, "gemini".to_string()));
+        }
+
+        // 2. Query external stores across all adapters (e.g. OpenCode SQLite, ZCode SQLite)
+        for store_res in self.registry.query_all_external_stores(&home) {
+            let time_updated = store_res.timestamp_ms.unwrap_or(0);
+            let window = if store_res.is_turn_completed {
+                COMPLETED_WINDOW_MS
+            } else {
+                ACTIVE_AGENT_WINDOW_MS
+            };
+            let is_recent = now_ms.saturating_sub(time_updated) < window;
+            if is_recent {
+                self.record_activity_full(
+                    &store_res.model_id,
+                    &store_res.tool_source,
+                    store_res.tokens,
+                    store_res.is_turn_completed,
+                )
+                .await;
+            } else if self.state.read().await.last_event_epoch_ms < time_updated
+                && self.get_state().await.active_agents.is_empty()
+            {
+                let mut st = self.state.write().await;
+                st.identity = resolve_model_metadata(&store_res.model_id, &store_res.tool_source);
+                st.is_active = false;
+                st.intensity = 0.0;
+                st.request_rate_rpm = 0.0;
+                st.last_event_epoch_ms = time_updated;
             }
-            return Some(("Gemini Flash 3.8".to_string(), "gemini".to_string()));
         }
 
-        // Fallback by tool source if file was actively modified and verified settings exist
-        match tool_source {
-            "claude" => Some(("claude-3-7-sonnet".to_string(), "claude".to_string())),
-            "zcode" => read_zcode_default_settings().or_else(|| Some(("MiniMax-M3".to_string(), "zcode".to_string()))),
-            "pi" => read_pi_default_settings(),
-            "codex" => read_codex_default_settings().or_else(|| Some(("gpt-5.5".to_string(), "openai".to_string()))),
-            "antigravity" => Some(("Gemini Flash 3.8".to_string(), "gemini".to_string())),
-            "dsh" => read_dsh_default_settings(),
-            "cursor" => Some(("Cursor".to_string(), "cursor".to_string())),
-            "windsurf" => Some(("Windsurf Cascade".to_string(), "windsurf".to_string())),
-            _ => None,
+        // 3. Fallback when idle: display identity of latest known session
+        if self.get_state().await.active_agents.is_empty() {
+            if let Some((path, mtime, _)) = self.registry.find_latest_session_file(&home) {
+                if let Some(parsed) = self.registry.parse_file(&path) {
+                    let mut st = self.state.write().await;
+                    st.identity = resolve_model_metadata(&parsed.model_id, &parsed.tool_source);
+                    st.is_active = false;
+                    st.intensity = 0.0;
+                    st.request_rate_rpm = 0.0;
+                    st.last_event_epoch_ms = mtime;
+                }
+            }
         }
+
+        self.get_state().await
     }
 
-    /// Extracts the latest session from OpenCode's SQLite database (~/.local/share/opencode/opencode.db).
-    /// Returns (model_id, total_tokens, time_updated_ms).
-    pub fn query_opencode_latest_session(home: &Path) -> Option<(String, u64, u64)> {
-        let db_path = home.join(".local/share/opencode/opencode.db");
-        if !db_path.exists() {
-            return None;
-        }
-
-        let uri = format!("file:{}?mode=ro", db_path.to_string_lossy());
-        let output = std::process::Command::new("sqlite3")
-            .arg(&uri)
-            .arg("SELECT model, tokens_input, tokens_output, time_updated FROM session_v2 ORDER BY time_updated DESC LIMIT 1;")
-            .output()
-            .ok()?;
-
-        if !output.status.success() {
-            return None;
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let trimmed = stdout.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-
-        let parts: Vec<&str> = trimmed.split('|').collect();
-        if parts.len() < 4 {
-            return None;
-        }
-
-        let raw_model = parts[0].trim();
-        let tokens_in: u64 = parts[1].trim().parse().unwrap_or(0);
-        let tokens_out: u64 = parts[2].trim().parse().unwrap_or(0);
-        let time_updated: u64 = parts[3].trim().parse().unwrap_or(0);
-
-        let model_id = if raw_model.starts_with('{') {
-            serde_json::from_str::<serde_json::Value>(raw_model)
-                .ok()
-                .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
-                .unwrap_or_else(|| raw_model.to_string())
-        } else {
-            raw_model.to_string()
-        };
-
-        Some((model_id, tokens_in + tokens_out, time_updated))
-    }
-
-    /// Extracts the latest session from ZCode's SQLite database (~/.zcode/cli/db/db.sqlite).
-    /// Returns (model_id, tokens, time_updated_ms, is_completed).
-    pub fn query_zcode_latest_session(home: &Path) -> Option<(String, u64, u64, bool)> {
-        let db_path = home.join(".zcode/cli/db/db.sqlite");
-        if !db_path.exists() {
-            return None;
-        }
-
-        let uri = format!("file:{}?mode=ro", db_path.to_string_lossy());
-        let output = std::process::Command::new("sqlite3")
-            .arg(&uri)
-            .arg("SELECT model_id, status, started_at, coalesce(completed_at, started_at), output_tokens, finish_reason FROM model_usage ORDER BY started_at DESC LIMIT 1;")
-            .output()
-            .ok()?;
-
-        if !output.status.success() {
-            return None;
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let trimmed = stdout.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-
-        let parts: Vec<&str> = trimmed.split('|').collect();
-        if parts.len() < 5 {
-            return None;
-        }
-
-        let raw_model = parts[0].trim();
-        let status = parts[1].trim();
-        let _started_at: u64 = parts[2].trim().parse().unwrap_or(0);
-        let time_updated: u64 = parts[3].trim().parse().unwrap_or(0);
-        let tokens: u64 = parts[4].trim().parse().unwrap_or(0);
-        let finish_reason = parts.get(5).map(|s| s.trim()).unwrap_or("");
-
-        let model_id = if let Some(slash_pos) = raw_model.rfind('/') {
-            raw_model[slash_pos + 1..].to_string()
-        } else {
-            raw_model.to_string()
-        };
-
-        let is_completed = (status == "completed" && (finish_reason == "stop" || finish_reason.is_empty()))
-            || status == "error"
-            || status == "cancelled";
-
-        Some((model_id, tokens, time_updated, is_completed))
-    }
-
-    pub fn start_background_watcher(self: Arc<Self>) {
+    pub fn start_background_watcher(&self) {
+        let this = self.clone();
         tokio::spawn(async move {
-            self.run_inotify_loop().await;
+            this.run_inotify_loop().await;
         });
     }
 
@@ -549,53 +332,7 @@ impl AiActivityMonitor {
             None => return,
         };
 
-        let mut candidate_dirs = vec![
-            home.join(".pi/agent/sessions"),
-            home.join(".claude"),
-            home.join(".claude/sessions"),
-            home.join(".claude/projects"),
-            home.join(".codex"),
-            home.join(".codex/sessions"),
-            home.join(".dsh"),
-            home.join(".dsh/sessions"),
-            home.join(".omp/agent/sessions"),
-            home.join(".local/share/opencode"),
-            home.join(".config/ai.opencode.desktop"),
-            home.join(".zcode/cli/log"),
-            home.join(".zcode/cli/db"),
-            home.join(".zcode/v2"),
-            home.join(".config/Cursor"),
-            home.join(".config/Windsurf"),
-        ];
-
-        // Also add immediate subdirectories of sessions
-        let session_roots = [
-            home.join(".pi/agent/sessions"),
-            home.join(".omp/agent/sessions"),
-            home.join(".claude/sessions"),
-            home.join(".claude/projects"),
-            home.join(".codex/sessions"),
-            home.join(".dsh/sessions"),
-        ];
-        for sroot in &session_roots {
-            if sroot.exists() && sroot.is_dir() {
-                scan_dirs_recursive(sroot, 3, &mut |p| candidate_dirs.push(p.to_path_buf()));
-            }
-        }
-
-        // Antigravity transcripts live in ~/.gemini/antigravity/brain/<id>/.system_generated/logs
-        let brain = home.join(".gemini/antigravity/brain");
-        if brain.exists() && brain.is_dir() {
-            candidate_dirs.push(brain.clone());
-            if let Ok(entries) = std::fs::read_dir(&brain) {
-                for e in entries.flatten() {
-                    let logs = e.path().join(".system_generated/logs");
-                    if logs.exists() && logs.is_dir() {
-                        candidate_dirs.push(logs);
-                    }
-                }
-            }
-        }
+        let candidate_dirs = self.registry.all_watch_directories(&home);
 
         let inotify_fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
         if inotify_fd < 0 {
@@ -627,55 +364,53 @@ impl AiActivityMonitor {
         }
 
         let mut seen_sessions: HashMap<PathBuf, (u64, u64)> = HashMap::new();
-        let mut last_seen_opencode_time: u64 = 0;
-        let mut last_seen_opencode_tokens: u64 = 0;
-        let mut last_seen_opencode_mtime: u64 = 0;
-        let mut last_seen_opencode_size: u64 = 0;
-        let mut last_seen_zcode_time: u64 = 0;
-        let mut last_seen_zcode_tokens: u64 = 0;
-        let mut last_seen_zcode_mtime: u64 = 0;
-        let mut last_seen_zcode_size: u64 = 0;
+        let mut last_seen_store_time: HashMap<String, u64> = HashMap::new();
+        let mut last_seen_store_tokens: HashMap<String, u64> = HashMap::new();
 
-        // Synchronize initial ground-truth state across all active agents
+        // Synchronize initial ground-truth state across all adapters
         let now_ms = current_epoch_ms();
-        let initial_active_files = Self::scan_all_active_session_files(&home, ACTIVE_AGENT_WINDOW_MS);
+        let initial_active_files = self.registry.scan_all_active_files(&home, ACTIVE_AGENT_WINDOW_MS);
         for file_info in initial_active_files {
             seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
-            if let Some((model, tool, tokens, is_completed)) = Self::parse_model_tokens_and_status_from_file(&file_info.path) {
+            if let Some((model, tool, tokens, is_completed)) =
+                self.registry.parse_model_tokens_and_status(&file_info.path)
+            {
                 if !is_completed || now_ms.saturating_sub(file_info.mtime) < COMPLETED_WINDOW_MS {
-                    self.record_activity_full(&model, &tool, tokens, is_completed).await;
+                    self.record_activity_full(&model, &tool, tokens, is_completed)
+                        .await;
                 }
             }
         }
 
-        // OpenCode initial ground-truth check
-        if let Some((model, tokens, time_updated)) = Self::query_opencode_latest_session(&home) {
-            let now_epoch = current_epoch_ms();
-            last_seen_opencode_time = time_updated;
-            last_seen_opencode_tokens = tokens;
-            if now_epoch.saturating_sub(time_updated) < ACTIVE_AGENT_WINDOW_MS {
-                self.record_activity_with_tokens(&model, "opencode", Some(tokens)).await;
-            }
-        }
-
-        // ZCode initial ground-truth check
-        if let Some((model, tokens, time_updated, is_completed)) = Self::query_zcode_latest_session(&home) {
-            let now_epoch = current_epoch_ms();
-            last_seen_zcode_time = time_updated;
-            last_seen_zcode_tokens = tokens;
-            let window = if is_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
-            if now_epoch.saturating_sub(time_updated) < window {
-                self.record_activity_full(&model, "zcode", Some(tokens), is_completed).await;
+        // External stores initial check
+        for store_res in self.registry.query_all_external_stores(&home) {
+            let updated = store_res.timestamp_ms.unwrap_or(0);
+            let tokens = store_res.tokens.unwrap_or(0);
+            last_seen_store_time.insert(store_res.tool_source.clone(), updated);
+            last_seen_store_tokens.insert(store_res.tool_source.clone(), tokens);
+            let window = if store_res.is_turn_completed {
+                COMPLETED_WINDOW_MS
+            } else {
+                ACTIVE_AGENT_WINDOW_MS
+            };
+            if now_ms.saturating_sub(updated) < window {
+                self.record_activity_full(
+                    &store_res.model_id,
+                    &store_res.tool_source,
+                    store_res.tokens,
+                    store_res.is_turn_completed,
+                )
+                .await;
             }
         }
 
         // Fallback if completely idle: set identity from latest known session file
         if self.get_state().await.active_agents.is_empty() {
-            if let Some((path, mtime, size)) = Self::find_latest_session_file(&home) {
+            if let Some((path, mtime, size)) = self.registry.find_latest_session_file(&home) {
                 seen_sessions.insert(path.clone(), (mtime, size));
-                if let Some((model, tool)) = Self::parse_model_from_file(&path) {
+                if let Some(parsed) = self.registry.parse_file(&path) {
                     let mut st = self.state.write().await;
-                    st.identity = crate::domain::ai_activity::resolve_model_metadata(&model, &tool);
+                    st.identity = resolve_model_metadata(&parsed.model_id, &parsed.tool_source);
                     st.is_active = false;
                     st.intensity = 0.0;
                     st.request_rate_rpm = 0.0;
@@ -698,7 +433,7 @@ impl AiActivityMonitor {
         let mut decay_tick = tokio::time::interval(tokio::time::Duration::from_millis(500));
         let mut buffer = [0u8; 8192];
         let mut last_heartbeat_epoch_ms: u64 = 0;
-        let mut last_brain_scan_ms: u64 = 0;
+        let mut last_dir_scan_ms: u64 = 0;
 
         loop {
             tokio::select! {
@@ -761,58 +496,29 @@ impl AiActivityMonitor {
                                                 *wds = watch_map.clone();
                                             }
                                         }
-                                    } else if name_str.starts_with("opencode.db") {
-                                        let is_fresh = full_path.metadata().ok()
-                                            .and_then(|m| m.modified().ok())
-                                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < ACTIVE_AGENT_WINDOW_MS)
-                                            .unwrap_or(false);
-                                        if is_fresh {
-                                            if let Some((model, tokens, time_updated)) = Self::query_opencode_latest_session(&home) {
-                                                let now_epoch = current_epoch_ms();
-                                                if now_epoch.saturating_sub(time_updated) < ACTIVE_AGENT_WINDOW_MS
-                                                    && (time_updated > last_seen_opencode_time || tokens != last_seen_opencode_tokens)
-                                                {
-                                                    let delta = tokens.saturating_sub(last_seen_opencode_tokens);
-                                                    last_seen_opencode_time = time_updated;
-                                                    last_seen_opencode_tokens = tokens;
-                                                    let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                                                    let is_completed = now_epoch.saturating_sub(time_updated) >= 3_000;
-                                                    self.record_activity_full(&model, "opencode", Some(reported), is_completed).await;
-                                                    let curr = self.get_state().await;
-                                                    emit_activity_payload(&curr);
-                                                }
+                                    } else if let Some(adapter) = self.registry.find_adapter_for_path(&full_path) {
+                                        // 1. External store update
+                                        if let Some(store_res) = adapter.query_external_store(&home) {
+                                            let time_updated = store_res.timestamp_ms.unwrap_or(0);
+                                            let tokens = store_res.tokens.unwrap_or(0);
+                                            let prev_time = last_seen_store_time.get(&store_res.tool_source).copied().unwrap_or(0);
+                                            let prev_tokens = last_seen_store_tokens.get(&store_res.tool_source).copied().unwrap_or(0);
+                                            let now_epoch = current_epoch_ms();
+                                            let window = if store_res.is_turn_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
+
+                                            if now_epoch.saturating_sub(time_updated) < window
+                                                && (time_updated > prev_time || tokens != prev_tokens)
+                                            {
+                                                let delta = tokens.saturating_sub(prev_tokens);
+                                                last_seen_store_time.insert(store_res.tool_source.clone(), time_updated);
+                                                last_seen_store_tokens.insert(store_res.tool_source.clone(), tokens);
+                                                let reported = if delta > 0 { delta } else { tokens.min(5000) };
+                                                self.record_activity_full(&store_res.model_id, &store_res.tool_source, Some(reported), store_res.is_turn_completed).await;
+                                                let curr = self.get_state().await;
+                                                emit_activity_payload(&curr);
                                             }
-                                        }
-                                    } else if name_str.starts_with("db.sqlite") && full_path.to_string_lossy().contains(".zcode") {
-                                        let is_fresh = full_path.metadata().ok()
-                                            .and_then(|m| m.modified().ok())
-                                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                                            .map(|d| current_epoch_ms().saturating_sub(d.as_millis() as u64) < ACTIVE_AGENT_WINDOW_MS)
-                                            .unwrap_or(false);
-                                        if is_fresh {
-                                            if let Some((model, tokens, time_updated, is_completed)) = Self::query_zcode_latest_session(&home) {
-                                                let now_epoch = current_epoch_ms();
-                                                let window = if is_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
-                                                if now_epoch.saturating_sub(time_updated) < window
-                                                    && (time_updated > last_seen_zcode_time || tokens != last_seen_zcode_tokens)
-                                                {
-                                                    let delta = tokens.saturating_sub(last_seen_zcode_tokens);
-                                                    last_seen_zcode_time = time_updated;
-                                                    last_seen_zcode_tokens = tokens;
-                                                    let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                                                    self.record_activity_full(&model, "zcode", Some(reported), is_completed).await;
-                                                    let curr = self.get_state().await;
-                                                    emit_activity_payload(&curr);
-                                                }
-                                            }
-                                        }
-                                    } else if name_str.ends_with(".jsonl") || name_str.ends_with(".log") || name_str == "session.lock" {
-                                        if (name_str.contains("antigravity") || full_path.to_string_lossy().contains("antigravity")) && name_str != "transcript.jsonl" {
-                                            offset += std::mem::size_of::<libc::inotify_event>() + name_len;
-                                            continue;
-                                        }
-                                        if let Ok(meta) = full_path.metadata() {
+                                        } else if let Ok(meta) = full_path.metadata() {
+                                            // 2. File-based session stream update
                                             let mtime = meta.modified().ok()
                                                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                                                 .map(|d| d.as_millis() as u64)
@@ -822,9 +528,9 @@ impl AiActivityMonitor {
                                             let now_ms = current_epoch_ms();
                                             let is_fresh = now_ms.saturating_sub(mtime) < ACTIVE_AGENT_WINDOW_MS;
                                             if is_fresh {
-                                                if let Some((model, tool, tokens, is_completed)) = Self::parse_model_tokens_and_status_from_file(&full_path) {
-                                                    if !is_completed || now_ms.saturating_sub(mtime) < COMPLETED_WINDOW_MS {
-                                                        self.record_activity_full(&model, &tool, tokens, is_completed).await;
+                                                if let Some(parsed) = self.registry.parse_file(&full_path) {
+                                                    if !parsed.is_turn_completed || now_ms.saturating_sub(mtime) < COMPLETED_WINDOW_MS {
+                                                        self.record_activity_full(&parsed.model_id, &parsed.tool_source, parsed.tokens, parsed.is_turn_completed).await;
                                                         let curr = self.get_state().await;
                                                         emit_activity_payload(&curr);
                                                     }
@@ -838,6 +544,7 @@ impl AiActivityMonitor {
                         }
                     }
                 }
+
                 _ = decay_tick.tick() => {
                     let mut should_emit = false;
                     let now_ms = current_epoch_ms();
@@ -848,37 +555,32 @@ impl AiActivityMonitor {
                         should_emit = true;
                     }
 
-                    // Dynamically register newly created Antigravity session directories with inotify
-                    if now_ms.saturating_sub(last_brain_scan_ms) >= 5000 {
-                        last_brain_scan_ms = now_ms;
-                        let brain_dir = home.join(".gemini/antigravity/brain");
-                        if brain_dir.exists() && brain_dir.is_dir() {
-                            if let Ok(entries) = std::fs::read_dir(&brain_dir) {
-                                for e in entries.flatten() {
-                                    let logs = e.path().join(".system_generated/logs");
-                                    if logs.exists() && logs.is_dir() && !watch_map.values().any(|v| v == &logs) {
-                                        if let Ok(c_str) = std::ffi::CString::new(logs.to_string_lossy().as_bytes()) {
-                                            let new_wd = unsafe {
-                                                libc::inotify_add_watch(
-                                                    inotify_fd,
-                                                    c_str.as_ptr(),
-                                                    libc::IN_MODIFY | libc::IN_CREATE | libc::IN_CLOSE_WRITE,
-                                                )
-                                            };
-                                            if new_wd >= 0 {
-                                                watch_map.insert(new_wd, logs.clone());
-                                                let mut wds = self.watch_descriptors.write().await;
-                                                *wds = watch_map.clone();
-                                            }
-                                        }
+                    // Dynamically scan for newly created adapter watch directories every 5s
+                    if now_ms.saturating_sub(last_dir_scan_ms) >= 5000 {
+                        last_dir_scan_ms = now_ms;
+                        let latest_dirs = self.registry.all_watch_directories(&home);
+                        for dir in latest_dirs {
+                            if dir.exists() && dir.is_dir() && !watch_map.values().any(|v| v == &dir) {
+                                if let Ok(c_str) = std::ffi::CString::new(dir.to_string_lossy().as_bytes()) {
+                                    let new_wd = unsafe {
+                                        libc::inotify_add_watch(
+                                            inotify_fd,
+                                            c_str.as_ptr(),
+                                            libc::IN_MODIFY | libc::IN_CREATE | libc::IN_CLOSE_WRITE,
+                                        )
+                                    };
+                                    if new_wd >= 0 {
+                                        watch_map.insert(new_wd, dir.clone());
+                                        let mut wds = self.watch_descriptors.write().await;
+                                        *wds = watch_map.clone();
                                     }
                                 }
                             }
                         }
                     }
 
-                    // 1. Resilient concurrent poll: scan ALL active sessions across all agent tools
-                    let active_files = Self::scan_all_active_session_files(&home, ACTIVE_AGENT_WINDOW_MS);
+                    // 1. Concurrent poll: scan active session files across all adapters
+                    let active_files = self.registry.scan_all_active_files(&home, ACTIVE_AGENT_WINDOW_MS);
                     for file_info in active_files {
                         let prev = seen_sessions.get(&file_info.path).copied();
                         let is_new_event = match prev {
@@ -887,73 +589,34 @@ impl AiActivityMonitor {
                         };
                         if is_new_event {
                             seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
-                            if let Some((model, tool, tokens, is_completed)) = Self::parse_model_tokens_and_status_from_file(&file_info.path) {
+                            if let Some(parsed) = self.registry.parse_file(&file_info.path) {
                                 let now_ms = current_epoch_ms();
-                                if !is_completed || now_ms.saturating_sub(file_info.mtime) < COMPLETED_WINDOW_MS {
-                                    self.record_activity_full(&model, &tool, tokens, is_completed).await;
+                                if !parsed.is_turn_completed || now_ms.saturating_sub(file_info.mtime) < COMPLETED_WINDOW_MS {
+                                    self.record_activity_full(&parsed.model_id, &parsed.tool_source, parsed.tokens, parsed.is_turn_completed).await;
                                     should_emit = true;
                                 }
                             }
                         }
                     }
 
-                    // 2. Resilient poll: check OpenCode database updates
-                    let opencode_wal = home.join(".local/share/opencode/opencode.db-wal");
-                    let opencode_db = home.join(".local/share/opencode/opencode.db");
-                    let wal_target = if opencode_wal.exists() { &opencode_wal } else { &opencode_db };
-                    if let Ok(meta) = wal_target.metadata() {
-                        let mtime = meta.modified().ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_millis() as u64)
-                            .unwrap_or(0);
-                        let size = meta.len();
-                        if mtime > last_seen_opencode_mtime || size != last_seen_opencode_size {
-                            last_seen_opencode_mtime = mtime;
-                            last_seen_opencode_size = size;
-                            if let Some((model, tokens, time_updated)) = Self::query_opencode_latest_session(&home) {
-                                let now_epoch = current_epoch_ms();
-                                if now_epoch.saturating_sub(time_updated) < ACTIVE_AGENT_WINDOW_MS {
-                                    if time_updated > last_seen_opencode_time || tokens != last_seen_opencode_tokens {
-                                        let delta = tokens.saturating_sub(last_seen_opencode_tokens);
-                                        last_seen_opencode_time = time_updated;
-                                        last_seen_opencode_tokens = tokens;
-                                        let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                                        let is_completed = now_epoch.saturating_sub(time_updated) >= 3_000;
-                                        self.record_activity_full(&model, "opencode", Some(reported), is_completed).await;
-                                        should_emit = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // 2. Poll external stores across all adapters
+                    for store_res in self.registry.query_all_external_stores(&home) {
+                        let time_updated = store_res.timestamp_ms.unwrap_or(0);
+                        let tokens = store_res.tokens.unwrap_or(0);
+                        let prev_time = last_seen_store_time.get(&store_res.tool_source).copied().unwrap_or(0);
+                        let prev_tokens = last_seen_store_tokens.get(&store_res.tool_source).copied().unwrap_or(0);
+                        let now_epoch = current_epoch_ms();
+                        let window = if store_res.is_turn_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
 
-                    // 2b. Resilient poll: check ZCode database updates
-                    let zcode_wal = home.join(".zcode/cli/db/db.sqlite-wal");
-                    let zcode_db = home.join(".zcode/cli/db/db.sqlite");
-                    let zwal_target = if zcode_wal.exists() { &zcode_wal } else { &zcode_db };
-                    if let Ok(meta) = zwal_target.metadata() {
-                        let mtime = meta.modified().ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_millis() as u64)
-                            .unwrap_or(0);
-                        let size = meta.len();
-                        if mtime > last_seen_zcode_mtime || size != last_seen_zcode_size {
-                            last_seen_zcode_mtime = mtime;
-                            last_seen_zcode_size = size;
-                            if let Some((model, tokens, time_updated, is_completed)) = Self::query_zcode_latest_session(&home) {
-                                let now_epoch = current_epoch_ms();
-                                let window = if is_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
-                                if now_epoch.saturating_sub(time_updated) < window {
-                                    if time_updated > last_seen_zcode_time || tokens != last_seen_zcode_tokens {
-                                        let delta = tokens.saturating_sub(last_seen_zcode_tokens);
-                                        last_seen_zcode_time = time_updated;
-                                        last_seen_zcode_tokens = tokens;
-                                        let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                                        self.record_activity_full(&model, "zcode", Some(reported), is_completed).await;
-                                        should_emit = true;
-                                    }
-                                }
-                            }
+                        if now_epoch.saturating_sub(time_updated) < window
+                            && (time_updated > prev_time || tokens != prev_tokens)
+                        {
+                            let delta = tokens.saturating_sub(prev_tokens);
+                            last_seen_store_time.insert(store_res.tool_source.clone(), time_updated);
+                            last_seen_store_tokens.insert(store_res.tool_source.clone(), tokens);
+                            let reported = if delta > 0 { delta } else { tokens.min(5000) };
+                            self.record_activity_full(&store_res.model_id, &store_res.tool_source, Some(reported), store_res.is_turn_completed).await;
+                            should_emit = true;
                         }
                     }
 
@@ -969,254 +632,123 @@ impl AiActivityMonitor {
 
         unsafe { libc::close(inotify_fd) };
     }
+}
 
-    /// Scans the newest session or log file across all known AI agents.
-    pub fn find_latest_session_file(home: &Path) -> Option<(PathBuf, u64, u64)> {
-        let mut candidates = Vec::new();
+// -----------------------------------------------------------------------------
+// AiActivityPort implementation
+// -----------------------------------------------------------------------------
 
-        // 1. Antigravity brain transcripts
-        let brain = home.join(".gemini/antigravity/brain");
-        if let Ok(dirs) = std::fs::read_dir(&brain) {
-            for d in dirs.flatten() {
-                let p = d.path();
-                if p.is_dir() {
-                    let log_p = p.join(".system_generated/logs/transcript.jsonl");
-                    if log_p.exists() {
-                        candidates.push(log_p);
-                    }
-                }
-            }
-        }
-
-        // 2. Pi agent sessions (purely real .jsonl session files, context-mode stats excluded)
-        let pi_sessions = home.join(".pi/agent/sessions");
-        if let Ok(dirs) = std::fs::read_dir(&pi_sessions) {
-            for d in dirs.flatten() {
-                let p = d.path();
-                if p.is_dir() {
-                    if let Ok(files) = std::fs::read_dir(&p) {
-                        for f in files.flatten() {
-                            let fp = f.path();
-                            if fp.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                                candidates.push(fp);
-                            }
-                        }
-                    }
-                } else if p.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                    candidates.push(p);
-                }
-            }
-        }
-
-        // 3. OMP agent sessions
-        let omp_sessions = home.join(".omp/agent/sessions");
-        if let Ok(dirs) = std::fs::read_dir(&omp_sessions) {
-            for d in dirs.flatten() {
-                let p = d.path();
-                if p.is_dir() {
-                    if let Ok(files) = std::fs::read_dir(&p) {
-                        for f in files.flatten() {
-                            let fp = f.path();
-                            if fp.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                                candidates.push(fp);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. Claude projects and sessions
-        let claude_projects = home.join(".claude/projects");
-        if let Ok(dirs) = std::fs::read_dir(&claude_projects) {
-            for d in dirs.flatten() {
-                let p = d.path();
-                if p.is_dir() {
-                    if let Ok(files) = std::fs::read_dir(&p) {
-                        for f in files.flatten() {
-                            let fp = f.path();
-                            if fp.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                                candidates.push(fp);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 5. Codex rollout sessions & history
-        let codex_sessions = home.join(".codex/sessions");
-        if codex_sessions.exists() {
-            scan_jsonl_recursive(&codex_sessions, 4, &mut |p| candidates.push(p.to_path_buf()));
-        }
-        let codex_history = home.join(".codex/history.jsonl");
-        if codex_history.exists() {
-            candidates.push(codex_history);
-        }
-
-        // 6. DSH sessions
-        let dsh_sessions = home.join(".dsh/sessions");
-        if dsh_sessions.exists() {
-            if let Ok(dirs) = std::fs::read_dir(&dsh_sessions) {
-                for d in dirs.flatten() {
-                    let p = d.path();
-                    if p.is_dir() {
-                        if let Ok(sub) = std::fs::read_dir(&p) {
-                            for s in sub.flatten() {
-                                let sp = s.path();
-                                if sp.is_dir() {
-                                    let lock = sp.join("session.lock");
-                                    if lock.exists() {
-                                        candidates.push(lock);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 7. ZCode session logs
-        let zcode_logs = home.join(".zcode/cli/log");
-        if zcode_logs.exists() {
-            if let Ok(files) = std::fs::read_dir(&zcode_logs) {
-                for f in files.flatten() {
-                    let fp = f.path();
-                    if fp.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                        candidates.push(fp);
-                    }
-                }
-            }
-        }
-
-        let mut newest_time = 0u64;
-        let mut newest_entry = None;
-
-        for path in candidates {
-            if let Ok(meta) = path.metadata() {
-                if let Ok(mtime) = meta.modified() {
-                    let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-                    if epoch > newest_time {
-                        newest_time = epoch;
-                        newest_entry = Some((path, epoch, meta.len()));
-                    }
-                }
-            }
-        }
-
-        newest_entry
+impl AiActivityPort for AiActivityMonitor {
+    fn get_state_sync(&self) -> AiActivityState {
+        self.state.blocking_read().clone()
     }
 
-    /// Scans all active session files modified within `max_age_ms` across all supported agent tools.
-    pub fn scan_all_active_session_files(home: &Path, max_age_ms: u64) -> Vec<ActiveSessionFile> {
-        let now = current_epoch_ms();
-        let mut files = Vec::new();
+    fn record_activity_sync(
+        &self,
+        raw_model: &str,
+        tool_source: &str,
+        tokens: Option<u64>,
+        is_completed: bool,
+    ) {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(self.record_activity_full(raw_model, tool_source, tokens, is_completed))
+            });
+        }
+    }
 
-        let mut check_file = |p: &Path| {
-            if let Ok(meta) = p.metadata() {
-                if let Ok(mtime) = meta.modified() {
-                    let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-                    if now.saturating_sub(epoch) < max_age_ms {
-                        files.push(ActiveSessionFile {
-                            path: p.to_path_buf(),
-                            mtime: epoch,
-                            size: meta.len(),
-                        });
-                    }
-                }
-            }
-        };
+    fn tick_decay_sync(&self) -> bool {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(self.tick_decay())
+            })
+        } else {
+            false
+        }
+    }
 
-        // 1. Antigravity brain transcripts
-        let brain = home.join(".gemini/antigravity/brain");
-        if let Ok(dirs) = std::fs::read_dir(&brain) {
-            for d in dirs.flatten() {
-                let p = d.path();
-                if p.is_dir() {
-                    let log_p = p.join(".system_generated/logs/transcript.jsonl");
-                    if log_p.exists() {
-                        check_file(&log_p);
-                    }
-                }
-            }
+    fn query_active_state_sync(&self) -> AiActivityState {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(self.query_active_state())
+            })
+        } else {
+            self.get_state_sync()
         }
+    }
 
-        // 2. Pi agent sessions
-        let pi_sessions = home.join(".pi/agent/sessions");
-        if pi_sessions.exists() {
-            scan_jsonl_recursive(&pi_sessions, 3, &mut check_file);
-        }
-
-        // 3. OMP agent sessions
-        let omp_sessions = home.join(".omp/agent/sessions");
-        if omp_sessions.exists() {
-            scan_jsonl_recursive(&omp_sessions, 3, &mut check_file);
-        }
-
-        // 4. Claude projects and sessions
-        let claude_projects = home.join(".claude/projects");
-        if claude_projects.exists() {
-            scan_jsonl_recursive(&claude_projects, 3, &mut check_file);
-        }
-        let claude_sessions = home.join(".claude/sessions");
-        if claude_sessions.exists() {
-            scan_jsonl_recursive(&claude_sessions, 2, &mut check_file);
-        }
-        let claude_history = home.join(".claude/history.jsonl");
-        if claude_history.exists() {
-            check_file(&claude_history);
-        }
-
-        // 5. Codex rollout sessions & history
-        let codex_sessions = home.join(".codex/sessions");
-        if codex_sessions.exists() {
-            scan_jsonl_recursive(&codex_sessions, 4, &mut check_file);
-        }
-        let codex_history = home.join(".codex/history.jsonl");
-        if codex_history.exists() {
-            check_file(&codex_history);
-        }
-
-        // 6. DSH sessions
-        let dsh_sessions = home.join(".dsh/sessions");
-        if dsh_sessions.exists() {
-            if let Ok(dirs) = std::fs::read_dir(&dsh_sessions) {
-                for d in dirs.flatten() {
-                    let p = d.path();
-                    if p.is_dir() {
-                        if let Ok(sub) = std::fs::read_dir(&p) {
-                            for s in sub.flatten() {
-                                let sp = s.path();
-                                if sp.is_dir() {
-                                    let lock = sp.join("session.lock");
-                                    if lock.exists() {
-                                        check_file(&lock);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 7. ZCode session logs
-        let zcode_logs = home.join(".zcode/cli/log");
-        if zcode_logs.exists() {
-            if let Ok(files) = std::fs::read_dir(&zcode_logs) {
-                for f in files.flatten() {
-                    let fp = f.path();
-                    if fp.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                        check_file(&fp);
-                    }
-                }
-            }
-        }
-
-        files
+    fn start_background_watcher(&self) {
+        AiActivityMonitor::start_background_watcher(self);
     }
 }
+
+// -----------------------------------------------------------------------------
+// Static Helper Functions (delegating to AdapterRegistry for 100% test compatibility)
+// -----------------------------------------------------------------------------
+
+impl AiActivityMonitor {
+    pub fn parse_model_from_file(path: &Path) -> Option<(String, String)> {
+        AdapterRegistry::new().parse_file(path).map(|r| (r.model_id, r.tool_source))
+    }
+
+    pub fn parse_model_and_tokens_from_file(path: &Path) -> Option<(String, String, Option<u64>)> {
+        AdapterRegistry::new().parse_file(path).map(|r| (r.model_id, r.tool_source, r.tokens))
+    }
+
+    pub fn parse_model_tokens_and_status_from_file(path: &Path) -> Option<(String, String, Option<u64>, bool)> {
+        AdapterRegistry::new().parse_model_tokens_and_status(path)
+    }
+
+    pub fn parse_model_from_tail(tail: &str, path_hint: &str) -> Option<(String, String)> {
+        AdapterRegistry::new().parse_model_from_tail(tail, path_hint)
+    }
+
+    pub fn find_latest_session_file(home: &Path) -> Option<(PathBuf, u64, u64)> {
+        AdapterRegistry::new().find_latest_session_file(home)
+    }
+
+    pub fn scan_all_active_session_files(home: &Path, max_age_ms: u64) -> Vec<ActiveSessionFile> {
+        AdapterRegistry::new().scan_all_active_files(home, max_age_ms)
+    }
+
+    pub fn query_opencode_latest_session(home: &Path) -> Option<(String, u64, u64)> {
+        OpenCodeAdapter::new().query_external_store(home).map(|r| (r.model_id, r.tokens.unwrap_or(0), r.timestamp_ms.unwrap_or(0)))
+    }
+
+    pub fn query_zcode_latest_session(home: &Path) -> Option<(String, u64, u64, bool)> {
+        ZCodeAdapter::new().query_external_store(home).map(|r| (r.model_id, r.tokens.unwrap_or(0), r.timestamp_ms.unwrap_or(0), r.is_turn_completed))
+    }
+
+    pub fn check_turn_completed_from_tail(tail: &str, path_hint: &str) -> bool {
+        AdapterRegistry::new().check_turn_completed(tail, path_hint)
+    }
+}
+
+pub fn check_turn_completed_from_tail(tail: &str, path_hint: &str) -> bool {
+    AiActivityMonitor::check_turn_completed_from_tail(tail, path_hint)
+}
+
+pub fn read_pi_default_settings() -> Option<(String, String)> {
+    let home = std::env::var("HOME").ok().map(PathBuf::from)?;
+    PiAdapter::new().read_default_settings(&home)
+}
+
+pub fn read_zcode_default_settings() -> Option<(String, String)> {
+    let home = std::env::var("HOME").ok().map(PathBuf::from)?;
+    ZCodeAdapter::new().read_default_settings(&home)
+}
+
+pub fn read_dsh_default_settings() -> Option<(String, String)> {
+    let home = std::env::var("HOME").ok().map(PathBuf::from)?;
+    DshAdapter::new().read_default_settings(&home)
+}
+
+pub fn read_codex_default_settings() -> Option<(String, String)> {
+    let home = std::env::var("HOME").ok().map(PathBuf::from)?;
+    CodexAdapter::new().read_default_settings(&home)
+}
+
+pub use ai_adapters::antigravity::read_antigravity_state_model;
 
 pub fn emit_activity_payload(st: &AiActivityState) {
     let payload = serde_json::json!({
@@ -1236,465 +768,6 @@ pub fn emit_activity_payload(st: &AiActivityState) {
     if let Ok(s) = serde_json::to_string(&payload) {
         println!("{}", s);
     }
-}
-
-/// Active session file descriptor for concurrent multi-agent tracking.
-#[derive(Debug, Clone)]
-pub struct ActiveSessionFile {
-    pub path: PathBuf,
-    pub mtime: u64,
-    pub size: u64,
-}
-
-pub fn scan_jsonl_recursive<F>(dir: &Path, max_depth: usize, callback: &mut F)
-where
-    F: FnMut(&Path),
-{
-    if max_depth == 0 || !dir.exists() || !dir.is_dir() {
-        return;
-    }
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                scan_jsonl_recursive(&path, max_depth - 1, callback);
-            } else if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-                if ext == "jsonl" || ext == "lock" {
-                    callback(&path);
-                }
-            }
-        }
-    }
-}
-
-pub fn scan_dirs_recursive<F>(dir: &Path, max_depth: usize, callback: &mut F)
-where
-    F: FnMut(&Path),
-{
-    if max_depth == 0 || !dir.exists() || !dir.is_dir() {
-        return;
-    }
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                callback(&path);
-                scan_dirs_recursive(&path, max_depth - 1, callback);
-            }
-        }
-    }
-}
-
-/// Helper to determine if an AI agent has completed its current turn / message to the user.
-pub fn check_turn_completed_from_tail(tail: &str, path_hint: &str) -> bool {
-    let lower_hint = path_hint.to_lowercase();
-
-    // 1. Antigravity transcript: check for final PLANNER_RESPONSE with no tool calls
-    if lower_hint.contains("antigravity") {
-        for line in tail.lines().rev() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                let src = v.get("source").and_then(|s| s.as_str()).unwrap_or("");
-                if typ == "USER_INPUT" {
-                    return false; // User just asked, agent is in-flight
-                }
-                if typ == "PLANNER_RESPONSE" || (src == "MODEL" && typ == "GENERIC") {
-                    let has_tools = v.get("tool_calls")
-                        .and_then(|tc| tc.as_array())
-                        .map(|a| !a.is_empty())
-                        .unwrap_or(false);
-                    if has_tools {
-                        return false; // Tool call in progress
-                    }
-                    if typ == "PLANNER_RESPONSE" {
-                        return true; // Final response with no tool calls -> turn complete!
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    // 2. Claude Code & Desktop
-    if lower_hint.contains("claude") {
-        for line in tail.lines().rev() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                let msg = v.get("message");
-                let stop_reason = v.get("stop_reason")
-                    .or_else(|| msg.and_then(|m| m.get("stop_reason")))
-                    .and_then(|s| s.as_str());
-                if let Some(reason) = stop_reason {
-                    if reason == "end_turn" || reason == "stop" {
-                        return true;
-                    } else if reason == "tool_use" {
-                        return false;
-                    }
-                }
-                let role = v.get("role")
-                    .or_else(|| msg.and_then(|m| m.get("role")))
-                    .and_then(|r| r.as_str());
-                if role == Some("user") {
-                    return false;
-                }
-            }
-        }
-        return false;
-    }
-
-    // 3. OpenAI / Codex
-    if lower_hint.contains("codex") {
-        for line in tail.lines().rev() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                if typ == "task_complete" || typ == "turn_complete" {
-                    return true;
-                }
-                if let Some(payload) = v.get("payload") {
-                    let p_type = payload.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                    if p_type == "task_complete" || p_type == "turn_complete" {
-                        return true;
-                    }
-                }
-                let finish_reason = v.get("finish_reason")
-                    .or_else(|| v.get("payload").and_then(|p| p.get("finish_reason")))
-                    .and_then(|f| f.as_str());
-                if finish_reason == Some("stop") {
-                    return true;
-                } else if finish_reason == Some("tool_calls") {
-                    return false;
-                }
-            }
-        }
-        return false;
-    }
-
-    // 4. ZCode JSONL logs
-    if lower_hint.contains("zcode") {
-        for line in tail.lines().rev() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                let event = v.get("event").and_then(|e| e.as_str()).unwrap_or("");
-                if event == "turn.completed" || event == "turn.failed" {
-                    return true;
-                }
-                if event == "turn.started" || event == "model.request.started" || event == "tool.call.started" {
-                    return false;
-                }
-                if let Some(ctx) = v.get("context") {
-                    if let Some(finish_reason) = ctx.get("finishReason").and_then(|f| f.as_str()) {
-                        if finish_reason == "stop" {
-                            return true;
-                        } else if finish_reason == "tool-calls" {
-                            return false;
-                        }
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    false
-}
-
-/// Helper to extract token usage from a JSON line (supports pi, omp, claude, codex, openai formats).
-pub fn extract_tokens_from_json_line(line: &str) -> Option<u64> {
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-        // Standard message/usage format (Claude, Pi, OMP, OpenCode)
-        if let Some(usage) = v.get("usage").or_else(|| v.get("message").and_then(|m| m.get("usage"))) {
-            if let Some(tot) = usage.get("totalTokens").or_else(|| usage.get("total_tokens")).and_then(|t| t.as_u64()) {
-                if tot > 0 {
-                    return Some(tot);
-                }
-            }
-            let input = usage.get("input").or_else(|| usage.get("input_tokens")).or_else(|| usage.get("prompt_tokens")).and_then(|t| t.as_u64()).unwrap_or(0);
-            let output = usage.get("output").or_else(|| usage.get("output_tokens")).or_else(|| usage.get("completion_tokens")).and_then(|t| t.as_u64()).unwrap_or(0);
-            if input + output > 0 {
-                return Some(input + output);
-            }
-        }
-        // Codex event_msg token_count format
-        if let Some(payload) = v.get("payload") {
-            if let Some(info) = payload.get("info") {
-                if let Some(last_tok) = info.get("last_token_usage").and_then(|u| u.get("total_tokens")).and_then(|t| t.as_u64()) {
-                    if last_tok > 0 {
-                        return Some(last_tok);
-                    }
-                }
-                if let Some(tot) = info.get("total_token_usage").and_then(|u| u.get("total_tokens")).and_then(|t| t.as_u64()) {
-                    if tot > 0 {
-                        return Some(tot);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Helper to scan tail lines for token usage or estimate from line length.
-pub fn extract_tokens_from_tail(tail: &str) -> Option<u64> {
-    for line in tail.lines().rev() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Some(tok) = extract_tokens_from_json_line(trimmed) {
-            return Some(tok);
-        }
-    }
-    let last_len = tail.lines().rev().find(|l| !l.trim().is_empty()).map(|l| l.len()).unwrap_or(0);
-    if last_len > 60 {
-        Some(((last_len / 4) as u64).min(4096))
-    } else {
-        None
-    }
-}
-
-/// Helper to parse a single JSON line and extract model and provider.
-pub fn extract_model_from_json_line(line: &str) -> Option<(String, String)> {
-    let lower = line.to_lowercase();
-    if !lower.contains("model") {
-        return None;
-    }
-
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-        // Direct model field (supports model, modelId, model_id, modelName, model_name)
-        let direct_model = v.get("model")
-            .or_else(|| v.get("modelId"))
-            .or_else(|| v.get("model_id"))
-            .or_else(|| v.get("modelName"))
-            .or_else(|| v.get("model_name"))
-            .and_then(|s| s.as_str());
-
-        // Nested message.model or message.modelId
-        let msg = v.get("message");
-        let msg_model = msg.and_then(|m| {
-            m.get("model")
-                .or_else(|| m.get("modelId"))
-                .or_else(|| m.get("model_id"))
-                .or_else(|| m.get("modelName"))
-                .or_else(|| m.get("model_name"))
-        }).and_then(|s| s.as_str());
-
-        // Nested payload.model or payload.settings.model or payload.collaboration_mode.settings.model (Codex)
-        let payload = v.get("payload");
-        let payload_model = payload.and_then(|p| {
-            p.get("model")
-                .or_else(|| p.get("modelId"))
-                .or_else(|| p.get("model_id"))
-                .or_else(|| p.get("settings").and_then(|s| s.get("model")))
-                .or_else(|| p.get("collaboration_mode").and_then(|c| c.get("settings")).and_then(|s| s.get("model")))
-        }).and_then(|s| s.as_str());
-
-        // Nested context.model or context.modelId (ZCode and structured event logs)
-        let ctx = v.get("context");
-        let ctx_model = ctx.and_then(|c| {
-            c.get("model")
-                .or_else(|| c.get("modelId"))
-                .or_else(|| c.get("model_id"))
-                .or_else(|| c.get("modelName"))
-                .or_else(|| c.get("model_name"))
-        }).and_then(|s| s.as_str());
-
-        let raw_m = direct_model.or(msg_model).or(payload_model).or(ctx_model)?;
-        let model = if let Some((prefix, rest)) = raw_m.split_once('/') {
-            if prefix.len() == 36 && prefix.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-                rest
-            } else {
-                raw_m
-            }
-        } else {
-            raw_m
-        };
-
-        let prov = v.get("provider")
-            .or_else(|| msg.and_then(|m| m.get("provider")))
-            .or_else(|| payload.and_then(|p| p.get("provider").or_else(|| p.get("model_provider"))))
-            .or_else(|| ctx.and_then(|c| c.get("providerId").or_else(|| c.get("provider"))))
-            .and_then(|p| p.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        return Some((model.to_string(), prov));
-    }
-
-    // Fallback: fast regex/substring extraction if line is partially truncated
-    for key in &["\"modelId\":", "\"model_id\":", "\"model\":", "\"modelName\":", "\"model_name\":"] {
-        if let Some(pos) = line.rfind(key) {
-            let rem = &line[pos + key.len()..];
-            let trimmed_rem = rem.trim_start();
-            if let Some(quote_start) = trimmed_rem.find('"') {
-                let inner = &trimmed_rem[quote_start + 1..];
-                if let Some(quote_end) = inner.find('"') {
-                    let raw_m = &inner[..quote_end];
-                    let model = if let Some((prefix, rest)) = raw_m.split_once('/') {
-                        if prefix.len() == 36 && prefix.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-                            rest
-                        } else {
-                            raw_m
-                        }
-                    } else {
-                        raw_m
-                    };
-                    if !model.is_empty() {
-                        return Some((model.to_string(), String::new()));
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Reads default model and provider configured in ~/.zcode/v2/bot-state.v3.json or ~/.zcode/v2/config.json
-pub fn read_zcode_default_settings() -> Option<(String, String)> {
-    let home = std::env::var("HOME").ok()?;
-    let bot_state_path = PathBuf::from(&home).join(".zcode/v2/bot-state.v3.json");
-    if let Ok(content) = std::fs::read_to_string(&bot_state_path) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(bots) = v.get("bots").and_then(|b| b.as_object()) {
-                let mut best_model: Option<(String, u64)> = None;
-                for (_, bot) in bots {
-                    let updated = bot.get("updatedAt").and_then(|u| u.as_u64()).unwrap_or(0);
-                    if let Some(model) = bot.get("draftOptions")
-                        .and_then(|d| d.get("modelSelection"))
-                        .and_then(|m| m.get("modelId"))
-                        .and_then(|s| s.as_str())
-                    {
-                        if best_model.as_ref().map(|(_, t)| updated > *t).unwrap_or(true) {
-                            best_model = Some((model.to_string(), updated));
-                        }
-                    }
-                }
-                if let Some((m, _)) = best_model {
-                    return Some((m, "zcode".to_string()));
-                }
-            }
-        }
-    }
-
-    // Fallback: check ~/.zcode/v2/config.json
-    let config_path = PathBuf::from(&home).join(".zcode/v2/config.json");
-    if let Ok(content) = std::fs::read_to_string(&config_path) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(providers) = v.get("provider").or_else(|| v.get("providers")).and_then(|p| p.as_object()) {
-                for (_, p) in providers {
-                    if let Some(models) = p.get("models").and_then(|m| m.as_object()) {
-                        for (model_name, _) in models {
-                            if !model_name.is_empty() {
-                                return Some((model_name.clone(), "zcode".to_string()));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Default fallback
-    Some(("MiniMax-M3".to_string(), "zcode".to_string()))
-}
-
-/// Reads default model and provider configured in ~/.pi/agent/settings.json
-pub fn read_pi_default_settings() -> Option<(String, String)> {
-    let home = std::env::var("HOME").ok()?;
-    let settings_path = PathBuf::from(home).join(".pi/agent/settings.json");
-    if let Ok(content) = std::fs::read_to_string(&settings_path) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-            let model = v.get("defaultModel").and_then(|s| s.as_str())?;
-            let prov = v.get("defaultProvider").and_then(|s| s.as_str()).unwrap_or("opencode-go");
-            return Some((model.to_string(), prov.to_string()));
-        }
-    }
-    None
-}
-
-/// Reads default model configured in ~/.dsh/settings.yaml
-pub fn read_dsh_default_settings() -> Option<(String, String)> {
-    let home = std::env::var("HOME").ok()?;
-    let settings_path = PathBuf::from(home).join(".dsh/settings.yaml");
-    if let Ok(content) = std::fs::read_to_string(&settings_path) {
-        let mut in_agent_default = false;
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("agent-default-model:") {
-                in_agent_default = true;
-                continue;
-            }
-            if in_agent_default {
-                if !line.starts_with(' ') && !line.starts_with('\t') {
-                    break;
-                }
-                if let Some(m) = trimmed.strip_prefix("model:") {
-                    let m_clean = m.trim().trim_matches('"').trim_matches('\'');
-                    if !m_clean.is_empty() {
-                        return Some((m_clean.to_string(), "dsh".to_string()));
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Reads default model configured in ~/.codex/config.toml
-pub fn read_codex_default_settings() -> Option<(String, String)> {
-    let home = std::env::var("HOME").ok()?;
-    let config_path = PathBuf::from(home).join(".codex/config.toml");
-    if let Ok(content) = std::fs::read_to_string(&config_path) {
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("model ") || trimmed.starts_with("model=") {
-                if let Some(val) = trimmed.split('=').nth(1) {
-                    let clean = val.trim().trim_matches('"').trim_matches('\'').trim();
-                    if !clean.is_empty() {
-                        return Some((clean.to_string(), "openai".to_string()));
-                    }
-                }
-            }
-        }
-    }
-    Some(("gpt-5.5".to_string(), "openai".to_string()))
-}
-
-/// Reads active model configured in ~/.gemini/antigravity/antigravity_state.pbtxt
-pub fn read_antigravity_state_model() -> Option<String> {
-    let home = std::env::var("HOME").ok()?;
-    let pbtxt_path = PathBuf::from(home).join(".gemini/antigravity/antigravity_state.pbtxt");
-    if let Ok(content) = std::fs::read_to_string(&pbtxt_path) {
-        for line in content.lines() {
-            if line.contains("last_selected_agent_model:") {
-                if let Some(val) = line.split(':').nth(1) {
-                    let trimmed = val.trim();
-                    if trimmed.contains("M318") {
-                        return Some("Gemini Flash 3.8".to_string());
-                    } else if trimmed.contains("PRO") {
-                        return Some("Gemini Pro 3.8".to_string());
-                    } else if trimmed.contains("25") || trimmed.contains("2_5") {
-                        return Some("Gemini Flash 2.5".to_string());
-                    }
-                }
-            }
-        }
-    }
-    None
 }
 
 fn current_epoch_ms() -> u64 {

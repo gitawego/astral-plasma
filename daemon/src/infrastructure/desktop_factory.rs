@@ -101,3 +101,28 @@ pub fn create_workspace_port() -> Arc<dyn WorkspacePort> {
         CompositorKind::Hyprland => Arc::new(HyprlandAdapter::new()),
     }
 }
+
+pub fn create_tray_port() -> Arc<dyn crate::domain::ports::TrayPort> {
+    Arc::new(crate::infrastructure::tray_adapter::TrayAdapter::new())
+}
+
+pub fn create_ai_activity_port() -> Arc<dyn crate::domain::ports::AiActivityPort> {
+    Arc::new(crate::infrastructure::ai_activity_monitor::AiActivityMonitor::new())
+}
+
+pub fn create_calendar_port() -> Arc<dyn crate::domain::ports::CalendarPort> {
+    Arc::new(crate::infrastructure::calendar::CalendarAdapter::new())
+}
+
+pub fn create_ai_quota_port() -> Arc<dyn crate::domain::ports::AiQuotaPort> {
+    Arc::new(crate::infrastructure::ai_quota_adapter::AiQuotaAdapter::new())
+}
+
+pub fn create_plasma_control_port() -> Arc<dyn crate::domain::ports::PlasmaControlPort> {
+    Arc::new(crate::infrastructure::plasma_adapter::PlasmaAdapter::new())
+}
+
+pub fn create_shortcut_control_port() -> Arc<dyn crate::domain::ports::ShortcutControlPort> {
+    Arc::new(crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new())
+}
+

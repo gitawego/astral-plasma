@@ -65,6 +65,325 @@ impl Default for AiActivityState {
     }
 }
 
+/// User-configurable agent brand override loaded from settings.json.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomAgentRule {
+    pub tool_id: String,
+    #[serde(default)]
+    pub model_keywords: Vec<String>,
+    #[serde(default)]
+    pub tool_keywords: Vec<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    pub brand_color: String,
+    pub brand_icon: String,
+}
+
+/// Declarative pattern matching rule for model display naming.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ModelPatternRule {
+    pub any_of: &'static [&'static str],
+    pub all_of: &'static [&'static str],
+    pub display: &'static str,
+}
+
+impl ModelPatternRule {
+    pub fn matches(&self, lower_model: &str) -> bool {
+        let all_pass = self.all_of.is_empty() || self.all_of.iter().all(|kw| lower_model.contains(kw));
+        let any_pass = self.any_of.is_empty() || self.any_of.iter().any(|kw| lower_model.contains(kw));
+        all_pass && any_pass && (!self.all_of.is_empty() || !self.any_of.is_empty())
+    }
+}
+
+/// Declarative brand styling rule for an AI agent tool or model family.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ModelBrandRule {
+    pub tool_id: &'static str,
+    pub model_keywords: &'static [&'static str],
+    pub tool_keywords: &'static [&'static str],
+    pub default_model_id: &'static str,
+    pub default_display_name: &'static str,
+    pub brand_color: &'static str,
+    pub brand_icon: &'static str,
+    pub patterns: &'static [ModelPatternRule],
+    pub strip_prefixes: &'static [&'static str],
+    pub prefix_format: Option<&'static str>,
+    pub resolve_inner: bool,
+    pub adopt_inner_style: bool,
+}
+
+/// Master catalog of static brand configurations and display formatting rules.
+pub static STATIC_BRAND_RULES: &[ModelBrandRule] = &[
+    ModelBrandRule {
+        tool_id: "cursor",
+        model_keywords: &[],
+        tool_keywords: &["cursor"],
+        default_model_id: "cursor",
+        default_display_name: "Cursor",
+        brand_color: "#6366F1", // Indigo
+        brand_icon: "smart_toy",
+        patterns: &[],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: true,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "windsurf",
+        model_keywords: &[],
+        tool_keywords: &["windsurf"],
+        default_model_id: "windsurf",
+        default_display_name: "Windsurf Cascade",
+        brand_color: "#0EA5E9", // Sky Blue
+        brand_icon: "waves",
+        patterns: &[],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: true,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "dsh",
+        model_keywords: &[],
+        tool_keywords: &["dsh"],
+        default_model_id: "dsh",
+        default_display_name: "DSH Agent",
+        brand_color: "#06B6D4", // Electric Mint / Cyan
+        brand_icon: "bolt",
+        patterns: &[
+            ModelPatternRule { any_of: &["muse", "spark"], all_of: &["1.3"], display: "Muse Spark 1.3" },
+            ModelPatternRule { any_of: &["muse", "spark"], all_of: &["1.2"], display: "Muse Spark 1.2" },
+            ModelPatternRule { any_of: &["muse", "spark"], all_of: &[], display: "Muse Spark" },
+        ],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "zcode",
+        model_keywords: &[],
+        tool_keywords: &["zcode"],
+        default_model_id: "zcode",
+        default_display_name: "ZCode Agent",
+        brand_color: "#3B82F6", // Electric Blue
+        brand_icon: "code",
+        patterns: &[],
+        strip_prefixes: &[],
+        prefix_format: Some("ZCode · {}"),
+        resolve_inner: true,
+        adopt_inner_style: true,
+    },
+    ModelBrandRule {
+        tool_id: "claude",
+        model_keywords: &["claude"],
+        tool_keywords: &["claude"],
+        default_model_id: "claude-3-7-sonnet",
+        default_display_name: "Claude Code",
+        brand_color: "#D97706", // Warm Amber
+        brand_icon: "psychology",
+        patterns: &[
+            ModelPatternRule { any_of: &["3-7", "3.7"], all_of: &[], display: "Claude 3.7 Sonnet" },
+            ModelPatternRule { any_of: &["3-5-haiku", "3.5-haiku"], all_of: &[], display: "Claude 3.5 Haiku" },
+            ModelPatternRule { any_of: &["3-5", "3.5"], all_of: &[], display: "Claude 3.5 Sonnet" },
+            ModelPatternRule { any_of: &["opus"], all_of: &[], display: "Claude Opus" },
+        ],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "gemini",
+        model_keywords: &["gemini"],
+        tool_keywords: &["gemini", "antigravity"],
+        default_model_id: "gemini-flash-3.8",
+        default_display_name: "Gemini Flash 3.8",
+        brand_color: "#818CF8", // Stellar Violet
+        brand_icon: "auto_awesome",
+        patterns: &[
+            ModelPatternRule { any_of: &["3.8", "3-8", "m318"], all_of: &["pro"], display: "Gemini Pro 3.8" },
+            ModelPatternRule { any_of: &["3.8", "3-8", "m318"], all_of: &[], display: "Gemini Flash 3.8" },
+            ModelPatternRule { any_of: &["2.5", "2-5"], all_of: &["pro"], display: "Gemini 2.5 Pro" },
+            ModelPatternRule { any_of: &["2.5", "2-5"], all_of: &[], display: "Gemini 2.5 Flash" },
+            ModelPatternRule { any_of: &["2.0", "2-0"], all_of: &["pro"], display: "Gemini 2.0 Pro" },
+            ModelPatternRule { any_of: &["2.0", "2-0"], all_of: &[], display: "Gemini 2.0 Flash" },
+            ModelPatternRule { any_of: &["pro"], all_of: &[], display: "Gemini Pro 3.8" },
+            ModelPatternRule { any_of: &["flash"], all_of: &[], display: "Gemini Flash 3.8" },
+        ],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "openai",
+        model_keywords: &["gpt", "o1", "o3", "codex"],
+        tool_keywords: &["codex"],
+        default_model_id: "codex",
+        default_display_name: "OpenAI Codex",
+        brand_color: "#10A37F", // OpenAI Emerald
+        brand_icon: "terminal",
+        patterns: &[
+            ModelPatternRule { any_of: &["5.5", "5-5"], all_of: &[], display: "GPT-5.5" },
+            ModelPatternRule { any_of: &["o3-mini"], all_of: &[], display: "OpenAI o3-mini" },
+            ModelPatternRule { any_of: &["o1"], all_of: &[], display: "OpenAI o1" },
+            ModelPatternRule { any_of: &["gpt-4o"], all_of: &[], display: "GPT-4o" },
+        ],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "mimo",
+        model_keywords: &["mimo", "xiaomi"],
+        tool_keywords: &[],
+        default_model_id: "mimo",
+        default_display_name: "MiMo (Xiaomi)",
+        brand_color: "#FF6900", // Xiaomi Orange
+        brand_icon: "token",
+        patterns: &[
+            ModelPatternRule { any_of: &["v2.6-flash", "v2-6-flash"], all_of: &[], display: "MiMo 2.6 Flash" },
+            ModelPatternRule { any_of: &["v2.5-pro", "v2-5-pro"], all_of: &[], display: "MiMo 2.5 Pro" },
+        ],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "meta",
+        model_keywords: &["muse", "spark"],
+        tool_keywords: &[],
+        default_model_id: "muse-spark",
+        default_display_name: "Muse Spark (Meta)",
+        brand_color: "#0081FB", // Meta Electric Blue
+        brand_icon: "flare",
+        patterns: &[
+            ModelPatternRule { any_of: &["1.3"], all_of: &[], display: "Muse Spark 1.3" },
+            ModelPatternRule { any_of: &["1.2"], all_of: &[], display: "Muse Spark 1.2" },
+        ],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "grok",
+        model_keywords: &["grok", "xai"],
+        tool_keywords: &["grok"],
+        default_model_id: "grok",
+        default_display_name: "Grok (x.com)",
+        brand_color: "#EF4444", // Grok Crimson
+        brand_icon: "rocket_launch",
+        patterns: &[
+            ModelPatternRule { any_of: &["3"], all_of: &[], display: "Grok 3 (x.com)" },
+            ModelPatternRule { any_of: &["2"], all_of: &[], display: "Grok 2 (x.com)" },
+        ],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "ollama",
+        model_keywords: &["ollama-cloud", "ollama/"],
+        tool_keywords: &["ollama"],
+        default_model_id: "ollama",
+        default_display_name: "Ollama",
+        brand_color: "#F59E0B", // Ollama Warm Amber
+        brand_icon: "cloud",
+        patterns: &[],
+        strip_prefixes: &["ollama-cloud/", "ollama/"],
+        prefix_format: Some("Ollama ({})"),
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "deepseek",
+        model_keywords: &["deepseek"],
+        tool_keywords: &[],
+        default_model_id: "deepseek",
+        default_display_name: "DeepSeek",
+        brand_color: "#2563EB", // Cobalt Azure
+        brand_icon: "smart_toy",
+        patterns: &[
+            ModelPatternRule { any_of: &["v4.1", "v4-1"], all_of: &[], display: "DeepSeek V4.1" },
+            ModelPatternRule { any_of: &["v4"], all_of: &[], display: "DeepSeek V4" },
+            ModelPatternRule { any_of: &["coder"], all_of: &[], display: "DeepSeek Coder" },
+        ],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "minimax",
+        model_keywords: &["minimax"],
+        tool_keywords: &[],
+        default_model_id: "minimax",
+        default_display_name: "MiniMax",
+        brand_color: "#06B6D4", // Electric Mint
+        brand_icon: "bolt",
+        patterns: &[
+            ModelPatternRule { any_of: &["m3"], all_of: &[], display: "MiniMax M3" },
+            ModelPatternRule { any_of: &["m2.7"], all_of: &[], display: "MiniMax M2.7" },
+        ],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "omp",
+        model_keywords: &["glm", "qwen", "omen"],
+        tool_keywords: &["omp"],
+        default_model_id: "omp",
+        default_display_name: "OMP Agent",
+        brand_color: "#EC4899", // Vibrant Rose
+        brand_icon: "memory",
+        patterns: &[],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+    ModelBrandRule {
+        tool_id: "opencode",
+        model_keywords: &["opencode"],
+        tool_keywords: &["opencode"],
+        default_model_id: "opencode",
+        default_display_name: "OpenCode",
+        brand_color: "#10B981", // OpenCode Emerald
+        brand_icon: "terminal",
+        patterns: &[],
+        strip_prefixes: &[],
+        prefix_format: None,
+        resolve_inner: false,
+        adopt_inner_style: false,
+    },
+];
+
+fn load_custom_agent_rules() -> Vec<CustomAgentRule> {
+    let candidate_paths = [
+        crate::domain::branding::config_home().join("astral-plasma").join("settings.json"),
+        std::path::PathBuf::from("config/settings.json"),
+    ];
+    for path in &candidate_paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(rules) = v.get("ai").and_then(|a| a.get("agents")).and_then(|ag| ag.get("custom_rules")) {
+                    if let Ok(parsed) = serde_json::from_value::<Vec<CustomAgentRule>>(rules.clone()) {
+                        return parsed;
+                    }
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
 /// Resolves raw model name and agent tool source into a standardized identity with brand aesthetics.
 pub fn resolve_model_metadata(raw_model: &str, tool_source: &str) -> AiAgentIdentity {
     let unescaped_model = if raw_model.trim().starts_with('{') {
@@ -76,332 +395,127 @@ pub fn resolve_model_metadata(raw_model: &str, tool_source: &str) -> AiAgentIden
         raw_model.to_string()
     };
     let raw_model = unescaped_model.as_str();
-
     let lower_model = raw_model.trim().to_lowercase();
     let lower_tool = tool_source.trim().to_lowercase();
 
-    // 0a. Cursor
-    if lower_tool.contains("cursor") {
-        let display = if !raw_model.is_empty() {
-            let inner = resolve_model_metadata(raw_model, "");
-            inner.display_name
-        } else {
-            "Cursor".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "cursor".to_string(),
-            model_id: if raw_model.is_empty() { "cursor".to_string() } else { raw_model.to_string() },
-            display_name: display,
-            brand_color: "#6366F1".to_string(), // Indigo
-            brand_icon: "smart_toy".to_string(),
-        };
-    }
-
-    // 0b. Windsurf
-    if lower_tool.contains("windsurf") {
-        let display = if !raw_model.is_empty() {
-            let inner = resolve_model_metadata(raw_model, "");
-            inner.display_name
-        } else {
-            "Windsurf Cascade".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "windsurf".to_string(),
-            model_id: if raw_model.is_empty() { "windsurf".to_string() } else { raw_model.to_string() },
-            display_name: display,
-            brand_color: "#0EA5E9".to_string(), // Sky Blue
-            brand_icon: "waves".to_string(),
-        };
-    }
-
-    // 0c. DSH (Developer Shell)
-    if lower_tool.contains("dsh") {
-        let display = if lower_model.contains("muse") || lower_model.contains("spark") {
-            if lower_model.contains("1.3") {
-                "Muse Spark 1.3".to_string()
-            } else if lower_model.contains("1.2") {
-                "Muse Spark 1.2".to_string()
-            } else {
-                "Muse Spark".to_string()
-            }
-        } else if !raw_model.is_empty() {
-            format_clean_model_name(raw_model)
-        } else {
-            "DSH Agent".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "dsh".to_string(),
-            model_id: if raw_model.is_empty() { "dsh".to_string() } else { raw_model.to_string() },
-            display_name: display,
-            brand_color: "#06B6D4".to_string(), // Electric Mint / Cyan
-            brand_icon: "bolt".to_string(),
-        };
-    }
-
-    // 0d. ZCode
-    if lower_tool.contains("zcode") {
-        let display = if !raw_model.is_empty() {
-            let inner = resolve_model_metadata(raw_model, "");
-            let model_title = if inner.display_name != "AI Agent" && !inner.display_name.is_empty() {
-                inner.display_name
-            } else {
-                format_clean_model_name(raw_model)
+    // 1. Check custom overrides configured by the user in settings.json
+    let custom_rules = load_custom_agent_rules();
+    for custom in &custom_rules {
+        let matches_model = custom.model_keywords.iter().any(|kw| lower_model.contains(&kw.to_lowercase()));
+        let matches_tool = custom.tool_keywords.iter().any(|kw| lower_tool.contains(&kw.to_lowercase()));
+        if matches_model || matches_tool {
+            let display = custom.display_name.clone().unwrap_or_else(|| {
+                if raw_model.is_empty() {
+                    custom.tool_id.clone()
+                } else {
+                    format_clean_model_name(raw_model)
+                }
+            });
+            return AiAgentIdentity {
+                tool_source: custom.tool_id.clone(),
+                model_id: if raw_model.is_empty() { custom.tool_id.clone() } else { raw_model.to_string() },
+                display_name: display,
+                brand_color: custom.brand_color.clone(),
+                brand_icon: custom.brand_icon.clone(),
             };
-            format!("ZCode · {}", model_title)
-        } else {
-            "ZCode Agent".to_string()
-        };
-        let (color, icon) = if !raw_model.is_empty() {
-            let inner = resolve_model_metadata(raw_model, "");
-            let c = if inner.brand_color != "#10B981" && inner.brand_color != "#9bcbfb" {
-                inner.brand_color
+        }
+    }
+
+    // 2. Evaluate declarative static catalog rules
+    for rule in STATIC_BRAND_RULES {
+        let matches_tool = rule.tool_keywords.iter().any(|&kw| lower_tool.contains(kw));
+        let matches_model = rule.model_keywords.iter().any(|&kw| {
+            if kw.ends_with('/') {
+                lower_model.starts_with(kw)
             } else {
-                "#3B82F6".to_string() // ZCode Electric Blue
+                lower_model.contains(kw)
+            }
+        });
+
+        if matches_tool || matches_model {
+            let mut matched_display: Option<String> = None;
+
+            for pat in rule.patterns {
+                if pat.matches(&lower_model) {
+                    matched_display = Some(pat.display.to_string());
+                    break;
+                }
+            }
+
+            let display = matched_display.unwrap_or_else(|| {
+                if raw_model.is_empty() {
+                    rule.default_display_name.to_string()
+                } else if rule.resolve_inner {
+                    let inner = resolve_model_metadata(raw_model, "");
+                    let inner_name = if inner.display_name != "AI Agent" && !inner.display_name.is_empty() {
+                        inner.display_name
+                    } else {
+                        format_clean_model_name(raw_model)
+                    };
+                    if let Some(fmt) = rule.prefix_format {
+                        fmt.replace("{}", &inner_name)
+                    } else {
+                        inner_name
+                    }
+                } else if !rule.strip_prefixes.is_empty() {
+                    let mut clean = raw_model.to_string();
+                    for prefix in rule.strip_prefixes {
+                        clean = clean.replace(prefix, "");
+                    }
+                    let cleaned_name = format_clean_model_name(&clean);
+                    if let Some(fmt) = rule.prefix_format {
+                        fmt.replace("{}", &cleaned_name)
+                    } else {
+                        cleaned_name
+                    }
+                } else if let Some(fmt) = rule.prefix_format {
+                    fmt.replace("{}", &format_clean_model_name(raw_model))
+                } else {
+                    let clean = format_clean_model_name(raw_model);
+                    if clean.eq_ignore_ascii_case("gemini flash") {
+                        "Gemini Flash 3.8".to_string()
+                    } else if clean.eq_ignore_ascii_case("gemini pro") {
+                        "Gemini Pro 3.8".to_string()
+                    } else {
+                        clean
+                    }
+                }
+            });
+
+            let (color, icon) = if rule.adopt_inner_style && !raw_model.is_empty() {
+                let inner = resolve_model_metadata(raw_model, "");
+                let c = if inner.brand_color != "#10B981" && inner.brand_color != "#9bcbfb" {
+                    inner.brand_color
+                } else {
+                    rule.brand_color.to_string()
+                };
+                let ic = if inner.brand_icon != "token" && inner.brand_icon != "code" {
+                    inner.brand_icon
+                } else {
+                    rule.brand_icon.to_string()
+                };
+                (c, ic)
+            } else {
+                (rule.brand_color.to_string(), rule.brand_icon.to_string())
             };
-            let ic = if inner.brand_icon != "token" && inner.brand_icon != "code" {
-                inner.brand_icon
+
+            let model_id = if raw_model.is_empty() {
+                rule.default_model_id.to_string()
             } else {
-                "code".to_string()
+                raw_model.to_string()
             };
-            (c, ic)
-        } else {
-            ("#3B82F6".to_string(), "code".to_string())
-        };
-        return AiAgentIdentity {
-            tool_source: "zcode".to_string(),
-            model_id: if raw_model.is_empty() { "zcode".to_string() } else { raw_model.to_string() },
-            display_name: display,
-            brand_color: color,
-            brand_icon: icon,
-        };
+
+            return AiAgentIdentity {
+                tool_source: rule.tool_id.to_string(),
+                model_id,
+                display_name: display,
+                brand_color: color,
+                brand_icon: icon,
+            };
+        }
     }
 
-    // 1. Claude / Anthropic
-    if lower_model.contains("claude") || lower_tool.contains("claude") {
-        let display = if lower_model.contains("3-7") || lower_model.contains("3.7") {
-            "Claude 3.7 Sonnet".to_string()
-        } else if lower_model.contains("3-5-haiku") || lower_model.contains("3.5-haiku") {
-            "Claude 3.5 Haiku".to_string()
-        } else if lower_model.contains("3-5") || lower_model.contains("3.5") {
-            "Claude 3.5 Sonnet".to_string()
-        } else if lower_model.contains("opus") {
-            "Claude Opus".to_string()
-        } else if !raw_model.is_empty() {
-            format_clean_model_name(raw_model)
-        } else {
-            "Claude Code".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "claude".to_string(),
-            model_id: if raw_model.is_empty() { "claude".to_string() } else { raw_model.to_string() },
-            display_name: display,
-            brand_color: "#D97706".to_string(), // Warm Amber
-            brand_icon: "psychology".to_string(),
-        };
-    }
-
-    // 2. Google Gemini / Antigravity
-    if lower_model.contains("gemini") || lower_tool.contains("gemini") || lower_tool.contains("antigravity") {
-        let display = if lower_model.contains("3.8") || lower_model.contains("3-8") || lower_model.contains("m318") {
-            if lower_model.contains("pro") {
-                "Gemini Pro 3.8".to_string()
-            } else {
-                "Gemini Flash 3.8".to_string()
-            }
-        } else if lower_model.contains("2.5") || lower_model.contains("2-5") {
-            if lower_model.contains("pro") {
-                "Gemini 2.5 Pro".to_string()
-            } else {
-                "Gemini 2.5 Flash".to_string()
-            }
-        } else if lower_model.contains("2.0") || lower_model.contains("2-0") {
-            if lower_model.contains("pro") {
-                "Gemini 2.0 Pro".to_string()
-            } else {
-                "Gemini 2.0 Flash".to_string()
-            }
-        } else if lower_model.contains("pro") {
-            "Gemini Pro 3.8".to_string()
-        } else if lower_model.contains("flash") {
-            "Gemini Flash 3.8".to_string()
-        } else if !raw_model.is_empty() {
-            let clean = format_clean_model_name(raw_model);
-            if clean.eq_ignore_ascii_case("gemini flash") {
-                "Gemini Flash 3.8".to_string()
-            } else if clean.eq_ignore_ascii_case("gemini pro") {
-                "Gemini Pro 3.8".to_string()
-            } else {
-                clean
-            }
-        } else {
-            "Gemini Flash 3.8".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "gemini".to_string(),
-            model_id: if raw_model.is_empty() { "gemini-flash-3.8".to_string() } else { raw_model.to_string() },
-            display_name: display,
-            brand_color: "#818CF8".to_string(), // Stellar Violet
-            brand_icon: "auto_awesome".to_string(),
-        };
-    }
-
-    // 3. OpenAI / Codex / GPT
-    if lower_model.contains("gpt") || lower_model.contains("o1") || lower_model.contains("o3") || lower_model.contains("codex") || lower_tool.contains("codex") {
-        let display = if lower_model.contains("5.5") || lower_model.contains("5-5") {
-            "GPT-5.5".to_string()
-        } else if lower_model.contains("o3-mini") {
-            "OpenAI o3-mini".to_string()
-        } else if lower_model.contains("o1") {
-            "OpenAI o1".to_string()
-        } else if lower_model.contains("gpt-4o") {
-            "GPT-4o".to_string()
-        } else if !raw_model.is_empty() {
-            format_clean_model_name(raw_model)
-        } else {
-            "OpenAI Codex".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "openai".to_string(),
-            model_id: if raw_model.is_empty() { "codex".to_string() } else { raw_model.to_string() },
-            display_name: display,
-            brand_color: "#10A37F".to_string(), // OpenAI Emerald
-            brand_icon: "terminal".to_string(),
-        };
-    }
-
-    // 4. MiMo (Xiaomi)
-    if lower_model.contains("mimo") || lower_model.contains("xiaomi") {
-        let display = if lower_model.contains("v2.6-flash") || lower_model.contains("v2-6-flash") {
-            "MiMo 2.6 Flash".to_string()
-        } else if lower_model.contains("v2.5-pro") || lower_model.contains("v2-5-pro") {
-            "MiMo 2.5 Pro".to_string()
-        } else if !raw_model.is_empty() {
-            format_clean_model_name(raw_model)
-        } else {
-            "MiMo (Xiaomi)".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "mimo".to_string(),
-            model_id: raw_model.to_string(),
-            display_name: display,
-            brand_color: "#FF6900".to_string(), // Xiaomi Orange
-            brand_icon: "token".to_string(),
-        };
-    }
-
-    // 5. Muse Spark (Meta)
-    if lower_model.contains("muse") || lower_model.contains("spark") {
-        let display = if lower_model.contains("1.3") {
-            "Muse Spark 1.3".to_string()
-        } else if lower_model.contains("1.2") {
-            "Muse Spark 1.2".to_string()
-        } else if !raw_model.is_empty() {
-            format_clean_model_name(raw_model)
-        } else {
-            "Muse Spark (Meta)".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "meta".to_string(),
-            model_id: raw_model.to_string(),
-            display_name: display,
-            brand_color: "#0081FB".to_string(), // Meta Electric Blue
-            brand_icon: "flare".to_string(),
-        };
-    }
-
-    // 6. Grok (x.com / xAI)
-    if lower_model.contains("grok") || lower_tool.contains("grok") || lower_model.contains("xai") {
-        let display = if lower_model.contains("3") {
-            "Grok 3 (x.com)".to_string()
-        } else if lower_model.contains("2") {
-            "Grok 2 (x.com)".to_string()
-        } else if !raw_model.is_empty() {
-            format_clean_model_name(raw_model)
-        } else {
-            "Grok (x.com)".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "grok".to_string(),
-            model_id: raw_model.to_string(),
-            display_name: display,
-            brand_color: "#EF4444".to_string(), // Grok Crimson
-            brand_icon: "rocket_launch".to_string(),
-        };
-    }
-
-    // 7. Ollama Cloud
-    if lower_model.contains("ollama-cloud") || lower_model.starts_with("ollama/") || lower_tool.contains("ollama") {
-        let clean = raw_model.replace("ollama-cloud/", "").replace("ollama/", "");
-        return AiAgentIdentity {
-            tool_source: "ollama".to_string(),
-            model_id: raw_model.to_string(),
-            display_name: format!("Ollama ({})", format_clean_model_name(&clean)),
-            brand_color: "#F59E0B".to_string(), // Ollama Warm Amber
-            brand_icon: "cloud".to_string(),
-        };
-    }
-
-    // 8. DeepSeek
-    if lower_model.contains("deepseek") {
-        let display = if lower_model.contains("v4.1") || lower_model.contains("v4-1") {
-            "DeepSeek V4.1".to_string()
-        } else if lower_model.contains("v4") {
-            "DeepSeek V4".to_string()
-        } else if lower_model.contains("coder") {
-            "DeepSeek Coder".to_string()
-        } else {
-            format_clean_model_name(raw_model)
-        };
-        return AiAgentIdentity {
-            tool_source: "deepseek".to_string(),
-            model_id: raw_model.to_string(),
-            display_name: display,
-            brand_color: "#2563EB".to_string(), // Cobalt Azure
-            brand_icon: "smart_toy".to_string(),
-        };
-    }
-
-    // 9. MiniMax
-    if lower_model.contains("minimax") {
-        let display = if lower_model.contains("m3") {
-            "MiniMax M3".to_string()
-        } else if lower_model.contains("m2.7") {
-            "MiniMax M2.7".to_string()
-        } else {
-            "MiniMax".to_string()
-        };
-        return AiAgentIdentity {
-            tool_source: "minimax".to_string(),
-            model_id: raw_model.to_string(),
-            display_name: display,
-            brand_color: "#06B6D4".to_string(), // Electric Mint
-            brand_icon: "bolt".to_string(),
-        };
-    }
-
-    // 10. OMP / GLM / Qwen / Omen
-    if lower_model.contains("glm") || lower_model.contains("qwen") || lower_model.contains("omen") || lower_tool.contains("omp") {
-        return AiAgentIdentity {
-            tool_source: "omp".to_string(),
-            model_id: raw_model.to_string(),
-            display_name: format_clean_model_name(raw_model),
-            brand_color: "#EC4899".to_string(), // Vibrant Rose
-            brand_icon: "memory".to_string(),
-        };
-    }
-
-    // 11. OpenCode
-    if lower_tool.contains("opencode") || lower_model.contains("opencode") {
-        return AiAgentIdentity {
-            tool_source: "opencode".to_string(),
-            model_id: if raw_model.is_empty() { "opencode".to_string() } else { raw_model.to_string() },
-            display_name: if raw_model.is_empty() { "OpenCode".to_string() } else { format_clean_model_name(raw_model) },
-            brand_color: "#10B981".to_string(), // OpenCode Emerald
-            brand_icon: "terminal".to_string(),
-        };
-    }
-
-    // 12. Fallback / Generic
+    // 3. Fallback generic identity
     AiAgentIdentity {
         tool_source: tool_source.to_string(),
         model_id: raw_model.to_string(),

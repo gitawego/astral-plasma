@@ -2140,6 +2140,32 @@ impl AiQuotaAdapter {
     }
 }
 
+impl crate::domain::ports::AiQuotaPort for AiQuotaAdapter {
+    fn get_snapshot(&self, warning_thr: f64, critical_thr: f64, force_refresh: bool) -> AiQuotaSnapshot {
+        self.get_snapshot(warning_thr, critical_thr, force_refresh)
+    }
+
+    fn switch_gemini_account(&self, target_id_or_email: &str) -> Result<String, String> {
+        self.switch_gemini_account(target_id_or_email)
+    }
+
+    fn login_gemini_oauth(&self, email_hint: Option<&str>) -> Result<String, String> {
+        self.login_gemini_oauth(email_hint)
+    }
+
+    fn remove_account(&self, provider_id: &str, target_id_or_email: &str) -> Result<String, String> {
+        self.remove_account(provider_id, target_id_or_email)
+    }
+
+    fn add_account(&self, provider_id: &str, credential: &str, label: Option<&str>, is_session: bool) -> Result<String, String> {
+        self.add_account(provider_id, credential, label, is_session)
+    }
+
+    fn list_accounts(&self, provider_id: Option<&str>) -> Result<serde_json::Value, String> {
+        self.list_accounts(provider_id)
+    }
+}
+
 fn chrono_lite_rfc3339() -> String {
     use std::time::UNIX_EPOCH;
     let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();

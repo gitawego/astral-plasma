@@ -389,4 +389,8 @@ impl PlasmaControlPort for PlasmaAdapter {
             watchdog_pid,
         })
     }
+
+    fn stop_watchdog(&self) {
+        self.stop_watchdog();
+    }
 }

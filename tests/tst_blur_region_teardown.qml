@@ -122,9 +122,67 @@ Item {
                || /keeps applying the LAST region/i.test(src),
             "the region-teardown hazard must be documented next to the gate so it is not reintroduced");
 
+        // ---- E. Active Frame Commit Pump Contract ------------------------
+        // In the Wayland protocol (ext-background-effect-v1), set_blur_region is double-
+        // buffered client state applied strictly upon the next wl_surface.commit.
+        // If the shell item tree goes idle once animations finish, Qt Quick stops rendering,
+        // Mesa EGL emits no buffer swaps or wl_surface.commit, and KWin leaves the old blur
+        // floating on the desktop until an unrelated periodic timer fires 2 seconds later.
+        assert(/Timer\s*\{[\s\S]*?id:\s*commitFlushTimer[\s\S]*?interval:\s*([0-9]+)/.test(src),
+            "UnifiedShell must declare commitFlushTimer for post-teardown frame pumping");
+        const timerMatch = src.match(/id:\s*commitFlushTimer[\s\S]*?interval:\s*([0-9]+)/);
+        const timerInterval = timerMatch ? parseInt(timerMatch[1]) : 0;
+        assert(timerInterval >= 650,
+            "commitFlushTimer interval must be at least 650ms to outlive the 500ms close animation and guarantee post-collapse commits");
+
+        assert(/function flushCommitPump\s*\(/.test(src),
+            "UnifiedShell must expose flushCommitPump() function");
+
+        assert(/readonly property bool isCommitPumpActive/.test(src),
+            "isCommitPumpActive must be declared as a root-level property");
+        assert(/isCommitPumpActive:\s*commitFlushTimer\.running/.test(src),
+            "isCommitPumpActive must be driven by commitFlushTimer.running");
+        assert(/dropdownContainer\.offsetProgress\s*>\s*0\.0001/.test(src),
+            "isCommitPumpActive must include dropdownContainer transit frames");
+        assert(/fusedBottomPopoutWrapper\.offsetProgress\s*>\s*0\.0001/.test(src),
+            "isCommitPumpActive must include fusedBottomPopoutWrapper transit frames");
+        assert(/rightEdgeControlWrapper\.offsetProgress\s*>\s*0\.0001/.test(src),
+            "isCommitPumpActive must include rightEdgeControlWrapper transit frames");
+
+        assert(/onBlurRegionActiveChanged:\s*flushCommitPump/.test(src),
+            "onBlurRegionActiveChanged must trigger flushCommitPump");
+        assert(/onBlurPopoutActiveChanged:\s*flushCommitPump/.test(src),
+            "onBlurPopoutActiveChanged must trigger flushCommitPump");
+        assert(/onBlurRightEdgeActiveChanged:\s*flushCommitPump/.test(src),
+            "onBlurRightEdgeActiveChanged must trigger flushCommitPump");
+
+        assert(/id:\s*commitPumpItem/.test(src),
+            "UnifiedShell must declare commitPumpItem");
+        assert(/FrameAnimation\s*\{[\s\S]*?running:\s*root\.isCommitPumpActive/.test(src),
+            "commitPumpItem must contain a FrameAnimation gated by root.isCommitPumpActive");
+
+        // ---- F. Multi-Drawer Vacating Damage Coverage Contract ------------
+        // Without buffer damage covering the area vacated by closing drawers,
+        // KWin skips redrawing the desktop background behind the closed drawer,
+        // leaving the old blurred pixels in the framebuffer until an unrelated periodic timer fires.
+        assert(/commitPumpItem[\s\S]*?targetDropH/.test(src),
+            "commitPumpItem must include a damage rectangle covering the central dropdown drawer area");
+        assert(/commitPumpItem[\s\S]*?idealPopoutY/.test(src),
+            "commitPumpItem must include a damage rectangle covering the bottom popout drawer area");
+        assert(/commitPumpItem[\s\S]*?rightControlY/.test(src),
+            "commitPumpItem must include a damage rectangle covering the right edge control drawer area");
+
+        // ---- G. Fused Popout Latch Retention Contract ---------------------
+        // When closing, isFusedToBottom must NOT snap to false on frame 1 (upon Config.bottomPopoutVisible = false).
+        // It must remain fused until the wrapper finishes collapsing (offsetProgress <= 0.001).
+        assert(!/onBottomPopoutVisibleChanged:\s*\{[\s\S]*?isFusedToBottom\s*=\s*false/.test(src),
+            "onBottomPopoutVisibleChanged must not snap isFusedToBottom to false prematurely during close transit");
+        assert(/onOffsetProgressChanged[\s\S]*?isFusedToBottom\s*=\s*false/.test(src),
+            "isFusedToBottom must only be reset when offsetProgress reaches terminal collapse");
+
         console.log("PASS: Blur Region Teardown Contract (atomic gate, "
             + activeGate + " gated dimensions, "
-            + leadMs.toFixed(0) + "ms teardown lead)");
+            + leadMs.toFixed(0) + "ms teardown lead, Multi-Drawer Damage Pump verified)");
         Qt.exit(0);
     }
 }

@@ -259,6 +259,30 @@ impl CalendarAdapter {
             reason: Some("no-calendar-handler".to_string()),
         })
     }
+}
+
+impl crate::domain::ports::CalendarPort for CalendarAdapter {
+    fn override_id(&self) -> Option<&str> {
+        self.override_id()
+    }
+    fn resolve(&self) -> Vec<String> {
+        self.resolve()
+    }
+    fn mime_defaults(&self) -> Vec<String> {
+        self.mime_defaults()
+    }
+    fn mime_default(&self) -> Option<String> {
+        self.mime_default()
+    }
+    fn fallback_available(&self) -> bool {
+        settings_tool_available()
+    }
+    fn open(&self, date: Option<&str>) -> DynResult<CalendarOpenResult> {
+        self.open(date)
+    }
+}
+
+impl CalendarAdapter {
 
     /// Directories searched for `*.desktop` files, highest precedence first.
     /// Mirrors [`crate::domain::app_identity::AppIdentityIndex::search_dirs`]

@@ -9,7 +9,6 @@ use crate::domain::model::{
 };
 use crate::domain::ports::{DynResult, TrayPort, WindowManagerPort};
 use crate::infrastructure::window_icons;
-use crate::infrastructure::tray_adapter::TrayAdapter;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
@@ -89,6 +88,7 @@ pub struct WatcherService {
     /// Filled asynchronously: the bridge may first have to wait for a previous
     /// shell instance to release its singleton bus name.
     wine_mpris: WineMprisSlot,
+    tray: Arc<dyn TrayPort>,
 }
 
 impl WatcherService {
@@ -386,8 +386,7 @@ impl WatcherService {
 
     #[zbus(name = "RefreshTray")]
     async fn refresh_tray(&self) {
-        let tray_ad = TrayAdapter::new();
-        if let Ok(new_tray) = tray_ad.query_tray() {
+        if let Ok(new_tray) = self.tray.query_tray() {
             let mut st = self.state.lock().await;
             st.cached_tray = new_tray.clone();
             let payload = TrayPayload {
@@ -655,11 +654,11 @@ pub async fn run_event_daemon() -> DynResult<()> {
 
     let state = Arc::new(Mutex::new(DaemonState::default()));
     let wm = crate::infrastructure::desktop_factory::create_window_manager_port();
-    let tray_adapter = TrayAdapter::new();
+    let tray_port = crate::infrastructure::desktop_factory::create_tray_port();
 
     // Query initial state
     let (initial_wins, initial_active) = wm.query_windows().unwrap_or_default();
-    let initial_tray = tray_adapter.query_tray().unwrap_or_default();
+    let initial_tray = tray_port.query_tray().unwrap_or_default();
 
     {
         let mut st = state.lock().await;
@@ -758,6 +757,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
     let watcher_service = WatcherService {
         state: Arc::clone(&state),
         wine_mpris: Arc::clone(&wine_mpris),
+        tray: Arc::clone(&tray_port),
     };
 
     // The watcher name is a singleton too: during a reload the outgoing daemon
@@ -916,17 +916,17 @@ pub async fn run_event_daemon() -> DynResult<()> {
     }
 
     // Spawn real-time AI Agent Model Activity Monitor
-    let ai_monitor = Arc::new(crate::infrastructure::ai_activity_monitor::AiActivityMonitor::new());
-    ai_monitor.start_background_watcher();
+    let ai_activity_port = crate::infrastructure::desktop_factory::create_ai_activity_port();
+    ai_activity_port.start_background_watcher();
 
     // Spawn periodic tray poller
     let tray_state = Arc::clone(&state);
+    let tray_poller_port = Arc::clone(&tray_port);
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(1000));
-        let tray_ad = TrayAdapter::new();
         loop {
             interval.tick().await;
-            if let Ok(new_tray) = tray_ad.query_tray() {
+            if let Ok(new_tray) = tray_poller_port.query_tray() {
                 let mut st = tray_state.lock().await;
                 if new_tray != st.cached_tray {
                     st.cached_tray = new_tray.clone();
