@@ -40,9 +40,14 @@ Item {
                     implicitHeight: 28
                     implicitWidth: chipContent.implicitWidth + 16
                     radius: 14
+                    scale: chipMouse.pressed ? 0.94 : (chipMouse.containsMouse ? 1.03 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+
                     color: chipMouse.containsMouse ? Colors.glassCardHover : Colors.glassCard
                     border.width: 1
-                    border.color: Colors.glassBorderSpecular
+                    border.color: chipMouse.containsMouse ? Qt.alpha(Colors.primary, 0.45) : Colors.glassBorderSpecular
 
                     RowLayout {
                         id: chipContent

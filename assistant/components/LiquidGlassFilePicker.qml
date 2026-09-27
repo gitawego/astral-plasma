@@ -834,7 +834,7 @@ Rectangle {
                                         width: 16
                                         height: 16
                                         radius: 4
-                                        color: itemDelegate.isItemSel ? Colors.primary : Qt.rgba(1, 1, 1, 0.08)
+                                        color: itemDelegate.isItemSel ? Qt.alpha(Colors.primary, 0.25) : Qt.rgba(1, 1, 1, 0.08)
                                         border.width: 1
                                         border.color: itemDelegate.isItemSel ? Colors.primary : Colors.glassBorderSpecular
                                         visible: !itemDelegate.isDir
@@ -843,7 +843,7 @@ Rectangle {
                                             anchors.centerIn: parent
                                             iconName: "check"
                                             size: 11
-                                            color: Colors.isDarkMode ? "#12131A" : "#FFFFFF"
+                                            color: Colors.primary
                                             visible: itemDelegate.isItemSel
                                         }
                                     }
@@ -1055,13 +1055,15 @@ Rectangle {
                                         anchors.right: parent.right
                                         anchors.margins: 4
                                         visible: itemDelegate.isItemSel && !itemDelegate.isDir
-                                        color: Colors.primary
+                                        color: Qt.alpha(Colors.primary, 0.30)
+                                        border.width: 1
+                                        border.color: Colors.primary
 
                                         MaterialIcon {
                                             anchors.centerIn: parent
                                             iconName: "check"
                                             size: 11
-                                            color: Colors.isDarkMode ? "#12131A" : "#FFFFFF"
+                                            color: Colors.primary
                                         }
                                     }
                                 }
@@ -1153,10 +1155,12 @@ Rectangle {
                     Rectangle {
                         implicitHeight: 32
                         implicitWidth: cancelTxt.implicitWidth + 24
-                        radius: 8
+                        radius: 16
+                        scale: cancelMouse.pressed ? 0.94 : (cancelMouse.containsMouse ? 1.04 : 1.0)
+                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                         color: cancelMouse.containsMouse ? Colors.glassCardHover : "transparent"
                         border.width: 1
-                        border.color: Colors.glassBorderSpecular
+                        border.color: cancelMouse.containsMouse ? Colors.primary : Colors.glassBorderSpecular
 
                         Text {
                             id: cancelTxt
@@ -1177,19 +1181,25 @@ Rectangle {
                         }
                     }
 
-                    // Attach Button
+                    // Attach Button (Liquid Glass stadium pill)
                     Rectangle {
                         implicitHeight: 32
                         implicitWidth: attachTxt.implicitWidth + 24
-                        radius: 8
+                        radius: 16
                         readonly property bool canAttach: root.selectedFiles.length > 0
 
+                        scale: attachMouse.pressed ? 0.94 : (attachMouse.containsMouse ? 1.04 : 1.0)
+                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+
                         color: canAttach
-                            ? (attachMouse.containsMouse ? Qt.lighter(Colors.primary, 1.1) : Colors.primary)
-                            : Qt.rgba(1, 1, 1, 0.08)
+                            ? (attachMouse.containsMouse ? Qt.alpha(Colors.primary, 0.32) : Qt.alpha(Colors.primary, 0.18))
+                            : Qt.rgba(1, 1, 1, 0.06)
 
                         border.width: 1
                         border.color: canAttach ? Colors.primary : Colors.glassBorderSpecular
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
 
                         Text {
                             id: attachTxt
@@ -1197,8 +1207,8 @@ Rectangle {
                             text: root.selectedFiles.length > 1 ? ("Attach (" + root.selectedFiles.length + ")") : "Attach File"
                             font.family: Theme.fontFamily
                             font.pixelSize: 11
-                            font.weight: Font.Bold
-                            color: parent.canAttach ? (Colors.isDarkMode ? "#12131A" : "#FFFFFF") : Colors.m3onSurfaceVariant
+                            font.weight: Font.DemiBold
+                            color: parent.canAttach ? Colors.primary : Colors.m3onSurfaceVariant
                         }
 
                         MouseArea {

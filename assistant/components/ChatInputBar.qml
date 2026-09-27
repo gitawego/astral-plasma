@@ -144,7 +144,7 @@ Rectangle {
                             width: isImg ? 48 : Math.min(180, Math.max(80, fileLabelRow.implicitWidth + 28))
                             height: 44
                             radius: 8
-                            color: Colors.surfaceContainerHighest
+                            color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.12, 0.14, 0.20, 0.85) : Colors.glassCard
                             border.width: 1
                             border.color: Colors.glassBorderSpecular
                             clip: true
@@ -240,6 +240,8 @@ Rectangle {
                 implicitWidth: 32
                 implicitHeight: 32
                 radius: 8
+                scale: attachMouse.pressed ? 0.94 : (attachMouse.containsMouse ? 1.05 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                 color: attachMouse.containsMouse ? Colors.glassCardHover : "transparent"
                 border.width: 1
                 border.color: Colors.glassBorderSpecular
@@ -369,11 +371,14 @@ Rectangle {
                 readonly property bool hasContent: inputField.text.trim().length > 0 || root.stagedImages.length > 0
                 readonly property bool isStreaming: root.isStreaming
 
+                scale: sendMouse.pressed ? 0.94 : (sendMouse.containsMouse ? 1.05 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+
                 color: isStreaming 
-                    ? Colors.m3error 
+                    ? (sendMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.35) : Qt.alpha(Colors.m3error, 0.20))
                     : (hasContent 
-                        ? Colors.primary 
-                        : (sendMouse.containsMouse ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.10)))
+                        ? (sendMouse.containsMouse ? Qt.alpha(Colors.primary, 0.32) : Qt.alpha(Colors.primary, 0.18))
+                        : (sendMouse.containsMouse ? Colors.glassCardHover : "transparent"))
 
                 border.width: 1
                 border.color: isStreaming 
@@ -388,10 +393,10 @@ Rectangle {
                     iconName: sendButton.isStreaming ? "stop" : "send"
                     size: 16
                     color: sendButton.isStreaming 
-                        ? Colors.m3onError 
+                        ? Colors.m3error 
                         : (sendButton.hasContent 
-                            ? (Colors.isDarkMode ? "#12131A" : "#FFFFFF") 
-                            : Colors.m3onSurface)
+                            ? Colors.primary 
+                            : Colors.m3onSurfaceVariant)
                 }
 
                 MouseArea {
@@ -425,7 +430,7 @@ Rectangle {
         anchors.right: parent.right
         implicitHeight: Math.min(220, skillCol.implicitHeight + 16)
         radius: 10
-        color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.11, 0.16, 0.85) : Colors.m3surfaceContainerHigh
+        color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.11, 0.16, 0.85) : Qt.rgba(0.96, 0.97, 1.0, 0.90)
         border.width: 1
         border.color: Colors.glassBorderSpecular
         clip: true
@@ -455,7 +460,9 @@ Rectangle {
                         Layout.fillWidth: true
                         implicitHeight: 36
                         radius: 6
-                        color: skillMouse.containsMouse ? Colors.primaryContainer : "transparent"
+                        color: skillMouse.containsMouse ? Qt.alpha(Colors.primary, 0.16) : "transparent"
+                        border.width: skillMouse.containsMouse ? 1 : 0
+                        border.color: skillMouse.containsMouse ? Qt.alpha(Colors.primary, 0.35) : "transparent"
 
                         RowLayout {
                             anchors.fill: parent

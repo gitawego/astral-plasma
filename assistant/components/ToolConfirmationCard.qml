@@ -13,9 +13,9 @@ Rectangle {
     implicitWidth: 380
     implicitHeight: col.implicitHeight + 20
     radius: 12
-    color: Colors.m3surfaceContainerHigh
+    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.12, 0.14, 0.20, 0.85) : Colors.glassCard
     border.width: 1
-    border.color: (toolProposal && toolProposal.requires_sudo) ? Colors.m3error : Colors.primary
+    border.color: (toolProposal && toolProposal.requires_sudo) ? Qt.alpha(Colors.m3error, 0.60) : Qt.alpha(Colors.primary, 0.50)
 
     readonly property string detectedImagePath: {
         if (!toolProposal) return "";
@@ -86,7 +86,7 @@ Rectangle {
             implicitHeight: Math.min(180, Math.max(100, previewImg.implicitHeight))
             radius: 8
             visible: root.isImageRead
-            color: Colors.isDarkMode ? Qt.rgba(0.06, 0.07, 0.10, 0.98) : Qt.rgba(0.92, 0.94, 0.98, 0.98)
+            color: Colors.isDarkMode ? Qt.rgba(0.06, 0.07, 0.10, 0.70) : Qt.rgba(0.94, 0.95, 0.98, 0.75)
             border.width: 1
             border.color: Colors.glassBorderSpecular
             clip: true
@@ -107,9 +107,9 @@ Rectangle {
             Layout.fillWidth: true
             implicitHeight: Math.max(34, cmdText.implicitHeight + 12)
             radius: 6
-            color: Colors.m3surface
+            color: Colors.isDarkMode ? Qt.rgba(0.04, 0.05, 0.08, 0.60) : Qt.rgba(0.92, 0.94, 0.98, 0.60)
             border.width: 1
-            border.color: Colors.m3outlineVariant
+            border.color: Colors.glassBorderSpecular
 
             Text {
                 id: cmdText
@@ -134,10 +134,12 @@ Rectangle {
             Rectangle {
                 implicitHeight: 28
                 implicitWidth: 70
-                radius: 6
-                color: denyMouse.containsMouse ? Qt.rgba(1, 0.3, 0.3, 0.15) : "transparent"
+                radius: 14
+                scale: denyMouse.pressed ? 0.94 : (denyMouse.containsMouse ? 1.04 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                color: denyMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.18) : "transparent"
                 border.width: 1
-                border.color: Colors.m3outlineVariant
+                border.color: denyMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.40) : Colors.glassBorderSpecular
 
                 Text {
                     anchors.centerIn: parent
@@ -161,16 +163,28 @@ Rectangle {
             Rectangle {
                 implicitHeight: 28
                 implicitWidth: 90
-                radius: 6
-                color: approveMouse.containsMouse ? Colors.m3primary : Qt.darker(Colors.m3primary, 1.1)
+                radius: 14
+                readonly property bool isSudo: root.toolProposal && root.toolProposal.requires_sudo
+                scale: approveMouse.pressed ? 0.94 : (approveMouse.containsMouse ? 1.04 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+
+                color: isSudo 
+                    ? (approveMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.32) : Qt.alpha(Colors.m3error, 0.20))
+                    : (approveMouse.containsMouse ? Qt.alpha(Colors.primary, 0.32) : Qt.alpha(Colors.primary, 0.18))
+
+                border.width: 1
+                border.color: isSudo ? Colors.m3error : Colors.primary
+
+                Behavior on color { ColorAnimation { duration: 150 } }
+                Behavior on border.color { ColorAnimation { duration: 150 } }
 
                 Text {
                     anchors.centerIn: parent
-                    text: (toolProposal && toolProposal.requires_sudo) ? "Run Sudo" : "Approve"
+                    text: parent.isSudo ? "Run Sudo" : "Approve"
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
-                    font.weight: Font.Bold
-                    color: Colors.m3onPrimary
+                    font.weight: Font.DemiBold
+                    color: parent.isSudo ? Colors.m3error : Colors.primary
                 }
 
                 MouseArea {

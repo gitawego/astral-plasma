@@ -23,7 +23,7 @@ Rectangle {
         width: Math.min(parent.width - 40, 380)
         implicitHeight: dialogCol.implicitHeight + 32
         radius: 16
-        color: Colors.m3surfaceContainerHigh
+        color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.12, 0.14, 0.20, 0.90) : Qt.rgba(0.96, 0.97, 1.0, 0.90)
         border.width: 1
         border.color: Colors.glassBorderSpecular
 
@@ -120,9 +120,9 @@ Rectangle {
                     Layout.fillWidth: true
                     height: 32
                     radius: 6
-                    color: Colors.m3surface
+                    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.06, 0.07, 0.10, 0.60) : Qt.rgba(0.92, 0.93, 0.96, 0.60)
                     border.width: 1
-                    border.color: Colors.m3outlineVariant
+                    border.color: Colors.glassBorderSpecular
 
                     TextInput {
                         id: endpointInput
@@ -152,9 +152,9 @@ Rectangle {
                     Layout.fillWidth: true
                     height: 32
                     radius: 6
-                    color: Colors.m3surface
+                    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.06, 0.07, 0.10, 0.60) : Qt.rgba(0.92, 0.93, 0.96, 0.60)
                     border.width: 1
-                    border.color: Colors.m3outlineVariant
+                    border.color: Colors.glassBorderSpecular
 
                     TextInput {
                         id: keyInput
@@ -184,9 +184,9 @@ Rectangle {
                     Layout.fillWidth: true
                     height: 32
                     radius: 6
-                    color: Colors.m3surface
+                    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.06, 0.07, 0.10, 0.60) : Qt.rgba(0.92, 0.93, 0.96, 0.60)
                     border.width: 1
-                    border.color: Colors.m3outlineVariant
+                    border.color: Colors.glassBorderSpecular
 
                     TextInput {
                         id: modelInput
@@ -209,10 +209,12 @@ Rectangle {
                 Rectangle {
                     implicitHeight: 30
                     implicitWidth: 70
-                    radius: 6
+                    radius: 15
+                    scale: cancelMouse.pressed ? 0.94 : (cancelMouse.containsMouse ? 1.04 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                     color: cancelMouse.containsMouse ? Colors.glassCardHover : "transparent"
                     border.width: 1
-                    border.color: Colors.m3outlineVariant
+                    border.color: cancelMouse.containsMouse ? Colors.primary : Colors.glassBorderSpecular
 
                     Text {
                         anchors.centerIn: parent
@@ -234,16 +236,23 @@ Rectangle {
                 Rectangle {
                     implicitHeight: 30
                     implicitWidth: 80
-                    radius: 6
-                    color: saveMouse.containsMouse ? Colors.m3primary : Qt.darker(Colors.m3primary, 1.1)
+                    radius: 15
+                    scale: saveMouse.pressed ? 0.94 : (saveMouse.containsMouse ? 1.04 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                    color: saveMouse.containsMouse ? Qt.alpha(Colors.primary, 0.32) : Qt.alpha(Colors.primary, 0.18)
+                    border.width: 1
+                    border.color: Colors.primary
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
 
                     Text {
                         anchors.centerIn: parent
                         text: "Save"
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
-                        font.weight: Font.Bold
-                        color: Colors.m3onPrimary
+                        font.weight: Font.DemiBold
+                        color: Colors.primary
                     }
 
                     MouseArea {

@@ -506,6 +506,45 @@ Item {
         assert(/dismissMouse/.test(assistantDrawerSrc), "AssistantDrawer must include dismiss button");
         assert(/activeCrashes/.test(assistantDrawerSrc), "AssistantDrawer must bind to AssistantService.activeCrashes");
 
+        // 13. Liquid Glass Design System & Component Polishing Contract
+        // Verify AssistantDrawer crashBanner liquid glass styling
+        assert(/dbgMouse\.pressed\s*\?\s*0\.94/.test(assistantDrawerSrc), "crashBanner Debug button must have spring scale micro-physics");
+        assert(/Qt\.alpha\(Colors\.m3error,\s*0\.20\)/.test(assistantDrawerSrc), "crashBanner Debug button must use liquid glass translucent fill");
+
+        // Verify SessionListDrawer + New button and action buttons
+        const sessionSrc = readLocalFile("../assistant/components/SessionListDrawer.qml");
+        assert(/radius:\s*14/.test(sessionSrc), "SessionListDrawer + New button must be a stadium pill (radius 14)");
+        assert(/newChatMouse\.pressed\s*\?\s*0\.95/.test(sessionSrc), "SessionListDrawer + New button must have spring scale micro-physics");
+        assert(/delMouse\.pressed\s*\?\s*0\.90/.test(sessionSrc), "SessionListDrawer delete button must have spring scale micro-physics");
+        assert(/closeMouse\.pressed\s*\?\s*0\.90/.test(sessionSrc), "SessionListDrawer close button must have spring scale micro-physics");
+
+        // Verify ChatInputBar liquid glass buttons & spring micro-physics
+        const chatInputSrc = readLocalFile("../assistant/components/ChatInputBar.qml");
+        assert(/sendMouse\.pressed\s*\?\s*0\.94/.test(chatInputSrc), "ChatInputBar send button must have spring scale micro-physics");
+        assert(/attachMouse\.pressed\s*\?\s*0\.94/.test(chatInputSrc), "ChatInputBar attach button must have spring scale micro-physics");
+        assert(/Qt\.alpha\(Colors\.primary,\s*0\.18\)/.test(chatInputSrc), "ChatInputBar send button must use liquid glass primary fill");
+
+        // Verify ToolConfirmationCard liquid glass buttons
+        const toolCardSrc = readLocalFile("../assistant/components/ToolConfirmationCard.qml");
+        assert(/approveMouse\.pressed\s*\?\s*0\.94/.test(toolCardSrc), "ToolConfirmationCard approve button must have spring scale micro-physics");
+        assert(/denyMouse\.pressed\s*\?\s*0\.94/.test(toolCardSrc), "ToolConfirmationCard deny button must have spring scale micro-physics");
+
+        // Verify LiquidGlassFilePicker Attach button & checkboxes (zero hardcoded #12131A)
+        const filePickerSrc = readLocalFile("../assistant/components/LiquidGlassFilePicker.qml");
+        assert(!/#12131A/i.test(filePickerSrc), "LiquidGlassFilePicker must NOT contain hardcoded #12131A text/colors");
+        assert(/attachMouse\.pressed\s*\?\s*0\.94/.test(filePickerSrc), "LiquidGlassFilePicker attach button must have spring scale micro-physics");
+
+        // Verify ModelProviderBar frosted glass dropdowns & spring micro-physics
+        const modelBarSrc = readLocalFile("../assistant/components/ModelProviderBar.qml");
+        assert(/providerHover\.pressed\s*\?\s*0\.96/.test(modelBarSrc), "ModelProviderBar provider button must have spring scale micro-physics");
+        assert(/modelHover\.pressed\s*\?\s*0\.96/.test(modelBarSrc), "ModelProviderBar model button must have spring scale micro-physics");
+        assert(/0\.90/.test(modelBarSrc), "ModelProviderBar dropdown popups must use frosted glass (0.90 alpha)");
+
+        // Verify AssistantHeader action buttons spring micro-physics
+        const asstHdrSrc = readLocalFile("../assistant/components/AssistantHeader.qml");
+        assert(/newChatMouse\.pressed\s*\?\s*0\.92/.test(asstHdrSrc), "AssistantHeader newChat button must have spring scale micro-physics");
+        assert(/closeMouse\.pressed\s*\?\s*0\.92/.test(asstHdrSrc), "AssistantHeader close button must have spring scale micro-physics");
+
         console.log("PASS: All Assistant Drawer tests passed!");
         Qt.exit(0);
     }

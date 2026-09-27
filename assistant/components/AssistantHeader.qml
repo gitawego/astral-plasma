@@ -121,7 +121,9 @@ Item {
             Rectangle {
                 implicitHeight: 30
                 implicitWidth: harnessRow.implicitWidth + 14
-                radius: 8
+                radius: 15
+                scale: harnessMouse.pressed ? 0.94 : (harnessMouse.containsMouse ? 1.04 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                 color: harnessMouse.containsMouse ? Colors.glassCardHover : Colors.glassCard
                 border.width: 1
                 border.color: Colors.glassBorderSpecular
@@ -160,8 +162,12 @@ Item {
             Rectangle {
                 width: 30
                 height: 30
-                radius: 8
+                radius: 15
+                scale: newChatMouse.pressed ? 0.92 : (newChatMouse.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                 color: newChatMouse.containsMouse ? Colors.glassCardHover : "transparent"
+                border.width: newChatMouse.containsMouse ? 1 : 0
+                border.color: Colors.glassBorderSpecular
 
                 MaterialIcon {
                     anchors.centerIn: parent
@@ -180,134 +186,154 @@ Item {
                 }
             }
 
-        // Sessions List Button
-        Rectangle {
-            width: 30
-            height: 30
-            radius: 8
-            color: sessionsMouse.containsMouse ? Colors.glassCardHover : "transparent"
+            // Sessions List Button
+            Rectangle {
+                width: 30
+                height: 30
+                radius: 15
+                scale: sessionsMouse.pressed ? 0.92 : (sessionsMouse.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                color: sessionsMouse.containsMouse ? Colors.glassCardHover : "transparent"
+                border.width: sessionsMouse.containsMouse ? 1 : 0
+                border.color: Colors.glassBorderSpecular
 
-            MaterialIcon {
-                anchors.centerIn: parent
-                iconName: "history"
-                size: 16
-                color: sessionsMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    iconName: "history"
+                    size: 16
+                    color: sessionsMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                }
+
+                MouseArea {
+                    id: sessionsMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                    onClicked: root.sessionsRequested()
+                }
             }
 
-            MouseArea {
-                id: sessionsMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                z: 10
-                onClicked: root.sessionsRequested()
-            }
-        }
+            // Clear Chat Button
+            Rectangle {
+                width: 30
+                height: 30
+                radius: 15
+                scale: clearMouse.pressed ? 0.92 : (clearMouse.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                color: clearMouse.containsMouse ? Colors.glassCardHover : "transparent"
+                border.width: clearMouse.containsMouse ? 1 : 0
+                border.color: Colors.glassBorderSpecular
 
-        // Clear Chat Button
-        Rectangle {
-            width: 30
-            height: 30
-            radius: 8
-            color: clearMouse.containsMouse ? Colors.glassCardHover : "transparent"
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    iconName: "refresh"
+                    size: 16
+                    color: Colors.m3onSurfaceVariant
+                }
 
-            MaterialIcon {
-                anchors.centerIn: parent
-                iconName: "refresh"
-                size: 16
-                color: Colors.m3onSurfaceVariant
-            }
-
-            MouseArea {
-                id: clearMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                z: 10
-                onClicked: {
-                    if (typeof AssistantService !== "undefined") {
-                        AssistantService.clearChat();
+                MouseArea {
+                    id: clearMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                    onClicked: {
+                        if (typeof AssistantService !== "undefined") {
+                            AssistantService.clearChat();
+                        }
                     }
                 }
             }
-        }
 
-        // Settings Button
-        Rectangle {
-            width: 30
-            height: 30
-            radius: 8
-            color: settingsMouse.containsMouse ? Colors.glassCardHover : "transparent"
+            // Settings Button
+            Rectangle {
+                width: 30
+                height: 30
+                radius: 15
+                scale: settingsMouse.pressed ? 0.92 : (settingsMouse.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                color: settingsMouse.containsMouse ? Colors.glassCardHover : "transparent"
+                border.width: settingsMouse.containsMouse ? 1 : 0
+                border.color: Colors.glassBorderSpecular
 
-            MaterialIcon {
-                anchors.centerIn: parent
-                iconName: "settings"
-                size: 16
-                color: Colors.m3onSurfaceVariant
-            }
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    iconName: "settings"
+                    size: 16
+                    color: Colors.m3onSurfaceVariant
+                }
 
-            MouseArea {
-                id: settingsMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                z: 10
-                onClicked: {
-                    if (typeof Config !== "undefined") {
-                        Config.openSettings("ai");
+                MouseArea {
+                    id: settingsMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                    onClicked: {
+                        if (typeof Config !== "undefined") {
+                            Config.openSettings("ai");
+                        }
                     }
                 }
             }
-        }
 
-        // Minimize Button
-        Rectangle {
-            id: minimizeButton
-            width: 30
-            height: 30
-            radius: 8
-            color: minMouse.containsMouse ? Colors.glassCardHover : "transparent"
+            // Minimize Button
+            Rectangle {
+                id: minimizeButton
+                width: 30
+                height: 30
+                radius: 15
+                scale: minMouse.pressed ? 0.92 : (minMouse.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                color: minMouse.containsMouse ? Colors.glassCardHover : "transparent"
+                border.width: minMouse.containsMouse ? 1 : 0
+                border.color: Colors.glassBorderSpecular
 
-            MaterialIcon {
-                anchors.centerIn: parent
-                iconName: "remove"
-                size: 16
-                color: minMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    iconName: "remove"
+                    size: 16
+                    color: minMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                }
+
+                MouseArea {
+                    id: minMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                    onClicked: root.minimizeRequested()
+                }
             }
 
-            MouseArea {
-                id: minMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                z: 10
-                onClicked: root.minimizeRequested()
-            }
-        }
+            // Close Button
+            Rectangle {
+                width: 30
+                height: 30
+                radius: 15
+                scale: closeMouse.pressed ? 0.92 : (closeMouse.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                color: closeMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.18) : "transparent"
+                border.width: closeMouse.containsMouse ? 1 : 0
+                border.color: closeMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.40) : "transparent"
 
-        // Close Button
-        Rectangle {
-            width: 30
-            height: 30
-            radius: 8
-            color: closeMouse.containsMouse ? Qt.rgba(1, 0.2, 0.2, 0.2) : "transparent"
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    iconName: "close"
+                    size: 16
+                    color: closeMouse.containsMouse ? Colors.m3error : Colors.m3onSurfaceVariant
+                }
 
-            MaterialIcon {
-                anchors.centerIn: parent
-                iconName: "close"
-                size: 16
-                color: closeMouse.containsMouse ? Colors.m3error : Colors.m3onSurfaceVariant
+                MouseArea {
+                    id: closeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                    onClicked: root.closeRequested()
+                }
             }
-
-            MouseArea {
-                id: closeMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                z: 10
-                onClicked: root.closeRequested()
-            }
-        }
         }
     }
 

@@ -129,7 +129,9 @@ Rectangle {
             Rectangle {
                 width: 28
                 height: 28
-                radius: 8
+                radius: 14
+                scale: closeMouse.pressed ? 0.90 : (closeMouse.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                 color: closeMouse.containsMouse ? Colors.glassCardHover : "transparent"
                 border.width: closeMouse.containsMouse ? 1 : 0
                 border.color: Colors.glassBorderSpecular
@@ -359,8 +361,12 @@ Rectangle {
                             Rectangle {
                                 width: 26
                                 height: 26
-                                radius: 6
-                                color: delMouse.containsMouse ? Qt.rgba(1, 0.2, 0.2, 0.2) : "transparent"
+                                radius: 13
+                                scale: delMouse.pressed ? 0.90 : (delMouse.containsMouse ? 1.08 : 1.0)
+                                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                                color: delMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.18) : "transparent"
+                                border.width: delMouse.containsMouse ? 1 : 0
+                                border.color: delMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.40) : "transparent"
                                 opacity: (cardMouse.containsMouse || delMouse.containsMouse) ? 1.0 : 0.0
 
                                 Behavior on opacity { NumberAnimation { duration: 150 } }

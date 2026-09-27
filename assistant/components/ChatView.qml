@@ -137,7 +137,7 @@ Flickable {
                                 height: isImg ? 110 : 44
                                 radius: 10
                                 clip: true
-                                color: Colors.surfaceContainerHighest
+                                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.12, 0.14, 0.20, 0.85) : Colors.glassCard
                                 border.width: 1
                                 border.color: Colors.glassBorderSpecular
 

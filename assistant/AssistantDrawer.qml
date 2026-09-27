@@ -413,6 +413,11 @@ Item {
                     Rectangle {
                         id: crashBanner
                         Layout.fillWidth: true
+                        Layout.leftMargin: Theme.padLarge
+                        Layout.rightMargin: Theme.padLarge
+                        Layout.topMargin: 4
+                        Layout.bottomMargin: 4
+                        radius: 10
 
                         readonly property var crashesList: (typeof AssistantService !== "undefined" && AssistantService.activeCrashes) ? AssistantService.activeCrashes : []
                         readonly property int crashCount: crashesList ? crashesList.length : 0
@@ -508,7 +513,9 @@ Item {
                                     Rectangle {
                                         width: 20
                                         height: 20
-                                        radius: 4
+                                        radius: 6
+                                        scale: prevMouse.pressed ? 0.90 : 1.0
+                                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                                         color: prevMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
                                         border.width: 1
                                         border.color: Colors.glassBorderSpecular
@@ -546,7 +553,9 @@ Item {
                                     Rectangle {
                                         width: 20
                                         height: 20
-                                        radius: 4
+                                        radius: 6
+                                        scale: nextMouse.pressed ? 0.90 : 1.0
+                                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                                         color: nextMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
                                         border.width: 1
                                         border.color: Colors.glassBorderSpecular
@@ -577,12 +586,19 @@ Item {
                             RowLayout {
                                 spacing: 6
 
-                                // Debug button
+                                // Debug button (Liquid Glass error pill)
                                 Rectangle {
                                     implicitHeight: 24
                                     implicitWidth: dbgTxt.implicitWidth + 16
-                                    radius: 6
-                                    color: dbgMouse.containsMouse ? Qt.lighter(Colors.m3error, 1.15) : Colors.m3error
+                                    radius: 12
+                                    scale: dbgMouse.pressed ? 0.94 : (dbgMouse.containsMouse ? 1.04 : 1.0)
+                                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                                    color: dbgMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.32) : Qt.alpha(Colors.m3error, 0.20)
+                                    border.width: 1
+                                    border.color: dbgMouse.containsMouse ? Qt.lighter(Colors.m3error, 1.2) : Colors.m3error
+
+                                    Behavior on color { ColorAnimation { duration: 150 } }
+                                    Behavior on border.color { ColorAnimation { duration: 150 } }
 
                                     Text {
                                         id: dbgTxt
@@ -590,8 +606,8 @@ Item {
                                         text: "Debug"
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 11
-                                        font.weight: Font.Bold
-                                        color: Colors.m3onError
+                                        font.weight: Font.DemiBold
+                                        color: Colors.m3error
                                     }
 
                                     MouseArea {
@@ -611,8 +627,12 @@ Item {
                                 Rectangle {
                                     width: 24
                                     height: 24
-                                    radius: 6
+                                    radius: 12
+                                    scale: dismissMouse.pressed ? 0.90 : 1.0
+                                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                                     color: dismissMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                    border.width: dismissMouse.containsMouse ? 1 : 0
+                                    border.color: Colors.glassBorderSpecular
 
                                     MaterialIcon {
                                         anchors.centerIn: parent

@@ -50,6 +50,8 @@ Item {
                 Layout.preferredWidth: 1
                 implicitHeight: 34
                 radius: 8
+                scale: providerHover.pressed ? 0.96 : (providerHover.containsMouse ? 1.02 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                 color: providerHover.containsMouse ? Colors.glassCardHover : (root.providerMenuOpen ? Colors.m3surfaceContainerHighest : "transparent")
 
                 RowLayout {
@@ -123,6 +125,8 @@ Item {
                 Layout.preferredWidth: 1.2
                 implicitHeight: 34
                 radius: 8
+                scale: modelHover.pressed ? 0.96 : (modelHover.containsMouse ? 1.02 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                 color: modelHover.containsMouse ? Colors.glassCardHover : (root.modelMenuOpen ? Colors.m3surfaceContainerHighest : "transparent")
 
                 RowLayout {
@@ -187,8 +191,12 @@ Item {
             Rectangle {
                 implicitWidth: 30
                 implicitHeight: 30
-                radius: 8
+                radius: 15
+                scale: settingsBtnHover.pressed ? 0.92 : (settingsBtnHover.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                 color: settingsBtnHover.containsMouse ? Colors.glassCardHover : "transparent"
+                border.width: settingsBtnHover.containsMouse ? 1 : 0
+                border.color: Colors.glassBorderSpecular
 
                 MaterialIcon {
                     anchors.centerIn: parent
@@ -226,7 +234,7 @@ Item {
         width: 230
         height: Math.min(320, providerCol.implicitHeight + 16)
         radius: 12
-        color: Colors.m3surfaceContainerHigh
+        color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.12, 0.17, 0.90) : Qt.rgba(0.96, 0.97, 1.0, 0.90)
         border.width: 1
         border.color: Colors.glassBorderSpecular
 
@@ -364,7 +372,7 @@ Item {
         width: 280
         height: Math.min(340, modelMainCol.implicitHeight + 16)
         radius: 12
-        color: Colors.m3surfaceContainerHigh
+        color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.12, 0.17, 0.90) : Qt.rgba(0.96, 0.97, 1.0, 0.90)
         border.width: 1
         border.color: Colors.glassBorderSpecular
 
@@ -388,7 +396,7 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: 28
                 radius: 6
-                color: Colors.m3surfaceContainerLowest
+                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.05, 0.06, 0.09, 0.60) : Qt.rgba(0.92, 0.93, 0.96, 0.60)
                 border.width: 1
                 border.color: modelSearchInput.activeFocus ? Colors.primary : Colors.glassBorderSpecular
 

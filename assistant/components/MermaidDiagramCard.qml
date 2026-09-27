@@ -23,7 +23,7 @@ Rectangle {
     implicitWidth: 380
     implicitHeight: colLayout.implicitHeight + 16
     radius: 12
-    color: Colors.isDarkMode ? Qt.rgba(0.10, 0.11, 0.16, 0.98) : Qt.rgba(0.94, 0.95, 0.98, 0.98)
+    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.12, 0.14, 0.20, 0.85) : Colors.glassCard
     border.width: 1
     border.color: Colors.glassBorderSpecular
 
@@ -90,12 +90,14 @@ Rectangle {
                 color: Colors.m3onSurface
             }
 
-            // Kind Pill
+            // Kind Pill (Liquid Glass)
             Rectangle {
                 implicitHeight: 18
                 implicitWidth: kindTxt.implicitWidth + 10
-                radius: 5
-                color: Colors.primaryContainer
+                radius: 9
+                color: Qt.alpha(Colors.primary, 0.18)
+                border.width: 1
+                border.color: Qt.alpha(Colors.primary, 0.35)
 
                 Text {
                     id: kindTxt
@@ -104,7 +106,7 @@ Rectangle {
                     font.family: Theme.fontMonospace
                     font.pixelSize: 9
                     font.weight: Font.Bold
-                    color: Colors.m3onPrimaryContainer
+                    color: Colors.primary
                 }
             }
 
@@ -113,11 +115,13 @@ Rectangle {
             // Source / Diagram Toggle Button
             Rectangle {
                 implicitHeight: 24
-                implicitWidth: toggleRow.implicitWidth + 8
-                radius: 6
+                implicitWidth: toggleRow.implicitWidth + 10
+                radius: 12
+                scale: toggleMouse.pressed ? 0.92 : (toggleMouse.containsMouse ? 1.04 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                 color: toggleMouse.containsMouse ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.06)
                 border.width: 1
-                border.color: Colors.glassBorderSpecular
+                border.color: toggleMouse.containsMouse ? Colors.primary : Colors.glassBorderSpecular
 
                 RowLayout {
                     id: toggleRow
@@ -127,7 +131,7 @@ Rectangle {
                     MaterialIcon {
                         iconName: root.showSource ? "visibility" : "code"
                         size: 13
-                        color: Colors.m3onSurfaceVariant
+                        color: toggleMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
                     }
 
                     Text {
@@ -135,7 +139,7 @@ Rectangle {
                         font.family: Theme.fontFamily
                         font.pixelSize: 10
                         font.weight: Font.Medium
-                        color: Colors.m3onSurfaceVariant
+                        color: toggleMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
                     }
                 }
 
@@ -151,11 +155,13 @@ Rectangle {
             // Copy Button
             Rectangle {
                 implicitHeight: 24
-                implicitWidth: copyRow.implicitWidth + 8
-                radius: 6
+                implicitWidth: copyRow.implicitWidth + 10
+                radius: 12
+                scale: copyMouse.pressed ? 0.92 : (copyMouse.containsMouse ? 1.04 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                 color: copyMouse.containsMouse ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.06)
                 border.width: 1
-                border.color: Colors.glassBorderSpecular
+                border.color: copyMouse.containsMouse ? Colors.primary : Colors.glassBorderSpecular
 
                 RowLayout {
                     id: copyRow
@@ -165,7 +171,7 @@ Rectangle {
                     MaterialIcon {
                         iconName: root.copyFeedback ? "check" : "content_copy"
                         size: 13
-                        color: root.copyFeedback ? Colors.primary : Colors.m3onSurfaceVariant
+                        color: root.copyFeedback ? Colors.primary : (copyMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant)
                     }
 
                     Text {
@@ -173,7 +179,7 @@ Rectangle {
                         font.family: Theme.fontFamily
                         font.pixelSize: 10
                         font.weight: Font.Medium
-                        color: root.copyFeedback ? Colors.primary : Colors.m3onSurfaceVariant
+                        color: root.copyFeedback ? Colors.primary : (copyMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant)
                     }
                 }
 
@@ -198,9 +204,9 @@ Rectangle {
             Layout.fillWidth: true
             implicitHeight: Math.max(60, Math.min(380, bodyContent.implicitHeight + 16))
             radius: 8
-            color: Colors.isDarkMode ? Qt.rgba(0.06, 0.07, 0.10, 0.98) : Qt.rgba(0.98, 0.98, 1.0, 0.98)
+            color: Colors.isDarkMode ? Qt.rgba(0.05, 0.06, 0.09, 0.65) : Qt.rgba(0.95, 0.96, 0.99, 0.65)
             border.width: 1
-            border.color: Colors.isDarkMode ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.06)
+            border.color: Colors.glassBorderSpecular
             clip: true
 
             Flickable {
