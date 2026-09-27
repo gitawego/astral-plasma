@@ -545,6 +545,43 @@ Item {
         assert(/newChatMouse\.pressed\s*\?\s*0\.92/.test(asstHdrSrc), "AssistantHeader newChat button must have spring scale micro-physics");
         assert(/closeMouse\.pressed\s*\?\s*0\.92/.test(asstHdrSrc), "AssistantHeader close button must have spring scale micro-physics");
 
+        // 25. Chat Content Typography & Markdown Headings Normalization Contract
+        assert(floatingDrawer.chatViewItem !== null, "floatingDrawer must expose chatViewItem");
+        const cv = floatingDrawer.chatViewItem;
+        assert(typeof cv.normalizeMarkdown === "function", "ChatView must expose normalizeMarkdown function");
+
+        // Verify ATX heading normalization: H1 (#) -> ### (16px DemiBold Theme.fontTitleSmall)
+        assert(cv.normalizeMarkdown("# Final campaign") === "### Final campaign", "H1 must normalize to ### (fontTitleSmall 16px)");
+        assert(cv.normalizeMarkdown("Text\n\n# Heading 1") === "Text\n\n### Heading 1", "H1 after paragraph must normalize to ###");
+        assert(cv.normalizeMarkdown("# Heading With Trailing Hashes ####") === "### Heading With Trailing Hashes", "ATX heading trailing hashes must be stripped");
+
+        // Verify H2 and H3 normalization: H2/H3 -> #### (13.5-14px DemiBold)
+        assert(cv.normalizeMarkdown("## Sub-section Analysis") === "#### Sub-section Analysis", "H2 must normalize to #### (14px DemiBold)");
+        assert(cv.normalizeMarkdown("### Repro Script") === "#### Repro Script", "H3 must normalize to #### (13.5px DemiBold)");
+
+        // Verify Setext heading normalization
+        assert(cv.normalizeMarkdown("Setext Title\n=====") === "### Setext Title", "Setext H1 must normalize to ###");
+        assert(cv.normalizeMarkdown("Setext Subtitle\n-----") === "#### Setext Subtitle", "Setext H2 must normalize to ####");
+
+        // Verify Fenced Code Block preservation (bash/python comments with # must NEVER be altered)
+        const codeBlockInput = "# Main Title\n```bash\n# this is a bash comment\nkill -9 1234\n```\n# Next Title";
+        const codeBlockExpected = "### Main Title\n```bash\n# this is a bash comment\nkill -9 1234\n```\n### Next Title";
+        assert(cv.normalizeMarkdown(codeBlockInput) === codeBlockExpected, "Fenced code blocks must be preserved byte-for-byte without altering internal comments");
+
+        const tildeCodeBlock = "~~~python\n# python comment\nx = 42\n~~~\n# Final Heading";
+        const tildeExpected = "~~~python\n# python comment\nx = 42\n~~~\n### Final Heading";
+        assert(cv.normalizeMarkdown(tildeCodeBlock) === tildeExpected, "Tilde code blocks must also be preserved byte-for-byte");
+
+        // Verify Edge Cases
+        assert(cv.normalizeMarkdown("") === "", "Empty string must return empty string");
+        assert(cv.normalizeMarkdown(null) === "", "Null must return empty string");
+        assert(cv.normalizeMarkdown("Plain text #hashtag #ffffff") === "Plain text #hashtag #ffffff", "Hashtags and hex colors must not be modified");
+
+        // Verify ChatView source contracts for font tokens and tool textFormat
+        assert(/normalizeMarkdown\(modelData\.text/.test(chatViewSrc), "ChatView must bind bubbleText through normalizeMarkdown");
+        assert(/Theme\.fontBodySmall/.test(chatViewSrc), "ChatView must use Theme.fontBodySmall (13px) for bubbleText font size");
+        assert(/isTool\s*\?\s*Text\.PlainText\s*:\s*Text\.MarkdownText/.test(chatViewSrc), "ChatView must render tool output as PlainText");
+
         console.log("PASS: All Assistant Drawer tests passed!");
         Qt.exit(0);
     }

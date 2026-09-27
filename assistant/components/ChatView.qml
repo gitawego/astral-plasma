@@ -40,6 +40,10 @@ Flickable {
         }
     }
 
+    onContentHeightChanged: {
+        Qt.callLater(root.scrollToBottom);
+    }
+
     function parseBlocks(content) {
         if (!content) return [{ type: "text", text: "" }];
         const blocks = [];
@@ -66,6 +70,31 @@ Flickable {
         }
 
         return blocks.length > 0 ? blocks : [{ type: "text", text: content }];
+    }
+
+    function normalizeMarkdown(text) {
+        if (!text) return "";
+        let str = String(text);
+        // Split by fenced code blocks (``` or ~~~) so we never modify headers inside code fences
+        const parts = str.split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g);
+        for (let i = 0; i < parts.length; i += 2) {
+            let chunk = parts[i];
+            // 1. Normalize ATX headings: 1 hash (#) -> ###, 2+ hashes (##, ###) -> ####
+            chunk = chunk.replace(/^(#{1,6})[ \t]+([^\n]+)$/gm, function(match, hashes, title) {
+                const cleanTitle = title.replace(/\s+#+\s*$/, "").trim();
+                const level = hashes.length;
+                if (level === 1) {
+                    return "### " + cleanTitle;
+                } else {
+                    return "#### " + cleanTitle;
+                }
+            });
+            // 2. Normalize Setext headings: Line followed by === -> ###, line followed by --- -> ####
+            chunk = chunk.replace(/^([^\n#`~]+)\r?\n={2,}$/gm, "### $1");
+            chunk = chunk.replace(/^([^\n#`~]+)\r?\n-{2,}$/gm, "#### $1");
+            parts[i] = chunk;
+        }
+        return parts.join("");
     }
 
     Column {
@@ -264,10 +293,10 @@ Flickable {
                                         width: isUser 
                                             ? Math.min(implicitWidth, msgCol.width * 0.90 - 32)
                                             : (isTool ? Math.min(implicitWidth, msgCol.width * 0.95 - 24) : (msgCol.width - 8))
-                                        text: modelData.text || ""
-                                        textFormat: Text.MarkdownText
+                                        text: isTool ? (modelData.text || "") : root.normalizeMarkdown(modelData.text || "")
+                                        textFormat: isTool ? Text.PlainText : Text.MarkdownText
                                         font.family: isTool ? Theme.fontMonospace : Theme.fontFamily
-                                        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 13
+                                        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodySmall) ? Theme.fontBodySmall : 13
                                         lineHeight: 1.25
                                         color: isUser ? Colors.m3onPrimaryContainer : Colors.m3onSurface
                                         wrapMode: Text.Wrap
