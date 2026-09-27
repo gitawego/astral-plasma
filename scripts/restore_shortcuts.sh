@@ -52,7 +52,13 @@ else:
                     # Key existed before: restore its exact previous value
                     subprocess.run(["kwriteconfig6", "--file", "kglobalshortcutsrc", "--group", grp, "--key", key, prev], check=False)
 
-        # 2. Restore displaced shortcut if another action had it
+        # 2. Restore displaced shortcuts if other actions had them
+        for disp in data.get("displaced_actions", []):
+            d_grp = disp.get("group")
+            d_key = disp.get("key")
+            d_val = disp.get("full_value")
+            if d_grp and d_key and d_val:
+                subprocess.run(["kwriteconfig6", "--file", "kglobalshortcutsrc", "--group", d_grp, "--key", d_key, d_val], check=False)
         displaced = data.get("displaced_action")
         if displaced:
             d_grp = displaced.get("group")

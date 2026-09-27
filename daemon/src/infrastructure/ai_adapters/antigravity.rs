@@ -153,10 +153,19 @@ impl AgentSessionAdapter for AntigravityAdapter {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
                 let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
                 let src = v.get("source").and_then(|s| s.as_str()).unwrap_or("");
-                if typ == "USER_INPUT" {
-                    return false; // User just asked, agent is in-flight
+                let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
+
+                // Actively running or in-progress steps are definitely in-flight
+                if status == "IN_PROGRESS" || status == "RUNNING" {
+                    return false;
                 }
-                if typ == "PLANNER_RESPONSE" || (src == "MODEL" && typ == "GENERIC") {
+
+                // If user just input, or a tool produced output (GENERIC / TOOL_RESULT), turn is in-flight
+                if typ == "USER_INPUT" || typ == "GENERIC" || typ == "TOOL_RESULT" || src == "TOOL_CALL" {
+                    return false;
+                }
+
+                if typ == "PLANNER_RESPONSE" {
                     let has_tools = v.get("tool_calls")
                         .and_then(|tc| tc.as_array())
                         .map(|a| !a.is_empty())
@@ -164,9 +173,8 @@ impl AgentSessionAdapter for AntigravityAdapter {
                     if has_tools {
                         return false; // Tool call in progress
                     }
-                    if typ == "PLANNER_RESPONSE" {
-                        return true; // Final response with no tool calls -> turn complete!
-                    }
+                    // A PLANNER_RESPONSE with no tool calls indicates final completion of turn
+                    return true;
                 }
             }
         }

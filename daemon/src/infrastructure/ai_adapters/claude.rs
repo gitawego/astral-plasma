@@ -150,6 +150,10 @@ impl AgentSessionAdapter for ClaudeAdapter {
                 continue;
             }
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                if typ == "tool_result" || typ == "tool_use" || typ == "progress" {
+                    return false;
+                }
                 let msg = v.get("message");
                 let stop_reason = v.get("stop_reason")
                     .or_else(|| msg.and_then(|m| m.get("stop_reason")))

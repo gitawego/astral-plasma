@@ -177,3 +177,75 @@ run command=Meta+Space,none,Run Command
         "Displaced shortcut must be restored to its original owner"
     );
 }
+
+#[test]
+fn test_granular_backup_restores_multiple_displaced_shortcuts_in_kwin() {
+    let _lock = TEST_MUTEX.lock().unwrap();
+    let tmpdir = tempfile::tempdir().expect("Failed to create tempdir");
+    let mock_config = tmpdir.path().join("config");
+    let mock_data = tmpdir.path().join("data");
+    fs::create_dir_all(&mock_config).unwrap();
+    fs::create_dir_all(&mock_data).unwrap();
+
+    let kglobal_path = mock_config.join("kglobalshortcutsrc");
+    // Suppose KWin has built-in actions claiming Meta+W (Overview) and Meta+D (Show Desktop)
+    let initial_content = r#"[kwin]
+Overview=Meta+W,Meta+W,Toggle Overview
+Show Desktop=Meta+D,Meta+D,Peek at Desktop
+KrohnkiteFocusPrev=Meta+,,none,Krohnkite: Focus Previous
+"#;
+    fs::write(&kglobal_path, initial_content).unwrap();
+
+    let backup_dir = mock_data.join(branding::DATA_DIR).join(branding::SHORTCUTS_BACKUP_SUBDIR);
+
+    std::env::set_var("XDG_CONFIG_HOME", &mock_config);
+    std::env::set_var("XDG_DATA_HOME", &mock_data);
+    std::env::set_var(branding::ENV_SHORTCUTS_BACKUP_DIR, &backup_dir);
+    std::env::set_var(branding::ENV_TEST_MODE, "1");
+
+    let adapter = KWinShortcutsAdapter::new();
+    let use_case = ShortcutControlUseCase::new(adapter);
+
+    // 1. Backup and bind Astral shortcuts
+    use_case.backup_and_bind("meta-space").unwrap();
+
+    // Verify conflicting actions are displaced during the session
+    let bound_ini = KdeIniFile::parse(&fs::read_to_string(&kglobal_path).unwrap());
+    assert_eq!(bound_ini.get("kwin", "Overview").as_deref(), Some("none,none"));
+    assert_eq!(bound_ini.get("kwin", "Show Desktop").as_deref(), Some("none,none"));
+    assert_eq!(bound_ini.get("kwin", "KrohnkiteFocusPrev").as_deref(), Some("none,none"));
+    assert_eq!(
+        bound_ini.get("kwin", branding::SHORTCUT_OVERVIEW_KEY).as_deref(),
+        Some(format!("Meta+W,none,{}", branding::SHORTCUT_OVERVIEW_LABEL).as_str())
+    );
+    assert_eq!(
+        bound_ini.get("kwin", branding::SHORTCUT_DASHBOARD_KEY).as_deref(),
+        Some(format!("Meta+D,none,{}", branding::SHORTCUT_DASHBOARD_LABEL).as_str())
+    );
+
+    // 2. Restore session
+    use_case.restore().unwrap();
+
+    // 3. Verify displaced actions are restored to their original full values
+    let final_ini = KdeIniFile::parse(&fs::read_to_string(&kglobal_path).unwrap());
+    assert_eq!(
+        final_ini.get("kwin", "Overview").as_deref(),
+        Some("Meta+W,Meta+W,Toggle Overview"),
+        "KWin Overview must be restored to Meta+W"
+    );
+    assert_eq!(
+        final_ini.get("kwin", "Show Desktop").as_deref(),
+        Some("Meta+D,Meta+D,Peek at Desktop"),
+        "KWin Show Desktop must be restored to Meta+D"
+    );
+    assert_eq!(
+        final_ini.get("kwin", "KrohnkiteFocusPrev").as_deref(),
+        Some("Meta+,,none,Krohnkite: Focus Previous"),
+        "KWin KrohnkiteFocusPrev must be restored to Meta+,"
+    );
+    assert_eq!(
+        final_ini.get("kwin", branding::SHORTCUT_OVERVIEW_KEY),
+        None,
+        "Astral Overview must be removed after restore"
+    );
+}

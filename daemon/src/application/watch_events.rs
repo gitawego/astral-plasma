@@ -7,17 +7,23 @@ use crate::application::wine_mpris::{parse_wine_media, WineMprisService, WineMpr
 use crate::domain::model::{
     ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowMeta, WindowsListPayload,
 };
-use crate::domain::ports::{DynResult, TrayPort, WindowManagerPort};
+use crate::domain::ports::{DynResult, ShortcutControlPort, TrayPort, WindowManagerPort};
 use crate::infrastructure::window_icons;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use zbus::connection::Builder;
+
+pub fn emit_stdout_line(line: &str) {
+    println!("{}", line);
+    let _ = std::io::stdout().flush();
+}
 
 const KWIN_SCRIPT_NAME: &str = branding::KWIN_SCRIPT_WATCHER;
 
@@ -218,7 +224,7 @@ impl WatcherService {
         };
 
         if let Ok(serialized) = serde_json::to_string(&payload) {
-            println!("{}", serialized);
+            emit_stdout_line(&serialized);
         }
     }
 
@@ -331,7 +337,7 @@ impl WatcherService {
         };
 
         if let Ok(serialized) = serde_json::to_string(&payload) {
-            println!("{}", serialized);
+            emit_stdout_line(&serialized);
         }
 
         if let Some(mpris) = self.bridge() {
@@ -380,7 +386,7 @@ impl WatcherService {
                 has_maximized_window: has_max,
             };
             if let Ok(serialized) = serde_json::to_string(&payload) {
-                println!("{}", serialized);
+                emit_stdout_line(&serialized);
             }
         }
     }
@@ -395,7 +401,7 @@ impl WatcherService {
                 tray: new_tray,
             };
             if let Ok(serialized) = serde_json::to_string(&payload) {
-                println!("{}", serialized);
+                emit_stdout_line(&serialized);
             }
         }
     }
@@ -693,7 +699,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
         };
 
         if let Ok(serialized) = serde_json::to_string(&full_payload) {
-            println!("{}", serialized);
+            emit_stdout_line(&serialized);
         }
     }
 
@@ -841,6 +847,34 @@ pub async fn run_event_daemon() -> DynResult<()> {
 
     // Compositor-specific window event watcher
     if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
+        // Ensure shortcuts are registered/bound and conflicting actions safely displaced
+        let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
+        let _ = shortcuts.bind_shortcuts("meta-space");
+
+        // Ensure KDE Plasma panels are disabled if not already
+        let plasma = crate::application::plasma_service::PlasmaControlUseCase::new(
+            crate::infrastructure::plasma_adapter::PlasmaAdapter::new(),
+        );
+        let _ = plasma.backup_and_disable("all", Some(std::process::id()));
+
+        // Periodic watchdog to ensure built-in Plasma panels don't respawn while running
+        tokio::spawn(async move {
+            let plasma_port = crate::infrastructure::plasma_adapter::PlasmaAdapter::new();
+            let mut interval = tokio::time::interval(Duration::from_secs(3));
+            loop {
+                interval.tick().await;
+                if !crate::domain::branding::test_mode() {
+                    use crate::domain::ports::PlasmaControlPort;
+                    if let Ok(panels) = plasma_port.query_panels() {
+                        if !panels.is_empty() {
+                            eprintln!("[{}] Detected {} respawned built-in panel(s); re-disabling...", crate::domain::branding::APP_NAME, panels.len());
+                            let _ = plasma_port.disable_panels("all");
+                        }
+                    }
+                }
+            }
+        });
+
         cleanup_kwin_script();
         let script_file = branding::tmp_file("kwin_watcher.js");
         fs::write(&script_file, get_kwin_watcher_script())?;
@@ -936,7 +970,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
                         tray: new_tray,
                     };
                     if let Ok(serialized) = serde_json::to_string(&payload) {
-                        println!("{}", serialized);
+                        emit_stdout_line(&serialized);
                     }
                 }
             }
@@ -952,6 +986,12 @@ pub async fn run_event_daemon() -> DynResult<()> {
                 Ok(0) | Err(_) => {
                     if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
                         cleanup_kwin_script();
+                        let plasma = crate::application::plasma_service::PlasmaControlUseCase::new(
+                            crate::infrastructure::plasma_adapter::PlasmaAdapter::new(),
+                        );
+                        let _ = plasma.restore();
+                        let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
+                        let _ = shortcuts.restore_relevant_shortcuts();
                     }
                     std::process::exit(0);
                 }
@@ -961,12 +1001,34 @@ pub async fn run_event_daemon() -> DynResult<()> {
     });
 
     // Handle termination signals
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
-                cleanup_kwin_script();
-            }
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm = signal(SignalKind::terminate()).ok();
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {},
+            _ = async {
+                if let Some(ref mut st) = sigterm {
+                    st.recv().await;
+                } else {
+                    std::future::pending::<()>().await;
+                }
+            } => {},
         }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+
+    if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
+        cleanup_kwin_script();
+        let plasma = crate::application::plasma_service::PlasmaControlUseCase::new(
+            crate::infrastructure::plasma_adapter::PlasmaAdapter::new(),
+        );
+        let _ = plasma.restore();
+        let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
+        let _ = shortcuts.restore_relevant_shortcuts();
     }
 
     Ok(())
@@ -1035,7 +1097,7 @@ fn run_hyprland_socket_watcher_sync(
                                 has_maximized_window: has_max,
                             };
                             if let Ok(serialized) = serde_json::to_string(&payload) {
-                                println!("{}", serialized);
+                                emit_stdout_line(&serialized);
                             }
                         }
                     }

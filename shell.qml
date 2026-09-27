@@ -435,7 +435,7 @@ ShellRoot {
         }
         if (Config.disablePlasmaPanels && DesktopSessionFacade.profile === "kde") {
             const target = (typeof Config.disablePlasmaPanels === "string") ? Config.disablePlasmaPanels : "all";
-            Quickshell.execDetached([Config.daemonBin, "plasma", "disable", target, "" + Quickshell.processId]);
+            Quickshell.execDetached([Config.daemonBin, "plasma", "disable", target]);
         }
     }
 

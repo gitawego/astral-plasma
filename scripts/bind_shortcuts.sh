@@ -86,6 +86,31 @@ for entry in astral-launcher.desktop astral-wallpaper.desktop astral-assistant.d
     kwriteconfig6 --file kglobalshortcutsrc --group "services" --group "$entry" --key "_launch" --delete 2>/dev/null || true
 done
 
+# Clear displaced actions recorded in session backup from kglobalshortcutsrc
+BACKUP_FILE="$HOME/.local/share/astral-plasma/shortcuts-backup/shortcuts_backup.json"
+if [ -f "$BACKUP_FILE" ]; then
+    python3 - << 'PYEOF'
+import json, os, subprocess
+backup_file = os.path.expanduser("~/.local/share/astral-plasma/shortcuts-backup/shortcuts_backup.json")
+try:
+    with open(backup_file, "r") as f:
+        data = json.load(f)
+    for disp in data.get("displaced_actions", []):
+        grp = disp.get("group")
+        key = disp.get("key")
+        if grp and key:
+            subprocess.run(["kwriteconfig6", "--file", "kglobalshortcutsrc", "--group", grp, "--key", key, "none,none"], check=False)
+    single_disp = data.get("displaced_action")
+    if single_disp:
+        grp = single_disp.get("group")
+        key = single_disp.get("key")
+        if grp and key:
+            subprocess.run(["kwriteconfig6", "--file", "kglobalshortcutsrc", "--group", grp, "--key", key, "none,none"], check=False)
+except Exception:
+    pass
+PYEOF
+fi
+
 # 1. Install / update KWin script package
 KWIN_SCRIPT_SRC="$DIR/kwin/astral-plasma-shortcuts"
 KWIN_SCRIPT_DEST="$HOME/.local/share/kwin/scripts/astral-plasma-shortcuts"
@@ -103,7 +128,7 @@ qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start 2>/dev/null || true
 
 # 3. Ensure kglobalaccel registration and conflict-free single ownership
 python3 - <<EOF
-import dbus
+import dbus, json, os
 
 KEY_CODES = {
     "meta-space": 268435488,   # Meta+Space
@@ -141,6 +166,26 @@ try:
     accel.setForeignShortcut(['astral-assistant.desktop', '_launch', 'default', 'Astral Plasma AI Copilot'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-dashboard.desktop', '_launch', 'default', 'Astral Dashboard'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-settings.desktop', '_launch', 'default', 'Astral Settings'], [dbus.Int32(0)])
+
+    # Clear displaced shortcuts in KGlobalAccel so KWin does not drop new registrations
+    backup_file = os.path.expanduser("~/.local/share/astral-plasma/shortcuts-backup/shortcuts_backup.json")
+    if os.path.exists(backup_file):
+        try:
+            with open(backup_file, "r") as f:
+                bdata = json.load(f)
+            for disp in bdata.get("displaced_actions", []):
+                grp = disp.get("group")
+                key = disp.get("key")
+                if grp and key:
+                    accel.setForeignShortcut([grp, key, 'default', ''], [dbus.Int32(0)])
+            single_disp = bdata.get("displaced_action")
+            if single_disp:
+                grp = single_disp.get("group")
+                key = single_disp.get("key")
+                if grp and key:
+                    accel.setForeignShortcut([grp, key, 'default', ''], [dbus.Int32(0)])
+        except Exception as e:
+            print(f"[!] DBus displaced clearing notice: {e}")
 
     # The KWin actions own the shortcuts; their script forwards to the daemon,
     # which runs the shell IPC.

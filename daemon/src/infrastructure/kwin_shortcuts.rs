@@ -101,6 +101,36 @@ impl KdeIniFile {
     }
 }
 
+fn is_astral_action(group: &str, key: &str) -> bool {
+    let g = group.to_lowercase();
+    let k = key.to_lowercase();
+    if g == "services" && k.starts_with("astral-") {
+        return true;
+    }
+    if g == "kwin" && k.starts_with("astral") {
+        return true;
+    }
+    false
+}
+
+fn parse_kde_shortcuts(v: &str) -> (String, String) {
+    let normalized = v.replace("+,,", "+__COMMA__,").replace("\\,", "__COMMA__");
+    let parts: Vec<&str> = normalized.split(',').collect();
+    let primary = parts
+        .first()
+        .unwrap_or(&"")
+        .replace("__COMMA__", ",")
+        .trim()
+        .to_lowercase();
+    let alt = parts
+        .get(1)
+        .unwrap_or(&"")
+        .replace("__COMMA__", ",")
+        .trim()
+        .to_lowercase();
+    (primary, alt)
+}
+
 impl ShortcutControlPort for KWinShortcutsAdapter {
     fn snapshot_relevant_shortcuts(&self, target_shortcut: &str) -> DynResult<AstralShortcutSessionBackup> {
         let backup_dir = self.resolve_backup_dir();
@@ -155,30 +185,43 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
             });
         }
 
-        // Scan if target_shortcut (e.g. Meta+Space) was previously claimed by another action
-        let mut displaced: Option<DisplacedShortcut> = None;
-        let target_lower = target_shortcut.to_lowercase();
+        // Scan if any target shortcuts were previously claimed by another action
+        let mut displaced_actions: Vec<DisplacedShortcut> = Vec::new();
+        let target_launcher_clean = match target_shortcut.to_lowercase().as_str() {
+            "meta" | "super" => "alt+f1",
+            "alt-space" => "alt+space",
+            _ => "meta+space",
+        };
+        let target_keys = [
+            target_launcher_clean,
+            "meta+shift+w",
+            "meta+w",
+            "meta+c",
+            "meta+d",
+            "meta+,",
+        ];
 
         for (grp_name, keys) in &ini.groups {
-            if grp_name == "kwin" || grp_name == "services" {
-                // Skip Astral's own targets
-                continue;
-            }
             for (k, v) in keys {
-                let first_part = v.split(',').next().unwrap_or("").trim().to_lowercase();
-                if first_part == target_lower {
-                    displaced = Some(DisplacedShortcut {
+                if is_astral_action(grp_name, k) {
+                    continue;
+                }
+                let (primary_sc, alt_scs) = parse_kde_shortcuts(v);
+
+                let matches_any = target_keys.iter().any(|&tk| {
+                    primary_sc == tk || alt_scs.split('\t').any(|alt| alt.trim() == tk)
+                });
+
+                if matches_any {
+                    displaced_actions.push(DisplacedShortcut {
                         group: grp_name.clone(),
                         key: k.clone(),
                         full_value: v.clone(),
                     });
-                    break;
                 }
             }
-            if displaced.is_some() {
-                break;
-            }
         }
+        let displaced = displaced_actions.first().cloned();
 
         // Check kwinrc plugin state
         let kwinrc_content = if kwinrc_path.exists() {
@@ -201,7 +244,7 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
         // `monitored_keys` after the session started), keep every recorded
         // original untouched, and rewrite only when something was appended.
         if let Some(existing) = existing {
-            let (merged, changed) = crate::domain::shortcuts::merge_missing_entries(existing, affected, displaced);
+            let (merged, changed) = crate::domain::shortcuts::merge_missing_entries_multi(existing, affected, displaced_actions);
             if changed {
                 fs::write(&backup_path, serde_json::to_string_pretty(&merged)?)?;
             }
@@ -213,6 +256,7 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
             affected_entries: affected,
             previous_kwin_plugin_enabled: plugin_enabled,
             displaced_action: displaced,
+            displaced_actions,
         };
 
         fs::write(&backup_path, serde_json::to_string_pretty(&backup)?)?;
@@ -248,7 +292,10 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
                 }
             }
 
-            // Restore displaced key if any
+            // Restore displaced keys if any
+            for displaced in &backup.displaced_actions {
+                ini.set(&displaced.group, &displaced.key, &displaced.full_value);
+            }
             if let Some(ref displaced) = backup.displaced_action {
                 ini.set(&displaced.group, &displaced.key, &displaced.full_value);
             }
@@ -329,6 +376,19 @@ except Exception:
                 String::new()
             };
             let mut ini = KdeIniFile::parse(&kglobal_content);
+
+            // Clear displaced actions from the backup in the mock config
+            if let Ok(content) = fs::read_to_string(self.backup_file_path()) {
+                if let Ok(backup) = serde_json::from_str::<AstralShortcutSessionBackup>(&content) {
+                    for disp in &backup.displaced_actions {
+                        ini.set(&disp.group, &disp.key, "none,none");
+                    }
+                    if let Some(ref disp) = backup.displaced_action {
+                        ini.set(&disp.group, &disp.key, "none,none");
+                    }
+                }
+            }
+
             ini.set(
                 "kwin",
                 branding::SHORTCUT_LAUNCHER_KEY,
@@ -338,6 +398,11 @@ except Exception:
                 "kwin",
                 branding::SHORTCUT_WALLPAPER_KEY,
                 &format!("Meta+Shift+W,none,{}", branding::SHORTCUT_WALLPAPER_LABEL),
+            );
+            ini.set(
+                "kwin",
+                branding::SHORTCUT_OVERVIEW_KEY,
+                &format!("Meta+W,none,{}", branding::SHORTCUT_OVERVIEW_LABEL),
             );
             ini.set(
                 "kwin",

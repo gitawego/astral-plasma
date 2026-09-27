@@ -24,6 +24,8 @@ pub struct AstralShortcutSessionBackup {
     pub affected_entries: Vec<GranularShortcutSnapshot>,
     pub previous_kwin_plugin_enabled: bool,
     pub displaced_action: Option<DisplacedShortcut>,
+    #[serde(default)]
+    pub displaced_actions: Vec<DisplacedShortcut>,
 }
 
 /// Merge freshly-read current entries into an EXISTING session backup.
@@ -55,6 +57,39 @@ pub fn merge_missing_entries(
     if existing.displaced_action.is_none() && fresh_displaced.is_some() {
         existing.displaced_action = fresh_displaced;
         changed = true;
+    }
+    (existing, changed)
+}
+
+/// Merge with multiple displaced actions support.
+pub fn merge_missing_entries_multi(
+    mut existing: AstralShortcutSessionBackup,
+    fresh: Vec<GranularShortcutSnapshot>,
+    fresh_displaced: Vec<DisplacedShortcut>,
+) -> (AstralShortcutSessionBackup, bool) {
+    let mut changed = false;
+    for entry in fresh {
+        let known = existing
+            .affected_entries
+            .iter()
+            .any(|e| e.group == entry.group && e.key == entry.key);
+        if !known {
+            existing.affected_entries.push(entry);
+            changed = true;
+        }
+    }
+    for disp in fresh_displaced {
+        let known = existing
+            .displaced_actions
+            .iter()
+            .any(|d| d.group == disp.group && d.key == disp.key);
+        if !known {
+            if existing.displaced_action.is_none() {
+                existing.displaced_action = Some(disp.clone());
+            }
+            existing.displaced_actions.push(disp);
+            changed = true;
+        }
     }
     (existing, changed)
 }

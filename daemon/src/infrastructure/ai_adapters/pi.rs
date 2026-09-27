@@ -161,6 +161,10 @@ impl AgentSessionAdapter for PiAdapter {
                 continue;
             }
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                if typ == "tool_result" || typ == "tool_use" || typ == "toolUse" {
+                    return false;
+                }
                 let msg = v.get("message");
                 let stop_reason = v.get("stopReason")
                     .or_else(|| v.get("stop_reason"))

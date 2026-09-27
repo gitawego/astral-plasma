@@ -159,10 +159,16 @@ impl AgentSessionAdapter for CodexAdapter {
                 if typ == "task_complete" || typ == "turn_complete" {
                     return true;
                 }
+                if typ == "tool_call" || typ == "tool_output" || typ == "tool_result" {
+                    return false;
+                }
                 if let Some(payload) = v.get("payload") {
                     let p_type = payload.get("type").and_then(|t| t.as_str()).unwrap_or("");
                     if p_type == "task_complete" || p_type == "turn_complete" {
                         return true;
+                    }
+                    if p_type == "tool_call" || p_type == "tool_output" || p_type == "tool_result" {
+                        return false;
                     }
                 }
                 let finish_reason = v.get("finish_reason")

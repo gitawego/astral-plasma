@@ -106,6 +106,18 @@ impl AiActivityMonitor {
         tokens: Option<u64>,
         is_completed: bool,
     ) {
+        self.record_activity_full_with_session("", raw_model, tool_source, tokens, is_completed).await;
+    }
+
+    /// Records an event with an explicit session scope to track concurrent parallel agents independently.
+    pub async fn record_activity_full_with_session(
+        &self,
+        session_key: &str,
+        raw_model: &str,
+        tool_source: &str,
+        tokens: Option<u64>,
+        is_completed: bool,
+    ) {
         let now_ms = current_epoch_ms();
         let identity = resolve_model_metadata(raw_model, tool_source);
 
@@ -126,8 +138,12 @@ impl AiActivityMonitor {
         let total_tokens: u64 = tok_window.iter().map(|&(_, cnt)| cnt).sum();
         let tpm = total_tokens as f64;
 
-        // Update per-agent track using composite key (tool_source:model_id) so concurrent agents never overwrite each other
-        let key = format!("{}:{}", identity.tool_source, identity.model_id);
+        // Update per-agent track using composite key (tool_source:model_id:session_key) so concurrent agents never overwrite each other
+        let key = if session_key.is_empty() {
+            format!("{}:{}", identity.tool_source, identity.model_id)
+        } else {
+            format!("{}:{}:{}", identity.tool_source, identity.model_id, session_key)
+        };
         let mut tracks = self.agent_tracks.write().await;
         let track = tracks.entry(key).or_insert_with(|| AgentTrack {
             identity: identity.clone(),
@@ -194,6 +210,7 @@ impl AiActivityMonitor {
 
         let prev_active_count = st.active_agents.len();
         let prev_active = st.is_active;
+        let prev_intensity = (st.intensity * 20.0).round();
 
         // Prune tracks older than retention window
         tracks.retain(|_, t| now_ms.saturating_sub(t.last_event_epoch_ms) < TRACK_RETENTION_MS);
@@ -252,7 +269,8 @@ impl AiActivityMonitor {
             st.recent_tokens = 0;
         }
 
-        prev_active != st.is_active || prev_active_count != st.active_agents.len()
+        let new_intensity = (st.intensity * 20.0).round();
+        prev_active != st.is_active || prev_active_count != st.active_agents.len() || (st.is_active && prev_intensity != new_intensity)
     }
 
     /// Queries the full ground-truth state across all adapters and active session files.
@@ -376,7 +394,8 @@ impl AiActivityMonitor {
                 self.registry.parse_model_tokens_and_status(&file_info.path)
             {
                 if !is_completed || now_ms.saturating_sub(file_info.mtime) < COMPLETED_WINDOW_MS {
-                    self.record_activity_full(&model, &tool, tokens, is_completed)
+                    let session_key = extract_session_key(&file_info.path);
+                    self.record_activity_full_with_session(&session_key, &model, &tool, tokens, is_completed)
                         .await;
                 }
             }
@@ -394,7 +413,9 @@ impl AiActivityMonitor {
                 ACTIVE_AGENT_WINDOW_MS
             };
             if now_ms.saturating_sub(updated) < window {
-                self.record_activity_full(
+                let session_key = store_res.tool_source.clone();
+                self.record_activity_full_with_session(
+                    &session_key,
                     &store_res.model_id,
                     &store_res.tool_source,
                     store_res.tokens,
@@ -513,7 +534,8 @@ impl AiActivityMonitor {
                                                 last_seen_store_time.insert(store_res.tool_source.clone(), time_updated);
                                                 last_seen_store_tokens.insert(store_res.tool_source.clone(), tokens);
                                                 let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                                                self.record_activity_full(&store_res.model_id, &store_res.tool_source, Some(reported), store_res.is_turn_completed).await;
+                                                let session_key = store_res.tool_source.clone();
+                                                self.record_activity_full_with_session(&session_key, &store_res.model_id, &store_res.tool_source, Some(reported), store_res.is_turn_completed).await;
                                                 let curr = self.get_state().await;
                                                 emit_activity_payload(&curr);
                                             }
@@ -530,7 +552,8 @@ impl AiActivityMonitor {
                                             if is_fresh {
                                                 if let Some(parsed) = self.registry.parse_file(&full_path) {
                                                     if !parsed.is_turn_completed || now_ms.saturating_sub(mtime) < COMPLETED_WINDOW_MS {
-                                                        self.record_activity_full(&parsed.model_id, &parsed.tool_source, parsed.tokens, parsed.is_turn_completed).await;
+                                                        let session_key = extract_session_key(&full_path);
+                                                        self.record_activity_full_with_session(&session_key, &parsed.model_id, &parsed.tool_source, parsed.tokens, parsed.is_turn_completed).await;
                                                         let curr = self.get_state().await;
                                                         emit_activity_payload(&curr);
                                                     }
@@ -549,8 +572,8 @@ impl AiActivityMonitor {
                     let mut should_emit = false;
                     let now_ms = current_epoch_ms();
 
-                    // Heartbeat: while an agent is active in-flight, emit state every 2000ms so QML is never starved
-                    if self.get_state().await.is_active && now_ms.saturating_sub(last_heartbeat_epoch_ms) >= 2000 {
+                    // Heartbeat: while an agent is active in-flight, emit state every 500ms so QML is never starved
+                    if self.get_state().await.is_active && now_ms.saturating_sub(last_heartbeat_epoch_ms) >= 500 {
                         last_heartbeat_epoch_ms = now_ms;
                         should_emit = true;
                     }
@@ -592,7 +615,8 @@ impl AiActivityMonitor {
                             if let Some(parsed) = self.registry.parse_file(&file_info.path) {
                                 let now_ms = current_epoch_ms();
                                 if !parsed.is_turn_completed || now_ms.saturating_sub(file_info.mtime) < COMPLETED_WINDOW_MS {
-                                    self.record_activity_full(&parsed.model_id, &parsed.tool_source, parsed.tokens, parsed.is_turn_completed).await;
+                                    let session_key = extract_session_key(&file_info.path);
+                                    self.record_activity_full_with_session(&session_key, &parsed.model_id, &parsed.tool_source, parsed.tokens, parsed.is_turn_completed).await;
                                     should_emit = true;
                                 }
                             }
@@ -615,7 +639,8 @@ impl AiActivityMonitor {
                             last_seen_store_time.insert(store_res.tool_source.clone(), time_updated);
                             last_seen_store_tokens.insert(store_res.tool_source.clone(), tokens);
                             let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                            self.record_activity_full(&store_res.model_id, &store_res.tool_source, Some(reported), store_res.is_turn_completed).await;
+                            let session_key = store_res.tool_source.clone();
+                            self.record_activity_full_with_session(&session_key, &store_res.model_id, &store_res.tool_source, Some(reported), store_res.is_turn_completed).await;
                             should_emit = true;
                         }
                     }
@@ -766,8 +791,30 @@ pub fn emit_activity_payload(st: &AiActivityState) {
         "active_agents": st.active_agents,
     });
     if let Ok(s) = serde_json::to_string(&payload) {
+        use std::io::Write;
         println!("{}", s);
+        let _ = std::io::stdout().flush();
     }
+}
+
+pub fn extract_session_key(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    if s.contains("antigravity") {
+        let mut curr = path;
+        while let Some(parent) = curr.parent() {
+            if let Some(file_name) = parent.file_name() {
+                if file_name == "brain" {
+                    if let Some(uuid) = curr.file_name() {
+                        return uuid.to_string_lossy().to_string();
+                    }
+                }
+            }
+            curr = parent;
+        }
+    }
+    path.file_stem()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
 fn current_epoch_ms() -> u64 {

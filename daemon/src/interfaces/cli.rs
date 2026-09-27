@@ -64,7 +64,21 @@ pub async fn run_cli() -> DynResult<()> {
             match sub {
                 "disable" => {
                     let target = args.get(3).map(|s| s.as_str()).unwrap_or("all");
-                    let pid = args.get(4).and_then(|p| p.parse::<u32>().ok());
+                    let pid = args.get(4)
+                        .and_then(|p| p.parse::<u32>().ok())
+                        .or_else(|| {
+                            #[cfg(unix)]
+                            {
+                                let ppid = unsafe { libc::getppid() as u32 };
+                                if ppid > 1 {
+                                    Some(ppid)
+                                } else {
+                                    None
+                                }
+                            }
+                            #[cfg(not(unix))]
+                            None
+                        });
                     let removed = plasma.backup_and_disable(target, pid)?;
                     println!(r#"{{"success":true,"removed":{}}}"#, removed);
                 }
@@ -1297,10 +1311,13 @@ async fn run_self_contained_app() -> DynResult<()> {
         let _ = run_api_server(DEFAULT_API_PORT).await;
     });
 
-    // 3. Backup and disable KDE Plasma panels (only under KDE)
+    // 3. Backup and disable KDE Plasma panels (only under KDE) and bind shortcuts
     if is_kwin {
         let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
         let _ = plasma.backup_and_disable("all", Some(std::process::id()));
+        let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
+        use crate::domain::ports::ShortcutControlPort;
+        let _ = shortcuts.bind_shortcuts("meta-space");
     }
 
     // 4. Launch Quickshell
@@ -1342,11 +1359,14 @@ async fn run_self_contained_app() -> DynResult<()> {
         let _ = child.wait();
     }
 
-    // 6. On exit, restore original Plasma panels cleanly (only under KDE) and clean up authorization entry
+    // 6. On exit, restore original Plasma panels cleanly (only under KDE), restore shortcuts, and clean up authorization entry
     if is_kwin {
         println!("[{}] Quickshell stopped. Restoring original KDE Plasma panels and cleaning up authorization...", branding::APP_NAME);
         let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
         let _ = plasma.restore();
+        let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
+        use crate::domain::ports::ShortcutControlPort;
+        let _ = shortcuts.restore_relevant_shortcuts();
         let _ = crate::infrastructure::preview_capture::remove_desktop_entry(None);
     }
 

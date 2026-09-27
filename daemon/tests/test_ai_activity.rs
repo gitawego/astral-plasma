@@ -585,6 +585,19 @@ fn test_check_turn_completed_antigravity() {
 {"step_index":102,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE"}
 "#;
     assert!(!check_turn_completed_from_tail(tail_user, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"));
+
+    // 4. Intermediate tool output returned - turn is STILL in-flight!
+    let tail_tool_res = r#"
+{"step_index":100,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","tool_calls":[{"name":"view_file","args":{}}]}
+{"step_index":101,"source":"MODEL","type":"GENERIC","status":"DONE","content":"file content..."}
+"#;
+    assert!(!check_turn_completed_from_tail(tail_tool_res, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"));
+
+    // 5. Active step in progress
+    let tail_in_prog = r#"
+{"step_index":100,"source":"MODEL","type":"PLANNER_RESPONSE","status":"IN_PROGRESS"}
+"#;
+    assert!(!check_turn_completed_from_tail(tail_in_prog, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"));
 }
 
 #[test]

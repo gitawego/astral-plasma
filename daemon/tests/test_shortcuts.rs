@@ -18,7 +18,8 @@ fn backup(
         timestamp: 1,
         affected_entries: entries,
         previous_kwin_plugin_enabled: false,
-        displaced_action: displaced,
+        displaced_action: displaced.clone(),
+        displaced_actions: displaced.into_iter().collect(),
     }
 }
 

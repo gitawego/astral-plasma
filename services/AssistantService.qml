@@ -21,6 +21,31 @@ Singleton {
     ]
 
     property bool isStreaming: false
+    onIsStreamingChanged: {
+        if (typeof AiActivityService !== "undefined") {
+            if (isStreaming) {
+                AiActivityService.applyActivity({
+                    agent: selectedHarness || "astral-copilot",
+                    model: selectedModelId || "mimo-v2.6-flash",
+                    display_name: selectedModelId || "Astral Copilot",
+                    is_active: true,
+                    intensity: 1.0,
+                    rate: 1.0,
+                    tokens: 1.0
+                });
+            } else {
+                AiActivityService.applyActivity({
+                    agent: selectedHarness || "astral-copilot",
+                    model: selectedModelId || "mimo-v2.6-flash",
+                    display_name: selectedModelId || "Astral Copilot",
+                    is_active: false,
+                    intensity: 0.0,
+                    rate: 0.0,
+                    tokens: 0.0
+                });
+            }
+        }
+    }
     property string activeStreamingContent: ""
     property var activeToolProposals: []
     property int messagesRevision: 0
