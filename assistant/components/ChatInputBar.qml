@@ -62,7 +62,7 @@ Rectangle {
 
     implicitHeight: Math.min(190, Math.max(46, inputField.contentHeight + 20) + (stagedFiles.length > 0 ? 56 : 0))
     radius: 12
-    color: Colors.m3surfaceContainer
+    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.11, 0.16, 0.65) : Qt.rgba(0.94, 0.95, 0.98, 0.70)
     border.width: 1
     border.color: inputField.activeFocus ? Colors.primary : Colors.glassBorderSpecular
 
@@ -425,7 +425,7 @@ Rectangle {
         anchors.right: parent.right
         implicitHeight: Math.min(220, skillCol.implicitHeight + 16)
         radius: 10
-        color: Colors.m3surfaceContainerHigh
+        color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.11, 0.16, 0.85) : Colors.m3surfaceContainerHigh
         border.width: 1
         border.color: Colors.glassBorderSpecular
         clip: true

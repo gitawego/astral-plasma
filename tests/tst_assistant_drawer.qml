@@ -200,7 +200,7 @@ Item {
         assert(/headerItem/.test(drawerSrc) && /dragTarget/.test(drawerSrc), "AssistantDrawer must bind dragTarget to headerItem for header-based window dragging");
         assert(/dialogDragArea/.test(drawerSrc), "AssistantDrawer must declare dialogDragArea for background surface dragging");
         assert(/drag\.target:\s*root\.isFloating\s*\?\s*root\s*:\s*null/.test(drawerSrc), "AssistantDrawer must set drag.target to root when floating");
-        assert(/0\.96/.test(drawerSrc), "AssistantDrawer must use high-opacity frosted glass substrate (96%+ alpha) for reading clarity");
+        assert(/0\.82/.test(drawerSrc), "AssistantDrawer must use Ghostty-style slight transparency frosted glass substrate (82% alpha)");
         assert(/userMoved/.test(windowSrc), "AssistantWindow must track userMoved state");
         assert(/clampPosition/.test(windowSrc), "AssistantWindow must implement boundary clampPosition");
 

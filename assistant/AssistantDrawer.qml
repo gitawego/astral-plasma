@@ -125,13 +125,13 @@ Item {
         elevation: root.isFloating ? 24 : 16
         showShadow: true
 
-        // Rich, high-readability frosted liquid glass substrate:
-        // 96% alpha in dark mode, 97% in light mode completely eliminates background text bleed-through
-        // from windows underneath while preserving authentic liquid glass depth, specular borders, and compositor blur.
+        // Ghostty-style slight transparency frosted liquid glass substrate:
+        // 82% alpha in dark mode, 84% in light mode provides subtle desktop peeking
+        // and authentic compositor blur while maintaining high contrast legibility.
         color: {
             if (typeof Colors === "undefined") return "#1e1e2e";
-            let base = Colors.isDarkMode ? Qt.rgba(0.08, 0.09, 0.13, 0.96) : Qt.rgba(0.96, 0.97, 1.0, 0.97);
-            return Qt.tint(base, Qt.alpha(Colors.primary, Colors.isDarkMode ? 0.05 : 0.03));
+            let base = Colors.isDarkMode ? Qt.rgba(0.07, 0.08, 0.12, 0.82) : Qt.rgba(0.95, 0.96, 0.99, 0.84);
+            return Qt.tint(base, Qt.alpha(Colors.primary, Colors.isDarkMode ? 0.04 : 0.03));
         }
 
         focus: root.isOpen

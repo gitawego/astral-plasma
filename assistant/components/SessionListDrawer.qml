@@ -13,7 +13,7 @@ Rectangle {
 
     implicitWidth: 280
     radius: 0
-    color: Colors.isDarkMode ? Qt.rgba(0.04, 0.05, 0.08, 0.45) : Qt.rgba(0.96, 0.97, 0.99, 0.45)
+    color: Colors.isDarkMode ? Qt.rgba(0.02, 0.03, 0.06, 0.30) : Qt.rgba(0.96, 0.97, 0.99, 0.35)
     border.width: 0
     clip: true
 
@@ -72,12 +72,24 @@ Rectangle {
                 Layout.fillWidth: true
             }
 
-            // + New Chat Pill
+            // + New Chat Pill (Authentic Liquid Glass)
             Rectangle {
+                id: newChatBtn
                 implicitHeight: 28
-                implicitWidth: newChatRow.implicitWidth + 16
+                implicitWidth: newChatRow.implicitWidth + 20
                 radius: 14
-                color: newChatMouse.containsMouse ? Colors.primary : Qt.alpha(Colors.primary, 0.85)
+                color: newChatMouse.containsMouse 
+                    ? Qt.alpha(Colors.primary, 0.22) 
+                    : Qt.alpha(Colors.primary, 0.10)
+                border.width: 1
+                border.color: newChatMouse.containsMouse 
+                    ? Colors.primary 
+                    : Qt.alpha(Colors.primary, 0.35)
+                scale: newChatMouse.pressed ? 0.95 : (newChatMouse.containsMouse ? 1.03 : 1.0)
+
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                Behavior on color { ColorAnimation { duration: 150 } }
+                Behavior on border.color { ColorAnimation { duration: 150 } }
 
                 RowLayout {
                     id: newChatRow
@@ -87,15 +99,15 @@ Rectangle {
                     MaterialIcon {
                         iconName: "add"
                         size: 14
-                        color: Colors.isDarkMode ? "#12131A" : "#FFFFFF"
+                        color: Colors.primary
                     }
 
                     Text {
                         text: "New"
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
-                        font.weight: Font.Bold
-                        color: Colors.isDarkMode ? "#12131A" : "#FFFFFF"
+                        font.weight: Font.SemiBold
+                        color: Colors.primary
                     }
                 }
 
@@ -119,6 +131,8 @@ Rectangle {
                 height: 28
                 radius: 8
                 color: closeMouse.containsMouse ? Colors.glassCardHover : "transparent"
+                border.width: closeMouse.containsMouse ? 1 : 0
+                border.color: Colors.glassBorderSpecular
 
                 MaterialIcon {
                     anchors.centerIn: parent
@@ -142,7 +156,7 @@ Rectangle {
             Layout.fillWidth: true
             implicitHeight: 32
             radius: 8
-            color: Colors.m3surfaceContainer
+            color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.11, 0.16, 0.60) : Qt.rgba(0.94, 0.95, 0.98, 0.70)
             border.width: 1
             border.color: searchInput.activeFocus ? Colors.primary : Colors.glassBorderSpecular
 

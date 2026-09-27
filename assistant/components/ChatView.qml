@@ -245,21 +245,25 @@ Flickable {
                                 Rectangle {
                                     id: bubbleRect
                                     x: isUser ? (msgCol.width - width) : 0
-                                    width: Math.min(msgCol.width * 0.90, bubbleText.implicitWidth + 32)
-                                    height: bubbleText.implicitHeight + 24
-                                    implicitHeight: bubbleText.implicitHeight + 24
-                                    radius: 14
+                                    width: isUser 
+                                        ? Math.min(msgCol.width * 0.90, bubbleText.implicitWidth + 32)
+                                        : (isTool ? Math.min(msgCol.width * 0.95, bubbleText.implicitWidth + 24) : msgCol.width)
+                                    height: bubbleText.implicitHeight + (isUser ? 20 : (isTool ? 20 : 12))
+                                    implicitHeight: bubbleText.implicitHeight + (isUser ? 20 : (isTool ? 20 : 12))
+                                    radius: isUser ? 14 : (isTool ? 8 : 0)
                                     color: isUser 
-                                        ? (Colors.isDarkMode ? Qt.tint(Colors.m3primaryContainer, Qt.rgba(0, 0, 0, 0.15)) : Colors.m3primaryContainer) 
-                                        : (isTool ? Colors.m3surfaceContainerLowest : (Colors.isDarkMode ? Qt.rgba(0.14, 0.16, 0.22, 0.98) : Qt.rgba(0.92, 0.94, 0.98, 0.98)))
-                                    border.width: 1
-                                    border.color: isUser ? Colors.primary : (Colors.isDarkMode ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.10))
+                                        ? (Colors.isDarkMode ? Qt.tint(Qt.alpha(Colors.m3primaryContainer, 0.85), Qt.rgba(0, 0, 0, 0.20)) : Qt.alpha(Colors.m3primaryContainer, 0.90))
+                                        : (isTool ? (Colors.isDarkMode ? Qt.rgba(0.04, 0.05, 0.08, 0.60) : Qt.rgba(0.96, 0.97, 0.99, 0.70)) : "transparent")
+                                    border.width: (isUser || isTool) ? 1 : 0
+                                    border.color: isUser ? Colors.primary : (isTool ? Colors.glassBorderSpecular : "transparent")
 
                                     Text {
                                         id: bubbleText
-                                        x: 16
-                                        y: 12
-                                        width: Math.min(implicitWidth, msgCol.width * 0.90 - 32)
+                                        x: isUser ? 16 : (isTool ? 12 : 4)
+                                        y: isUser ? 10 : (isTool ? 10 : 4)
+                                        width: isUser 
+                                            ? Math.min(implicitWidth, msgCol.width * 0.90 - 32)
+                                            : (isTool ? Math.min(implicitWidth, msgCol.width * 0.95 - 24) : (msgCol.width - 8))
                                         text: modelData.text || ""
                                         textFormat: Text.MarkdownText
                                         font.family: isTool ? Theme.fontMonospace : Theme.fontFamily
