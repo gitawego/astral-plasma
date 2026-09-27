@@ -18,6 +18,7 @@ Item {
     readonly property alias sessionDrawerItem: sessionDrawer
     readonly property alias chatContentColumnItem: chatContentColumn
     readonly property alias chatViewItem: chatView
+    readonly property alias crashBannerItem: crashBanner
 
     signal userDragged()
     signal resetRequested()
@@ -408,16 +409,39 @@ Item {
                         onAddProviderRequested: root.addProviderVisible = true
                     }
 
-                    // 3. Proactive Crash Banner (if a critical crash is detected)
+                    // 3. Proactive Crash Banner (Multi-Crash Carousel & Dismissible Alert)
                     Rectangle {
                         id: crashBanner
                         Layout.fillWidth: true
-                        readonly property bool hasCrashes: typeof AssistantService !== "undefined" && AssistantService.recentCrashes && AssistantService.recentCrashes.length > 0
-                        implicitHeight: hasCrashes ? 38 : 0
-                        visible: hasCrashes
-                        color: Qt.rgba(1, 0.2, 0.2, 0.12)
+
+                        readonly property var crashesList: (typeof AssistantService !== "undefined" && AssistantService.activeCrashes) ? AssistantService.activeCrashes : []
+                        readonly property int crashCount: crashesList ? crashesList.length : 0
+                        readonly property bool hasCrashes: crashCount > 0
+
+                        property int currentCrashIndex: 0
+                        readonly property int safeIndex: crashCount > 0 ? Math.max(0, Math.min(currentCrashIndex, crashCount - 1)) : 0
+                        readonly property var currentCrash: hasCrashes ? crashesList[safeIndex] : null
+
+                        property alias prevMouseItem: prevMouse
+                        property alias nextMouseItem: nextMouse
+                        property alias debugMouseItem: dbgMouse
+                        property alias dismissMouseItem: dismissMouse
+
+                        implicitHeight: hasCrashes ? 42 : 0
+                        visible: implicitHeight > 0
+                        clip: true
+                        color: Qt.rgba(1.0, 0.22, 0.22, 0.12)
                         border.width: 1
-                        border.color: Qt.rgba(1, 0.2, 0.2, 0.3)
+                        border.color: Qt.rgba(1.0, 0.22, 0.22, 0.28)
+
+                        Behavior on implicitHeight {
+                            enabled: !root.testMode
+                            NumberAnimation {
+                                duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastSpatial) ? Theme.animExpressiveFastSpatial : 200
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: (typeof Theme !== "undefined" && Theme.curveExpressiveDefaultSpatial) ? Theme.curveExpressiveDefaultSpatial : [0.38, 1.21, 0.22, 1.0, 1.0, 1.0]
+                            }
+                        }
 
                         RowLayout {
                             anchors.fill: parent
@@ -425,43 +449,187 @@ Item {
                             anchors.rightMargin: Theme.padLarge
                             spacing: 8
 
+                            // Error icon
                             MaterialIcon {
                                 iconName: "error_outline"
                                 size: 16
                                 color: Colors.m3error
                             }
 
-                            Text {
-                                text: crashBanner.hasCrashes ? ("Crash detected: " + AssistantService.recentCrashes[0].process_name) : ""
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11
-                                font.weight: Font.Medium
-                                color: Colors.m3error
-                                elide: Text.ElideRight
+                            // Process name & details
+                            RowLayout {
+                                spacing: 6
                                 Layout.fillWidth: true
-                            }
-
-                            Rectangle {
-                                implicitHeight: 24
-                                implicitWidth: 60
-                                radius: 6
-                                color: Colors.m3error
 
                                 Text {
-                                    anchors.centerIn: parent
-                                    text: "Debug"
+                                    text: "Crash detected:"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: Font.Normal
+                                    color: Colors.m3onSurface
+                                }
+
+                                Text {
+                                    text: crashBanner.currentCrash ? crashBanner.currentCrash.process_name : ""
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 11
                                     font.weight: Font.Bold
-                                    color: Colors.m3onError
+                                    color: Colors.m3error
+                                    elide: Text.ElideRight
+                                    Layout.maximumWidth: 140
                                 }
 
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (crashBanner.hasCrashes) {
-                                            AssistantService.diagnoseCrash(AssistantService.recentCrashes[0]);
+                                // Signal badge if available (e.g. SIGABRT, SIGSEGV)
+                                Rectangle {
+                                    implicitHeight: 18
+                                    implicitWidth: sigTxt.implicitWidth + 8
+                                    radius: 4
+                                    color: Qt.rgba(1.0, 0.22, 0.22, 0.18)
+                                    border.width: 1
+                                    border.color: Qt.rgba(1.0, 0.22, 0.22, 0.35)
+                                    visible: crashBanner.currentCrash && crashBanner.currentCrash.signal ? true : false
+
+                                    Text {
+                                        id: sigTxt
+                                        anchors.centerIn: parent
+                                        text: (crashBanner.currentCrash && crashBanner.currentCrash.signal) ? crashBanner.currentCrash.signal : ""
+                                        font.family: Theme.fontMonospace
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                        color: Colors.m3error
+                                    }
+                                }
+
+                                // Carousel pagination buttons when multiple crashes exist
+                                RowLayout {
+                                    spacing: 2
+                                    visible: crashBanner.crashCount > 1
+
+                                    Rectangle {
+                                        width: 20
+                                        height: 20
+                                        radius: 4
+                                        color: prevMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        border.width: 1
+                                        border.color: Colors.glassBorderSpecular
+
+                                        MaterialIcon {
+                                            anchors.centerIn: parent
+                                            iconName: "chevron_left"
+                                            size: 14
+                                            color: Colors.m3onSurface
+                                        }
+
+                                        MouseArea {
+                                            id: prevMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (crashBanner.crashCount > 0) {
+                                                    crashBanner.currentCrashIndex = (crashBanner.safeIndex - 1 + crashBanner.crashCount) % crashBanner.crashCount;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: (crashBanner.safeIndex + 1) + " of " + crashBanner.crashCount
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 10
+                                        font.weight: Font.Medium
+                                        color: Colors.m3onSurfaceVariant
+                                        Layout.leftMargin: 2
+                                        Layout.rightMargin: 2
+                                    }
+
+                                    Rectangle {
+                                        width: 20
+                                        height: 20
+                                        radius: 4
+                                        color: nextMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        border.width: 1
+                                        border.color: Colors.glassBorderSpecular
+
+                                        MaterialIcon {
+                                            anchors.centerIn: parent
+                                            iconName: "chevron_right"
+                                            size: 14
+                                            color: Colors.m3onSurface
+                                        }
+
+                                        MouseArea {
+                                            id: nextMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (crashBanner.crashCount > 0) {
+                                                    crashBanner.currentCrashIndex = (crashBanner.safeIndex + 1) % crashBanner.crashCount;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Action buttons: Debug + Dismiss (X)
+                            RowLayout {
+                                spacing: 6
+
+                                // Debug button
+                                Rectangle {
+                                    implicitHeight: 24
+                                    implicitWidth: dbgTxt.implicitWidth + 16
+                                    radius: 6
+                                    color: dbgMouse.containsMouse ? Qt.lighter(Colors.m3error, 1.15) : Colors.m3error
+
+                                    Text {
+                                        id: dbgTxt
+                                        anchors.centerIn: parent
+                                        text: "Debug"
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        font.weight: Font.Bold
+                                        color: Colors.m3onError
+                                    }
+
+                                    MouseArea {
+                                        id: dbgMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (crashBanner.currentCrash && typeof AssistantService !== "undefined") {
+                                                AssistantService.diagnoseCrash(crashBanner.currentCrash);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Dismiss (Close) button
+                                Rectangle {
+                                    width: 24
+                                    height: 24
+                                    radius: 6
+                                    color: dismissMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+
+                                    MaterialIcon {
+                                        anchors.centerIn: parent
+                                        iconName: "close"
+                                        size: 14
+                                        color: dismissMouse.containsMouse ? Colors.m3onSurface : Colors.m3onSurfaceVariant
+                                    }
+
+                                    MouseArea {
+                                        id: dismissMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (crashBanner.currentCrash && typeof AssistantService !== "undefined") {
+                                                AssistantService.dismissCrash(crashBanner.currentCrash.id);
+                                            }
                                         }
                                     }
                                 }

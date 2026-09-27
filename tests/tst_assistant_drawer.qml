@@ -151,6 +151,10 @@ Item {
         assert(/function diagnoseCrash\(/.test(serviceSrc), "AssistantService must implement diagnoseCrash");
         assert(/function refreshSkills\(/.test(serviceSrc), "AssistantService must implement refreshSkills");
         assert(/function refreshCrashes\(/.test(serviceSrc), "AssistantService must implement refreshCrashes");
+        assert(/property var dismissedCrashIds/.test(serviceSrc), "AssistantService must declare dismissedCrashIds");
+        assert(/readonly property var activeCrashes/.test(serviceSrc), "AssistantService must declare activeCrashes");
+        assert(/function dismissCrash\(/.test(serviceSrc), "AssistantService must implement dismissCrash");
+        assert(/function dismissAllCrashes\(/.test(serviceSrc), "AssistantService must implement dismissAllCrashes");
 
         // 7. Predefined Skills Verification
         const diagSkill = readLocalFile("../skills/system-diagnostics/SKILL.md");
@@ -478,6 +482,29 @@ Item {
         assert(testPicker.filterCategory === 2, "filterCategory must switch to Code");
         testPicker.filterCategory = 0;
         assert(testPicker.filterCategory === 0, "filterCategory must switch back to All Files");
+
+        // 24. Multi-Crash Alert Banner, Carousel Navigation & Dismissal Contract
+        assert(floatingDrawer.crashBannerItem !== null, "floatingDrawer must expose crashBannerItem");
+        const banner = floatingDrawer.crashBannerItem;
+        assert(banner.currentCrashIndex !== undefined, "crashBannerItem must expose currentCrashIndex");
+        assert(banner.safeIndex !== undefined, "crashBannerItem must expose safeIndex");
+        assert(banner.prevMouseItem !== undefined, "crashBannerItem must expose prevMouseItem");
+        assert(banner.nextMouseItem !== undefined, "crashBannerItem must expose nextMouseItem");
+        assert(banner.debugMouseItem !== undefined, "crashBannerItem must expose debugMouseItem");
+        assert(banner.dismissMouseItem !== undefined, "crashBannerItem must expose dismissMouseItem");
+
+        // Verify carousel indexing math & bounds clamping
+        banner.currentCrashIndex = 0;
+        assert(banner.safeIndex === 0, "safeIndex must be 0 when currentCrashIndex is 0");
+        banner.currentCrashIndex = 5;
+        assert(banner.safeIndex <= Math.max(0, banner.crashCount - 1), "safeIndex must clamp to crashCount - 1");
+
+        // Verify source contract for multi-crash carousel controls & dismiss
+        const assistantDrawerSrc = readLocalFile("../assistant/AssistantDrawer.qml");
+        assert(/chevron_left/.test(assistantDrawerSrc), "AssistantDrawer must include previous crash chevron");
+        assert(/chevron_right/.test(assistantDrawerSrc), "AssistantDrawer must include next crash chevron");
+        assert(/dismissMouse/.test(assistantDrawerSrc), "AssistantDrawer must include dismiss button");
+        assert(/activeCrashes/.test(assistantDrawerSrc), "AssistantDrawer must bind to AssistantService.activeCrashes");
 
         console.log("PASS: All Assistant Drawer tests passed!");
         Qt.exit(0);

@@ -45,6 +45,41 @@ Singleton {
     ]
     property var discoveredSkills: []
     property var recentCrashes: []
+    property var dismissedCrashIds: []
+    property int crashesRevision: 0
+
+    readonly property var activeCrashes: {
+        let rev = crashesRevision;
+        if (!recentCrashes || !Array.isArray(recentCrashes)) return [];
+        let dismissed = dismissedCrashIds || [];
+        return recentCrashes.filter(function(c) {
+            return c && c.id && dismissed.indexOf(c.id) === -1;
+        });
+    }
+
+    function dismissCrash(crashId) {
+        if (!crashId) return;
+        let list = (dismissedCrashIds || []).slice();
+        if (list.indexOf(crashId) === -1) {
+            list.push(crashId);
+            dismissedCrashIds = list;
+            crashesRevision++;
+        }
+    }
+
+    function dismissAllCrashes() {
+        if (!recentCrashes || recentCrashes.length === 0) return;
+        let list = (dismissedCrashIds || []).slice();
+        for (let i = 0; i < recentCrashes.length; i++) {
+            let id = recentCrashes[i].id;
+            if (id && list.indexOf(id) === -1) {
+                list.push(id);
+            }
+        }
+        dismissedCrashIds = list;
+        crashesRevision++;
+    }
+
     property var unnotifiedCrashes: []
 
     function getModelsForProvider(providerId) {
@@ -315,6 +350,9 @@ Singleton {
         let prompt = "Diagnose this crash: Application '" + crashItem.process_name +
                      "' terminated with signal " + (crashItem.signal || "unknown") +
                      ". Recent log: " + (crashItem.summary || crashItem.log_snippet || "");
+        if (crashItem.id) {
+            dismissCrash(crashItem.id);
+        }
         sendMessage(prompt);
     }
 
@@ -448,6 +486,7 @@ Singleton {
                     let list = JSON.parse(this.text.trim());
                     if (Array.isArray(list)) {
                         root.recentCrashes = list;
+                        root.crashesRevision++;
                     }
                 } catch (e) {
                     console.warn("[AssistantService] Failed to parse crashes:", e);
