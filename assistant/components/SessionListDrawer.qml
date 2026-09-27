@@ -285,11 +285,26 @@ Rectangle {
                         Behavior on color { ColorAnimation { duration: 120 } }
                         Behavior on border.color { ColorAnimation { duration: 120 } }
 
+                        MouseArea {
+                            id: cardMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            z: 0
+                            onClicked: {
+                                if (typeof AssistantService !== "undefined") {
+                                    AssistantService.loadSession(modelData.id);
+                                }
+                                root.sessionSelected(modelData.id);
+                            }
+                        }
+
                         RowLayout {
                             id: cardContent
                             anchors.fill: parent
                             anchors.margins: 10
                             spacing: 10
+                            z: 1
 
                             // Session Status Pill / Dot
                             Rectangle {
@@ -359,6 +374,8 @@ Rectangle {
 
                             // Delete Action Button (Visible on card hover or active)
                             Rectangle {
+                                id: delButtonRect
+                                z: 10
                                 width: 26
                                 height: 26
                                 radius: 13
@@ -383,25 +400,14 @@ Rectangle {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
+                                    z: 10
+                                    onClicked: mouse => {
+                                        mouse.accepted = true;
                                         if (typeof AssistantService !== "undefined") {
                                             AssistantService.deleteSession(modelData.id);
                                         }
                                     }
                                 }
-                            }
-                        }
-
-                        MouseArea {
-                            id: cardMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (typeof AssistantService !== "undefined") {
-                                    AssistantService.loadSession(modelData.id);
-                                }
-                                root.sessionSelected(modelData.id);
                             }
                         }
                     }

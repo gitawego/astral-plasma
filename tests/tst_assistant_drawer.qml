@@ -182,8 +182,10 @@ Item {
         assert(/isFloating:\s*true/.test(windowSrc), "AssistantWindow must declare isFloating: true on AssistantDrawer");
         assert(/color:\s*"transparent"/.test(windowSrc), "AssistantWindow must have transparent color without underlay dim scrim");
         assert(/mask:\s*Region/.test(windowSrc), "AssistantWindow must declare mask Region to restrict clicks to floating card and allow pass-through");
-        assert(!/MouseArea\s*\{[\s\S]*?Config\.closeAssistant\(\)/.test(windowSrc), "AssistantWindow must not have outside dismissal MouseArea");
         assert(/BackgroundEffect\.blurRegion/.test(windowSrc), "AssistantWindow must apply compositor blurRegion to floating card");
+        assert(/onExternalWindowActivated/.test(windowSrc), "AssistantWindow must connect to onExternalWindowActivated handler");
+        assert(/assistantPinned/.test(windowSrc), "AssistantWindow must respect assistantPinned state");
+        assert(/minimizeAssistant/.test(windowSrc), "AssistantWindow must auto-minimize to dock when external app gains focus");
 
         // 10. Streaming Content Reactivity Contract
         const chatViewSrc = readLocalFile("../assistant/components/ChatView.qml");
@@ -289,9 +291,11 @@ Item {
 
         const configSrc = readLocalFile("../config/Config.qml");
         assert(/assistantMinimized/.test(configSrc), "Config must declare assistantMinimized property");
+        assert(/assistantPinned/.test(configSrc), "Config must declare assistantPinned property");
         assert(/function minimizeAssistant\(/.test(configSrc), "Config must implement minimizeAssistant");
         assert(/function restoreAssistant\(/.test(configSrc), "Config must implement restoreAssistant");
         assert(/function toggleAssistant\(/.test(configSrc), "Config must implement toggleAssistant");
+        assert(/function toggleAssistantPinned\(/.test(configSrc), "Config must implement toggleAssistantPinned");
 
         const dockSrc = readLocalFile("../shell/UnifiedDock.qml");
         assert(/copilotDockItem/.test(dockSrc), "UnifiedDock must declare copilotDockItem");
@@ -362,13 +366,16 @@ Item {
         assert(sessionDrawerSrc.length > 500, "SessionListDrawer.qml must be readable");
         assert(/SessionListDrawer/.test(drawerSrc), "AssistantDrawer must embed SessionListDrawer");
         assert(!/root\.sessionSelected\([^)]*\);\s*root\.closed\(\)/.test(sessionDrawerSrc), "SessionListDrawer must NOT auto-close when selecting a session");
+        assert(/delMouse[\s\S]*?z:\s*10/.test(sessionDrawerSrc) || /z:\s*10[\s\S]*?delMouse/.test(sessionDrawerSrc), "SessionListDrawer delete button must have explicit z: 10 priority");
+        assert(/cardMouse[\s\S]*?z:\s*0/.test(sessionDrawerSrc), "SessionListDrawer cardMouse must have background z: 0 to avoid stealing delete clicks");
         assert(drawer.sessionsVisible === false, "AssistantDrawer sessionsVisible must default to false");
         assert(testSessionDrawer !== null, "SessionListDrawer must instantiate properly");
 
         // 20. Clean Liquid Glass Header Branding & Navigation
         assert(/signal sessionsRequested/.test(headerSrc), "AssistantHeader must declare sessionsRequested signal");
         assert(/signal newChatRequested/.test(headerSrc), "AssistantHeader must declare newChatRequested signal");
-        assert(/iconName:\s*"auto_awesome"/.test(headerSrc), "AssistantHeader must use crisp auto_awesome icon");
+        assert(/BotMessageSquareIcon/.test(headerSrc), "AssistantHeader must use crisp BotMessageSquareIcon vector mark");
+        assert(/BotMessageSquareIcon/.test(readLocalFile("../shell/UnifiedDock.qml")), "UnifiedDock must use BotMessageSquareIcon for Astral Copilot capsule");
         assert(!/Specular top hairline highlight/.test(headerSrc), "AssistantHeader must not have fake 1px highlight bar");
 
         // 21. E2E Header Action Buttons Clickability & Unblocked Drag Zone
@@ -388,6 +395,17 @@ Item {
         hdr.sessionsRequested.connect(function() { sessionsFired = true; });
         hdr.sessionsMouseItem.clicked(null);
         assert(sessionsFired === true, "Sessions button must trigger sessionsRequested and NOT be blocked by drag zone");
+
+        // Verify Pin button
+        assert(hdr.pinMouseItem !== undefined, "AssistantHeader must expose pinMouseItem");
+        assert(hdr.pinButtonItem !== undefined, "AssistantHeader must expose pinButtonItem");
+        if (typeof Config !== "undefined" && typeof Config.toggleAssistantPinned === "function") {
+            let initialPinned = Config.assistantPinned;
+            hdr.pinMouseItem.clicked(null);
+            assert(Config.assistantPinned === !initialPinned, "Pin button must toggle Config.assistantPinned");
+            hdr.pinMouseItem.clicked(null);
+            assert(Config.assistantPinned === initialPinned, "Pin button must toggle back Config.assistantPinned");
+        }
 
         let minFired = false;
         hdr.minimizeRequested.connect(function() { minFired = true; });

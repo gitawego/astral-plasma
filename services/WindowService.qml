@@ -19,6 +19,8 @@ Singleton {
     property string activeAppId: ""
     property string activeId: ""
 
+    signal externalWindowActivated(string winId, string winTitle)
+
     property alias title: root.activeTitle
     property alias appId: root.activeIconName
     property alias materialIcon: root.activeMaterialIcon
@@ -640,6 +642,7 @@ Singleton {
                         return;
                     }
 
+                    const prevActiveId = root.activeId;
                     if (data.activeTitle !== undefined) root.activeTitle = data.activeTitle;
                     if (data.activeMaterialIcon !== undefined) root.activeMaterialIcon = data.activeMaterialIcon;
                     if (data.activeIconName !== undefined) root.activeIconName = data.activeIconName;
@@ -648,6 +651,10 @@ Singleton {
                     if (data.hasMaximizedWindow !== undefined) root.hasMaximizedWindow = Boolean(data.hasMaximizedWindow);
                     if (data.windows) root.windows = data.windows;
                     if (data.tray) root.tray = data.tray;
+
+                    if (data.msg_type === "active" || (data.activeId !== undefined && data.activeId !== prevActiveId)) {
+                        root.externalWindowActivated(data.activeId || "", data.activeTitle || "");
+                    }
 
                     if (typeof DesktopSessionFacade !== "undefined") {
                         DesktopSessionFacade.activeId = root.activeId;

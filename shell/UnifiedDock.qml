@@ -682,11 +682,11 @@ Item {
                     }
                 }
 
-                // Crisp Vector MaterialIcon Sparkles
-                MaterialIcon {
+                // Crisp Vector Lucide BotMessageSquareIcon
+                BotMessageSquareIcon {
                     anchors.centerIn: parent
-                    iconName: "auto_awesome"
-                    size: Math.round(root.iconS * 0.70)
+                    size: Math.round(root.iconS * 0.68)
+                    strokeWidth: 2.0
                     color: (typeof Config !== "undefined" && Config.assistantVisible)
                         ? Colors.primary
                         : (copilotHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant)

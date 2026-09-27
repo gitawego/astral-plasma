@@ -51,6 +51,7 @@ PanelWindow {
 
     // User-dragged position tracking and boundary clamping
     property bool userMoved: false
+    property double openedTime: 0
 
     function resetPosition() {
         userMoved = false;
@@ -73,8 +74,27 @@ PanelWindow {
     onHeightChanged: if (userMoved) clampPosition()
 
     onActiveVisibleChanged: {
-        if (activeVisible && !userMoved) {
-            resetPosition();
+        if (activeVisible) {
+            openedTime = Date.now();
+            if (!userMoved) {
+                resetPosition();
+            }
+        }
+    }
+
+    // Auto-minimize when focusing another application unless explicitly pinned to top
+    Connections {
+        target: (typeof WindowService !== "undefined") ? WindowService : null
+        function onExternalWindowActivated(winId, winTitle) {
+            if (typeof Config !== "undefined" && Config.assistantPinned) {
+                return;
+            }
+            if (Date.now() - root.openedTime < 350) {
+                return;
+            }
+            if (root.activeVisible && typeof Config !== "undefined") {
+                Config.minimizeAssistant();
+            }
         }
     }
 

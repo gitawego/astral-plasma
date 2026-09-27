@@ -77,10 +77,10 @@ Item {
                 ? Qt.alpha(Colors.primary, 0.35)
                 : Colors.glassBorderSpecular
 
-            MaterialIcon {
+            BotMessageSquareIcon {
                 anchors.centerIn: parent
-                iconName: "auto_awesome"
                 size: 18
+                strokeWidth: 2.0
                 color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#CFBCFF"
             }
         }
@@ -278,6 +278,40 @@ Item {
                 }
             }
 
+            // Pin / Always on Top Button
+            Rectangle {
+                id: pinButton
+                width: 30
+                height: 30
+                radius: 15
+                property bool isPinned: (typeof Config !== "undefined") ? Config.assistantPinned : false
+                scale: pinMouse.pressed ? 0.92 : (pinMouse.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                color: isPinned ? Qt.alpha(Colors.primary, 0.22) : (pinMouse.containsMouse ? Colors.glassCardHover : "transparent")
+                border.width: (isPinned || pinMouse.containsMouse) ? 1 : 0
+                border.color: isPinned ? Qt.alpha(Colors.primary, 0.5) : Colors.glassBorderSpecular
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    iconName: pinButton.isPinned ? "push_pin" : "pin"
+                    size: 16
+                    color: pinButton.isPinned ? Colors.primary : (pinMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant)
+                }
+
+                MouseArea {
+                    id: pinMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                    onClicked: {
+                        if (typeof Config !== "undefined" && typeof Config.toggleAssistantPinned === "function") {
+                            Config.toggleAssistantPinned();
+                        }
+                    }
+                }
+            }
+
             // Minimize Button
             Rectangle {
                 id: minimizeButton
@@ -343,6 +377,8 @@ Item {
     property alias sessionsMouseItem: sessionsMouse
     property alias clearMouseItem: clearMouse
     property alias settingsMouseItem: settingsMouse
+    property alias pinMouseItem: pinMouse
+    property alias pinButtonItem: pinButton
     property alias minMouseItem: minMouse
     property alias closeMouseItem: closeMouse
 }
