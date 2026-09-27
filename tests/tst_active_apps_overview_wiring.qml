@@ -50,8 +50,8 @@ Item {
         assert(kwinJs.length > 200, "KWin shortcuts script must be readable");
         assert(/registerShortcut\(\s*"AstralOverview"/.test(kwinJs),
             "the KWin script must register the AstralOverview action");
-        assert(/"AstralOverview"[\s\S]{0,600}"Meta\+W"/.test(kwinJs),
-            "AstralOverview must be bound to Meta+W without bare Meta modifier hijacking");
+        assert(/"AstralOverview"[\s\S]{0,600}"Meta"/.test(kwinJs),
+            "AstralOverview must be bound to the bare Meta key");
         assert(/"overview\.toggle"/.test(kwinJs),
             "AstralOverview must forward to the overview.toggle whitelisted action");
 
@@ -77,15 +77,15 @@ Item {
         assert(/setForeignShortcut\(\[\s*'kwin',\s*'\{overview\}'/.test(shortcuts),
             "restore must clear the in-memory AstralOverview registration");
 
-        // ---- 5. The installer binds Meta+W without modifier hijacking ------
+        // ---- 5. The installer binds Meta and frees it from plasmashell ------
         const bind = readLocalFile("../scripts/bind_shortcuts.sh");
         assert(bind.length > 1000, "bind_shortcuts.sh must be readable");
         assert(/--key "AstralOverview"/.test(bind),
             "the bind script must write the AstralOverview kglobalaccel entry");
         assert(/'AstralOverview'/.test(bind),
             "the bind script must register AstralOverview over D-Bus");
-        assert(/overview_key\s*=\s*268435543/.test(bind),
-            "Meta+W must use Qt::Key_W | Qt::MetaModifier = 268435543 avoiding bare Meta modifier hijacking");
+        assert(/16777250/.test(bind),
+            "bare Meta must use Qt::Key_Meta = 16777250 for Super presses");
 
         // ---- 6. Manual fallback script follows the toggle-script convention -
         const toggle = readLocalFile("../scripts/toggle_overview.sh");

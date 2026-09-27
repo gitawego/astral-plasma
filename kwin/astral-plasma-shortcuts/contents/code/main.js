@@ -37,12 +37,12 @@ registerShortcut(
     }
 );
 
-// Active-apps overview: Meta+W toggles the fullscreen overview of running windows
-// with live thumbnails, cleanly replacing Plasma's native Overview without modifier hijacking.
+// Active-apps overview: bare Meta key toggles the fullscreen overview of running windows
+// with live thumbnails (GNOME-style).
 registerShortcut(
     "AstralOverview",
     "Astral Plasma: Active Apps Overview",
-    "Meta+W",
+    "Meta",
     function() {
         console.info("Astral Plasma: Triggering active apps overview");
         callDBus(

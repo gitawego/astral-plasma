@@ -399,10 +399,15 @@ except Exception:
                 branding::SHORTCUT_WALLPAPER_KEY,
                 &format!("Meta+Shift+W,none,{}", branding::SHORTCUT_WALLPAPER_LABEL),
             );
+            let overview_bind = if mode == "meta" || mode == "super" {
+                format!("Meta+W,none,{}", branding::SHORTCUT_OVERVIEW_LABEL)
+            } else {
+                format!("Meta\tMeta+W,none,{}", branding::SHORTCUT_OVERVIEW_LABEL)
+            };
             ini.set(
                 "kwin",
                 branding::SHORTCUT_OVERVIEW_KEY,
-                &format!("Meta+W,none,{}", branding::SHORTCUT_OVERVIEW_LABEL),
+                &overview_bind,
             );
             ini.set(
                 "kwin",

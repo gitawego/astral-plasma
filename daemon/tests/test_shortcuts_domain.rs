@@ -216,7 +216,7 @@ KrohnkiteFocusPrev=Meta+,,none,Krohnkite: Focus Previous
     assert_eq!(bound_ini.get("kwin", "KrohnkiteFocusPrev").as_deref(), Some("none,none"));
     assert_eq!(
         bound_ini.get("kwin", branding::SHORTCUT_OVERVIEW_KEY).as_deref(),
-        Some(format!("Meta+W,none,{}", branding::SHORTCUT_OVERVIEW_LABEL).as_str())
+        Some(format!("Meta\tMeta+W,none,{}", branding::SHORTCUT_OVERVIEW_LABEL).as_str())
     );
     assert_eq!(
         bound_ini.get("kwin", branding::SHORTCUT_DASHBOARD_KEY).as_deref(),

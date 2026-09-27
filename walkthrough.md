@@ -46,20 +46,19 @@ We have resolved all reported issues regarding the AI Copilot chat streaming, br
 
 ---
 
-### 1.4. Global Shortcut Conflicts & Virtual Desktop Switching Resolution
+### 1.4. Meta (Super) Key & Global Shortcut Resolution (Root Cause & Permanent Fix)
 
-- **Root Cause of Shortcut Breakage & Conflict with KDE Desktop Switch**:
-  - In KWin scripts, calling `registerShortcut("AstralOverview", "...", "Meta", ...)` registered bare `Meta` on `KeyPress` (key-down).
-  - Pressing `Meta` immediately intercepted the key and consumed the modifier, breaking any combination:
-    - KDE virtual desktop switching (`Ctrl+Meta+Left/Right` or `Meta+F1..F4`) was intercepted on key-down.
-    - Astral Plasma combos (`Meta+C`, `Meta+Space`) were intercepted or fought between handlers.
-  - Redundant shortcuts registered under `[services]` in `kglobalshortcutsrc` competed with `[kwin]` actions, causing neither to fire reliably.
+- **Root Cause Analysis**:
+  1. **Premature Removal of Bare `Meta`**: In an earlier change, `AstralOverview` was rebound from `"Meta"` to `"Meta+W"` out of a mistaken belief that registering `"Meta"` in KWin caused modifier key hijacking. This left the physical `Meta` key completely unbound across the desktop (`kglobalacceld` returned `[]` for keycode `16777250` and `268435456`).
+  2. **KWin 6.7 / Plasma 6.1+ Modifier-Only Architecture**: In Plasma 6.1+ Wayland, modifier-only shortcuts are handled natively by `kglobalacceld` on key-release (tap-only). They do NOT intercept `Meta` when used in combination with other keys (such as `Meta+C`, `Meta+Space`, `Meta+D`, or `Ctrl+Meta+Left/Right`).
+  3. **KWin Script Load Path**: In [`scripts/bind_shortcuts.sh`](file:///mnt/data/workspace/astral-plasma/scripts/bind_shortcuts.sh), `qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript` was passing the directory path rather than the script entry point (`contents/code/main.js`), failing to dynamically reload the script package in running KWin sessions.
 
-- **Solution**:
-  - In [`kwin/astral-plasma-shortcuts/contents/code/main.js`](file:///mnt/data/workspace/astral-plasma/kwin/astral-plasma-shortcuts/contents/code/main.js), rebound `AstralOverview` to `Meta+W`, completely freeing the bare `Meta` modifier from `KeyPress` interception.
-  - Added dedicated KWin actions for `AstralDashboard` (`Meta+D`) and `AstralSettings` (`Meta+,`).
-  - Updated [`scripts/bind_shortcuts.sh`](file:///mnt/data/workspace/astral-plasma/scripts/bind_shortcuts.sh) to clear competing `.desktop` service entries so KWin actions have clean single ownership.
-  - Updated daemon domain branding constants and monitored keys in [`daemon/src/domain/branding.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/domain/branding.rs) and [`daemon/src/infrastructure/kwin_shortcuts.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/infrastructure/kwin_shortcuts.rs).
+- **Permanent Architectural Solution**:
+  1. In [`kwin/astral-plasma-shortcuts/contents/code/main.js`](file:///mnt/data/workspace/astral-plasma/kwin/astral-plasma-shortcuts/contents/code/main.js), restored bare `"Meta"` for `AstralOverview`.
+  2. In [`scripts/bind_shortcuts.sh`](file:///mnt/data/workspace/astral-plasma/scripts/bind_shortcuts.sh), configured dual binding for `AstralOverview` (`Meta\tMeta+W`, with both `16777250` and `268435543` registered over D-Bus).
+  3. Released `plasmashell`'s claim on `Meta` by assigning its fallback to `Alt+F1`, ensuring single ownership by Astral Plasma without competing triggers.
+  4. Fixed KWin script reload to invoke `loadScript "$KWIN_SCRIPT_DEST/contents/code/main.js"`.
+  5. Updated test assertions in [`daemon/tests/test_shortcuts_domain.rs`](file:///mnt/data/workspace/astral-plasma/daemon/tests/test_shortcuts_domain.rs) and [`tests/tst_active_apps_overview_wiring.qml`](file:///mnt/data/workspace/astral-plasma/tests/tst_active_apps_overview_wiring.qml) to verify the restored `Meta` key contract.
 
 ---
 
@@ -67,11 +66,11 @@ We have resolved all reported issues regarding the AI Copilot chat streaming, br
 
 | Action | Shortcut | Target / Mechanism |
 | :--- | :--- | :--- |
+| **Active Apps Overview** | `Meta` (bare tap) / `Meta+W` | KWin action $\to$ daemon $\to$ `quickshell ipc call overview toggle` |
 | **Command Launcher** | `Meta+Space` | KWin action $\to$ daemon $\to$ `quickshell ipc call launcher toggle` |
 | **AI Assistant Copilot** | `Meta+C` | KWin action $\to$ daemon $\to$ `quickshell ipc call assistant toggle` |
 | **Central Dashboard** | `Meta+D` | KWin action $\to$ daemon $\to$ `quickshell ipc call dashboard toggle` |
 | **Nexus Settings** | `Meta+,` | KWin action $\to$ daemon $\to$ `quickshell ipc call settings toggle` |
-| **Active Apps Overview** | `Meta+W` | KWin action $\to$ daemon $\to$ `quickshell ipc call overview toggle` |
 | **Wallpaper Picker** | `Meta+Shift+W` | KWin action $\to$ daemon $\to$ `quickshell ipc call launcher open wallpaper` |
 | **KDE Desktop Switch** | `Ctrl+Meta+Left/Right` | KDE Native (no modifier interception) |
 
@@ -88,6 +87,11 @@ The chat response to `"hi"` renders with instant real-time markdown formatting a
 The Nexus Settings page (`Meta+,` or via Copilot `tune` / `settings` icon) showing active Harness, Provider, and Model selection:
 
 ![Settings AI Configuration Proof](/home/hlu/.gemini/antigravity/brain/6243245e-1de1-4944-8e6d-a8a7cf6545aa/settings_ai_configuration.png)
+
+### Proof 3: Bare Meta Key Triggering Active Apps Overview
+Tapping the bare `Meta` key (or `Meta+W`) opens the fullscreen Active Apps Overview with live thumbnails, backdrop blur, and search:
+
+![Meta Shortcut Overview Proof](/home/hlu/.gemini/antigravity/brain/6243245e-1de1-4944-8e6d-a8a7cf6545aa/meta_shortcut_overview_proof.png)
 
 ---
 
