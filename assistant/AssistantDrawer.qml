@@ -338,7 +338,6 @@ Item {
                     if (typeof AssistantService !== "undefined") {
                         AssistantService.createNewSession();
                     }
-                    root.sessionsVisible = false;
                 }
             }
 

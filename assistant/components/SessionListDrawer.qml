@@ -109,7 +109,6 @@ Rectangle {
                             AssistantService.createNewSession();
                         }
                         root.newSessionRequested();
-                        root.closed();
                     }
                 }
             }
@@ -383,7 +382,6 @@ Rectangle {
                                     AssistantService.loadSession(modelData.id);
                                 }
                                 root.sessionSelected(modelData.id);
-                                root.closed();
                             }
                         }
                     }

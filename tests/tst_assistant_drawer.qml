@@ -357,6 +357,7 @@ Item {
         const sessionDrawerSrc = readLocalFile("../assistant/components/SessionListDrawer.qml");
         assert(sessionDrawerSrc.length > 500, "SessionListDrawer.qml must be readable");
         assert(/SessionListDrawer/.test(drawerSrc), "AssistantDrawer must embed SessionListDrawer");
+        assert(!/root\.sessionSelected\([^)]*\);\s*root\.closed\(\)/.test(sessionDrawerSrc), "SessionListDrawer must NOT auto-close when selecting a session");
         assert(drawer.sessionsVisible === false, "AssistantDrawer sessionsVisible must default to false");
         assert(testSessionDrawer !== null, "SessionListDrawer must instantiate properly");
 
@@ -420,6 +421,22 @@ Item {
         assert(floatingDrawer.sessionsVisible === false, "floatingDrawer sessionsVisible must start false");
         floatingDrawer.sessionsVisible = true;
         assert(floatingDrawer.sessionsVisible === true, "floatingDrawer sessionsVisible must toggle to true");
+
+        // Selecting a session must NOT close the sessions sidebar
+        let sessionSelectedFired = false;
+        floatingDrawer.sessionDrawerItem.sessionSelected.connect(function(id) {
+            sessionSelectedFired = true;
+        });
+        let closedFired = false;
+        floatingDrawer.sessionDrawerItem.closed.connect(function() {
+            closedFired = true;
+        });
+
+        floatingDrawer.sessionDrawerItem.sessionSelected("session_test_persist");
+        assert(sessionSelectedFired === true, "sessionSelected signal must fire on selection");
+        assert(closedFired === false, "Selecting a session must NOT fire closed signal");
+        assert(floatingDrawer.sessionsVisible === true, "sessionsVisible must remain true when a session is selected");
+
         floatingDrawer.sessionsVisible = false;
 
         // 23. File Explorer Sort Criteria, Direction, and View Size Modes Contract

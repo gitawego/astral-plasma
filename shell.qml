@@ -207,12 +207,13 @@ ShellRoot {
                 assistantWindow.drawerItem.sessionsVisible = !assistantWindow.drawerItem.sessionsVisible;
             }
         }
+        function selectSession(id: string): void {
+            Config.openAssistant();
+            AssistantService.loadSession(id);
+        }
         function newChat(): void {
             Config.openAssistant();
             AssistantService.createNewSession();
-            if (assistantWindow && assistantWindow.drawerItem) {
-                assistantWindow.drawerItem.sessionsVisible = false;
-            }
         }
         function openFileDialog(): void {
             Config.openAssistant();
