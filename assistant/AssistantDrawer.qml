@@ -505,6 +505,28 @@ Item {
                                     }
                                 }
 
+                                // Multiplier badge if crash occurred multiple times (e.g. 2x)
+                                Rectangle {
+                                    id: countBadge
+                                    implicitHeight: 18
+                                    implicitWidth: countTxt.implicitWidth + 8
+                                    radius: 4
+                                    color: Qt.rgba(1.0, 0.22, 0.22, 0.18)
+                                    border.width: 1
+                                    border.color: Qt.rgba(1.0, 0.22, 0.22, 0.35)
+                                    visible: crashBanner.currentCrash && crashBanner.currentCrash.count && crashBanner.currentCrash.count > 1 ? true : false
+
+                                    Text {
+                                        id: countTxt
+                                        anchors.centerIn: parent
+                                        text: (crashBanner.currentCrash && crashBanner.currentCrash.count && crashBanner.currentCrash.count > 1) ? (crashBanner.currentCrash.count + "x") : ""
+                                        font.family: Theme.fontMonospace
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                        color: Colors.m3error
+                                    }
+                                }
+
                                 // Carousel pagination buttons when multiple crashes exist
                                 RowLayout {
                                     spacing: 2

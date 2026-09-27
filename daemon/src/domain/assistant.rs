@@ -76,6 +76,10 @@ pub struct SkillDescriptor {
     pub source: String, // "astral-builtin" | "user-agent" | "omarchy"
 }
 
+fn default_crash_count() -> u32 {
+    1
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CrashIncident {
     pub id: String,
@@ -85,6 +89,8 @@ pub struct CrashIncident {
     pub timestamp_ms: u64,
     pub summary: String,
     pub log_snippet: String,
+    #[serde(default = "default_crash_count")]
+    pub count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

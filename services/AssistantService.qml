@@ -52,9 +52,26 @@ Singleton {
         let rev = crashesRevision;
         if (!recentCrashes || !Array.isArray(recentCrashes)) return [];
         let dismissed = dismissedCrashIds || [];
-        return recentCrashes.filter(function(c) {
+        let filtered = recentCrashes.filter(function(c) {
             return c && c.id && dismissed.indexOf(c.id) === -1;
         });
+
+        let deduped = [];
+        let seen = {};
+        for (let i = 0; i < filtered.length; i++) {
+            let c = filtered[i];
+            let key = (c.process_name && c.process_name !== "system") ? c.process_name : (c.summary || c.id);
+            if (seen[key] !== undefined) {
+                let existing = deduped[seen[key]];
+                existing.count = (existing.count || 1) + (c.count || 1);
+                continue;
+            }
+            let copy = Object.assign({}, c);
+            if (!copy.count) copy.count = 1;
+            seen[key] = deduped.length;
+            deduped.push(copy);
+        }
+        return deduped;
     }
 
     function dismissCrash(crashId) {
@@ -62,9 +79,27 @@ Singleton {
         let list = (dismissedCrashIds || []).slice();
         if (list.indexOf(crashId) === -1) {
             list.push(crashId);
-            dismissedCrashIds = list;
-            crashesRevision++;
         }
+        // Also dismiss all other crashes with the same process_name
+        let targetProcess = "";
+        for (let i = 0; i < recentCrashes.length; i++) {
+            if (recentCrashes[i] && recentCrashes[i].id === crashId) {
+                targetProcess = recentCrashes[i].process_name;
+                break;
+            }
+        }
+        if (targetProcess && targetProcess !== "system") {
+            for (let i = 0; i < recentCrashes.length; i++) {
+                let c = recentCrashes[i];
+                if (c && c.id && c.process_name === targetProcess) {
+                    if (list.indexOf(c.id) === -1) {
+                        list.push(c.id);
+                    }
+                }
+            }
+        }
+        dismissedCrashIds = list;
+        crashesRevision++;
     }
 
     function dismissAllCrashes() {

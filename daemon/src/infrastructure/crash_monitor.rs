@@ -40,29 +40,100 @@ fn parse_coredumpctl_line(line: &str) -> Option<CrashIncident> {
         timestamp_ms: now,
         summary: format!("Application '{}' terminated due to {}", proc_name, signal),
         log_snippet: line.trim().to_string(),
+        count: 1,
     })
 }
 
-impl CrashMonitor {
-    /// Queries the system for the most recent application or service crashes.
-    pub fn scan_recent_crashes(limit: usize) -> Vec<CrashIncident> {
-        let mut incidents = Vec::new();
+/// Deduplicates crash incidents by process name, aggregating occurrences into `count`
+/// and keeping the newest incident's metadata.
+pub fn deduplicate_incidents(raw: Vec<CrashIncident>, limit: usize) -> Vec<CrashIncident> {
+    let mut deduped: Vec<CrashIncident> = Vec::new();
 
-        // 1. Check coredumpctl
-        if let Ok(output) = Command::new("coredumpctl").args(["list", "-n", &limit.to_string(), "--no-legend", "--no-pager"]).output() {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    if let Some(incident) = parse_coredumpctl_line(line) {
-                        incidents.push(incident);
+    for inc in raw {
+        let is_system_or_empty = inc.process_name.is_empty() || inc.process_name == "system";
+
+        if let Some(existing) = deduped.iter_mut().find(|item| {
+            if is_system_or_empty {
+                item.summary == inc.summary
+            } else {
+                item.process_name == inc.process_name
+            }
+        }) {
+            existing.count += inc.count.max(1);
+            if let Some(ref sig) = existing.signal {
+                existing.summary = format!(
+                    "Application '{}' terminated due to {} ({} crashes)",
+                    existing.process_name, sig, existing.count
+                );
+            } else {
+                existing.summary = format!(
+                    "Application '{}' crashed ({} times)",
+                    existing.process_name, existing.count
+                );
+            }
+        } else if deduped.len() < limit {
+            let mut new_entry = inc;
+            if new_entry.count == 0 {
+                new_entry.count = 1;
+            }
+            deduped.push(new_entry);
+        }
+    }
+
+    deduped
+}
+
+impl CrashMonitor {
+    /// Queries the system for the most recent application or service crashes,
+    /// deduplicated by process name with repeat crash counts aggregated.
+    pub fn scan_recent_crashes(limit: usize) -> Vec<CrashIncident> {
+        let mut raw_incidents = Vec::new();
+        let scan_limit = (limit * 10).max(50);
+
+        // 1. Check coredumpctl (-r: newest first)
+        let coredump_output = Command::new("coredumpctl")
+            .args(["list", "-r", "-n", &scan_limit.to_string(), "--no-legend", "--no-pager"])
+            .output();
+
+        let (coredump_success, coredump_stdout, is_reversed) = match coredump_output {
+            Ok(ref out) if out.status.success() => (true, String::from_utf8_lossy(&out.stdout).to_string(), true),
+            _ => {
+                // Fallback: try without -r (older systemd)
+                if let Ok(fallback_out) = Command::new("coredumpctl")
+                    .args(["list", "-n", &scan_limit.to_string(), "--no-legend", "--no-pager"])
+                    .output()
+                {
+                    if fallback_out.status.success() {
+                        (true, String::from_utf8_lossy(&fallback_out.stdout).to_string(), false)
+                    } else {
+                        (false, String::new(), false)
                     }
+                } else {
+                    (false, String::new(), false)
+                }
+            }
+        };
+
+        if coredump_success {
+            let lines: Vec<&str> = if is_reversed {
+                coredump_stdout.lines().collect()
+            } else {
+                coredump_stdout.lines().rev().collect()
+            };
+
+            for line in lines {
+                if let Some(incident) = parse_coredumpctl_line(line) {
+                    raw_incidents.push(incident);
                 }
             }
         }
 
         // 2. If no coredumps found, check high severity systemd journal errors
-        if incidents.is_empty() {
-            if let Ok(output) = Command::new("journalctl").args(["-p", "3", "-xb", "-n", &limit.to_string(), "--no-pager"]).output() {
+        if raw_incidents.is_empty() {
+            if let Ok(output) = Command::new("journalctl")
+                .args(["-p", "3", "-xb", "-r", "-n", &scan_limit.to_string(), "--no-pager"])
+                .output()
+            {
                 if output.status.success() {
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     for (idx, line) in stdout.lines().enumerate() {
@@ -70,12 +141,11 @@ impl CrashMonitor {
                         if trimmed.is_empty() {
                             continue;
                         }
-                        // Check if line indicates segfault or trap
                         if trimmed.contains("segfault") || trimmed.contains("traps") || trimmed.contains("failed") || trimmed.contains("error") {
                             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
                             let proc_guess = trimmed.split(':').next().unwrap_or("system").trim().to_string();
 
-                            incidents.push(CrashIncident {
+                            raw_incidents.push(CrashIncident {
                                 id: format!("jrn_{}_{}", now, idx),
                                 process_name: proc_guess,
                                 pid: None,
@@ -83,18 +153,15 @@ impl CrashMonitor {
                                 timestamp_ms: now,
                                 summary: trimmed.chars().take(120).collect(),
                                 log_snippet: trimmed.to_string(),
+                                count: 1,
                             });
-
-                            if incidents.len() >= limit {
-                                break;
-                            }
                         }
                     }
                 }
             }
         }
 
-        incidents
+        deduplicate_incidents(raw_incidents, limit)
     }
 }
 
@@ -116,6 +183,7 @@ mod tests {
         assert!(inc.summary.contains("wine64-preloader"), "summary: {}", inc.summary);
         assert!(inc.summary.contains("SIGQUIT"), "summary: {}", inc.summary);
         assert!(!inc.summary.contains("48K"), "summary leaked SIZE column: {}", inc.summary);
+        assert_eq!(inc.count, 1);
     }
 
     #[test]
@@ -125,6 +193,7 @@ mod tests {
         let inc = parse_coredumpctl_line(row).expect("row must parse");
         assert_eq!(inc.process_name, "some-app");
         assert_eq!(inc.signal.as_deref(), Some("SIGQUIT"));
+        assert_eq!(inc.count, 1);
     }
 
     #[test]
@@ -133,6 +202,121 @@ mod tests {
         assert!(parse_coredumpctl_line("").is_none());
         // SIG token without executable column after corefile status -> skip.
         assert!(parse_coredumpctl_line("Sat 2026-09-26 13:12:03 CEST 1 1 1 SIGQUIT present").is_none());
+    }
+
+    #[test]
+    fn test_deduplicate_incidents_aggregates_same_process() {
+        let incidents = vec![
+            CrashIncident {
+                id: "core_3885547".to_string(),
+                process_name: "python3.14".to_string(),
+                pid: Some(3885547),
+                signal: Some("SIGSEGV".to_string()),
+                timestamp_ms: 2000,
+                summary: "Application 'python3.14' terminated due to SIGSEGV".to_string(),
+                log_snippet: "snippet 2".to_string(),
+                count: 1,
+            },
+            CrashIncident {
+                id: "core_3114727".to_string(),
+                process_name: "python3.14".to_string(),
+                pid: Some(3114727),
+                signal: Some("SIGSEGV".to_string()),
+                timestamp_ms: 1000,
+                summary: "Application 'python3.14' terminated due to SIGSEGV".to_string(),
+                log_snippet: "snippet 1".to_string(),
+                count: 1,
+            },
+        ];
+
+        let deduped = deduplicate_incidents(incidents, 5);
+        assert_eq!(deduped.len(), 1, "Duplicate process crashes must be merged into 1 incident");
+        assert_eq!(deduped[0].process_name, "python3.14");
+        assert_eq!(deduped[0].pid, Some(3885547), "Latest PID must be retained");
+        assert_eq!(deduped[0].count, 2, "Crash count must be aggregated");
+        assert!(deduped[0].summary.contains("2 crashes"), "Summary must reflect repeat crashes: {}", deduped[0].summary);
+    }
+
+    #[test]
+    fn test_deduplicate_incidents_keeps_different_processes_separate() {
+        let incidents = vec![
+            CrashIncident {
+                id: "core_3885547".to_string(),
+                process_name: "python3.14".to_string(),
+                pid: Some(3885547),
+                signal: Some("SIGSEGV".to_string()),
+                timestamp_ms: 2000,
+                summary: "Application 'python3.14' terminated due to SIGSEGV".to_string(),
+                log_snippet: "snippet py".to_string(),
+                count: 1,
+            },
+            CrashIncident {
+                id: "core_3102965".to_string(),
+                process_name: "wine64-preloader".to_string(),
+                pid: Some(3102965),
+                signal: Some("SIGQUIT".to_string()),
+                timestamp_ms: 1500,
+                summary: "Application 'wine64-preloader' terminated due to SIGQUIT".to_string(),
+                log_snippet: "snippet wine".to_string(),
+                count: 1,
+            },
+            CrashIncident {
+                id: "core_2561885".to_string(),
+                process_name: "python3.14".to_string(),
+                pid: Some(2561885),
+                signal: Some("SIGABRT".to_string()),
+                timestamp_ms: 1000,
+                summary: "Application 'python3.14' terminated due to SIGABRT".to_string(),
+                log_snippet: "snippet py old".to_string(),
+                count: 1,
+            },
+        ];
+
+        let deduped = deduplicate_incidents(incidents, 5);
+        assert_eq!(deduped.len(), 2, "Distinct processes must be kept separate");
+        assert_eq!(deduped[0].process_name, "python3.14");
+        assert_eq!(deduped[0].count, 2, "Python crash count must be 2");
+        assert_eq!(deduped[1].process_name, "wine64-preloader");
+        assert_eq!(deduped[1].count, 1, "Wine crash count must be 1");
+    }
+
+    #[test]
+    fn test_deduplicate_incidents_respects_limit() {
+        let incidents = vec![
+            CrashIncident {
+                id: "1".into(),
+                process_name: "app1".into(),
+                pid: Some(1),
+                signal: None,
+                timestamp_ms: 10,
+                summary: "crash 1".into(),
+                log_snippet: "".into(),
+                count: 1,
+            },
+            CrashIncident {
+                id: "2".into(),
+                process_name: "app2".into(),
+                pid: Some(2),
+                signal: None,
+                timestamp_ms: 20,
+                summary: "crash 2".into(),
+                log_snippet: "".into(),
+                count: 1,
+            },
+            CrashIncident {
+                id: "3".into(),
+                process_name: "app3".into(),
+                pid: Some(3),
+                signal: None,
+                timestamp_ms: 30,
+                summary: "crash 3".into(),
+                log_snippet: "".into(),
+                count: 1,
+            },
+        ];
+
+        let deduped = deduplicate_incidents(incidents, 2);
+        assert_eq!(deduped.len(), 2, "Deduplication must respect requested limit");
     }
 
     #[test]

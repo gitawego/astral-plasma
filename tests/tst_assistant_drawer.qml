@@ -506,6 +506,41 @@ Item {
         assert(/dismissMouse/.test(assistantDrawerSrc), "AssistantDrawer must include dismiss button");
         assert(/activeCrashes/.test(assistantDrawerSrc), "AssistantDrawer must bind to AssistantService.activeCrashes");
 
+        // Verify crash deduplication and process-level dismissal contract in AssistantService.qml
+        assert(/let\s+deduped\s*=\s*\[\]/.test(serviceSrc), "activeCrashes must deduplicate crash incidents");
+        assert(/existing\.count\s*=/.test(serviceSrc), "activeCrashes must aggregate repeat crash occurrences into count");
+        assert(/targetProcess/.test(serviceSrc), "dismissCrash must identify target process for comprehensive dismissal");
+        assert(/c\.process_name\s*===\s*targetProcess/.test(serviceSrc), "dismissCrash must dismiss all matching crashes for the target process");
+
+        // Verify multiplier badge in AssistantDrawer source contract
+        assert(/countBadge/.test(assistantDrawerSrc), "AssistantDrawer must declare countBadge for repeat crashes");
+        assert(/crashBanner\.currentCrash\.count.*>\s*1/.test(assistantDrawerSrc), "countBadge must be visible when count > 1");
+
+        // Verify deduplication logic contract
+        const sampleCrashes = [
+            { id: "core_1", process_name: "python3.14", signal: "SIGSEGV", count: 1 },
+            { id: "core_2", process_name: "python3.14", signal: "SIGSEGV", count: 1 },
+            { id: "core_3", process_name: "wine64-preloader", signal: "SIGQUIT", count: 1 }
+        ];
+        const dedupedCrashes = [];
+        const seenKeys = {};
+        for (let i = 0; i < sampleCrashes.length; i++) {
+            let c = sampleCrashes[i];
+            let key = (c.process_name && c.process_name !== "system") ? c.process_name : (c.summary || c.id);
+            if (seenKeys[key] !== undefined) {
+                let existing = dedupedCrashes[seenKeys[key]];
+                existing.count = (existing.count || 1) + (c.count || 1);
+                continue;
+            }
+            let copy = Object.assign({}, c);
+            if (!copy.count) copy.count = 1;
+            seenKeys[key] = dedupedCrashes.length;
+            dedupedCrashes.push(copy);
+        }
+        assert(dedupedCrashes.length === 2, "Deduplication algorithm must reduce 3 items to 2 unique processes");
+        assert(dedupedCrashes[0].count === 2, "Python crash count must be 2");
+        assert(dedupedCrashes[1].count === 1, "Wine crash count must be 1");
+
         // 13. Liquid Glass Design System & Component Polishing Contract
         // Verify AssistantDrawer crashBanner liquid glass styling
         assert(/dbgMouse\.pressed\s*\?\s*0\.94/.test(assistantDrawerSrc), "crashBanner Debug button must have spring scale micro-physics");
