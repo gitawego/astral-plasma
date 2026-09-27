@@ -550,26 +550,32 @@ Item {
         const cv = floatingDrawer.chatViewItem;
         assert(typeof cv.normalizeMarkdown === "function", "ChatView must expose normalizeMarkdown function");
 
-        // Verify ATX heading normalization: H1 (#) -> ### (16px DemiBold Theme.fontTitleSmall)
-        assert(cv.normalizeMarkdown("# Final campaign") === "### Final campaign", "H1 must normalize to ### (fontTitleSmall 16px)");
-        assert(cv.normalizeMarkdown("Text\n\n# Heading 1") === "Text\n\n### Heading 1", "H1 after paragraph must normalize to ###");
-        assert(cv.normalizeMarkdown("# Heading With Trailing Hashes ####") === "### Heading With Trailing Hashes", "ATX heading trailing hashes must be stripped");
+        // Verify ATX heading normalization: H1 -> ## (~19.5px Bold, Theme.fontTitleMedium)
+        assert(cv.normalizeMarkdown("# Final campaign") === "## Final campaign", "H1 must normalize to ## (19.5px Bold)");
+        assert(cv.normalizeMarkdown("Text\n\n# Heading 1") === "Text\n\n## Heading 1", "H1 after paragraph must normalize to ##");
+        assert(cv.normalizeMarkdown("Text\n# Heading 1") === "Text\n\n## Heading 1", "H1 preceded by single newline must insert blank line for proper top margin");
+        assert(cv.normalizeMarkdown("# Heading With Trailing Hashes ####") === "## Heading With Trailing Hashes", "ATX heading trailing hashes must be stripped");
 
-        // Verify H2 and H3 normalization: H2/H3 -> #### (13.5-14px DemiBold)
-        assert(cv.normalizeMarkdown("## Sub-section Analysis") === "#### Sub-section Analysis", "H2 must normalize to #### (14px DemiBold)");
-        assert(cv.normalizeMarkdown("### Repro Script") === "#### Repro Script", "H3 must normalize to #### (13.5px DemiBold)");
+        // Verify H2 through H6 distinct hierarchy normalization
+        assert(cv.normalizeMarkdown("## Sub-section Analysis") === "### Sub-section Analysis", "H2 must normalize to ### (15.2px DemiBold)");
+        assert(cv.normalizeMarkdown("### Repro Script") === "#### Repro Script", "H3 must normalize to #### (13.0px Bold)");
+        assert(cv.normalizeMarkdown("#### Step Details") === "#### *Step Details*", "H4 must normalize to #### *Step Details* (13.0px Bold-Italic)");
+        assert(cv.normalizeMarkdown("#### *Already Italic*") === "#### *Already Italic*", "H4 already italic must not double-wrap");
+        assert(cv.normalizeMarkdown("##### Minor Note") === "##### Minor Note", "H5 must normalize to ##### (10.8px Bold)");
+        assert(cv.normalizeMarkdown("###### Sub-note") === "###### Sub-note", "H6 must normalize to ###### (8.7px Bold)");
 
         // Verify Setext heading normalization
-        assert(cv.normalizeMarkdown("Setext Title\n=====") === "### Setext Title", "Setext H1 must normalize to ###");
-        assert(cv.normalizeMarkdown("Setext Subtitle\n-----") === "#### Setext Subtitle", "Setext H2 must normalize to ####");
+        assert(cv.normalizeMarkdown("Setext Title\n=====") === "## Setext Title", "Setext H1 must normalize to ##");
+        assert(cv.normalizeMarkdown("Setext Subtitle\n-----") === "### Setext Subtitle", "Setext H2 must normalize to ###");
+        assert(cv.normalizeMarkdown("Text\nSetext Title\n=====") === "Text\n\n## Setext Title", "Setext H1 preceded by text must insert blank line");
 
         // Verify Fenced Code Block preservation (bash/python comments with # must NEVER be altered)
         const codeBlockInput = "# Main Title\n```bash\n# this is a bash comment\nkill -9 1234\n```\n# Next Title";
-        const codeBlockExpected = "### Main Title\n```bash\n# this is a bash comment\nkill -9 1234\n```\n### Next Title";
+        const codeBlockExpected = "## Main Title\n```bash\n# this is a bash comment\nkill -9 1234\n```\n## Next Title";
         assert(cv.normalizeMarkdown(codeBlockInput) === codeBlockExpected, "Fenced code blocks must be preserved byte-for-byte without altering internal comments");
 
         const tildeCodeBlock = "~~~python\n# python comment\nx = 42\n~~~\n# Final Heading";
-        const tildeExpected = "~~~python\n# python comment\nx = 42\n~~~\n### Final Heading";
+        const tildeExpected = "~~~python\n# python comment\nx = 42\n~~~\n## Final Heading";
         assert(cv.normalizeMarkdown(tildeCodeBlock) === tildeExpected, "Tilde code blocks must also be preserved byte-for-byte");
 
         // Verify Edge Cases

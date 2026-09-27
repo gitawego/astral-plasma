@@ -79,19 +79,27 @@ Flickable {
         const parts = str.split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g);
         for (let i = 0; i < parts.length; i += 2) {
             let chunk = parts[i];
-            // 1. Normalize ATX headings: 1 hash (#) -> ###, 2+ hashes (##, ###) -> ####
+            // 1. Ensure blank line before any ATX heading so top block margin is preserved
+            chunk = chunk.replace(/([^\n])\r?\n(#{1,6}[ \t]+)/g, "$1\n\n$2");
+            // 2. ATX headings:
             chunk = chunk.replace(/^(#{1,6})[ \t]+([^\n]+)$/gm, function(match, hashes, title) {
                 const cleanTitle = title.replace(/\s+#+\s*$/, "").trim();
                 const level = hashes.length;
-                if (level === 1) {
-                    return "### " + cleanTitle;
-                } else {
-                    return "#### " + cleanTitle;
+                if (level === 1) return "## " + cleanTitle;
+                if (level === 2) return "### " + cleanTitle;
+                if (level === 3) return "#### " + cleanTitle;
+                if (level === 4) {
+                    const inner = cleanTitle.replace(/^[*_]+|[*_]+$/g, "").trim();
+                    return "#### *" + inner + "*";
                 }
+                if (level === 5) return "##### " + cleanTitle;
+                return "###### " + cleanTitle;
             });
-            // 2. Normalize Setext headings: Line followed by === -> ###, line followed by --- -> ####
-            chunk = chunk.replace(/^([^\n#`~]+)\r?\n={2,}$/gm, "### $1");
-            chunk = chunk.replace(/^([^\n#`~]+)\r?\n-{2,}$/gm, "#### $1");
+            // 3. Setext headings (with optional preceding text blank line):
+            chunk = chunk.replace(/([^\n])\r?\n([^\n#`~]+)\r?\n={2,}$/gm, "$1\n\n## $2");
+            chunk = chunk.replace(/^([^\n#`~]+)\r?\n={2,}$/gm, "## $1");
+            chunk = chunk.replace(/([^\n])\r?\n([^\n#`~]+)\r?\n-{2,}$/gm, "$1\n\n### $2");
+            chunk = chunk.replace(/^([^\n#`~]+)\r?\n-{2,}$/gm, "### $1");
             parts[i] = chunk;
         }
         return parts.join("");
