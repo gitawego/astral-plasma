@@ -72,9 +72,12 @@ _launch=Meta+Shift+B,none,Firefox
 
     // Verify the shell's shortcuts were added
     let current_ini = KdeIniFile::parse(&fs::read_to_string(&kglobal_path).unwrap());
+    // The value comes from the domain helper, which is also what
+    // `scripts/bind_shortcuts.sh` writes: the claim check compares against it, so
+    // a hardcoded label here would let the two sides drift apart.
     assert_eq!(
         current_ini.get("kwin", branding::SHORTCUT_LAUNCHER_KEY).as_deref(),
-        Some(format!("Meta+Space,none,{}", branding::SHORTCUT_LAUNCHER_LABEL).as_str())
+        Some(astral_plasma::domain::shortcuts::launcher_binding("meta-space").as_str())
     );
 
     // 3. Simulate user INTENTIONALLY modifying shortcuts during the session!

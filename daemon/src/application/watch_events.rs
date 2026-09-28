@@ -7,7 +7,7 @@ use crate::application::wine_mpris::{parse_wine_media, WineMprisService, WineMpr
 use crate::domain::model::{
     ActiveWindowPayload, FullStatePayload, TrayItem, TrayPayload, Window, WindowMeta, WindowsListPayload,
 };
-use crate::domain::ports::{DynResult, ShortcutControlPort, TrayPort, WindowManagerPort};
+use crate::domain::ports::{DynResult, TrayPort, WindowManagerPort};
 use crate::infrastructure::window_icons;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -651,6 +651,14 @@ pub fn cleanup_kwin_script() {
 }
 
 pub async fn run_event_daemon() -> DynResult<()> {
+    // A test session has no compositor, no session bus and no desktop to
+    // integrate with. The lifecycle tests spawn this command to observe what a
+    // start and a signal do to the *configuration*, so keep that path real and
+    // skip everything that would need a live session.
+    if branding::test_mode() {
+        return run_test_session().await;
+    }
+
     #[cfg(target_os = "linux")]
     unsafe {
         libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
@@ -847,68 +855,79 @@ pub async fn run_event_daemon() -> DynResult<()> {
 
     // Compositor-specific window event watcher
     if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
-        // Ensure shortcuts are registered/bound and conflicting actions safely displaced
+        // Claim the desktop. The mode comes from the session journal, so a
+        // restart resumes what the user chose instead of resetting the default.
         let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
-        let _ = shortcuts.bind_shortcuts("meta-space");
-
-        // Ensure KDE Plasma panels are disabled if not already
-        let plasma = crate::application::plasma_service::PlasmaControlUseCase::new(
-            crate::infrastructure::plasma_adapter::PlasmaAdapter::new(),
+        let mode = crate::domain::desktop_integration::resume_mode(shortcuts.journal_mode().as_deref())
+            .to_string();
+        // Claim through the use case, never the adapter directly: the session
+        // journal has to be written *before* the keys are taken, or a later
+        // release would have nothing to give back.
+        let claim = crate::application::shortcut_service::ShortcutControlUseCase::new(
+            crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new(),
         );
-        let _ = plasma.backup_and_disable("all", Some(std::process::id()));
+        let _ = claim.backup_and_bind(&mode);
 
-        // Periodic watchdog to ensure built-in Plasma panels don't respawn while running
-        tokio::spawn(async move {
-            let plasma_port = crate::infrastructure::plasma_adapter::PlasmaAdapter::new();
-            let mut interval = tokio::time::interval(Duration::from_secs(3));
-            loop {
-                interval.tick().await;
-                if !crate::domain::branding::test_mode() {
-                    use crate::domain::ports::PlasmaControlPort;
-                    if let Ok(panels) = plasma_port.query_panels() {
-                        if !panels.is_empty() {
-                            eprintln!("[{}] Detected {} respawned built-in panel(s); re-disabling...", crate::domain::branding::APP_NAME, panels.len());
-                            let _ = plasma_port.disable_panels("all");
-                        }
+        // Everything below drives a live compositor and desktop. A test session
+        // has neither, and must not restart plasmashell or load KWin scripts.
+        if !crate::domain::branding::test_mode() {
+            // The watchdog supervises the *shell*, not this process: a daemon
+            // restart (shell reload, crash recovery) must not hand the desktop
+            // back. Only the shell going away does.
+            let plasma = crate::application::plasma_service::PlasmaControlUseCase::new(
+                crate::infrastructure::plasma_adapter::PlasmaAdapter::new(),
+            );
+            let shell_pid = unsafe { libc::getppid() } as u32;
+            let _ = plasma.backup_and_disable("all", Some(shell_pid));
+
+            // One loop owns every desktop-integration resource: panels respawn,
+            // a KWin restart drops the shortcut script, Plasma can overwrite the
+            // keys, the window rule can be deleted. Drift is repaired, not
+            // remembered.
+            tokio::spawn(crate::application::desktop_reconciler::run_desktop_reconcile_loop(
+                crate::domain::desktop_integration::DesiredState {
+                    mode: mode.clone(),
+                    panels_disabled: true,
+                    frameless_rule: true,
+                },
+                crate::application::desktop_reconciler::RECONCILE_INTERVAL,
+            ));
+
+            cleanup_kwin_script();
+            let script_file = branding::tmp_file("kwin_watcher.js");
+            fs::write(&script_file, get_kwin_watcher_script())?;
+
+            let _ = Command::new("qdbus6")
+                .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
+                .output();
+            let _ = Command::new("qdbus6")
+                .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
+                .output();
+
+            // KWin Script Watchdog: if KWin restarts or script is unloaded, restore it
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(5));
+                loop {
+                    interval.tick().await;
+                    let is_loaded = Command::new("qdbus6")
+                        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.isScriptLoaded", KWIN_SCRIPT_NAME])
+                        .output()
+                        .map(|out| String::from_utf8_lossy(&out.stdout).trim() == "true")
+                        .unwrap_or(false);
+
+                    if !is_loaded {
+                        let script_file = branding::tmp_file("kwin_watcher.js");
+                        let _ = fs::write(&script_file, get_kwin_watcher_script());
+                        let _ = Command::new("qdbus6")
+                            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
+                            .output();
+                        let _ = Command::new("qdbus6")
+                            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
+                            .output();
                     }
                 }
-            }
-        });
-
-        cleanup_kwin_script();
-        let script_file = branding::tmp_file("kwin_watcher.js");
-        fs::write(&script_file, get_kwin_watcher_script())?;
-
-        let _ = Command::new("qdbus6")
-            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
-            .output();
-        let _ = Command::new("qdbus6")
-            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
-            .output();
-
-        // KWin Script Watchdog: if KWin restarts or script is unloaded, restore it
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
-            loop {
-                interval.tick().await;
-                let is_loaded = Command::new("qdbus6")
-                    .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.isScriptLoaded", KWIN_SCRIPT_NAME])
-                    .output()
-                    .map(|out| String::from_utf8_lossy(&out.stdout).trim() == "true")
-                    .unwrap_or(false);
-
-                if !is_loaded {
-                    let script_file = branding::tmp_file("kwin_watcher.js");
-                    let _ = fs::write(&script_file, get_kwin_watcher_script());
-                    let _ = Command::new("qdbus6")
-                        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
-                        .output();
-                    let _ = Command::new("qdbus6")
-                        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
-                        .output();
-                }
-            }
-        });
+            });
+        }
     } else {
         let h_state = Arc::clone(&state);
         let h_wm = Arc::clone(&wm);
@@ -984,14 +1003,11 @@ pub async fn run_event_daemon() -> DynResult<()> {
         loop {
             match stdin.read(&mut buf).await {
                 Ok(0) | Err(_) => {
+                    // stdin closing means the supervisor is gone. Exit without
+                    // touching the desktop: releasing it belongs to the watchdog
+                    // (which supervises the shell) or to an explicit request.
                     if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
                         cleanup_kwin_script();
-                        let plasma = crate::application::plasma_service::PlasmaControlUseCase::new(
-                            crate::infrastructure::plasma_adapter::PlasmaAdapter::new(),
-                        );
-                        let _ = plasma.restore();
-                        let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
-                        let _ = shortcuts.restore_relevant_shortcuts();
                     }
                     std::process::exit(0);
                 }
@@ -1000,38 +1016,33 @@ pub async fn run_event_daemon() -> DynResult<()> {
         }
     });
 
-    // Handle termination signals
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{signal, SignalKind};
-        let mut sigterm = signal(SignalKind::terminate()).ok();
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {},
-            _ = async {
-                if let Some(ref mut st) = sigterm {
-                    st.recv().await;
-                } else {
-                    std::future::pending::<()>().await;
-                }
-            } => {},
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = tokio::signal::ctrl_c().await;
-    }
+    wait_for_termination().await;
 
+    // A termination signal ends *this process*; it is not user intent. Handing
+    // the desktop back is the watchdog's job (the shell disappeared) or an
+    // explicit `plasma restore`. Restoring here is what made every shell restart
+    // unbind the user's shortcut keys.
     if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
         cleanup_kwin_script();
-        let plasma = crate::application::plasma_service::PlasmaControlUseCase::new(
-            crate::infrastructure::plasma_adapter::PlasmaAdapter::new(),
-        );
-        let _ = plasma.restore();
-        let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
-        let _ = shortcuts.restore_relevant_shortcuts();
     }
 
-    Ok(())
+    // Exit explicitly rather than returning: dropping the runtime waits for
+    // in-flight blocking work (zbus, spawned children), and a supervisor
+    // restarting the daemon must not hang on that - a daemon that ignores
+    // SIGTERM while holding the watcher bus name is exactly the state that left
+    // the dock frozen and the shortcuts dead.
+    std::process::exit(0);
+}
+
+/// True when a Hyprland socket2 line reports the focused window changing.
+///
+/// The watcher re-queries compositor state on many event kinds, but only a
+/// genuine `activewindow` change is an activation: that label drives
+/// `WindowService.externalWindowActivated`, which consumers use to tell a real
+/// focus change from a background refresh. Title and layout refreshes of the
+/// already-focused window must stay plain window-list payloads.
+pub fn hyprland_event_is_activation(line: &str) -> bool {
+    line.starts_with("activewindow>>") || line.starts_with("activewindowv2>>")
 }
 
 fn run_hyprland_socket_watcher_sync(
@@ -1087,7 +1098,16 @@ fn run_hyprland_socket_watcher_sync(
                             }
                             let has_max = st.cached_windows.iter().any(|w| w.is_maximized || w.is_fullscreen);
                             let payload = ActiveWindowPayload {
-                                msg_type: "active".to_string(),
+                                // Only a genuine focus change may claim to be
+                                // an activation; both payload structs serialise
+                                // identical keys, so this label is the whole
+                                // difference between "someone switched" and
+                                // "the focused window redrew".
+                                msg_type: if hyprland_event_is_activation(trimmed) {
+                                    "active".to_string()
+                                } else {
+                                    "windows".to_string()
+                                },
                                 active_title: st.active_title.clone(),
                                 active_material_icon: st.active_material_icon.clone(),
                                 active_icon_name: st.active_icon_name.clone(),
@@ -1110,4 +1130,44 @@ fn run_hyprland_socket_watcher_sync(
         }
         std::thread::sleep(Duration::from_millis(1000));
     }
+}
+
+/// Wait until the process is asked to terminate.
+async fn wait_for_termination() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm = signal(SignalKind::terminate()).ok();
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {},
+            _ = async {
+                if let Some(ref mut st) = sigterm {
+                    st.recv().await;
+                } else {
+                    std::future::pending::<()>().await;
+                }
+            } => {},
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+/// The test-mode shape of the daemon: claim the session, then wait for a signal.
+///
+/// Lifecycle tests assert what a start and a signal do to the configuration, so
+/// this keeps the claim real (the mock KDE configs) and leaves out the session
+/// bus, the compositor and the desktop integration.
+async fn run_test_session() -> DynResult<()> {
+    let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
+    let mode =
+        crate::domain::desktop_integration::resume_mode(shortcuts.journal_mode().as_deref()).to_string();
+    let claim = crate::application::shortcut_service::ShortcutControlUseCase::new(
+        crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new(),
+    );
+    let _ = claim.backup_and_bind(&mode);
+    wait_for_termination().await;
+    Ok(())
 }

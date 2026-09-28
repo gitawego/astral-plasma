@@ -28,6 +28,45 @@ Item {
         }
     }
 
+    /// A deep link can name a section. Pages opt in by exposing
+    /// `sectionY(name)`; the scroll waits for the page layout to settle, because
+    /// the target is clamped against the content height.
+    property alias contentPaneItem: contentPane
+    property alias navRailItem: navRail
+    property alias railSeamItem: railSeam
+
+    property real pendingSectionY: -1
+
+    function applyPendingSettingsSection() {
+        if (typeof Config === "undefined" || !Config.settingsSection) return;
+        const page = pageLoader.item;
+        if (!page || typeof page.sectionY !== "function") return;
+        const y = page.sectionY(Config.settingsSection);
+        Config.settingsSection = "";
+        if (y === undefined) return;
+        pendingSectionY = pageLoader.y + y;
+        Qt.callLater(root.scrollToPendingSection);
+    }
+
+    function scrollToPendingSection() {
+        if (pendingSectionY < 0) return;
+        if (pageFlickable.contentHeight <= pageFlickable.height) return; // layout still settling
+        pageFlickable.contentY = Math.max(
+            0,
+            Math.min(pageFlickable.contentHeight - pageFlickable.height, pendingSectionY));
+        pendingSectionY = -1;
+    }
+
+    Connections {
+        target: (typeof Config !== "undefined") ? Config : null
+        function onSettingsSectionChanged() { root.applyPendingSettingsSection(); }
+    }
+
+    Connections {
+        target: pageFlickable
+        function onContentHeightChanged() { root.scrollToPendingSection(); }
+    }
+
     function goBack() {
         if (pageHistory.length > 0) {
             let h = pageHistory.slice();
@@ -89,13 +128,20 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // Left Navigation Sidebar
+        // Left Navigation Rail.
+        //
+        // A rail, not a card: it is a tinted strip inside the window's single
+        // plate, closed by one hairline. Giving it its own radius and substrate
+        // made it a second panel butted against the content, with the wallpaper
+        // showing through the corner notches between them.
         Rectangle {
+            id: navRail
             Layout.preferredWidth: 250
             Layout.minimumWidth: 250
             Layout.fillHeight: true
-            color: Colors.glassCard
-            radius: Theme.radiusMedium
+            color: (typeof Colors !== "undefined")
+                ? (Colors.isDarkMode ? Qt.rgba(1, 1, 1, 0.03) : Qt.rgba(0, 0, 0, 0.02))
+                : "transparent"
             clip: true
 
             ColumnLayout {
@@ -217,11 +263,28 @@ Item {
             }
         }
 
-        // Right Content Pane with Breadcrumb Drill-down Header
+        // The seam: one hairline, inset from the plate's edges, in the same
+        // specular family as every other divider in the shell.
         Rectangle {
+            id: railSeam
+            Layout.fillHeight: true
+            Layout.topMargin: Theme.padLarge
+            Layout.bottomMargin: Theme.padLarge
+            width: 1
+            color: (typeof Colors !== "undefined") ? Qt.alpha(Colors.glassBorderSpecular, 0.35) : "#33ffffff"
+        }
+
+        // Right Content Pane with Breadcrumb Drill-down Header.
+        //
+        // It carries the same readable substrate as the Copilot card: a page of
+        // options behind a fully transparent block disappears into a bright
+        // wallpaper, which is exactly how the settings page read before.
+        Rectangle {
+            id: contentPane
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: "transparent"
+            clip: true
 
             ColumnLayout {
                 anchors.fill: parent
@@ -292,6 +355,7 @@ Item {
                         id: pageLoader
                         width: parent.width
                         height: item ? item.implicitHeight : implicitHeight
+                        onLoaded: root.applyPendingSettingsSection()
                         sourceComponent: {
                             switch (root.activePage) {
                                 case "wallpaper":

@@ -73,6 +73,63 @@ Singleton {
     property var dismissedCrashIds: []
     property int crashesRevision: 0
 
+    // -----------------------------------------------------------------------
+    // Voice input
+    //
+    // Transport is a one-shot `voice session` child process: control lines go
+    // down stdin, VoiceEvent JSONL comes up stdout, and the process exits when
+    // the utterance finalises -- which is what releases the microphone. See
+    // docs/VOICE-INPUT-SPEC.md D3.
+    //
+    // A dictation transcript is NEVER auto-sent. It is appended to the composer
+    // for review, because a recognition error must not be able to reach a tool
+    // execution gate unattended (D5).
+    // -----------------------------------------------------------------------
+
+    /** "idle" | "recording" | "finalizing" | "failed" -- mirrors VoiceState. */
+    property string voiceState: "idle"
+    /** Measured audio level in [0.0, 1.0], straight from the capture stream. */
+    property real voiceLevel: 0.0
+    /** Real elapsed capture time in ms, driven by a local timer. */
+    property int voiceElapsedMs: 0
+    /** Engine-reported language tag, or "und" when undetermined. */
+    property string voiceLanguage: ""
+    /** Live partial text, only ever set from a real Partial event. */
+    property string voicePartialText: ""
+    /** The most recent finalized transcript, awaiting insertion into the composer. */
+    property string voiceTranscript: ""
+    /** Model download progress in [0.0, 1.0], and whether a download is running. */
+    property real voiceModelInstallProgress: 0.0
+    property bool voiceModelInstalling: false
+    /** A setup gap the user can fix, shown inline beside the mic button. */
+    property string voiceSetupMessage: ""
+    /** Readiness from `voice status`; null until probed. */
+    property var voiceStatus: null
+    /** Session-scoped language override. Never persisted (D9). */
+    property string voiceLanguageOverride: ""
+    /**
+     * True between spawning the session process and successfully sending
+     * `start`. Cleared as soon as the command is written, and reset on exit so a
+     * relaunch always re-arms the handshake.
+     */
+    property bool voiceAwaitingStart: false
+    /**
+     * The setup gap the user has explicitly dismissed.
+     *
+     * Recorded rather than simply cleared, so the notice does not reappear on
+     * the next `refreshVoiceStatus()` (which runs every time the drawer opens).
+     * A *different* gap still surfaces, because that is new information the user
+     * has not seen yet.
+     */
+    property string voiceDismissedGap: ""
+
+    readonly property bool isVoiceRecording: voiceState === "recording"
+    readonly property bool isVoiceBusy: voiceState === "recording" || voiceState === "finalizing"
+    readonly property bool voiceEnabled: (typeof Config !== "undefined") ? !!Config.voiceEnabled : true
+    /** Single source of truth for the mic button, so it cannot disagree with diagnostics. */
+    readonly property bool voiceReady: voiceStatus !== null && voiceStatus.setup_complete === true
+    readonly property bool voiceMicUsable: voiceEnabled && voiceReady && !isVoiceBusy
+
     readonly property var activeCrashes: {
         let rev = crashesRevision;
         if (!recentCrashes || !Array.isArray(recentCrashes)) return [];
@@ -186,8 +243,7 @@ Singleton {
             Config.assistantDefaultModel = modelId;
         }
         if (selectedProviderId) {
-            setModelProc.command = [daemonBin, "assistant", "set-model", selectedProviderId, modelId];
-            setModelProc.running = true;
+            runProc(setModelProc, [daemonBin, "assistant", "set-model", selectedProviderId, modelId]);
         }
     }
 
@@ -202,26 +258,239 @@ Singleton {
         refreshCrashes();
         loadActiveSession();
         refreshSessions();
+        refreshVoiceStatus();
+    }
+
+    // Pure decoders for the session's JSONL events. The payload shapes are
+    // typed (`Level` is `{"rms": x}`, `Partial` is `{"text": s}`), and
+    // reading them as bare values is silently wrong in JavaScript.
+    VoiceEventCodec {
+        id: voiceEventCodec
+    }
+
+    // -----------------------------------------------------------------------
+    // Voice input: use cases
+    // -----------------------------------------------------------------------
+
+    /**
+     * Maps a setup gap to a specific, actionable message.
+     *
+     * A generic "voice unavailable" would leave the user with nothing to do, so
+     * each gap names the actual missing piece. The way *out* is deliberately not
+     * part of the sentence: the composer's notice renders the destination as its
+     * own chip, so a message ending in "— Settings › AI › Voice input" would
+     * only duplicate it.
+     */
+    function describeVoiceGap(status) {
+        if (!status || status.setup_complete === true) return "";
+        switch (status.gap) {
+        case "engine_missing":
+            // Name the *engine*: the model can be downloaded while the engine is
+            // still missing, and "whisper.cpp is not installed" read as if the
+            // speech model were the problem.
+            return "whisper.cpp engine not installed";
+        case "model_missing":
+            return "Speech model " + (status.model || "") + " is not downloaded";
+        case "no_audio_source":
+            return "No microphone found — check your audio input device";
+        default:
+            return "Voice input is unavailable";
+        }
+    }
+
+    /**
+     * Dismisses the current setup notice.
+     *
+     * A permanent, non-dismissible notice is a wall rather than a pointer: the
+     * user cannot get it out of the way, so they learn to ignore the composer.
+     * Dismissal is scoped to the specific gap so a *new* problem still surfaces.
+     */
+    function dismissVoiceSetupNotice() {
+        root.voiceDismissedGap = (root.voiceStatus && root.voiceStatus.gap) ? root.voiceStatus.gap : "";
+        root.voiceSetupMessage = "";
+    }
+
+    /**
+     * Re-surfaces the setup notice, undoing a dismissal.
+     *
+     * This is what the mic button does when voice is not set up. The notice is
+     * dismissed per-gap, so a user who closed it once would otherwise click the
+     * mic and get no explanation at all -- which is indistinguishable from a
+     * broken button. Clicking the control is an explicit request to be told
+     * again, so the answer belongs right where they clicked: the strip names the
+     * missing piece and is itself a link into the page that installs it.
+     */
+    function showVoiceSetupNotice() {
+        root.voiceDismissedGap = "";
+        root.voiceSetupMessage = root.describeVoiceGap(root.voiceStatus);
+    }
+
+    /** Whether the current gap has already been dismissed by the user. */
+    readonly property bool voiceSetupDismissed: voiceDismissedGap !== ""
+        && voiceStatus !== null
+        && voiceStatus.gap === voiceDismissedGap
+
+    /**
+     * A mic click, routed by state.
+     *
+     * Ready    -> toggle recording.
+     * Not ready -> say what is missing, in the composer. Never a no-op, and
+     * never a navigation: a shortcut or a click must first *answer*, because a
+     * jump to another page hides the explanation behind a page change the user
+     * did not ask for. The notice it raises is itself the link into Settings.
+     */
+    function toggleVoiceInput() {
+        // `isVoiceRecording` is the declared name. The unqualified
+        // `voiceRecording` never existed, so this threw a ReferenceError and the
+        // whole function -- including the not-ready branch below -- never ran.
+        if (isVoiceRecording) {
+            stopVoiceInput();
+            return;
+        }
+        if (voiceMicUsable) {
+            startVoiceInput();
+            return;
+        }
+        showVoiceSetupNotice();
+    }
+
+    /**
+     * Cancels a one-shot daemon probe so a fresh one can start immediately.
+     *
+     * `Quickshell.Io.Process` has no `terminate()`; clearing `running` is how a
+     * process is stopped. Calling the missing method threw a TypeError that
+     * aborted the caller, so a restart while a probe was in flight silently did
+     * nothing at all -- the status never updated and the gap went stale.
+     *
+     * `discardOutput` is marked because a stopped process still finishes its
+     * output stream, and that stream is truncated mid-line. Parsing it would
+     * either throw a spurious parse error or, worse, apply a half-written
+     * payload.
+     *
+     * The two collector kinds need different guards, and conflating them breaks
+     * the feature. A `SplitParser` emits chunks *while the process is still
+     * running*, so `running` is the normal case there and must not be tested --
+     * doing so silently discarded every event the status probe and the chat
+     * stream produced, and voice looked permanently unconfigured. A
+     * `StdioCollector` emits once at the end, so it additionally tests `running`:
+     * cancelling without restarting leaves `running` false, and restarting re-arms
+     * the flag immediately, so only `running` catches the superseded case.
+     */
+    function cancelProc(proc) {
+        if (proc.running) {
+            proc.discardOutput = true;
+            proc.running = false;
+        }
+    }
+
+    /** Arms a probe: its output is meaningful again from here on. */
+    function runProc(proc, command) {
+        proc.discardOutput = false;
+        proc.command = command;
+        proc.running = true;
+    }
+
+    /** Probes engine and model readiness. Cheap; safe to call often. */
+    function refreshVoiceStatus() {
+        cancelProc(voiceStatusProc);
+        runProc(voiceStatusProc, [daemonBin, "voice", "status"]);
+    }
+
+    /** Downloads a speech model, reporting progress through voiceInstallProgress. */
+    function installVoiceModel(modelId) {
+        cancelProc(voiceInstallProc);
+        voiceModelInstallProgress = 0.0;
+        voiceModelInstalling = true;
+        const id = modelId || (voiceStatus ? voiceStatus.model : "");
+        if (!id) {
+            voiceModelInstalling = false;
+            return;
+        }
+        runProc(voiceInstallProc, [daemonBin, "voice", "install-model", id]);
+    }
+
+    /** Deletes a downloaded model so the row can go back to offering a download. */
+    function removeVoiceModel(modelId) {
+        if (voiceInstallProc.running) return;
+        const id = modelId || (voiceStatus ? voiceStatus.model : "");
+        if (!id) return;
+        runProc(voiceRemoveProc, [daemonBin, "voice", "remove-model", id]);
+    }
+
+    /** Starts capture. No-op unless the engine and model are both present. */
+    function startVoiceInput() {
+        if (!voiceMicUsable) return;
+        if (voiceSessionProc.running) return;
+
+        voiceState = "recording";
+        voiceLevel = 0.0;
+        voiceElapsedMs = 0;
+        voiceLanguage = "";
+        voicePartialText = "";
+        voiceSetupMessage = "";
+        voiceTranscript = "";
+        voiceAwaitingStart = true;
+        voiceElapsedTimer.restart();
+
+        runProc(voiceSessionProc, [daemonBin, "voice", "session"]);
+        // The daemon deliberately waits for an explicit `start` before opening
+        // the microphone, so spawning the process is not enough -- the pipe does
+        // not exist yet. The `voiceAwaitingStart` handshake inside the Process
+        // below sends the command as soon as it can actually be written.
+    }
+
+    /** Finalizes capture and transcribes. */
+    function stopVoiceInput() {
+        if (voiceSessionProc.running) {
+            voiceSessionProc.write("stop\n");
+        }
+    }
+
+    /** Aborts capture, discarding audio without transcribing. */
+    function cancelVoiceInput() {
+        if (voiceSessionProc.running) {
+            voiceSessionProc.write("cancel\n");
+        }
+        voiceState = "idle";
+        voiceElapsedTimer.stop();
+    }
+
+    /**
+     * Appends a finalized transcript to the composer.
+     *
+     * Returns the merged text so the caller can assign it. The caller is
+     * responsible for keeping focus in the field; this never submits.
+     */
+    function appendVoiceTranscript(existing, addition) {
+        const extra = (addition || "").trim();
+        if (extra.length === 0) return existing;
+        const base = existing ? existing.replace(/\s+$/, "") : "";
+        if (base.length === 0) return extra;
+        return /\n$/.test(existing) ? (base + "\n" + extra) : (base + " " + extra);
     }
 
     function loadActiveSession() {
-        if (activeSessionProc.running) activeSessionProc.terminate();
-        activeSessionProc.command = [daemonBin, "assistant", "active-session"];
-        activeSessionProc.running = true;
+        cancelProc(activeSessionProc);
+        runProc(activeSessionProc, [daemonBin, "assistant", "active-session"]);
     }
 
     function refreshSessions() {
-        if (loadSessionsProc.running) loadSessionsProc.terminate();
-        loadSessionsProc.command = [daemonBin, "assistant", "sessions"];
-        loadSessionsProc.running = true;
+        cancelProc(loadSessionsProc);
+        runProc(loadSessionsProc, [daemonBin, "assistant", "sessions"]);
     }
 
     function loadSession(id) {
         if (!id) return;
-        if (getSessionProc.running) getSessionProc.terminate();
+        // Idempotent per id. At startup the active-session probe and the
+        // sessions list independently decide to load the same session, and they
+        // share one process slot: the second call supersedes the first mid-flight,
+        // the superseded stream is dropped, and the run that replaces it can
+        // finish with no output at all -- so the chat history silently failed to
+        // load. Re-requesting the session already being fetched is a no-op.
+        if (getSessionProc.running && getSessionProc.targetId === id) return;
+        cancelProc(getSessionProc);
         getSessionProc.targetId = id;
-        getSessionProc.command = [daemonBin, "assistant", "get-session", id];
-        getSessionProc.running = true;
+        runProc(getSessionProc, [daemonBin, "assistant", "get-session", id]);
     }
 
     function createNewSession() {
@@ -249,9 +518,8 @@ Singleton {
 
     function deleteSession(id) {
         if (!id) return;
-        if (deleteSessionProc.running) deleteSessionProc.terminate();
-        deleteSessionProc.command = [daemonBin, "assistant", "delete-session", id];
-        deleteSessionProc.running = true;
+        cancelProc(deleteSessionProc);
+        runProc(deleteSessionProc, [daemonBin, "assistant", "delete-session", id]);
 
         let filtered = sessions.filter(function(s) { return s.id !== id; });
         sessions = filtered;
@@ -299,9 +567,8 @@ Singleton {
         };
 
         let jsonPayload = JSON.stringify(sessionObj);
-        if (saveSessionProc.running) saveSessionProc.terminate();
-        saveSessionProc.command = [daemonBin, "assistant", "save-session", jsonPayload];
-        saveSessionProc.running = true;
+        cancelProc(saveSessionProc);
+        runProc(saveSessionProc, [daemonBin, "assistant", "save-session", jsonPayload]);
     }
 
     function clearChat() {
@@ -326,9 +593,7 @@ Singleton {
 
     function stopStreaming() {
         streamWatchdog.stop();
-        if (streamProc.running) {
-            streamProc.terminate();
-        }
+        cancelProc(streamProc);
         finalizeAssistantTurn();
     }
 
@@ -400,8 +665,7 @@ Singleton {
             args.push(selectedModelId);
         }
 
-        streamProc.command = [daemonBin].concat(args);
-        streamProc.running = true;
+        runProc(streamProc, [daemonBin].concat(args));
     }
 
     function diagnoseCrash(crashItem) {
@@ -430,14 +694,14 @@ Singleton {
         }
 
         pendingToolCall = toolCall;
-        toolExecProc.command = execArgs;
-        toolExecProc.running = true;
+        runProc(toolExecProc, execArgs);
     }
 
     property var pendingToolCall: null
 
     Process {
         id: toolExecProc
+        property bool discardOutput: false
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -479,26 +743,25 @@ Singleton {
     }
 
     function refreshStatus() {
-        statusProc.command = [daemonBin, "assistant", "status"];
-        statusProc.running = true;
+        runProc(statusProc, [daemonBin, "assistant", "status"]);
     }
 
     function refreshSkills() {
-        skillsProc.command = [daemonBin, "assistant", "skills"];
-        skillsProc.running = true;
+        runProc(skillsProc, [daemonBin, "assistant", "skills"]);
     }
 
     function refreshCrashes() {
-        crashesProc.command = [daemonBin, "assistant", "crashes", "5"];
-        crashesProc.running = true;
+        runProc(crashesProc, [daemonBin, "assistant", "crashes", "5"]);
     }
 
     Process {
         id: setModelProc
+        property bool discardOutput: false
     }
 
     Process {
         id: statusProc
+        property bool discardOutput: false
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -524,6 +787,7 @@ Singleton {
 
     Process {
         id: skillsProc
+        property bool discardOutput: false
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -540,6 +804,7 @@ Singleton {
 
     Process {
         id: crashesProc
+        property bool discardOutput: false
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -557,8 +822,10 @@ Singleton {
 
     Process {
         id: activeSessionProc
+        property bool discardOutput: false
         stdout: StdioCollector {
             onStreamFinished: {
+                if (activeSessionProc.discardOutput || activeSessionProc.running) return;
                 try {
                     let obj = JSON.parse(this.text.trim());
                     if (obj && obj.active_session_id) {
@@ -575,8 +842,10 @@ Singleton {
 
     Process {
         id: loadSessionsProc
+        property bool discardOutput: false
         stdout: StdioCollector {
             onStreamFinished: {
+                if (loadSessionsProc.discardOutput || loadSessionsProc.running) return;
                 try {
                     let list = JSON.parse(this.text.trim());
                     if (Array.isArray(list)) {
@@ -594,9 +863,11 @@ Singleton {
 
     Process {
         id: getSessionProc
+        property bool discardOutput: false
         property string targetId: ""
         stdout: StdioCollector {
             onStreamFinished: {
+                if (getSessionProc.discardOutput || getSessionProc.running) return;
                 try {
                     let session = JSON.parse(this.text.trim());
                     if (session && session.id) {
@@ -623,8 +894,10 @@ Singleton {
 
     Process {
         id: saveSessionProc
+        property bool discardOutput: false
         stdout: StdioCollector {
             onStreamFinished: {
+                if (saveSessionProc.discardOutput || saveSessionProc.running) return;
                 root.refreshSessions();
             }
         }
@@ -632,8 +905,10 @@ Singleton {
 
     Process {
         id: deleteSessionProc
+        property bool discardOutput: false
         stdout: StdioCollector {
             onStreamFinished: {
+                if (deleteSessionProc.discardOutput || deleteSessionProc.running) return;
                 root.refreshSessions();
             }
         }
@@ -641,10 +916,12 @@ Singleton {
 
     Process {
         id: streamProc
+        property bool discardOutput: false
 
         stdout: SplitParser {
             splitMarker: "\n"
             onRead: chunk => {
+                if (streamProc.discardOutput) return;   // cancelled: output is truncated
                 let line = chunk.trim();
                 if (!line) return;
                 try {
@@ -694,6 +971,262 @@ Singleton {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Voice input: status probe
+    // -----------------------------------------------------------------------
+
+    Process {
+        id: voiceStatusProc
+        property bool discardOutput: false
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => {
+                if (voiceStatusProc.discardOutput) return;   // cancelled: output is truncated
+                const line = chunk.trim();
+                if (!line) return;
+                try {
+                    const parsed = JSON.parse(line);
+                    root.voiceStatus = parsed;
+                    // The probe reports state; it never raises a notice.
+                    //
+                    // An unsolicited "whisper.cpp is not installed" banner in the
+                    // composer is noise about a feature the user has not asked for
+                    // yet, and it came back every time the drawer opened. The mic
+                    // button already carries the same information in its dimmed
+                    // state and its hover tooltip, so the explanation is available
+                    // on demand and is shown in context the moment the user
+                    // actually clicks the mic. See showVoiceSetupNotice().
+                    if (parsed.setup_complete === true) {
+                        // Setup became complete (engine installed, model
+                        // downloaded), so any outstanding notice and its
+                        // dismissal are now moot.
+                        root.voiceSetupMessage = "";
+                        root.voiceDismissedGap = "";
+                    }
+                } catch (e) {
+                    console.warn("[AssistantService] voice status parse failed:", e);
+                }
+            }
+        }
+
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => console.warn("[AssistantService voice stderr]:", chunk.trim())
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Voice input: model download
+    // -----------------------------------------------------------------------
+
+    Process {
+        id: voiceInstallProc
+        property bool discardOutput: false
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => {
+                if (voiceInstallProc.discardOutput) return;   // cancelled: output is truncated
+                const line = chunk.trim();
+                if (!line) return;
+                try {
+                    const ev = JSON.parse(line);
+                    // Progress arrives as a bare fraction; the daemon sends
+                    // {"type":"Progress","payload":0.42}.
+                    if (ev.type === "Progress" && typeof ev.payload === "number") {
+                        root.voiceModelInstallProgress = Math.max(0, Math.min(1, ev.payload));
+                        return;
+                    }
+                    root.voiceModelInstalling = false;
+                    if (ev.success === true) {
+                        root.voiceModelInstallProgress = 1.0;
+                        root.voiceSetupMessage = "";
+                        root.refreshVoiceStatus();
+                    } else if (ev.error) {
+                        root.voiceSetupMessage = ev.error;
+                    }
+                } catch (e) {
+                    console.warn("[AssistantService] voice install parse failed:", e);
+                }
+            }
+        }
+
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => console.warn("[AssistantService voice install stderr]:", chunk.trim())
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            root.voiceModelInstalling = false;
+            // Always re-probe: a download may have succeeded, or failed, and the
+            // mic button must reflect reality either way.
+            root.refreshVoiceStatus();
+        }
+    }
+
+    // Removing a model: the same JSON contract as the installer, minus progress.
+    Process {
+        id: voiceRemoveProc
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => {
+                const line = chunk.trim();
+                if (!line) return;
+                try {
+                    const ev = JSON.parse(line);
+                    if (ev.success !== true && ev.error) {
+                        root.voiceSetupMessage = ev.error;
+                    }
+                } catch (e) {
+                    console.warn("[AssistantService] voice remove parse failed:", e);
+                }
+            }
+        }
+
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => console.warn("[AssistantService voice remove stderr]:", chunk.trim())
+        }
+
+        onExited: (exitCode, exitStatus) => root.refreshVoiceStatus()
+    }
+
+    // -----------------------------------------------------------------------
+    // Voice input: capture session
+    // -----------------------------------------------------------------------
+
+    Process {
+        id: voiceSessionProc
+        property bool discardOutput: false
+
+        // The control channel only exists once the process is up, so the `start`
+        // command is sent from a running-change handler rather than inline after
+        // `running = true`. Without this the daemon blocks forever waiting for a
+        // command that was never delivered, the microphone is never opened, and
+        // the UI still shows "recording" from its own timer.
+        onRunningChanged: {
+            if (running && root.voiceAwaitingStart) {
+                root.voiceAwaitingStart = false;
+                write("start\n");
+            }
+        }
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => {
+                const line = chunk.trim();
+                if (!line) return;
+                let ev;
+                try {
+                    ev = JSON.parse(line);
+                } catch (e) {
+                    // Ignore non-JSON noise rather than corrupting state.
+                    console.warn("[AssistantService] voice event parse failed:", e);
+                    return;
+                }
+
+                if (ev.type === "StateChanged") {
+                    root.voiceState = ev.payload.state;
+                    if (ev.payload.state === "idle" || ev.payload.state === "failed") {
+                        voiceElapsedTimer.stop();
+                        root.voiceLevel = 0.0;
+                    }
+                } else if (ev.type === "Level") {
+                    // Measured RMS from the real capture stream.
+                    root.voiceLevel = voiceEventCodec.level(ev);
+                } else if (ev.type === "Partial") {
+                    root.voicePartialText = voiceEventCodec.partial(ev);
+                } else if (ev.type === "Final") {
+                    // `payload` is the transcript object itself.
+                    root.voiceTranscript = ev.payload.text || "";
+                    root.voiceLanguage = ev.payload.language || "und";
+                    root.voicePartialText = "";
+                    root.voiceState = "idle";
+                    voiceElapsedTimer.stop();
+                    root.voiceLevel = 0.0;
+                } else if (ev.type === "Error") {
+                    root.voiceState = "failed";
+                    voiceElapsedTimer.stop();
+                    root.voiceLevel = 0.0;
+                    if (ev.payload && ev.payload.recoverable === true) {
+                        // A setup gap is user-fixable, so it lives in the
+                        // persistent inline notice rather than a transient banner.
+                        root.voiceSetupMessage = ev.payload.message || "Voice input is unavailable";
+                    } else {
+                        root.voiceSetupMessage = "";
+                        root.reportVoiceCrash(ev.payload ? ev.payload.message : "Voice engine failed");
+                    }
+                    root.refreshVoiceStatus();
+                }
+            }
+        }
+
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => console.warn("[AssistantService voice session stderr]:", chunk.trim())
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            // The process exiting always means the microphone has been released.
+            voiceElapsedTimer.stop();
+            root.voiceLevel = 0.0;
+            // Re-arm the start handshake for the next session.
+            root.voiceAwaitingStart = false;
+            if (root.voiceState === "recording" || root.voiceState === "finalizing") {
+                // Exited mid-session without a Final: surface it rather than
+                // leaving the composer looking like it is still listening.
+                if (root.voiceState === "recording") {
+                    root.voiceState = "idle";
+                } else {
+                    root.voiceState = "failed";
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: voiceElapsedTimer
+        interval: 100
+        repeat: true
+        onTriggered: root.voiceElapsedMs += 100
+    }
+
+    /**
+     * Surfaces a genuine engine death through the existing crash carousel.
+     *
+     * Reuses `recentCrashes` rather than introducing a second error surface, so
+     * the user sees runtime deaths in one place. A setup gap deliberately does
+     * NOT come here: install instructions belong in the persistent inline
+     * notice beside the mic button, not in a transient carousel.
+     */
+    function reportVoiceCrash(message) {
+        const text = message || "Voice engine failed";
+        const now = Date.now();
+        const entry = {
+            "id": "voice_" + now,
+            "process_name": "whisper.cpp",
+            "signal": null,
+            "timestamp_ms": now,
+            "summary": "Voice transcription failed: " + text,
+            "log_snippet": text,
+            "count": 1
+        };
+        const list = (root.recentCrashes || []).slice();
+        // Deduplicate by summary so a retry loop cannot flood the carousel.
+        const existing = list.findIndex(c => c.summary === entry.summary);
+        if (existing >= 0) {
+            const merged = list.slice();
+            merged[existing] = Object.assign({}, merged[existing], { count: (merged[existing].count || 1) + 1 });
+            root.recentCrashes = merged;
+        } else {
+            list.unshift(entry);
+            root.recentCrashes = list.slice(0, 5);
+        }
+        root.crashesRevision++;
+    }
+
     Timer {
         id: streamWatchdog
         interval: 60000 // 60s timeout
@@ -701,9 +1234,7 @@ Singleton {
         onTriggered: {
             if (root.isStreaming) {
                 console.warn("[AssistantService] Stream timed out after 60s. Forcing finalize.");
-                if (root.streamProc.running) {
-                    root.streamProc.terminate();
-                }
+                cancelProc(streamProc);
                 if (!root.activeStreamingContent) {
                     root.activeStreamingContent = "⚠️ Request timed out. Please check your network connection or model settings.";
                 }
@@ -749,22 +1280,22 @@ Singleton {
     // Clipboard & Mermaid Rendering
     function copyToClipboard(text) {
         if (!text) return;
-        copyClipProc.command = ["wl-copy", text];
-        copyClipProc.running = true;
+        runProc(copyClipProc, ["wl-copy", text]);
     }
 
     Process {
         id: copyClipProc
+        property bool discardOutput: false
     }
 
     function pasteClipboardImage(callback) {
         clipProc.callback = callback;
-        clipProc.command = ["sh", "-c", "if wl-paste -l 2>/dev/null | grep -q 'image/'; then out=\"/tmp/astral_clip_$(date +%s%N).png\"; wl-paste --type image/png > \"$out\" && echo \"$out\"; fi"];
-        clipProc.running = true;
+        runProc(clipProc, ["sh", "-c", "if wl-paste -l 2>/dev/null | grep -q 'image/'; then out=\"/tmp/astral_clip_$(date +%s%N).png\"; wl-paste --type image/png > \"$out\" && echo \"$out\"; fi"]);
     }
 
     Process {
         id: clipProc
+        property bool discardOutput: false
         property var callback: null
         stdout: StdioCollector {
             onDataChanged: {
@@ -787,12 +1318,12 @@ Singleton {
 
         const script = Qt.resolvedUrl("../scripts/render_mermaid.mjs").toString().replace("file://", "");
         mermaidRenderProc.currentReqId = reqId;
-        mermaidRenderProc.command = ["node", script, code.trim()];
-        mermaidRenderProc.running = true;
+        runProc(mermaidRenderProc, ["node", script, code.trim()]);
     }
 
     Process {
         id: mermaidRenderProc
+        property bool discardOutput: false
         property string currentReqId: ""
         stdout: StdioCollector {
             onStreamFinished: {

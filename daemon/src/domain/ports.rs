@@ -101,7 +101,11 @@ pub trait SystemdControlPort: Send + Sync {
 }
 
 pub trait ShortcutControlPort: Send + Sync {
-    fn snapshot_relevant_shortcuts(&self, target_shortcut: &str) -> DynResult<crate::domain::shortcuts::AstralShortcutSessionBackup>;
+    fn snapshot_relevant_shortcuts(
+        &self,
+        target_shortcut: &str,
+        mode: &str,
+    ) -> DynResult<crate::domain::shortcuts::AstralShortcutSessionBackup>;
     fn restore_relevant_shortcuts(&self) -> DynResult<bool>;
     fn bind_shortcuts(&self, mode: &str) -> DynResult<()>;
     fn is_backup_active(&self) -> bool;
@@ -249,3 +253,68 @@ pub trait AiQuotaPort: Send + Sync {
 
 
 
+/// Domain Port for speech-to-text.
+///
+/// One trait owns a whole capture -> endpointing -> inference session
+/// (`run_session`) rather than being split into separate capture, activity and
+/// transcription ports. That is deliberate: endpointing is entangled with the
+/// engine and the capture buffer, so splitting the trait would force the
+/// composing application service to learn engine-specific segmentation
+/// semantics, leaking the abstraction while costing three traits and two fakes.
+///
+/// The genuinely engine-independent pieces live as pure functions in
+/// `domain::voice` -- `CaptureTarget`, WAV construction, `SilenceDetector`,
+/// language normalisation -- and that is where the unit tests are.
+///
+/// `run_session` takes an event sink rather than returning a channel, which
+/// keeps the trait synchronous and trivially fakeable in tests.
+pub trait SpeechToTextPort: Send + Sync {
+    /// Inspect the engine installation without running inference.
+    fn probe(&self) -> DynResult<crate::domain::voice::EngineProbe>;
+
+    /// Run one bounded capture -> transcribe session, streaming events to `sink`.
+    ///
+    /// Blocks until the session finalizes, is cancelled, or fails. Implementations
+    /// must release the capture device on every exit path.
+    fn run_session(
+        &self,
+        cfg: &crate::domain::voice::VoiceSessionConfig,
+        sink: &mut dyn FnMut(crate::domain::voice::VoiceEvent),
+    ) -> DynResult<crate::domain::voice::Transcript>;
+
+    /// As [`run_session`](Self::run_session), but interruptible from another
+    /// thread via `handle`.
+    ///
+    /// This exists because the capture loop blocks reading the audio pipe, so a
+    /// control channel on the same thread could never deliver a `stop`. Keeping
+    /// it in the port -- rather than special-casing the one concrete adapter --
+    /// means the application layer stays engine-agnostic and the fake in tests
+    /// exercises the same cancellation path as production.
+    fn run_session_cancellable(
+        &self,
+        cfg: &crate::domain::voice::VoiceSessionConfig,
+        handle: &crate::infrastructure::whisper_stt_adapter::CancelHandle,
+        sink: &mut dyn FnMut(crate::domain::voice::VoiceEvent),
+    ) -> DynResult<crate::domain::voice::Transcript>;
+}
+
+impl<T: ?Sized + SpeechToTextPort> SpeechToTextPort for std::sync::Arc<T> {
+    fn probe(&self) -> DynResult<crate::domain::voice::EngineProbe> {
+        (**self).probe()
+    }
+    fn run_session(
+        &self,
+        cfg: &crate::domain::voice::VoiceSessionConfig,
+        sink: &mut dyn FnMut(crate::domain::voice::VoiceEvent),
+    ) -> DynResult<crate::domain::voice::Transcript> {
+        (**self).run_session(cfg, sink)
+    }
+    fn run_session_cancellable(
+        &self,
+        cfg: &crate::domain::voice::VoiceSessionConfig,
+        handle: &crate::infrastructure::whisper_stt_adapter::CancelHandle,
+        sink: &mut dyn FnMut(crate::domain::voice::VoiceEvent),
+    ) -> DynResult<crate::domain::voice::Transcript> {
+        (**self).run_session_cancellable(cfg, handle, sink)
+    }
+}

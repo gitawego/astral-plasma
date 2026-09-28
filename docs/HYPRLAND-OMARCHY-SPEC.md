@@ -466,6 +466,13 @@ When an event source disconnects:
 
 `PanelWindow` and `zwlr_layer_shell_v1` remain the portable surface technology. The shell shall keep stable layer-shell namespaces for translucent surfaces.
 
+The AI Copilot is the deliberate exception: it is an xdg-toplevel
+(`Quickshell.FloatingWindow`), because layer surfaces are excluded from every
+window list (`KWin` sets `skipSwitcher` on them) and the copilot must be reachable
+with the system task switcher. Toplevels are portable; the decoration policy is
+not, so the KWin profile installs the "no titlebar and frame" window rule for the
+shell's own toplevel class and the Hyprland profile leaves it undecorated.
+
 KWin-specific tiling offsets or 1px shims shall not be copied to Hyprland. Each profile owns its reserved-space and focus policy.
 
 ### Focus

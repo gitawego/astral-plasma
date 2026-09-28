@@ -15,6 +15,13 @@ Item {
         onTriggered: runTests()
     }
 
+    readonly property string aiPageSrc: {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl("../settings_gui/pages/AiPage.qml"), false);
+        xhr.send(null);
+        return xhr.responseText;
+    }
+
     function assert(cond, msg) {
         if (!cond) {
             console.error("FAIL: " + msg);
@@ -116,6 +123,42 @@ Item {
         aiPage.cancelAuth();
         assert(aiPage.isAuthenticating === false, "aiPage.isAuthenticating must be false after cancelAuth()");
         assert(aiPage.authenticatingEmail === "", "aiPage.authenticatingEmail must be empty after cancelAuth()");
+
+        // A downloaded model must be removable, and the control must only exist
+        // while there is something to remove.
+        assert(aiPage.voiceModelRemoveItem !== undefined, "AiPage must offer removing a downloaded model");
+        aiPage.testVoiceStatus = { engine_available: true, model_present: true, setup_complete: true, gap: "" };
+        assert(aiPage.voiceModelPresent === true, "the seam must drive model presence");
+        assert(aiPage.voiceModelRemoveItem.visible === true, "the remove control shows for a present model");
+        aiPage.testVoiceStatus = { engine_available: true, model_present: false, setup_complete: false, gap: "model_missing" };
+        assert(aiPage.voiceModelRemoveItem.visible === false, "no remove control without a model");
+        aiPage.testVoiceStatus = null;
+
+        // The install one-liner must come from the daemon, which knows the
+        // distribution. A hardcoded `pacman` line is a dead end everywhere else.
+        aiPage.testVoiceStatus = { engine_available: false, engine_install_command: "sudo dnf install whisper-cpp" };
+        assert(aiPage.voiceEngineNotice.indexOf("sudo dnf install whisper-cpp") >= 0,
+            "the engine notice must show the command the daemon reported, got: " + aiPage.voiceEngineNotice);
+        aiPage.testVoiceStatus = { engine_available: false, engine_install_command: "" };
+        assert(aiPage.voiceEngineNotice.indexOf("github.com/ggml-org/whisper.cpp") >= 0,
+            "an unknown distribution must get the upstream build, got: " + aiPage.voiceEngineNotice);
+        aiPage.testVoiceStatus = null;
+
+        // Readiness must be re-probed when the page is shown: a status cached at
+        // shell start goes stale the moment someone installs the engine. The
+        // probe goes through one named helper so construction and visibility
+        // share the exact same guard (and the test seam stays honoured).
+        assert(/onVisibleChanged:\s*if\s*\(visible\)\s*refreshVoiceReadiness\(\)/.test(aiPageSrc),
+            "AiPage must refresh voice readiness when it becomes visible");
+
+        // Deep links land on a section, not just the page.
+        assert(typeof aiPage.sectionY === "function", "AiPage must expose section anchors for deep links");
+        // The anchor is in the *page's* coordinate space (the panel is nested in
+        // its own card), so it is strictly below the panel's own y.
+        assert(aiPage.sectionY("voice") > aiPage.voicePanelItem.y,
+            "the voice anchor must be mapped into the page's space, got " + aiPage.sectionY("voice"));
+        assert(aiPage.sectionY("voice") >= 0, "the voice anchor must be inside the page");
+        assert(aiPage.sectionY("nope") === undefined, "an unknown section has no anchor");
 
         console.log("PASS: AI Settings Page Unit Tests");
         Qt.exit(0);

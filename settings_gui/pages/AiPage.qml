@@ -5,8 +5,19 @@ import "../../components"
 import "../../services"
 import "../../config"
 
+/**
+ * Page root is a plain Item, not the ColumnLayout.
+ *
+ * Dropdown lists are absolutely positioned overlays. Inside a ColumnLayout they
+ * are laid out as siblings, so an open list paints straight over the sections
+ * *below* it -- the Language picker and the auto-finalize switch were being
+ * covered by the model list. An Item wrapper lets the layout and a
+ * full-surface overlay layer coexist, with the overlay always on top.
+ */
 ColumnLayout {
     id: root
+    Layout.fillWidth: true
+    spacing: 16
 
     property bool testMode: false
     property bool testAiEnabled: true
@@ -104,8 +115,163 @@ ColumnLayout {
         }
     }
 
-    Layout.fillWidth: true
-    spacing: 16
+
+    readonly property alias voicePanelItem: voicePanel
+    readonly property alias voiceModelRemoveItem: voiceModelRemove
+
+    /// Section anchors for deep links: the Copilot's setup notice says
+    /// "Settings > AI > Voice input" and must land on the voice section instead
+    /// of leaving the reader at the top of the page.
+    function sectionY(name) {
+        // The voice panel is nested inside its own card, so its own `y` is
+        // relative to that card: map it into the page's space, which is what the
+        // settings hub scrolls.
+        if (name === "voice") return voicePanel.mapToItem(root, 0, 0).y;
+        return undefined;
+    }
+
+    // --- Voice input test seams (mirroring the existing pattern) -----------
+    property bool testVoiceEnabled: true
+    property string testVoiceModel: "ggml-small"
+    property string testVoiceLanguage: "auto"
+    property bool testVoiceAutoFinalize: true
+    property int testVoiceSilenceHangoverMs: 1200
+    property int testVoiceMaxUtteranceSeconds: 30
+    property var testVoiceStatus: null
+    property real testVoiceModelInstallProgress: 0.0
+    property bool testVoiceModelInstalling: false
+
+    /** Which voice dropdown is open. Mutually exclusive by construction. */
+    property bool modelMenuOpen: false
+    property bool languageMenuOpen: false
+
+    readonly property bool voiceEnabled: testMode ? testVoiceEnabled
+        : ((typeof Config !== "undefined" && Config.voiceEnabled !== undefined) ? Config.voiceEnabled : true)
+    readonly property string voiceModel: testMode ? testVoiceModel
+        : ((typeof Config !== "undefined" && Config.voiceModel) ? Config.voiceModel : "ggml-small")
+    readonly property string voiceLanguage: testMode ? testVoiceLanguage
+        : ((typeof Config !== "undefined" && Config.voiceLanguage) ? Config.voiceLanguage : "auto")
+    readonly property bool voiceAutoFinalize: testMode ? testVoiceAutoFinalize
+        : ((typeof Config !== "undefined" && Config.voiceAutoFinalize !== undefined) ? Config.voiceAutoFinalize : true)
+    readonly property int voiceSilenceHangoverMs: testMode ? testVoiceSilenceHangoverMs
+        : ((typeof Config !== "undefined" && Config.voiceSilenceHangoverMs) ? Config.voiceSilenceHangoverMs : 1200)
+    readonly property int voiceMaxUtteranceSeconds: testMode ? testVoiceMaxUtteranceSeconds
+        : ((typeof Config !== "undefined" && Config.voiceMaxUtteranceSeconds) ? Config.voiceMaxUtteranceSeconds : 30)
+
+    /** Live status from `voice status`, or the test seam. */
+    readonly property var voiceStatus: testMode ? testVoiceStatus
+        : ((typeof AssistantService !== "undefined") ? AssistantService.voiceStatus : null)
+
+    readonly property bool voiceEngineAvailable: voiceStatus !== null && voiceStatus.engine_available === true
+    readonly property bool voiceModelPresent: voiceStatus !== null && voiceStatus.model_present === true
+    readonly property bool voiceReady: voiceStatus !== null && voiceStatus.setup_complete === true
+    readonly property real voiceModelInstallProgress: testMode ? testVoiceModelInstallProgress
+        : ((typeof AssistantService !== "undefined") ? (AssistantService.voiceModelInstallProgress || 0) : 0)
+    readonly property bool voiceModelInstalling: testMode ? testVoiceModelInstalling
+        : ((typeof AssistantService !== "undefined") ? (AssistantService.voiceModelInstalling === true) : false)
+
+    readonly property string voiceModelSizeLabel: {
+        const models = (voiceStatus && voiceStatus.models_available) ? voiceStatus.models_available : [];
+        for (let i = 0; i < models.length; i++) {
+            if (models[i].id === voiceModel) return models[i].size_label;
+        }
+        return "";
+    }
+
+    /** Options come from the daemon's catalog, so adding a model is a data change. */
+    readonly property var voiceModelOptions: {
+        const models = (voiceStatus && voiceStatus.models_available) ? voiceStatus.models_available : [];
+        if (models.length > 0) {
+            return models.map(m => ({ "id": m.id, "label": m.display_name + "  \u00b7  " + m.size_label }));
+        }
+        return [{ "id": "ggml-small", "label": "Small (balanced, default)" }];
+    }
+
+    readonly property var voiceLanguageOptions: {
+        const langs = (voiceStatus && voiceStatus.languages) ? voiceStatus.languages : [];
+        if (langs.length > 0) return langs.map(l => ({ "code": l.code, "label": l.label }));
+        return [{ "code": "auto", "label": "Auto-detect" }];
+    }
+
+    /** Honest, specific status text -- never a generic "ready". */
+    readonly property string voiceStatusSummary: {
+        if (!voiceEnabled) return "Voice dictation is disabled";
+        if (voiceStatus === null) return "Checking speech engine\u2026";
+        if (!voiceEngineAvailable) return "whisper.cpp engine not installed";
+        if (!voiceModelPresent) return "Model " + voiceModel + " is not downloaded yet";
+        if (!voiceReady) return "No microphone available";
+        return "Ready \u00b7 " + voiceModel;
+    }
+
+    /**
+     * The command that installs the engine on *this* machine, as reported by the
+     * daemon. Empty when the distribution is not one we can name a package for.
+     */
+    readonly property string voiceInstallCommand: (voiceStatus && voiceStatus.engine_install_command)
+                                                  ? voiceStatus.engine_install_command : ""
+
+    /** What to tell someone whose engine is missing: a command they can run, or
+     *  the upstream build if we do not know their package manager. */
+    readonly property string voiceEngineNotice: voiceInstallCommand.length > 0
+        ? "whisper.cpp engine not installed. Run: " + voiceInstallCommand
+        : "whisper.cpp engine not installed. Build it from https://github.com/ggml-org/whisper.cpp"
+
+    function setVoiceModel(id) {
+        if (testMode) {
+            testVoiceModel = id;
+        } else if (typeof Config !== "undefined") {
+            Config.setVoiceModel(id);
+        }
+    }
+
+    function setVoiceLanguage(code) {
+        if (testMode) {
+            testVoiceLanguage = code;
+        } else if (typeof Config !== "undefined") {
+            Config.setVoiceLanguage(code);
+        }
+    }
+
+    function setVoiceAutoFinalize(v) {
+        if (testMode) {
+            testVoiceAutoFinalize = v;
+        } else if (typeof Config !== "undefined") {
+            Config.setVoiceAutoFinalize(v);
+        }
+    }
+
+    /**
+     * Re-probes voice readiness.
+     *
+     * NexusHub loads pages through a Loader, so this page is constructed
+     * *already visible*: `visible` never changes on the first show and
+     * `onVisibleChanged` alone would never fire. The probe is cheap and the
+     * engine can be installed while the shell runs, so readiness is re-read
+     * whenever the page is constructed or the settings window is shown again -
+     * never trusted from a status cached when the shell started.
+     */
+    function refreshVoiceReadiness() {
+        if (testMode) return;
+        if (typeof AssistantService !== "undefined" && typeof AssistantService.refreshVoiceStatus === "function") {
+            AssistantService.refreshVoiceStatus();
+        }
+    }
+
+    Component.onCompleted: refreshVoiceReadiness()
+
+    onVisibleChanged: if (visible) refreshVoiceReadiness()
+
+    // The window can be closed and re-opened while the Loader keeps this page
+    // instantiated, so page visibility is not the only "the user is looking at
+    // it" edge: re-probe when the settings surface comes up as well.
+    Connections {
+        target: (typeof Config !== "undefined") ? Config : null
+
+        function onSettingsVisibleChanged() {
+            if (typeof Config === "undefined" || !Config.settingsVisible) return;
+            root.refreshVoiceReadiness();
+        }
+    }
 
     // Header & Description
     ColumnLayout {
@@ -1111,6 +1277,698 @@ ColumnLayout {
                     }
                 }
             }
+        }
+    }
+
+    // =======================================================================
+    // Voice Input
+    //
+    // Lives inside the AI page rather than in a page of its own: voice is a
+    // feature *of the assistant*, and AGENTS.md 6 warns specifically against
+    // adding surface that does not match the existing design language.
+    //
+    // Provisioning is detect-then-offer (D7): nothing is installed or downloaded
+    // without an explicit click, because silently pulling 1.5 GiB is hostile.
+    // =======================================================================
+    Item {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 1
+    }
+
+    Text {
+        text: "Voice Input"
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.fontTitleLarge
+        font.weight: Font.Bold
+        color: Colors.m3onSurface
+        Layout.leftMargin: Theme.padSmall
+        Layout.topMargin: Theme.spaceSmall
+    }
+
+    Text {
+        Layout.fillWidth: true
+        Layout.leftMargin: Theme.padSmall
+        text: "Dictate prompts in the assistant composer. Transcription runs locally on this machine; audio never leaves it."
+        font.family: Theme.fontFamily
+        font.pixelSize: 11
+        color: Colors.m3onSurfaceVariant
+        wrapMode: Text.WordWrap
+    }
+
+    // Master toggle
+    Rectangle {
+        Layout.fillWidth: true
+        height: 64
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.padLarge
+            anchors.rightMargin: Theme.padLarge
+            spacing: Theme.spaceMedium
+
+            MaterialIcon {
+                text: "mic"
+                size: 26
+                color: root.voiceEnabled ? Colors.primary : Colors.m3onSurfaceVariant
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+
+                Text {
+                    text: "Voice Dictation"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+
+                Text {
+                    text: root.voiceStatusSummary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    color: Colors.m3onSurfaceVariant
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+            }
+
+            Rectangle {
+                width: 48
+                height: 26
+                radius: 13
+                color: root.voiceEnabled ? Colors.primary : Colors.surfaceContainerHighest
+                border.color: root.voiceEnabled ? Colors.primary : Theme.borderSubtle
+                border.width: 1
+
+                Behavior on color { ColorAnimation { duration: 150 } }
+
+                Rectangle {
+                    width: 20
+                    height: 20
+                    radius: 10
+                    color: root.voiceEnabled ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: root.voiceEnabled ? parent.width - width - 3 : 3
+
+                    Behavior on x {
+                        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (root.testMode) {
+                            root.testVoiceEnabled = !root.testVoiceEnabled;
+                        } else if (typeof Config !== "undefined") {
+                            Config.setVoiceEnabled(!root.voiceEnabled);
+                        }
+                        if (typeof AssistantService !== "undefined") AssistantService.refreshVoiceStatus();
+                    }
+                }
+            }
+        }
+    }
+
+    // Setup panel: engine, model, languages, endpointing.
+    Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: voicePanel.implicitHeight + Theme.padLarge * 2
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+        visible: root.voiceEnabled
+
+        ColumnLayout {
+            id: voicePanel
+            anchors.fill: parent
+            anchors.margins: Theme.padLarge
+            spacing: Theme.spaceMedium
+
+            // --- Engine + model readiness -------------------------------
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceSmall
+
+                MaterialIcon {
+                    text: root.voiceReady ? "check_circle" : "info"
+                    size: 16
+                    color: root.voiceReady ? Colors.primary : Colors.m3onSurfaceVariant
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: root.voiceStatusSummary
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    color: Colors.m3onSurface
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            // --- Install engine (only when missing) -----------------------
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 40
+                radius: Theme.radiusSmall
+                color: Qt.alpha(Colors.m3error, 0.10)
+                border.color: Qt.alpha(Colors.m3error, 0.35)
+                border.width: 1
+                visible: root.voiceEnabled && !root.voiceEngineAvailable
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.padMedium
+                    anchors.rightMargin: Theme.padSmall
+                    spacing: Theme.spaceSmall
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.voiceEngineNotice
+                        font.family: Theme.fontMonospace
+                        font.pixelSize: 10
+                        color: Colors.m3onSurface
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+
+            // --- Model picker --------------------------------------------
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceExtraSmall
+
+                Text {
+                    text: "Speech model"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontLabelSmall
+                    color: Colors.m3onSurfaceVariant
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+
+                    // Dropdown built from the project's own idiom (a rounded
+                    // trigger plus a list that expands the panel inline), because
+                    // QtQuick.Controls is not imported anywhere in this shell.
+                    Item {
+                        id: modelDropdown
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 32
+
+                        readonly property var currentLabel: {
+                            for (let i = 0; i < root.voiceModelOptions.length; i++) {
+                                if (root.voiceModelOptions[i].id === root.voiceModel) {
+                                    return root.voiceModelOptions[i].label;
+                                }
+                            }
+                            return root.voiceModel;
+                        }
+
+                        Rectangle {
+                            id: modelTrigger
+                            objectName: "voiceModelTrigger"
+                            anchors.fill: parent
+                            radius: Theme.radiusSmall
+                            color: modelTriggerHover.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainer
+                            border.width: 1
+                            border.color: root.modelMenuOpen ? Colors.primary : Theme.borderSubtle
+
+                            Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.padSmall
+                                anchors.rightMargin: Theme.padSmall
+                                spacing: Theme.spaceExtraSmall
+
+                                MaterialIcon {
+                                    text: "memory"
+                                    size: 14
+                                    color: Colors.secondary
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelDropdown.currentLabel
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    color: Colors.m3onSurface
+                                    elide: Text.ElideRight
+                                }
+
+                                MaterialIcon {
+                                    text: "expand_more"
+                                    size: 14
+                                    color: Colors.m3onSurfaceVariant
+                                    rotation: root.modelMenuOpen ? 180 : 0
+                                    Behavior on rotation { NumberAnimation { duration: Theme.animExpressiveFastEffects } }
+                                }
+                            }
+
+                            MouseArea {
+                                id: modelTriggerHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                enabled: root.voiceEnabled
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.languageMenuOpen = false;
+                                    root.modelMenuOpen = !root.modelMenuOpen;
+                                }
+                            }
+                        }
+
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 132
+                        Layout.preferredHeight: 32
+                        radius: Theme.radiusSmall
+                        color: root.voiceModelPresent ? Qt.alpha(Colors.primary, 0.14) : Qt.alpha(Colors.primary, 0.20)
+                        border.color: Qt.alpha(Colors.primary, 0.40)
+                        border.width: 1
+                        enabled: root.voiceEnabled && !root.voiceModelPresent && !root.voiceModelInstalling
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: root.voiceModelInstalling
+                                ? Math.round(root.voiceModelInstallProgress * 100) + "%"
+                                : (root.voiceModelPresent ? "Downloaded" : "Download (" + root.voiceModelSizeLabel + ")")
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                            color: root.voiceModelPresent ? Colors.primary : Colors.m3onSurface
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: parent.enabled
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                                if (typeof AssistantService !== "undefined") {
+                                    AssistantService.installVoiceModel(root.voiceModel);
+                                }
+                            }
+                        }
+                    }
+
+                    // Remove: only offered once a model is actually on disk, so
+                    // the row never shows a destructive control for a download
+                    // that has not happened.
+                    Rectangle {
+                        id: voiceModelRemove
+                        visible: root.voiceModelPresent
+                        Layout.preferredWidth: 32
+                        Layout.preferredHeight: 32
+                        radius: Theme.radiusSmall
+                        color: removeHover.containsMouse ? Qt.alpha(Colors.m3error, 0.18) : "transparent"
+                        border.width: 1
+                        border.color: removeHover.containsMouse ? Qt.alpha(Colors.m3error, 0.45) : Colors.glassBorderSpecular
+                        enabled: root.voiceEnabled && root.voiceModelPresent && !root.voiceModelInstalling
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            iconName: "delete"
+                            size: 16
+                            color: removeHover.containsMouse ? Colors.m3error : Colors.m3onSurfaceVariant
+                        }
+
+                        MouseArea {
+                            id: removeHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: parent.enabled
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                                if (typeof AssistantService !== "undefined") {
+                                    AssistantService.removeVoiceModel(root.voiceModel);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Expands INLINE rather than overlaying.
+                //
+                // As an absolutely positioned popup this painted straight over the
+                // sections below it -- the Language picker and the auto-finalize
+                // switch were covered by the model list. Growing the panel instead
+                // makes overlap structurally impossible, and follows the
+                // content-driven-height rule in docs/LESSONS.md 7.1.
+                Rectangle {
+                    id: modelList
+                    objectName: "voiceModelList"
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.spaceExtraSmall
+                    Layout.preferredHeight: root.modelMenuOpen
+                        ? Math.min(240, modelListCol.implicitHeight + 12) : 0
+                    visible: root.modelMenuOpen
+                    clip: true
+                    radius: Theme.radiusSmall
+                    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.12, 0.17, 0.95) : Qt.rgba(0.96, 0.97, 1.0, 0.95)
+                    border.width: 1
+                    border.color: Colors.glassBorderSpecular
+
+                    Behavior on Layout.preferredHeight {
+                        NumberAnimation {
+                            duration: Theme.animExpressiveFastSpatial
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Theme.curveExpressiveFastSpatial
+                        }
+                    }
+
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.margins: 6
+                        contentHeight: modelListCol.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        Column {
+                            id: modelListCol
+                            width: parent.width
+                            spacing: 2
+
+                            Repeater {
+                                model: root.voiceModelOptions
+
+                                delegate: Rectangle {
+                                    width: modelListCol.width
+                                    height: 28
+                                    radius: Theme.radiusSmall
+                                    color: modelItemHover.containsMouse ? Qt.alpha(Colors.primary, 0.12) : "transparent"
+                                    border.width: modelData.id === root.voiceModel ? 1 : 0
+                                    border.color: Colors.primary
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: Theme.padSmall
+                                        anchors.rightMargin: Theme.padSmall
+                                        spacing: Theme.spaceExtraSmall
+
+                                        MaterialIcon {
+                                            text: modelData.id === root.voiceModel ? "check" : "memory"
+                                            size: 14
+                                            color: modelData.id === root.voiceModel ? Colors.primary : Colors.secondary
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: modelData.label
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 11
+                                            font.weight: modelData.id === root.voiceModel ? Font.DemiBold : Font.Normal
+                                            color: Colors.m3onSurface
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: modelItemHover
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        enabled: root.voiceEnabled
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.testMode) {
+                                                root.testVoiceModel = modelData.id;
+                                            } else if (typeof Config !== "undefined") {
+                                                Config.setVoiceModel(modelData.id);
+                                            }
+                                            root.modelMenuOpen = false;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- Language picker -----------------------------------------
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceExtraSmall
+
+                Text {
+                    text: "Language"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontLabelSmall
+                    color: Colors.m3onSurfaceVariant
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "Auto-detect is unreliable on short clips. The detected language is shown while you speak, so you can override it."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10
+                    color: Colors.m3onSurfaceVariant
+                    wrapMode: Text.WordWrap
+                }
+
+                // Language dropdown, same idiom as the model picker. ~20
+                // locales is far too many for a segmented control, and this
+                // keeps the page free of QtQuick.Controls. The list is capped
+                // and scrolls; see languageList below.
+                Item {
+                    id: languageDropdown
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+
+                    readonly property string currentLabel: {
+                        for (let i = 0; i < root.voiceLanguageOptions.length; i++) {
+                            if (root.voiceLanguageOptions[i].code === root.voiceLanguage) {
+                                return root.voiceLanguageOptions[i].label;
+                            }
+                        }
+                        return root.voiceLanguage;
+                    }
+
+                    Rectangle {
+                        id: languageTrigger
+                        objectName: "voiceLanguageTrigger"
+                        anchors.fill: parent
+                        radius: Theme.radiusSmall
+                        color: languageTriggerHover.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainer
+                        border.width: 1
+                        border.color: root.languageMenuOpen ? Colors.primary : Theme.borderSubtle
+
+                        Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.padSmall
+                            anchors.rightMargin: Theme.padSmall
+                            spacing: Theme.spaceExtraSmall
+
+                            MaterialIcon {
+                                text: "translate"
+                                size: 14
+                                color: Colors.primary
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: languageDropdown.currentLabel
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                color: Colors.m3onSurface
+                                elide: Text.ElideRight
+                            }
+
+                            MaterialIcon {
+                                text: "expand_more"
+                                size: 14
+                                color: Colors.m3onSurfaceVariant
+                                rotation: root.languageMenuOpen ? 180 : 0
+                                Behavior on rotation { NumberAnimation { duration: Theme.animExpressiveFastEffects } }
+                            }
+                        }
+
+                        MouseArea {
+                            id: languageTriggerHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: root.voiceEnabled
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.modelMenuOpen = false;
+                                root.languageMenuOpen = !root.languageMenuOpen;
+                            }
+                        }
+                    }
+
+                }
+
+                // Inline expansion, same reason as the model list above.
+                Rectangle {
+                    id: languageList
+                    objectName: "voiceLanguageList"
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.spaceExtraSmall
+                    Layout.preferredHeight: root.languageMenuOpen
+                        ? Math.min(280, languageListCol.implicitHeight + 12) : 0
+                    visible: root.languageMenuOpen
+                    clip: true
+                    radius: Theme.radiusSmall
+                    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.12, 0.17, 0.95) : Qt.rgba(0.96, 0.97, 1.0, 0.95)
+                    border.width: 1
+                    border.color: Colors.glassBorderSpecular
+
+                    Behavior on Layout.preferredHeight {
+                        NumberAnimation {
+                            duration: Theme.animExpressiveFastSpatial
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Theme.curveExpressiveFastSpatial
+                        }
+                    }
+
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.margins: 6
+                        contentHeight: languageListCol.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        Column {
+                            id: languageListCol
+                            width: parent.width
+                            spacing: 2
+
+                            Repeater {
+                                model: root.voiceLanguageOptions
+
+                                delegate: Rectangle {
+                                    width: languageListCol.width
+                                    height: 28
+                                    radius: Theme.radiusSmall
+                                    color: languageItemHover.containsMouse ? Qt.alpha(Colors.primary, 0.12) : "transparent"
+                                    border.width: modelData.code === root.voiceLanguage ? 1 : 0
+                                    border.color: Colors.primary
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: Theme.padSmall
+                                        anchors.rightMargin: Theme.padSmall
+                                        spacing: Theme.spaceExtraSmall
+
+                                        MaterialIcon {
+                                            text: modelData.code === root.voiceLanguage ? "check" : "translate"
+                                            size: 14
+                                            color: modelData.code === root.voiceLanguage ? Colors.primary : Colors.m3onSurfaceVariant
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: modelData.label
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 11
+                                            font.weight: modelData.code === root.voiceLanguage ? Font.DemiBold : Font.Normal
+                                            color: Colors.m3onSurface
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: languageItemHover
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        enabled: root.voiceEnabled
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.testMode) {
+                                                root.testVoiceLanguage = modelData.code;
+                                            } else if (typeof Config !== "undefined") {
+                                                Config.setVoiceLanguage(modelData.code);
+                                            }
+                                            root.languageMenuOpen = false;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            // --- Endpointing ---------------------------------------------
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceSmall
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Stop automatically after a pause"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Colors.m3onSurface
+                    }
+
+                    Rectangle {
+                        width: 40
+                        height: 22
+                        radius: 11
+                        color: root.voiceAutoFinalize ? Colors.primary : Colors.surfaceContainerHighest
+                        border.color: root.voiceAutoFinalize ? Colors.primary : Theme.borderSubtle
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+
+                        Rectangle {
+                            width: 16
+                            height: 16
+                            radius: 8
+                            color: root.voiceAutoFinalize ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: root.voiceAutoFinalize ? parent.width - width - 3 : 3
+
+                            Behavior on x {
+                                NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveFastSpatial }
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (root.testMode) {
+                                    root.testVoiceAutoFinalize = !root.testVoiceAutoFinalize;
+                                } else if (typeof Config !== "undefined") {
+                                    Config.setVoiceAutoFinalize(!root.voiceAutoFinalize);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: root.voiceAutoFinalize
+                        ? "Finishes after " + root.voiceSilenceHangoverMs + " ms of silence, or at " + root.voiceMaxUtteranceSeconds + " s, whichever comes first. Stopping manually always works."
+                        : "Only the stop button ends a recording. Maximum " + root.voiceMaxUtteranceSeconds + " s."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10
+                    color: Colors.m3onSurfaceVariant
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            Item { Layout.preferredHeight: 1 }
         }
     }
 

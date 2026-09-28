@@ -14,6 +14,7 @@ pub mod fs_wallpaper;
 pub mod sys_settings;
 pub mod kwin_shortcuts;
 pub mod kwin_blur;
+pub mod kwin_window_rules;
 pub mod media;
 pub mod ai_quota_adapter;
 pub mod scanners;
@@ -24,4 +25,5 @@ pub mod hyprland_adapter;
 pub mod ai_adapters;
 pub mod assistant_harness;
 pub mod crash_monitor;
+pub mod whisper_stt_adapter;
 

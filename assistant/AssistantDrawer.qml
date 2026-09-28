@@ -6,61 +6,48 @@ import "../config"
 import "../services"
 import "components"
 
+// The AI Copilot's content. It is the body of a real toplevel window
+// (AssistantWindow), so it fills its host and never positions itself: moving,
+// resizing and stacking belong to the compositor (docs/LESSONS.md §8.9).
 Item {
     id: root
 
     property bool testMode: false
-    property bool isFloating: false
-    property bool userMoved: false
+    // The Quickshell window hosting this drawer. Handed down so the card
+    // background, the header and the file picker can start compositor-native
+    // move/resize operations.
+    property var windowHandle: null
     readonly property alias cardItem: card
     readonly property alias chatInputItem: chatInput
     readonly property alias headerItem: headerItem
     readonly property alias sessionDrawerItem: sessionDrawer
     readonly property alias chatContentColumnItem: chatContentColumn
     readonly property alias chatViewItem: chatView
+    readonly property alias scrollIndicatorItem: chatScrollIndicator
     readonly property alias crashBannerItem: crashBanner
 
-    signal userDragged()
-    signal resetRequested()
-
-    function resetPosition() {
-        userMoved = false;
-        customWidth = 0;
-        customHeight = 0;
-        x = Qt.binding(() => Math.round((targetScreenWidth - width) / 2));
-        y = Qt.binding(() => Math.round((targetScreenHeight - height) / 2));
-    }
-
-    // Sizing & Placement
-    readonly property int drawerWidth: 460
-    readonly property int targetScreenWidth: (parent && parent.width > 0) ? parent.width : ((typeof Window !== "undefined" && Window.window) ? Window.window.width : 1920)
-    readonly property int targetScreenHeight: (parent && parent.height > 0) ? parent.height : ((typeof Window !== "undefined" && Window.window) ? Window.window.height : 1080)
-
-    property int customWidth: 0
-    property int customHeight: 0
+    // Sizing.
+    //
+    // A Wayland toplevel cannot resize itself while it is mapped, so the shell
+    // publishes the size the window should take *before* the surface is shown
+    // (AssistantWindow binds its implicit size to preferredWidth/Height) and the
+    // compositor owns the geometry from then on.
+    readonly property int referenceWidth: (windowHandle && windowHandle.screen && windowHandle.screen.width > 0)
+        ? windowHandle.screen.width
+        : ((typeof Window !== "undefined" && Window.window && Window.window.width > 0) ? Window.window.width : 1920)
+    readonly property int referenceHeight: (windowHandle && windowHandle.screen && windowHandle.screen.height > 0)
+        ? windowHandle.screen.height
+        : ((typeof Window !== "undefined" && Window.window && Window.window.height > 0) ? Window.window.height : 1080)
     readonly property int minWidth: 480
     readonly property int minHeight: 520
-    readonly property int baseDefaultWidth: Math.min(740, Math.max(480, Math.round(targetScreenWidth * 0.48)))
+    readonly property int baseDefaultWidth: Math.min(740, Math.max(480, Math.round(referenceWidth * 0.48)))
     readonly property int sidebarExtraWidth: sessionsVisible ? 280 : 0
     readonly property int defaultWidth: baseDefaultWidth + sidebarExtraWidth
-    readonly property int defaultHeight: Math.min(840, Math.max(540, Math.round(targetScreenHeight * 0.76)))
-    readonly property int maxWidth: Math.max(minWidth, targetScreenWidth - 32)
-    readonly property int maxHeight: Math.max(minHeight, targetScreenHeight - 32)
-
-    width: customWidth > 0 ? Math.max(minWidth, Math.min(maxWidth, customWidth + sidebarExtraWidth)) : (isFloating ? defaultWidth : drawerWidth)
-    height: customHeight > 0 ? Math.max(minHeight, Math.min(maxHeight, customHeight)) : (isFloating ? defaultHeight : (parent ? parent.height : 800))
-
-    Behavior on width {
-        enabled: !root.testMode && (typeof Theme !== "undefined") && root.customWidth === 0
-        NumberAnimation {
-            duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastSpatial) ? Theme.animExpressiveFastSpatial : 200
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: (typeof Theme !== "undefined" && Theme.curveExpressiveDefaultSpatial) ? Theme.curveExpressiveDefaultSpatial : [0.38, 1.21, 0.22, 1.0, 1.0, 1.0]
-        }
-    }
-
-    anchors.top: !isFloating ? (parent ? parent.top : undefined) : undefined
-    anchors.bottom: !isFloating ? (parent ? parent.bottom : undefined) : undefined
+    readonly property int defaultHeight: Math.min(840, Math.max(540, Math.round(referenceHeight * 0.76)))
+    readonly property int maxWidth: Math.max(minWidth, referenceWidth - 32)
+    readonly property int maxHeight: Math.max(minHeight, referenceHeight - 32)
+    readonly property int preferredWidth: Math.min(maxWidth, Math.max(minWidth, defaultWidth))
+    readonly property int preferredHeight: Math.min(maxHeight, Math.max(minHeight, defaultHeight))
 
     property bool isOpen: (typeof Config !== "undefined") ? Config.assistantVisible : false
     property bool addProviderVisible: false
@@ -72,6 +59,12 @@ Item {
             if (typeof AssistantService !== "undefined" && typeof AssistantService.refreshStatus === "function") {
                 AssistantService.refreshStatus();
             }
+            // Re-probe voice readiness on every open. The engine or model can be
+            // installed from Settings while the shell is running, so a probe
+            // taken only at startup would leave a stale, wrong mic-button state.
+            if (typeof AssistantService !== "undefined" && typeof AssistantService.refreshVoiceStatus === "function") {
+                AssistantService.refreshVoiceStatus();
+            }
             Qt.callLater(function() {
                 if (typeof chatInput !== "undefined" && chatInput.focusInput) {
                     chatInput.focusInput();
@@ -80,29 +73,15 @@ Item {
         }
     }
 
-    // Motion & Positioning:
-    // Floating mode centers in parent; drawer mode slides from right edge
-    x: isFloating ? Math.round((targetScreenWidth - width) / 2) : (isOpen ? (targetScreenWidth - drawerWidth) : targetScreenWidth)
-    y: isFloating ? Math.round((targetScreenHeight - height) / 2) : 0
-
-    scale: isFloating ? (isOpen ? 1.0 : 0.95) : 1.0
+    // Motion: the compositor animates window show/minimize; the content only
+    // settles in and out.
+    scale: isOpen ? 1.0 : 0.95
 
     Behavior on scale {
         NumberAnimation {
             duration: Theme.animExpressiveFastSpatial
             easing.type: Easing.BezierSpline
             easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
-        }
-    }
-
-    Behavior on x {
-        enabled: !root.isFloating
-        NumberAnimation {
-            duration: (typeof Theme !== "undefined") ? (root.isOpen ? Theme.animExpressiveDefaultSpatial : Theme.animExpressiveFastSpatial) : 350
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: root.isOpen
-                ? ((typeof Theme !== "undefined" && Theme.curveExpressiveDefaultSpatial) ? Theme.curveExpressiveDefaultSpatial : [0.38, 1.21, 0.22, 1.0, 1.0, 1.0])
-                : ((typeof Theme !== "undefined" && Theme.curveExpressiveFastSpatial) ? Theme.curveExpressiveFastSpatial : [0.42, 1.67, 0.21, 0.9, 1.0, 1.0])
         }
     }
 
@@ -117,85 +96,64 @@ Item {
     }
 
     // Main Liquid Glass Container Card
+    //
+    // The card fills the toplevel exactly. Its ambient drop shadow is disabled:
+    // it would be drawn outside the card, i.e. outside the surface, and a
+    // Wayland toplevel cannot mask those pixels away from input - so an inset
+    // card would silently swallow clicks on the desktop behind it. The specular
+    // rim and the compositor blur carry the glass edge instead (LESSONS 9.1).
     LiquidGlassCard {
         id: card
         anchors.fill: parent
-        anchors.margins: root.isFloating ? 0 : Theme.padSmall
         radius: (typeof Theme !== "undefined") ? Theme.radiusGlassModal : 24
-        elevation: root.isFloating ? 24 : 16
-        showShadow: true
+        elevation: 24
+        showShadow: false
 
-        // Ghostty-style slight transparency frosted liquid glass substrate:
-        // 82% alpha in dark mode, 84% in light mode provides subtle desktop peeking
-        // and authentic compositor blur while maintaining high contrast legibility.
-        color: {
-            if (typeof Colors === "undefined") return "#1e1e2e";
-            let base = Colors.isDarkMode ? Qt.rgba(0.07, 0.08, 0.12, 0.82) : Qt.rgba(0.95, 0.96, 0.99, 0.84);
-            return Qt.tint(base, Qt.alpha(Colors.primary, Colors.isDarkMode ? 0.04 : 0.03));
-        }
+        // Readable glass substrate, shared with the settings content pane: the
+        // card must stay legible over a bright wallpaper, not dissolve into it.
+        color: (typeof Colors !== "undefined") ? Colors.glassPanelSubstrate : "#1e1e2e"
 
         focus: root.isOpen
         Keys.onEscapePressed: Config.closeAssistant()
 
-        // Underlying Dialog Drag Area (consumes clicks and supports dragging empty surfaces)
+        // Empty card surfaces start a compositor-native window move, so dragging
+        // the card drags the window exactly like a titlebar would.
         MouseArea {
             id: dialogDragArea
-            enabled: root.isFloating
             anchors.fill: parent
             z: 0
+            cursorShape: containsMouse ? Qt.OpenHandCursor : Qt.ArrowCursor
 
-            drag.target: root.isFloating ? root : null
-            drag.axis: Drag.XAndYAxis
-            drag.minimumX: 16
-            drag.maximumX: Math.max(16, (root.parent ? root.parent.width : 1920) - root.width - 16)
-            drag.minimumY: 16
-            drag.maximumY: Math.max(16, (root.parent ? root.parent.height : 1080) - root.height - 16)
-
-            onPositionChanged: {
-                if (drag.active) {
-                    root.userMoved = true;
-                    root.userDragged();
+            onPressed: {
+                if (root.windowHandle && typeof root.windowHandle.startSystemMove === "function") {
+                    root.windowHandle.startSystemMove();
                 }
-            }
-
-            onDoubleClicked: {
-                root.resetPosition();
-                root.resetRequested();
             }
             onClicked: {}
         }
 
-        // Edge & Corner Resize Handles (Floating Mode)
+        // Edge & Corner Resize Handles.
+        //
+        // Each handle starts a compositor-native resize: the shell hands the
+        // edges to the compositor and the window (with the card inside it)
+        // follows. The drawer's limits travel as the window's size hints.
         MouseArea {
             id: rightResizeHandle
-            enabled: root.isFloating
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.right: parent.right
-            width: 10
+            // Narrow enough to stay out of the scroll strip's lane (12px).
+            width: 8
             z: 30
             cursorShape: Qt.SizeHorCursor
 
-            property real startX: 0
-            property real startW: 0
-
-            onPressed: mouse => {
-                startX = mouse.x;
-                startW = root.width;
-            }
-            onPositionChanged: mouse => {
-                if (pressed) {
-                    const deltaX = mouse.x - startX;
-                    root.customWidth = Math.max(root.minWidth, Math.min(root.maxWidth, startW + deltaX));
-                    root.userMoved = true;
-                    root.userDragged();
-                }
+            onPressed: {
+                if (root.windowHandle) root.windowHandle.startSystemResize(Qt.RightEdge);
             }
         }
 
         MouseArea {
             id: bottomResizeHandle
-            enabled: root.isFloating
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -203,26 +161,13 @@ Item {
             z: 30
             cursorShape: Qt.SizeVerCursor
 
-            property real startY: 0
-            property real startH: 0
-
-            onPressed: mouse => {
-                startY = mouse.y;
-                startH = root.height;
-            }
-            onPositionChanged: mouse => {
-                if (pressed) {
-                    const deltaY = mouse.y - startY;
-                    root.customHeight = Math.max(root.minHeight, Math.min(root.maxHeight, startH + deltaY));
-                    root.userMoved = true;
-                    root.userDragged();
-                }
+            onPressed: {
+                if (root.windowHandle) root.windowHandle.startSystemResize(Qt.BottomEdge);
             }
         }
 
         MouseArea {
             id: leftResizeHandle
-            enabled: root.isFloating
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.left: parent.left
@@ -230,68 +175,24 @@ Item {
             z: 30
             cursorShape: Qt.SizeHorCursor
 
-            property real startGlobalX: 0
-            property real startX: 0
-            property real startW: 0
-
-            onPressed: mouse => {
-                const pt = mapToItem(null, mouse.x, mouse.y);
-                startGlobalX = pt.x;
-                startX = root.x;
-                startW = root.width;
-            }
-            onPositionChanged: mouse => {
-                if (pressed) {
-                    const pt = mapToItem(null, mouse.x, mouse.y);
-                    const deltaX = pt.x - startGlobalX;
-                    let targetW = startW - deltaX;
-                    if (targetW < root.minWidth) targetW = root.minWidth;
-                    if (targetW > root.maxWidth) targetW = root.maxWidth;
-                    const actualDeltaX = startW - targetW;
-                    root.customWidth = targetW;
-                    root.x = Math.max(16, startX + actualDeltaX);
-                    root.userMoved = true;
-                    root.userDragged();
-                }
+            onPressed: {
+                if (root.windowHandle) root.windowHandle.startSystemResize(Qt.LeftEdge);
             }
         }
 
         MouseArea {
             id: cornerResizeHandle
-            enabled: root.isFloating
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            width: 24
-            height: 24
+            // Kept inside the scroll strip's lane boundary so the bar stays
+            // grabbable right down to its bottom end.
+            width: 12
+            height: 12
             z: 40
             cursorShape: Qt.SizeFDiagCursor
 
-            property real startX: 0
-            property real startY: 0
-            property real startW: 0
-            property real startH: 0
-
-            onPressed: mouse => {
-                startX = mouse.x;
-                startY = mouse.y;
-                startW = root.width;
-                startH = root.height;
-            }
-            onPositionChanged: mouse => {
-                if (pressed) {
-                    const deltaX = mouse.x - startX;
-                    const deltaY = mouse.y - startY;
-                    root.customWidth = Math.max(root.minWidth, Math.min(root.maxWidth, startW + deltaX));
-                    root.customHeight = Math.max(root.minHeight, Math.min(root.maxHeight, startH + deltaY));
-                    root.userMoved = true;
-                    root.userDragged();
-                }
-            }
-            onDoubleClicked: {
-                root.customWidth = 0;
-                root.customHeight = 0;
-                root.userMoved = true;
-                root.userDragged();
+            onPressed: {
+                if (root.windowHandle) root.windowHandle.startSystemResize(Qt.RightEdge | Qt.BottomEdge);
             }
 
             Canvas {
@@ -306,11 +207,11 @@ Item {
                     ctx.lineCap = "round";
 
                     ctx.beginPath();
-                    ctx.moveTo(width - 3, height - 9);
-                    ctx.lineTo(width - 9, height - 3);
+                    ctx.moveTo(width - 2, height - 6);
+                    ctx.lineTo(width - 6, height - 2);
 
-                    ctx.moveTo(width - 3, height - 14);
-                    ctx.lineTo(width - 14, height - 3);
+                    ctx.moveTo(width - 2, height - 9);
+                    ctx.lineTo(width - 9, height - 2);
 
                     ctx.stroke();
                 }
@@ -326,11 +227,7 @@ Item {
             AssistantHeader {
                 id: headerItem
                 testMode: root.testMode
-                dragTarget: root.isFloating ? root : null
-                onUserDragged: {
-                    root.userMoved = true;
-                    root.userDragged();
-                }
+                windowHandle: root.windowHandle
                 onCloseRequested: Config.closeAssistant()
                 onMinimizeRequested: Config.minimizeAssistant()
                 onAddProviderRequested: root.addProviderVisible = true
@@ -686,12 +583,39 @@ Item {
                     }
 
                     // 4. Scrollable Chat Stream View
-                    ChatView {
-                        id: chatView
+                    //
+                    // The stream is wrapped so the scroll indicator can live
+                    // *outside* the flickable: a Flickable's children scroll with
+                    // its content, and an affordance that scrolls away is no
+                    // affordance at all.
+                    Item {
+                        id: chatHost
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.topMargin: 4
                         Layout.bottomMargin: 8
+                        // Reserve the scroll strip's lane: it has to sit clear of
+                        // the window resize handles on the card's edge, and the
+                        // bar belongs on the content's edge, not the card's.
+                        Layout.rightMargin: 14
+
+                        ChatView {
+                            id: chatView
+                            anchors.fill: parent
+                        }
+
+                        GlassScrollIndicator {
+                            id: chatScrollIndicator
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            anchors.right: parent.right
+                            anchors.rightMargin: 0
+                            flickable: chatView
+                            // A stream keeps its bar visible at rest: the whole
+                            // point is that the reader can see there is more.
+                            restingOpacity: 0.45
+                            barWidth: 4
+                        }
                     }
 
                     // 5. Input Bar
@@ -723,11 +647,7 @@ Item {
         // 7. Liquid Glass File Picker Modal
         LiquidGlassFilePicker {
             visible: root.imagePickerVisible
-            dragTarget: root.isFloating ? root : null
-            onUserDragged: {
-                root.userMoved = true;
-                root.userDragged();
-            }
+            windowHandle: root.windowHandle
             onAccepted: function(files) {
                 for (let i = 0; i < files.length; i++) {
                     chatInput.stageImage(files[i]);

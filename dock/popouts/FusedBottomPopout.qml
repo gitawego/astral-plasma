@@ -1645,21 +1645,20 @@ Item {
             }
         }
 
-        Rectangle {
+        // A menu hides its bar at rest - it is transient, and a permanent stripe
+        // beside a short list reads as clutter. The chat stream keeps its own
+        // visible; both use the same indicator so they cannot drift apart.
+        GlassScrollIndicator {
             id: pageScrollBar
             anchors.right: parent.right
             anchors.rightMargin: 1
-            width: 3
-            radius: 1.5
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            flickable: pageFlickable
             color: Colors.primary
-            opacity: (pageFlickable.moving || pageFlickable.dragging) ? 0.8 : 0.0
-            visible: pageFlickable.contentHeight > pageFlickable.height
-            y: pageFlickable.contentHeight > 0 ? ((pageFlickable.contentY / pageFlickable.contentHeight) * pageFlickable.height) : 0
-            height: pageFlickable.contentHeight > 0 ? Math.max(20, (pageFlickable.height / pageFlickable.contentHeight) * pageFlickable.height) : 0
-
-            Behavior on opacity {
-                NumberAnimation { duration: 150 }
-            }
+            restingOpacity: 0
+            activeOpacity: 0.8
+            minimumBarHeight: 20
         }
 
         function resetScroll() {

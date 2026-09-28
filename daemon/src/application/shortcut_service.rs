@@ -22,7 +22,7 @@ impl<P: ShortcutControlPort> ShortcutControlUseCase<P> {
             _ => "Meta+Space",
         };
 
-        self.port.snapshot_relevant_shortcuts(target_key)?;
+        self.port.snapshot_relevant_shortcuts(target_key, mode)?;
         Ok(())
     }
 

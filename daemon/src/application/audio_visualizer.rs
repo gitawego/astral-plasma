@@ -308,23 +308,20 @@ pub fn pcm_bytes_to_samples(bytes: &[u8]) -> Vec<f32> {
 /// - `-P {"stream.capture.sink": true}`: Instructs PipeWire to link to the sink monitor rather than microphone.
 /// - `--target @DEFAULT_AUDIO_SINK@`: Links to the default audio output device.
 /// - `--latency 32ms`: Enforces low latency period matching 256 samples @ 8000Hz.
+///
+/// Capture argument construction is shared with voice input via
+/// `domain::voice::pw_record_args`, whose `CaptureTarget` value object generalises
+/// the sink-monitor case to microphone capture. This function is now a thin
+/// `Sink` binding of that builder; `daemon/tests/test_audio_visualizer.rs` asserts
+/// the exact argv and is deliberately left unmodified as the non-regression proof
+/// that the generalization was inert for the visualizer.
 pub fn build_pw_record_args() -> Vec<String> {
-    vec![
-        "--raw".to_string(),
-        "-P".to_string(),
-        "{\"stream.capture.sink\": true}".to_string(),
-        "--target".to_string(),
-        "@DEFAULT_AUDIO_SINK@".to_string(),
-        "--latency".to_string(),
-        "32ms".to_string(),
-        "--rate".to_string(),
-        SAMPLE_RATE.to_string(),
-        "--channels".to_string(),
-        "1".to_string(),
-        "--format".to_string(),
-        "s16".to_string(),
-        "-".to_string(),
-    ]
+    crate::domain::voice::pw_record_args(
+        crate::domain::voice::CaptureTarget::Sink,
+        SAMPLE_RATE as u32,
+        1,
+        32,
+    )
 }
 
 /// Spawns pw-record with unbuffered stdout (via `stdbuf -o0` if available)

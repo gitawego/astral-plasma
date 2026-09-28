@@ -758,7 +758,11 @@ Singleton {
     }
 
     // Active state toggles
-    property bool dashboardVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_DASHBOARD_OPEN") === "1") ? true : (root.settings.dashboardVisible ?? false)
+    // Transient, like every other overlay: it opens because the user opened it
+    // (or because a test asked), never because a previous session left a `true`
+    // in settings.json - which is exactly how the top drawer appeared on every
+    // reload.
+    property bool dashboardVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_DASHBOARD_OPEN") === "1") ? true : false
     property bool settingsVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_SETTINGS_OPEN") === "1") ? true : false
     property string activeSettingsPage: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_SETTINGS_PAGE")) ? Quickshell.env("ASTRAL_PLASMA_SETTINGS_PAGE") : "wallpaper"
     property string activePopout: "" // legacy popout tracker
@@ -766,15 +770,10 @@ Singleton {
     // Assistant State
     property bool assistantVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_ASSISTANT_OPEN") === "1") ? true : false
     property bool assistantMinimized: false
-    property bool assistantPinned: false
     readonly property string assistantHarness: (root.settings && root.settings.assistant && root.settings.assistant.harness) ? root.settings.assistant.harness : "pi"
     readonly property string assistantDefaultProvider: (root.settings && root.settings.assistant && root.settings.assistant.defaultProvider) ? root.settings.assistant.defaultProvider : ""
     readonly property string assistantDefaultModel: (root.settings && root.settings.assistant && root.settings.assistant.defaultModel) ? root.settings.assistant.defaultModel : ""
     readonly property bool assistantAutoProactiveCrash: (root.settings && root.settings.assistant && root.settings.assistant.autoProactiveCrash !== undefined) ? root.settings.assistant.autoProactiveCrash : true
-
-    function toggleAssistantPinned() {
-        root.assistantPinned = !root.assistantPinned;
-    }
 
     function toggleAssistant() {
         if (root.assistantMinimized) {
@@ -925,6 +924,86 @@ Singleton {
         root.saveSettings();
     }
 
+    // -----------------------------------------------------------------------
+    // Voice input
+    //
+    // Every getter tolerates an absent `voice` block, so a settings.json written
+    // before this feature existed keeps working. See docs/VOICE-INPUT-SPEC.md
+    // section 4.6 for the authoritative key list and clamps; the daemon applies
+    // the same clamps, so a hand-edited out-of-range value is corrected there
+    // too rather than being trusted.
+    // -----------------------------------------------------------------------
+
+    readonly property var voiceSettings: (root.settings && root.settings.voice) ? root.settings.voice : ({})
+    readonly property bool voiceEnabled: root.voiceSettings.enabled !== undefined
+        ? !!root.voiceSettings.enabled : true
+    readonly property string voiceEngine: (root.voiceSettings.engine) ? root.voiceSettings.engine : "whisper-cpp"
+    readonly property string voiceModel: (root.voiceSettings.model) ? root.voiceSettings.model : "ggml-small"
+    readonly property string voiceLanguage: (root.voiceSettings.language) ? root.voiceSettings.language : "auto"
+    readonly property int voiceMaxUtteranceSeconds: (root.voiceSettings.maxUtteranceSeconds !== undefined)
+        ? root.voiceSettings.maxUtteranceSeconds : 30
+    readonly property int voiceSilenceHangoverMs: (root.voiceSettings.silenceHangoverMs !== undefined)
+        ? root.voiceSettings.silenceHangoverMs : 1200
+    readonly property bool voiceAutoFinalize: (root.voiceSettings.autoFinalize !== undefined)
+        ? !!root.voiceSettings.autoFinalize : true
+    readonly property bool voiceInstallModelOnDemand: (root.voiceSettings.installModelOnDemand !== undefined)
+        ? !!root.voiceSettings.installModelOnDemand : true
+
+    function _ensureVoiceBlock() {
+        if (!root.settings) root.settings = {};
+        if (!root.settings.voice) root.settings.voice = {};
+        return root.settings.voice;
+    }
+
+    function setVoiceEnabled(enabled) {
+        const block = root._ensureVoiceBlock();
+        block.enabled = !!enabled;
+        root.voiceSettings = block;
+        root.saveSettings();
+    }
+
+    function setVoiceModel(modelId) {
+        const block = root._ensureVoiceBlock();
+        block.model = modelId;
+        root.voiceSettings = block;
+        root.saveSettings();
+    }
+
+    function setVoiceLanguage(language) {
+        const block = root._ensureVoiceBlock();
+        block.language = language;
+        root.voiceSettings = block;
+        root.saveSettings();
+    }
+
+    function setVoiceMaxUtteranceSeconds(seconds) {
+        const block = root._ensureVoiceBlock();
+        block.maxUtteranceSeconds = seconds;
+        root.voiceSettings = block;
+        root.saveSettings();
+    }
+
+    function setVoiceSilenceHangoverMs(ms) {
+        const block = root._ensureVoiceBlock();
+        block.silenceHangoverMs = ms;
+        root.voiceSettings = block;
+        root.saveSettings();
+    }
+
+    function setVoiceAutoFinalize(enabled) {
+        const block = root._ensureVoiceBlock();
+        block.autoFinalize = !!enabled;
+        root.voiceSettings = block;
+        root.saveSettings();
+    }
+
+    function setVoiceInstallModelOnDemand(enabled) {
+        const block = root._ensureVoiceBlock();
+        block.installModelOnDemand = !!enabled;
+        root.voiceSettings = block;
+        root.saveSettings();
+    }
+
     // Right border edge control (volume & brightness) state
     property bool rightEdgeControlVisible: false
 
@@ -985,8 +1064,13 @@ Singleton {
         }
     }
 
-    function openSettings(page) {
+    // Deep links ("Settings > AI > Voice input") name a *section*, not just a
+    // page: the hub scrolls to it once the page exposes `sectionY(name)`.
+    property string settingsSection: ""
+
+    function openSettings(page, section) {
         if (page) activeSettingsPage = page;
+        settingsSection = section || "";
         settingsVisible = true;
         dashboardVisible = false;
         activePopout = "";

@@ -60,8 +60,11 @@ ShellRoot {
         target: "settings"
         function toggle(): void { Config.settingsVisible = !Config.settingsVisible; }
         function open(page: string): void {
-            if (page) Config.activeSettingsPage = page;
-            Config.settingsVisible = true;
+            Config.openSettings(page);
+        }
+        // A deep link may name a section too ("Settings > AI > Voice input").
+        function openSection(page: string, section: string): void {
+            Config.openSettings(page, section);
         }
         function close(): void { Config.settingsVisible = false; }
         function setPage(page: string): void {
@@ -220,6 +223,29 @@ ShellRoot {
             if (assistantWindow && assistantWindow.drawerItem && assistantWindow.drawerItem.chatInputItem) {
                 assistantWindow.drawerItem.chatInputItem.openNativeFileDialog();
             }
+        }
+        // Voice input is reachable over IPC, but no key is bound to it in v1:
+        // global push-to-talk would need a hotkey contract and the repo has
+        // already had shortcut conflicts once. The action exists so binding one
+        // later is a config change, not a refactor.
+        function toggleVoice(): void {
+            Config.openAssistant();
+            // Mirrors the on-screen button: toggle when recording, open the
+            // settings page that resolves the gap when not ready. Never a no-op.
+            AssistantService.toggleVoiceInput();
+        }
+        function dismissVoiceNotice(): void {
+            AssistantService.dismissVoiceSetupNotice();
+        }
+        function startVoice(): void {
+            Config.openAssistant();
+            AssistantService.startVoiceInput();
+        }
+        function stopVoice(): void {
+            AssistantService.stopVoiceInput();
+        }
+        function cancelVoice(): void {
+            AssistantService.cancelVoiceInput();
         }
     }
 
@@ -437,14 +463,23 @@ ShellRoot {
             const target = (typeof Config.disablePlasmaPanels === "string") ? Config.disablePlasmaPanels : "all";
             Quickshell.execDetached([Config.daemonBin, "plasma", "disable", target]);
         }
+        // Closing the shell hands the global shortcuts back to Plasma - the
+        // daemon's teardown restores them, and Plasma panels too - so every
+        // start has to claim them again. The daemon's watcher binds them as
+        // well; this call makes the claim independent of when that watcher
+        // comes up, and it is a no-op when the shortcuts are already bound.
+        if (DesktopSessionFacade.profile === "kde") {
+            Quickshell.execDetached([Config.daemonBin, "shortcuts", "bind", "meta-space"]);
+        }
     }
 
     Component.onDestruction: {
         if (Config.debugMode) {
             console.log("[shell.qml] onDestruction, autoRestorePlasmaOnExit:", Config.autoRestorePlasmaOnExit);
         }
-        if (Config.autoRestorePlasmaOnExit && DesktopSessionFacade.profile === "kde") {
-            Quickshell.execDetached([Config.daemonBin, "plasma", "restore"]);
-        }
+        // No restore here: onDestruction also runs for a *reload*, which is not
+        // the user quitting. The daemon's watchdog supervises this process and
+        // hands the desktop back when it actually disappears, honouring
+        // `plasma.autoRestoreOnExit`.
     }
 }

@@ -20,6 +20,7 @@ fn backup(
         previous_kwin_plugin_enabled: false,
         displaced_action: displaced.clone(),
         displaced_actions: displaced.into_iter().collect(),
+        mode: Some("meta-space".to_string()),
     }
 }
 
@@ -142,6 +143,7 @@ fn snapshot_reaches_the_adapter_even_with_an_active_backup() {
         fn snapshot_relevant_shortcuts(
             &self,
             _target_shortcut: &str,
+            _mode: &str,
         ) -> astral_plasma::domain::ports::DynResult<AstralShortcutSessionBackup> {
             self.snapshots.fetch_add(1, Ordering::SeqCst);
             Ok(backup(vec![], None))

@@ -22,6 +22,10 @@ Item {
     property bool modelMenuOpen: false
     property string modelSearchFilter: ""
 
+    /// True while any dropdown is open: the drawer and the outside-click
+    /// catcher key off this instead of either flag.
+    readonly property bool menusOpen: providerMenuOpen || modelMenuOpen
+
     readonly property string currentProvider: testMode ? testProvider : ((typeof AssistantService !== "undefined" && AssistantService.selectedProviderId) ? AssistantService.selectedProviderId : testProvider)
     readonly property string currentModel: testMode ? testModel : ((typeof AssistantService !== "undefined" && AssistantService.selectedModelId) ? AssistantService.selectedModelId : testModel)
     readonly property string providerName: (typeof AssistantService !== "undefined" && typeof AssistantService.getProviderDisplayName === "function") ? AssistantService.getProviderDisplayName(currentProvider) : (currentProvider === "opencode-go" ? "OpenCode Go" : currentProvider.toUpperCase())
@@ -219,6 +223,28 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // Outside-click dismissal.
+    //
+    // A dropdown belongs to the window, not to the 44px strip that opens it: any
+    // click that misses the popup closes it. The catcher sits below the popups
+    // (z: 150) and above everything else, and it is sized to the window because
+    // the bar itself is only one row tall.
+    MouseArea {
+        id: popupDismissCatcher
+        visible: root.menusOpen
+        enabled: root.menusOpen
+        z: 100
+        readonly property point windowOrigin: root.mapToItem(null, 0, 0)
+        x: -windowOrigin.x
+        y: -windowOrigin.y
+        width: (typeof Window !== "undefined" && Window.window) ? Window.window.width : 0
+        height: (typeof Window !== "undefined" && Window.window) ? Window.window.height : 0
+        onClicked: {
+            root.providerMenuOpen = false;
+            root.modelMenuOpen = false;
         }
     }
 
@@ -526,4 +552,6 @@ Item {
             }
         }
     }
+
+    property alias dismissCatcherItem: popupDismissCatcher
 }

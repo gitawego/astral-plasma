@@ -120,7 +120,7 @@ make test
 - **Root Cause**: In Nerd Fonts, `\udb80\udd27` maps to a statistics graph.
 - **Fix**: Integrated the official vector path from [Lucide Bot Message Square](https://lucide.dev/icons/bot-message-square) into [`components/BotMessageSquareIcon.qml`](file:///mnt/data/workspace/astral-plasma/components/BotMessageSquareIcon.qml) using Qt Quick Shapes with `RoundCap` and `RoundJoin`. Updated both the Dock capsule in [`shell/UnifiedDock.qml`](file:///mnt/data/workspace/astral-plasma/shell/UnifiedDock.qml) and the Copilot header badge in [`assistant/components/AssistantHeader.qml`](file:///mnt/data/workspace/astral-plasma/assistant/components/AssistantHeader.qml).
 
-### 5.3. Focus-Aware Auto-Minimize & Always-on-Top Pin
+### 5.3. Focus-Aware Auto-Minimize & Always-on-Top Pin (superseded by §7)
 - **Issue**: The floating chat window stayed on top covering other apps even when switching focus to external applications.
 - **Root Cause**: Quickshell layer-shell surfaces (`WlrLayer.Overlay`) are rendered above normal XDG application windows by Wayland protocol.
 - **Fix**:
@@ -129,8 +129,400 @@ make test
   3. In [`assistant/components/AssistantHeader.qml`](file:///mnt/data/workspace/astral-plasma/assistant/components/AssistantHeader.qml), added an interactive **Pin / Always on Top** toggle button (`push_pin` icon).
   4. In [`assistant/AssistantWindow.qml`](file:///mnt/data/workspace/astral-plasma/assistant/AssistantWindow.qml), connected to `WindowService.externalWindowActivated`: when unpinned, focusing any external application smoothly auto-minimizes Astral Copilot to the dock capsule with its breathing dot indicator.
 
+> [!NOTE]
+> The auto-minimize and its Pin toggle were the *workaround* for the overlay being
+> un-stackable. §7 replaces the overlay with a real toplevel window, which stacks
+> normally, so both the signal handler and the Pin button are gone.
+
 ### Proof 3: Verified Lucide Bot Message Square Icon & Pin Toggle
 Full screenshot showing the crisp vector `bot-message-square` icon in both the Dock capsule (left) and Copilot header badge (top left), along with the Pin button in the header action bar:
 
 ![Verified Lucide Bot Message Square & Pin Toggle](/home/hlu/.gemini/antigravity/brain/6243245e-1de1-4944-8e6d-a8a7cf6545aa/assistant_bot_chat_icon_and_pin_verified.png)
 
+---
+
+## 6. Chat Cannot Be Backgrounded & Ugly Setup Notice
+
+### 6.1. Auto-Minimize Never Fired For The Window You Came From
+- **Issue**: Opening the chat and switching back to the application you were using left the chat pinned on top. Switching to a *different* window did minimize it, which made the failure look intermittent.
+- **Root Cause**: In [`services/WindowService.qml`](file:///mnt/data/workspace/astral-plasma/services/WindowService.qml), the activation routing read `data.msg_type === "active"` — but every watch payload serialises that field as `type` (`#[serde(rename = "type")]` in `domain/model.rs`; `msg_type` is only used by the AI-activity monitor). The branch was dead code, so `externalWindowActivated` fired only when the active window **id changed**. The daemon never records the chat itself (shell surfaces are filtered), so returning to the window you came from produced an unchanged id and no signal.
+- **Fix**: Route the real wire key — `data.type === "active"` — in addition to the id-change fallback. On Hyprland, `hyprland_event_is_activation` now scopes the `active` label to genuine `activewindow` events, so a background title/move refresh stays a `windows` payload and cannot dismiss the chat mid-sentence.
+- **Verification**: `tests/tst_active_window_watcher.qml` now mirrors the routing, asserts same-id re-activation announces, that window-list refreshes stay silent, and pins the `data.type` key as a source contract; `daemon/tests/test_watch_events.rs` covers the Hyprland classification.
+
+**Before** (re-activating the same KWrite window — chat stayed pinned) / **After** (same action backgrounds it):
+
+![Background bug — before](docs/voice-proof/background-before-same-window.png)
+
+![Background fix — after](docs/voice-proof/background-after-same-window.png)
+
+### 6.2. Setup Notice Redesign
+- **Issue**: The `whisper.cpp` setup notice was one salmon-coloured sentence underlined end to end, inside its own 1px ring nested inside the composer's ring — it read as a raw hyperlink boxed in a box.
+- **Fix**: In [`assistant/components/VoiceListeningStrip.qml`](file:///mnt/data/workspace/astral-plasma/assistant/components/VoiceListeningStrip.qml):
+  - the reason is plain body text (`m3onSurface`, no underline);
+  - the destination is its own chip — monospace path (`Settings › AI › Voice input ›`), primary tint, chevron — echoing the composer's model chip, and the whole row is the link;
+  - the error tone is confined to the warning mark;
+  - `showBorder: false` drops the second perimeter ring (`docs/LESSONS.md` §9.1);
+  - [`services/AssistantService.qml`](file:///mnt/data/workspace/astral-plasma/services/AssistantService.qml) `describeVoiceGap` now names the reason alone, since the chip carries the destination.
+- **Verification**: `tests/tst_voice_input.qml` pins the no-underline contract at runtime and by source, the chip's visibility in notice/recording/idle states, and the token-based styling.
+
+![Redesigned setup notice](docs/voice-proof/strip-error-state.png)
+
+### 6.3. Automated verification
+
+```bash
+make test
+```
+
+- **Rust**: 50 test binaries, 0 failures (includes the new `test_hyprland_event_classification`).
+- **QML**: all suites green, including `tst_active_window_watcher` (new activation-routing assertions) and `tst_voice_input` (new notice-design assertions).
+
+
+---
+
+## 7. The Copilot Is Now A Real Window (Alt+Tab Reachable)
+
+### 7.1. Alt+Tab Never Listed The Chat
+- **Issue**: `Alt+Tab` could not find the AI Copilot in the window list — it only ever offered the other applications.
+- **Root Cause**: The copilot was a full-screen layer-shell overlay (`WlrLayershell.layer: WlrLayer.Overlay`). KWin sets `skipSwitcher` on every `zwlr_layer_shell_v1` surface (`src/layershellv1window.cpp`), and the switcher only offers windows passing `wantsTabFocus() && !skipSwitcher()` (`src/tabbox/tabbox.cpp`). A layer surface can therefore never be listed, whatever the shell asks for.
+- **Fix**: [`assistant/AssistantWindow.qml`](file:///mnt/data/workspace/astral-plasma/assistant/AssistantWindow.qml) is now a `Quickshell.FloatingWindow` — a real xdg-toplevel:
+  - **Identity**: `title: "Astral Copilot"`, so the switcher, taskbars and window lists have a name to show.
+  - **Frameless**: KWin decorates every toplevel by default, so the daemon installs a `kwinrulesrc` rule (`noborder=true`, `noborderrule=2`, `wmclass=org.quickshell`) at startup — [`daemon/src/infrastructure/kwin_window_rules.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/infrastructure/kwin_window_rules.rs). The card keeps drawing its own glass edge and `BackgroundEffect.blurRegion` still blurs the backdrop.
+  - **Size**: the drawer publishes `preferredWidth`/`preferredHeight` (screen-aware, and wide enough for the sessions sidebar when it is visible) and the window binds `implicitWidth`/`implicitHeight` to them; `minWidth`/`minHeight`/`maxWidth`/`maxHeight` travel as the window's size hints. The compositor owns the geometry once the surface is mapped.
+  - **Move & resize**: the card background and the header call `startSystemMove()`, the edge handles call `startSystemResize(edges)`. All item-coordinate dragging, clamping and recentering are gone.
+  - **Parking**: `Config.assistantMinimized` still hides the window to the dock capsule. A Wayland client may request a minimize but has no request that undoes one, so the parked state has to stay shell-owned.
+  - **Retired**: the overlay's input `mask` and click-through contract, the auto-minimize on external activation, and the Pin button — the last two existed only to compensate for an overlay that floated above everything.
+
+### 7.2. Verification
+- `make test`: Rust and QML suites green, 0 failures. New coverage: `daemon/tests/test_kwin_window_rules.rs` (rule rendering, group-id allocation, idempotency) and the rewritten toplevel contracts in `tests/tst_assistant_drawer.qml`.
+- Live KWin window-list dump of the running chat:
+
+  ```
+  caption=Astral Copilot class=org.quickshell normal=true skipTaskbar=false skipSwitcher=false noBorder=true
+  ```
+
+  `skipSwitcher=false` → it is in `Alt+Tab`; `noBorder=true` → frameless; `normal=true` → a first-class window.
+- Switching to another application leaves the window mapped, behind it, and still listed (`minimized=false`, `active=false`); the dock capsule parks and restores it as before.
+
+**Open** (frameless glass card over the editor behind it) / **parked in the dock capsule**:
+
+![Copilot as a real window](docs/voice-proof/copilot-toplevel-open.png)
+
+![Copilot parked in the dock](docs/voice-proof/copilot-toplevel-parked.png)
+
+---
+
+## 8. The Desktop Session Has An Owner Now (Shortcut Outage Fix)
+
+### 8.1. Every Shortcut Was Dead After A Shell Restart
+- **Issue**: Restarting the shell left every global shortcut dead — bare `Meta`, `Meta+Space`, `Meta+C`, `Meta+D`. Nothing reported an error, and a second restart often brought them back, so it read as a flaky daemon.
+- **Root Cause**: four independent restore paths and no owner of the session:
+  1. The daemon restored the desktop on SIGTERM/SIGINT ([`daemon/src/application/watch_events.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/application/watch_events.rs)).
+  2. It restored again on stdin EOF — that is, when the shell exited.
+  3. [`shell.qml`](file:///mnt/data/workspace/astral-plasma/shell.qml) restored in `Component.onDestruction`, which also runs on a QML **reload**.
+  4. Taking the keys back afterwards depended on the daemon's watcher starting promptly, so the gap between "desktop given back" and "keys claimed again" belonged to nobody.
+
+  A reload is not an exit, and a signal is not a request.
+- **Fix**:
+  - **Claim through the journal**: `bind_shortcuts()` is now a no-op when the requested mode is already claimed, and the daemon claims via `ShortcutControlUseCase::backup_and_bind`, so the session journal (`AstralShortcutSessionBackup`, now carrying `mode`) is written *before* the keys are taken.
+  - **One reconciler owns desired state**: [`daemon/src/application/desktop_reconciler.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/application/desktop_reconciler.rs) replaces the panel-only watchdog. Every 5 s it repairs drift in the Plasma panels, the shortcut claim, the shortcut KWin script, and the frameless window rule, in the fixed order defined by `plan_repairs` in [`daemon/src/domain/desktop_integration.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/domain/desktop_integration.rs).
+  - **Signals never release the desktop**: SIGTERM/SIGINT and stdin EOF now exit without mutating anything. Release happens only through the watchdog — which supervises the **shell** pid (`libc::getppid()`) and honours `plasma.autoRestoreOnExit` ([`daemon/src/application/plasma_service.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/application/plasma_service.rs)) — or through the explicit `astral-plasma plasma restore`. `shell.qml` no longer restores on `Component.onDestruction`.
+  - **The reported dropdown bug, same round**: the Copilot's provider/model menus in [`assistant/components/ModelProviderBar.qml`](file:///mnt/data/workspace/astral-plasma/assistant/components/ModelProviderBar.qml) only closed when the pointer left the 44px strip that opens them. An outside-click catcher sized to the window (below the popups in z-order, above everything else) now dismisses them from a click anywhere else.
+  - **The reported missing scrollbar, same round**: the chat stream had no scroll affordance at all, so a long session read as clipped. [`components/GlassScrollIndicator.qml`](file:///mnt/data/workspace/astral-plasma/components/GlassScrollIndicator.qml) is now the shell's single scroll indicator — a thin capsule that tracks `contentY`/`contentHeight`, faintly visible at rest for a stream and hidden at rest for the dock's transient menu, which now uses the same component instead of its own copy.
+
+### 8.2. Verification
+
+```bash
+make test
+```
+
+- **Rust**: 579 passed, 0 failed.
+- **QML**: all suites green.
+- **New coverage**: [`daemon/tests/test_desktop_lifecycle.rs`](file:///mnt/data/workspace/astral-plasma/daemon/tests/test_desktop_lifecycle.rs) spawns the *real* binary against a temp `XDG_CONFIG_HOME` and asserts `claiming_twice_changes_nothing`, `releasing_gives_the_original_keys_back` (original keys restored byte-for-byte), `a_termination_signal_is_not_user_intent` (SIGTERM mutates no external file), `a_restart_resumes_the_recorded_mode`, and `a_legacy_journal_learns_its_mode`; [`daemon/tests/test_shell_scripts.rs`](file:///mnt/data/workspace/astral-plasma/daemon/tests/test_shell_scripts.rs) adds the startup-claim contract, the bind/restore lock, "already bound is left alone", the cross-language label agreement, and the single-writer ownership contract.
+
+---
+
+## 9. Legibility & Intent Round: Scrollbars, Hover Dwell, Settings Deep Links
+
+Four reports from the same sitting, each fixed at its cause rather than at the symptom.
+
+### 9.1. The Chat Had No Scroll Affordance
+- **Issue**: a long session read as a clipped one - nothing showed that the chat scrolls, and the bar that did exist could not be grabbed.
+- **Fix**: [`components/GlassScrollIndicator.qml`](file:///mnt/data/workspace/astral-plasma/components/GlassScrollIndicator.qml) is now the shell's single scroll affordance, used by the chat stream *and* the dock's popout menu (which previously kept a private copy):
+  - it tracks `contentY`/`contentHeight`, sizes itself to the visible fraction (`max(24px, track²/content)`) and maps position over the full travel;
+  - it is **draggable**: press the bar to keep your grab offset, press the track to centre the bar there - so a click jumps and the same press scrubs;
+  - its pointer target is 12px wide (`hitWidth`) while the bar stays 3-4px, because a 3px capsule is not a grab target;
+  - the chat keeps it faintly visible at rest (`restingOpacity: 0.45`), the transient menu hides it (`0`) - same component, both behaviours.
+- **The resize-handle collision**: the window's own resize handles sit on the card's edge and were stealing the bar (the pointer became a resize cursor and the window resized instead of scrolling). The chat area now reserves a 14px lane (`chatHost.Layout.rightMargin`), the bar rides the *content's* edge, the right handle narrowed to 8px, the corner handle to 12×12, and the strip's cursor is an arrow (closed hand while dragging) - never a resize cursor.
+- **Tests**: `tst_assistant_drawer.qml` §27 - visibility and mapping on probe flickables (top/middle/bottom/clamped), a simulated drag that must land exactly at the end, `hitWidth > barWidth`, and the geometry contract that the strip sits clear of the widest resize handle.
+
+### 9.2. The Top Drawer Opened On An Accidental Top-Edge Touch
+- **Issue**: reaching for a browser tab crosses the top edge, and the dashboard opened instantly.
+- **Fix**: [`shell/UnifiedShell.qml`](file:///mnt/data/workspace/astral-plasma/shell/UnifiedShell.qml) arms a 450ms **hover-intent** timer on `onEntered` instead of opening; `onExited` cancels it; a click still toggles immediately. The 350ms auto-close grace is unchanged.
+- **Tests**: `tst_top_drawer_autoclose.qml` mirrors the dwell behaviour and pins the shell's own source (the hover must arm the timer, must not set `dashboardVisible` directly, must cancel on exit). That file's `assert` also now aborts instead of only logging - it used to print PASS while failing.
+
+### 9.3. "Settings › AI › Voice input" Opened The Page, Not The Section
+- **Issue**: the Copilot's setup notice promised the voice section; clicking it opened the AI page at the top, so nothing appeared to happen.
+- **Fix**: `Config.openSettings(page, section)` carries a section request; [`settings_gui/NexusHub.qml`](file:///mnt/data/workspace/astral-plasma/settings_gui/NexusHub.qml) resolves it through an opt-in `sectionY(name)` on the page and scrolls once the layout settles (it re-tries on `contentHeight` changes, and clamps). [`settings_gui/pages/AiPage.qml`](file:///mnt/data/workspace/astral-plasma/settings_gui/pages/AiPage.qml) maps the voice panel into the page's coordinate space - its own `y` is relative to the card it sits in. The `settings open` IPC gained the section argument so the link is testable end to end.
+- **Verified live**: `settings open ai voice` lands with the **Voice Input** heading on screen.
+
+### 9.4. The Settings Window Was Two Rounded Panels Butted Together
+- **Issue**: the right pane was fully transparent, so a page of options dissolved into the wallpaper - and once it got a substrate of its own it became a second rounded panel sitting against the rounded rail, with the wallpaper showing through the corner notches between them.
+- **Fix - one plate, one hairline**: the substrate moved into the palette as `Colors.glassPanelSubstrate` (lifted dark base at 0.82 alpha in dark mode, near-white at 0.84 in light) and now sits on the **window card** (`dialogBox`), not on a pane. The navigation rail is a tinted strip *inside* that plate (a whisper of lift, no radius), the content pane is transparent and square, and a single specular hairline inset from the plate's edges divides them. The outer radius stays the card's alone, so the corners are concentric instead of competing - the rule from LESSONS 9.1, applied to the window itself. The Copilot card uses the same token, so both surfaces share one recipe.
+- **Tests**: `tst_nexus_hub.qml` pins the token's definition and both alphas (0.75 ≤ a < 1.0), that the window card carries the substrate, that **neither** the rail nor the content pane declares a radius, that the pane is transparent, and that the hairline seam exists; `tst_assistant_drawer.qml` pins that the Copilot card uses the shared token and does not re-inline the recipe.
+
+**Verification**: `make test` - Rust 579 passed / 0 failed, all QML suites green.
+
+---
+
+## 10. Speech Models: Real Progress, A Remove Path, And A Drawer That Stays Shut
+
+### 10.1. The Download Sat At 0% And Then Said "Downloaded"
+- **Issue**: a 1.5 GiB model download showed `0%` for its whole life and then announced itself as done.
+- **Two causes, both silent**:
+  1. **The meter was silenced.** The installer passed `curl --silent` *and* `--progress-bar`; `--silent` suppresses the meter, so curl emitted nothing to parse. Dropped `--silent` (errors still surface through `--show-error`).
+  2. **The event carried an object where the UI read a number.** Install progress reused `VoiceEvent::Level { rms }`, which serialises as `{"type":"Level","payload":{"rms":0.42}}`; the UI's guard is `typeof ev.payload === "number"`, so it never matched. Progress is now its own newtype, `VoiceEvent::Progress(f32)` → `{"type":"Progress","payload":0.42}`, and the bar parser reads the percentage curl actually prints (`#####  42.3%`) with the byte-count meter kept as a fallback.
+- **Tests**: `daemon/tests/test_voice_model_store.rs` drives the real binary with a stub `curl` on `PATH` and asserts the stream is monotonic, inside 0..1, and ends at 1.0; `tst_voice_input.qml` pins that the installer parses `Progress` and not the session's `Level`.
+
+### 10.2. A Downloaded Model Could Not Be Removed
+- **Fix**: `VoiceService::remove_model` deletes the model and any staged `.part` file (returning whether anything was there), the daemon exposes `voice remove-model [id]`, `AssistantService.removeVoiceModel` drives it, and the settings' model row grows a **delete** control that appears only while a model is present. Removing an absent model is a no-op, not an error, so the UI can call it blind.
+- **Tests**: the model-store test covers install → remove → remove-again (`"removed":true` then `"removed":false`); `tst_ai_page.qml` pins that the control exists and follows model presence.
+
+### 10.3. The Engine And The Model Are Different Things
+- **Issue**: the settings said "Downloaded" while the chat said the engine was missing, which read as a contradiction.
+- **Fix**: the gap copy names the engine explicitly ("whisper.cpp engine not installed") in both surfaces, and the installer's model directory now resolves through the same env-aware helper the readiness probe uses (`ASTRAL_VOICE_MODEL_DIR`), so "installed to X, checked at Y" cannot happen.
+
+### 10.4. The Top Drawer Opened On Every Reload
+- **Issue**: every theme restart popped the top drawer open.
+- **Root cause**: `Config.dashboardVisible` initialised from `settings.dashboardVisible`, and `config/settings.json` shipped `"dashboardVisible": true`. A transient overlay state was being restored from disk.
+- **Fix**: the initialiser reads only the test override (`ASTRAL_PLASMA_DASHBOARD_OPEN`), exactly like `settingsVisible`; the shipped defaults no longer carry the key. `tst_top_drawer_autoclose.qml` pins both (no settings read in the initialiser, no transient key in the defaults).
+
+### 10.5. The Install Command Assumed Arch
+- **Issue**: "whisper.cpp engine not installed. Run: `sudo pacman -S whisper-cpp`" - true on Arch, a dead end on Debian, Fedora, openSUSE or NixOS, where the package manager and even the package name differ.
+- **Fix**: the suggestion is now derived from `/etc/os-release` (`ID` **and** `ID_LIKE`, since derivatives like CachyOS declare the family rather than the id): `pacman`, `apt` (`whisper.cpp`), `dnf`, `zypper`, `nix-shell`, or - for a distribution we cannot name a package for - the upstream build link, never an invented command. `VoiceStatus.engine_install_command` carries it to the UI, and the doctor's engine recommendation uses the same helper.
+- **Tests**: `test_voice_domain.rs` maps eight distributions (including `ID=cachyos`/`ID_LIKE=arch`, `ID_LIKE="rhel centos fedora"`, and an unknown id) and requires every named manager's command to be runnable and to name the engine; `test_voice_model_store.rs` asserts a missing engine's status carries that command; `tst_ai_page.qml` renders the daemon's command and falls back to the upstream link, and `tst_voice_input.qml` forbids a hardcoded package manager in the page.
+
+- **Staleness**: the settings page only re-probed readiness when its cached status was `null`, so a status captured at shell start could describe an engine that had since been installed. The page now re-probes whenever it becomes visible (the probe is documented as cheap and safe to call often).
+
+**Verification**: `make test` - Rust 583 passed / 0 failed, all QML suites green. Live: the settings row reads "Run: sudo pacman -S whisper-cpp" on this CachyOS host, rendered from `voice status` rather than from any string in the QML.
+
+---
+
+## 11. Backgroundable Settings & The Stale Voice Probe
+
+### 11.1. The Settings Panel Could Not Be Backgrounded
+
+- **Issue**: the settings window stayed above every application window. Clicking a browser left the panel pinned on top, and `Alt+Tab` could not reach it.
+- **Root Cause**: [`settings_gui/SettingsWindow.qml`](file:///mnt/data/workspace/astral-plasma/settings_gui/SettingsWindow.qml) was still the overlay the Copilot retired in §7 - a full-screen `PanelWindow` on `WlrLayer.Overlay` plus a card-sized input `mask`. A layer surface is protocol-pinned above all xdg-toplevels, so no rule or flag could ever send it to the background.
+- **Fix**: migrated the settings surface to `Quickshell.FloatingWindow`, exactly like [`assistant/AssistantWindow.qml`](file:///mnt/data/workspace/astral-plasma/assistant/AssistantWindow.qml):
+  - **Identity**: `title: "Astral Settings"`, so the switcher and window lists have a name to show.
+  - **Frameless**: the daemon's existing KWin rule (`kwinrulesrc`, `wmclass=org.quickshell`, `noborder=true`/`noborderrule=2`) already covers every Quickshell toplevel - no daemon change was required. The card keeps drawing its own glass edge.
+  - **Size**: `implicitWidth`/`implicitHeight` publish the opening size (52% x 60% of the target screen, clamped to the hub's 940x640-1240x860 bounds) and the same bounds travel as `minimumSize`/`maximumSize`; the compositor owns the geometry from then on.
+  - **Drag**: the card background and the header bar call `startSystemMove()`; the overlay-era `userMoved` / `clampPosition` / `resetPosition` bookkeeping was retired.
+  - **Blur**: `BackgroundEffect.blurRegion` tracks the card `item` (`dialogBox`), which is now the whole surface, instead of recomputing screen coordinates.
+- **Tests**: [`tests/tst_settings_draggable.qml`](file:///mnt/data/workspace/astral-plasma/tests/tst_settings_draggable.qml) was rewritten from a drag mock into the real toplevel contract (`FloatingWindow`, no `WlrLayershell`, no `mask`, window title, size hints, `startSystemMove`, no item-coordinate dragging, blur tracking `dialogBox`, shared glass substrate kept).
+
+### 11.2. "whisper.cpp engine not installed" Survived The Install
+
+- **Issue**: with `whisper-cpp 1.9.4` installed (`/usr/bin/whisper-cli`) and `astral-plasma voice status` reporting `engine_available: true`, the AI page still showed **"whisper.cpp engine not installed. Run: sudo pacman -S whisper-cpp"**.
+- **Root Cause**: `NexusHub` loads pages through a `Loader`, so [`settings_gui/pages/AiPage.qml`](file:///mnt/data/workspace/astral-plasma/settings_gui/pages/AiPage.qml) is constructed **already visible** - `visible` never changes on the first show, so the `onVisibleChanged` re-probe the page relied on never fired. `Component.onCompleted` additionally probed only when the cached `AssistantService.voiceStatus` was `null`, so a status captured at shell start (before the engine was found) survived every page visit.
+- **Fix**: `AiPage` now re-probes unconditionally on construction (`refreshVoiceReadiness()`), keeps the visibility hook, and adds a `Connections` edge on `Config.settingsVisible` so a close/re-open re-probes even while the Loader keeps the page instantiated. The probe stays cheap by contract; it is never trusted from a cached value.
+- **Tests**: [`tests/tst_voice_settings.qml`](file:///mnt/data/workspace/astral-plasma/tests/tst_voice_settings.qml) pins the unconditional construction probe (no `voiceStatus === null` guard), the retained `onVisibleChanged` hook and the settings-window edge.
+
+### 11.3. Visual Proof
+
+**Before** - stale probe: the page says the engine is missing while the terminal behind reports `engine_available: True | gap: ready | path: /usr/bin/whisper-cli`:
+
+![Stale voice probe before](docs/voice-proof/settings-voice-stale-before.png)
+
+**After** - the same page re-probes on open and reads **"Ready · ggml-large-v3-turbo"**, model downloaded:
+
+![Voice input ready](docs/voice-proof/settings-voice-ready.png)
+
+**After** - the settings window is a normal stacked toplevel: ZCode is the active window and the panel sits behind it (its right/bottom edges occluded, still mapped and listed):
+
+![Settings in the background](docs/voice-proof/settings-toplevel-background.png)
+
+Live KWin window-list dump with the panel open:
+
+```
+caption='Astral Settings' cls=org.quickshell normal=True skipTaskbar=False skipSwitcher=False noBorder=True
+```
+
+`skipSwitcher=false` → reachable from `Alt+Tab`; `noBorder=true` → frameless; `normal=true` → a first-class window that stacks and backgrounds.
+
+**Automated verification**: `make test` - all Rust and QML suites green, including the rewritten `tst_settings_draggable` toplevel contract and the new `tst_voice_settings` re-probe contracts.
+
+---
+
+## 12. Voice Input Was Not Using The Microphone - It Was Three Separate Failures
+
+### 12.1. `--vad` Without Its Model Made Every Transcription Fail
+
+- **Issue**: dictation captured audio (the strip meter moved) but every utterance ended in `Speech engine failed: /usr/bin/whisper-cli: failed to process audio`, so nothing was ever transcribed.
+- **Reproduced headlessly**: driving `voice session` with `start` → 5 s → `stop` produced 244 `Level` events (RMS up to 0.63) and then the error. Running whisper-cli directly showed the same on valid WAV input: `with --vad` → exit 10, `failed to process audio`; without it the same file transcribed fine.
+- **Root Cause**: the capability probe correctly reported that whisper-cli 1.9.4 advertises `--vad`, and [`build_args`](file:///mnt/data/workspace/astral-plasma/daemon/src/infrastructure/whisper_stt_adapter.rs) emitted it - but `--vad` turns on Silero inference and is fatal without `--vad-model`, and the VAD asset is deliberately not provisioned (the upstream URL 404s; spec D4). "Supported flag" was true but unusable.
+- **Fix**: the VAD flags now travel as a pair or not at all. `EngineInvocation.vad_model: Option<PathBuf>` is resolved from the canonical asset (`resolve_vad_model`), and `build_args` emits `--vad --vad-model <p>` only when it exists. In every shipped install the asset is absent, so a bare `--vad` is unreachable by construction - and the daemon's own `SilenceDetector` already does the endpointing.
+
+### 12.2. The Test Stub Encoded Our Assumption, Not whisper-cli's Behavior
+
+- **Issue**: after the VAD fix the session exited cleanly (`Final` emitted) but the transcript was **empty** while the same engine transcribed the same audio from a shell prompt.
+- **Root Cause**: `whisper-cli -oj` does not print JSON to stdout - it writes `<input>.json` beside the audio file and still prints the timestamped transcript to stdout (`output_json: saving output to '/tmp/mic2.wav.json'`). The adapter parsed stdout as JSON, failed, and returned `""` by design. The session-protocol stub printed JSON to stdout, so the test suite encoded the same wrong assumption and passed.
+- **Fix**: the adapter reads the `<audio>.json` sidecar when the build advertises structured output, falls back to the timestamped stdout transcript when the sidecar is missing, and removes both files on every exit path. The protocol stub now mirrors 1.9.4 exactly - bare `--vad` is fatal, `-oj` writes the sidecar - so the regression test is meaningful.
+- **Live proof of the daemon side**:
+  ```
+  {"type":"StateChanged","payload":{"state":"recording"}}
+  {"type":"StateChanged","payload":{"state":"finalizing"}}
+  {"type":"Final","payload":{"text":"*Burps*","language":"und","duration_ms":3740,
+                             "engine":"whisper-cpp","model":"ggml-large-v3-turbo"}}
+  ```
+
+### 12.3. `root.childId` Is Undefined: The Session Cleanup Never Ran
+
+- **Issue**: the shell log filled with `TypeError: Cannot read property 'stop' of undefined` at `services/AssistantService.qml[1147]` and `[1173]` on every session, so the elapsed timer never reset, the exit handshake was never re-armed, and the chat stream watchdog could not cancel a timed-out stream (`root.streamProc`).
+- **Root Cause**: QML child ids are lexical captures, not properties of the root object. `root.voiceElapsedTimer` is `undefined` inside nested handlers; the bare id resolves. A minimal offscreen probe confirms both (`root.timer` → `undefined`, `timer` → `QQmlTimer`). A repo-wide audit found exactly five occurrences, all in `AssistantService.qml`.
+- **Fix**: all five references now use the lexical id (`voiceElapsedTimer.stop()`, `cancelProc(streamProc)`), matching the root-scope functions that already did. `tests/tst_voice_input.qml` gained an executable scoping probe plus source contracts forbidding the pattern.
+- **Live proof**: after a fresh `startVoice`/`stopVoice` session the shell log shows no `AssistantService` TypeErrors (the last lines are unrelated pre-existing `LiquidGlassFilePicker` warnings).
+
+### 12.4. Live end-to-end proof
+
+`quickshell ipc call assistant startVoice` → 5 s of real microphone audio → `stopVoice` → whisper inference → the transcript lands in the composer, untruncated and never auto-submitted:
+
+![Live voice transcript](docs/voice-proof/voice-transcript-live.png)
+
+**Automated verification**: `make test` - Rust 587 passed / 0 failed, all QML suites green. New coverage: asset-gated VAD and sidecar-first transcript reading (`test_whisper_stt_adapter.rs`), a 1.9.4-faithful engine stub with the fatal bare `--vad` and sidecar output (`test_voice_session_protocol.rs`), and payload decoding + id-scoping contracts (`tst_voice_input.qml`).
+
+---
+
+## 13. Voice Latency: A Faster Default, A Trimmed Utterance, And An Honest Wait
+
+### 13.1. A Four-Second Utterance Took Twenty Seconds
+
+- **Issue**: after clicking stop, the transcript took ~20s to appear; short dictation felt unusable.
+- **Measured root cause**: the catalog default was `ggml-large-v3-turbo`, and the engine is CPU-only on every supported distribution. `whisper-cli` 1.9.4 on this 12th-gen i9 (16 cores / 24 threads) needed **26.0s for a 4.9s clip** and **12.2s for the 11s JFK sample** - roughly 5x slower than realtime.
+- **Fix**: the default is now `ggml-small`, the largest tier that runs near realtime on CPU:
+  - [`daemon/src/domain/voice.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/domain/voice.rs) `DEFAULT_MODEL_ID`, the catalog labels, `config/settings.json`, `Config.qml` and `AiPage.qml` fallbacks all agree on it.
+  - `ggml-small`: **4.0s** for the 4.9s clip, **3.0s** for the JFK sample - with an *identical* JFK transcript:
+
+    ```
+    small       3.0s  "And so my fellow Americans, ask not what your country can do for you,
+                       ask what you can do for your country."
+    large-turbo 12.2s "And so, my fellow Americans, ..."   (same words)
+    ```
+  - The large tiers remain in the picker; a user who explicitly chose one keeps it.
+
+### 13.2. The Engine Was Decoding Silence
+
+- **Issue**: inference cost scaled with the whole recording, not the utterance, and quiet tails invited hallucinated text.
+- **Fix**: `trim_to_speech` in [`whisper_stt_adapter.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/infrastructure/whisper_stt_adapter.rs) ships the engine the region around the frames the `SilenceDetector` already classified as speech, plus a 250 ms margin. No new threshold: the trim reuses the endpointing decision, and a no-speech capture is passed through unchanged so "nothing was said" cannot be confused with a capture failure.
+- **Test**: the session-protocol stub engine logs the byte size of the WAV it receives; the suite asserts the 3.7s fixture reaches the engine as ~1.5s, not 3.7s.
+
+### 13.3. "language not determined" During Inference
+
+- **Issue**: the multi-second decode showed a readout that looked like a hang.
+- **Fix**: the strip's state readout says **`transcribing`** while the engine runs (`VoiceListeningStrip.stateLabelText`), pinned by `tst_voice_input.qml`.
+
+![Transcribing state](docs/voice-proof/voice-transcribing.png)
+
+### 13.4. Live Verification
+
+The same `voice session` invocation that used to take ~20s after stop, timestamped by event:
+
+```
+    37ms StateChanged {'state': 'recording'}
+  3997ms StateChanged {'state': 'finalizing'}     <- stop clicked
+  8219ms Final {'text': ..., 'duration_ms': 3400, 'model': 'ggml-small'}
+```
+
+**4.2s** of inference for a 3.4s utterance, with the trimmed capture. The transcript in the live room is still the room's audio (the built-in mic hears the speakers); that is an environment limit, not a pipeline bug - the same pipeline transcribes the JFK sample exactly.
+
+**Automated verification**: `make test` - Rust 592 passed / 0 failed, all QML suites green.
+
+---
+
+## 14. Real Latency Root Causes: The Encoder Window And The Decoder Loop
+
+### 14.1. A 2.5s "Hello" Cost 3.8s - 89% Of It Encoding 30 Seconds Of Nothing
+
+whisper-cli's own timing breakdown for a 2.5s clip (`ggml-small`, 16 threads):
+
+```
+encode time = 3364.05 ms / 2 runs (1682.03 ms per run)
+decode time =   39.54 ms / 2 runs
+total time =  3790.83 ms
+```
+
+whisper.cpp always encodes its full trained context (`n_audio_ctx` 1500 = 30 s) regardless of clip length, and `language: auto` runs that encode **twice** - once to detect the language, once to transcribe. A one-word utterance paid the same encoder bill as 30 seconds of speech.
+
+- **Fix**: [`whisper_stt_adapter.rs`](file:///mnt/data/workspace/astral-plasma/daemon/src/infrastructure/whisper_stt_adapter.rs) now sizes the encoder window to the trimmed utterance: `-ac <audio_context_for(ms)>` = `ceil(ms / 20ms) + 1.28s`, clamped to 5.12s–30s. Below the floor the engine re-processes segments (`-ac 128` duplicated the transcript and took longer than the default), above the utterance the context is pure waste.
+- **Measured**: 2.5s English clip 3.9s → **2.5s** (`auto`) / **1.1s** (fixed language), identical transcript; 11s JFK 4.8s → 3.5s.
+
+### 14.2. The Decoder Loop: 45 Seconds Of Garbage On Non-Speech Audio
+
+The decoder is cheap on clean speech (40ms) but explodes on music: the model emits long hallucinated token sequences, and the CLI defaults multiply each one - beam 5, best-of 5, and temperature fallback retrying the whole decode up to 1.0. Same 3.3s room capture:
+
+| Decode configuration | Time | Output |
+|---|---:|---|
+| CLI defaults (beam 5, best-of 5, fallback) | **44.8 s** | garbage |
+| Greedy + full fallback | 24.2 s | garbage |
+| Greedy + one fallback | 8.6 s | garbage |
+| **Greedy + no fallback** (`-bs 1 -bo 1 -nf`) | **6.8 s** | bounded |
+| Greedy + no fallback, clean JFK | **0.6 s** | exact transcript |
+
+- **Fix**: `build_args` pins `-bs 1 -bo 1 -nf` whenever the probed build advertises them. Clean speech is unaffected; the fallback never triggered there. Every multiplier is now a capability probe, not a CLI default.
+
+### 14.3. Live Verification
+
+The daemon-built engine arguments (logged by a wrapper around the real `whisper-cli`):
+
+```
+-m .../ggml-small.bin -f .../utterance-*.wav -l auto -np -oj -t 24 -ac 256 -bs 1 -bo 1 -nf
+```
+
+Four consecutive live-room sessions (5s capture each) now finish in **6.4–6.8s total**, i.e. **~1.5s of inference** - previously the same class of audio took 6–45s. A clean 11s speech sample through the full daemon pipeline transcribes correctly in **3.3s** end to end.
+
+**Automated verification**: `make test` - Rust 594 passed / 0 failed, all QML suites green. New coverage: `audio_context_for` bounds, bounded-decode flag emission, and session-protocol assertions that the daemon passes the sized `-ac` and the decode limits to the engine.
+
+---
+
+## 15. Why The VAD Asset Was "Unreachable" (It Was Not), And The Fix It Unlocks
+
+### 15.1. The 401 Was A Wrong Path, Not A Credential Problem
+
+**Answer: no Hugging Face credentials are needed.** The 401 was Hugging Face's generic response for a path an anonymous client may not see - it returns **401, not 404**, for non-public/nonexistent repos. Proof: a deliberately made-up repo (`ggml-org/definitely-not-a-real-repo-xyz`) returns the same 401 on both the API and `resolve` endpoints. `ggml-org/whisper.cpp` is simply not a public HF repo, and the old public repo (`ggerganov/whisper.cpp`, which serves all the ASR models) never contained the VAD file (verified against its full file tree).
+
+The asset lives in its own **public, non-gated** repository, and upstream whisper.cpp's own `models/download-vad-model.sh` is the source of truth for where:
+
+```
+src="https://huggingface.co/ggml-org/whisper-vad"
+→ ggml-silero-v5.1.2.bin   885,098 bytes   HTTP 200, no credentials
+```
+
+`ggml-org/silero-v5.1.2` also serves the identical file. **The lesson**: read the project's own download script before concluding an asset is gone.
+
+### 15.2. Provisioning It Fixes The Music-Transcription Problem
+
+The daemon now provisions the asset and passes `--vad --vad-model` only when it is present:
+
+- `voice install-vad` - installs it on its own (staged `.part`, progress JSONL, same store as the ASR models).
+- `voice install-model <id>` - also fetches it, best-effort, so new installs get it automatically.
+- `voice status` - reports `vad_model_present`.
+- A bare `--vad` remains unreachable: whisper-cli fails every transcription without a model.
+
+Measured on the same room captures:
+
+| Audio | Before | After |
+|---|---|---|
+| Room with loud music (3.4s) | 6–45s, hallucinated text ("Mario", "ვვვ…") | **~0.2s, empty transcript** (VAD found no speech) |
+| Clean JFK speech (11s) | 3.3s, exact transcript | 2.9s end to end, exact transcript |
+
+Daemon-built engine arguments, logged live:
+
+```
+-m .../ggml-small.bin -f .../utterance-*.wav -l auto -np -oj -t 24
+-ac 572 -bs 1 -bo 1 -nf
+--vad --vad-model /mnt/data/cache/astral-plasma/models/ggml-silero-v5.1.2.bin
+```
+
+Note `-ac 572`: the encoder window is sized to the actual 10.16s utterance (`ceil(ms/20) + 64`), not the 30s default.
+
+**Automated verification**: `make test` - Rust 597 passed / 0 failed, all QML suites green. New coverage: VAD constants pinned to the public repo, `install-vad` + auto-provision-on-model-install against a stub `curl`, `vad_model_present` in `voice status`, and session-protocol assertions that `--vad --vad-model` reach the engine.

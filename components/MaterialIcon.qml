@@ -74,6 +74,19 @@ Item {
         "swap_horiz": "󰁯",
         "expand_less": "󰅃",
         "expand_more": "󰅀",
+        // NOTE: no microphone glyph is mapped here on purpose.
+        //
+        // The Material Design Icons private-use codepoints for `microphone` and
+        // `timer-sand` are absent from the JetBrains Mono Nerd Font build this
+        // shell ships, and adding them anyway renders the *wrong* shapes (a
+        // factory silhouette and a pair of bars) rather than a missing-glyph box.
+        // That was verified by rendering the component, not by checking that the
+        // codepoint exists in the cmap -- presence is not identity.
+        //
+        // Voice input therefore uses the vector-drawn `MicVocalIcon` (Lucide),
+        // not a font glyph. Do not "fix" this by pasting in Material Symbols
+        // names either: QtQuick.Controls and the Material Symbols font are not
+        // part of this shell.
         "info": "󰋽",
         "info_outline": "󰋽",
         "notifications": "󰂚",

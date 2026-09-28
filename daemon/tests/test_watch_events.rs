@@ -1,9 +1,38 @@
 //! Unit tests for watch_events: payload serialization, state transitions,
 //! KWin script generation, and D-Bus IPC interface contracts.
 
-use astral_plasma::application::watch_events::{get_kwin_watcher_script, DaemonState};
+use astral_plasma::application::watch_events::{
+    get_kwin_watcher_script, hyprland_event_is_activation, DaemonState,
+};
 use astral_plasma::domain::branding;
 use astral_plasma::domain::model::{ActiveWindowPayload, FullStatePayload, Window, WindowsListPayload};
+
+#[test]
+fn test_hyprland_event_classification() {
+    // The shell minimises the assistant on every payload the daemon labels
+    // `type: "active"`. On Hyprland the socket2 watcher re-queries on many
+    // event kinds, so only a genuine focus change may carry that label: a
+    // title update of the already-focused window must stay a plain window-list
+    // refresh, or the chat would dismiss itself mid-sentence.
+    assert!(hyprland_event_is_activation("activewindow>>Alacritty,Terminal"));
+    assert!(hyprland_event_is_activation(
+        "activewindowv2>>0x55a4336b65d0,Terminal"
+    ));
+
+    assert!(!hyprland_event_is_activation("windowtitle>>Terminal"));
+    assert!(!hyprland_event_is_activation(
+        "windowtitlev2>>0x55a4336b65d0,Terminal"
+    ));
+    assert!(!hyprland_event_is_activation("workspace>>1"));
+    assert!(!hyprland_event_is_activation("focusedmon>>WAYLAND-1,1"));
+    assert!(!hyprland_event_is_activation(
+        "openwindow>>0x55a4336b65d0,1,Alacritty,Terminal"
+    ));
+    assert!(!hyprland_event_is_activation("closewindow>>0x55a4336b65d0"));
+    assert!(!hyprland_event_is_activation(
+        "movewindow>>0x55a4336b65d0,1,100,100"
+    ));
+}
 
 #[test]
 fn test_daemon_state_default() {

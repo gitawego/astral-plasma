@@ -35,26 +35,57 @@ Item {
         return true;
     }
 
-    AssistantDrawer {
-        id: drawer
-        testMode: true
-        isOpen: true
+    // The assistant is a real toplevel window (docs/LESSONS.md §8.9): the drawer
+    // is its content, fills it, and the compositor owns position and size. The
+    // hosts below stand in for that window.
+    Item {
+        id: floatingHost
+        width: 1020
+        height: 840
+
+        AssistantDrawer {
+            id: floatingDrawer
+            testMode: true
+            isOpen: true
+            anchors.fill: parent
+        }
     }
 
-    AssistantDrawer {
-        id: floatingDrawer
-        testMode: true
-        isFloating: true
-        isOpen: true
+    Item {
+        id: splitHost
+        width: 1020
+        height: 840
+
+        AssistantDrawer {
+            id: splitDrawer
+            testMode: true
+            isOpen: true
+            sessionsVisible: true
+            anchors.fill: parent
+        }
     }
 
-    AssistantDrawer {
-        id: splitDrawer
-        testMode: true
-        isFloating: true
-        isOpen: true
-        sessionsVisible: true
+    // Scroll-affordance probes: one overflowing flickable, one that fits.
+    Flickable {
+        id: scrollProbe
+        width: 200
+        height: 100
+        contentWidth: 200
+        contentHeight: 400
+        Item { width: 200; height: 400 }
     }
+
+    Flickable {
+        id: shortProbe
+        width: 200
+        height: 100
+        contentWidth: 200
+        contentHeight: 60
+        Item { width: 200; height: 60 }
+    }
+
+    GlassScrollIndicator { id: longScrollBar; flickable: scrollProbe }
+    GlassScrollIndicator { id: shortScrollBar; flickable: shortProbe }
 
     ToolConfirmationCard {
         id: testCard
@@ -108,17 +139,26 @@ Item {
     function runTests() {
         console.log("Running tst_assistant_drawer.qml test suite...");
 
-        // 1. Geometry assertions
-        assert(drawer.drawerWidth === 460, "Drawer width must be 460px");
-        assert(drawer.width === 460, "Drawer item width must equal drawerWidth");
-        assert(drawer.isOpen === true, "Drawer must be open in test state");
+        // 1. Geometry: the drawer is the window's content, so it fills the host
+        // instead of computing a screen-relative rectangle of its own.
+        assert(floatingDrawer.width === floatingHost.width, "AssistantDrawer must fill its host width");
+        assert(floatingDrawer.height === floatingHost.height, "AssistantDrawer must fill its host height");
+        assert(floatingDrawer.isOpen === true, "Drawer must be open in test state");
+        assert(floatingDrawer.minWidth === 480, "AssistantDrawer minWidth must be 480px");
+        assert(floatingDrawer.minHeight === 520, "AssistantDrawer minHeight must be 520px");
 
-        // 2. Open placement
-        assert(drawer.x === (testRoot.width - drawer.drawerWidth), "Drawer x must align to right screen edge when open");
+        // 2. Preferred size: applied to the window's implicit size before the
+        // surface is mapped, because a Wayland toplevel cannot resize itself
+        // while it is visible - the compositor owns the geometry.
+        assert(floatingDrawer.preferredWidth === Math.min(740, Math.max(480, Math.round(testRoot.width * 0.48))),
+            "preferredWidth must derive from the reference screen width");
+        assert(floatingDrawer.preferredHeight === Math.min(840, Math.max(540, Math.round(testRoot.height * 0.76))),
+            "preferredHeight must derive from the reference screen height");
 
         // 3. Motion state
-        drawer.isOpen = false;
-        assert(drawer.isOpen === false, "Drawer state must reflect closed");
+        floatingDrawer.isOpen = false;
+        assert(floatingDrawer.isOpen === false, "Drawer state must reflect closed");
+        floatingDrawer.isOpen = true;
 
         // 4. Tool Confirmation Card
         assert(testCard.toolProposal !== null, "Tool proposal must be bound");
@@ -170,22 +210,36 @@ Item {
         const pkgSkill = readLocalFile("../skills/package-cache-manager/SKILL.md");
         assert(pkgSkill.length > 100, "package-cache-manager skill must exist");
 
-        // 8. Floating Mode & Centering Assertions
-        assert(floatingDrawer.isFloating === true, "floatingDrawer must have isFloating enabled");
-        assert(floatingDrawer.width > 460, "floatingDrawer width must scale with screen width");
-        assert(floatingDrawer.x === Math.round((testRoot.width - floatingDrawer.width) / 2), "floatingDrawer must be horizontally centered");
-        assert(floatingDrawer.y === Math.round((testRoot.height - floatingDrawer.height) / 2), "floatingDrawer must be vertically centered");
-
-        // 9. Floating Window & Non-Modal Pass-Through Contract (No Underlay, No Outside Dismissal)
+        // 8. Real Toplevel Window Sizing Contract
+        // The copilot is an xdg-toplevel: Alt+Tab, minimize and stacking belong
+        // to the compositor, and the shell only supplies the size the window
+        // takes when it is next mapped.
         const windowSrc = readLocalFile("../assistant/AssistantWindow.qml");
+        assert(floatingDrawer.preferredWidth > 480, "preferredWidth must scale with the screen width");
+        assert(floatingDrawer.preferredHeight >= 540, "preferredHeight must scale with the screen height");
+        assert(/implicitWidth:\s*drawer\s*\?\s*drawer\.preferredWidth/.test(windowSrc), "AssistantWindow must size the toplevel from the drawer's preferred width");
+        assert(/implicitHeight:\s*drawer\s*\?\s*drawer\.preferredHeight/.test(windowSrc), "AssistantWindow must size the toplevel from the drawer's preferred height");
+
+        // 9. Real Toplevel Window Contract
+        // Alt+Tab lists application windows only: KWin hard-codes skipSwitcher
+        // for layer-shell surfaces, so a layer surface can never be reached with
+        // the system switcher.
         assert(windowSrc.length > 300, "assistant/AssistantWindow.qml must be readable");
-        assert(/isFloating:\s*true/.test(windowSrc), "AssistantWindow must declare isFloating: true on AssistantDrawer");
+        assert(/FloatingWindow\s*\{/.test(windowSrc), "AssistantWindow must be a FloatingWindow (real xdg-toplevel), not a layer-shell overlay");
+        assert(!/WlrLayershell/.test(windowSrc), "AssistantWindow must not be a layer-shell surface: those never appear in Alt+Tab");
+        assert(!/mask:\s*Region/.test(windowSrc), "AssistantWindow must not declare a clickthrough mask: the window is card-sized");
+        assert(/title:\s*"Astral Copilot"/.test(windowSrc), "AssistantWindow must carry a window title for Alt+Tab and taskbars");
         assert(/color:\s*"transparent"/.test(windowSrc), "AssistantWindow must have transparent color without underlay dim scrim");
-        assert(/mask:\s*Region/.test(windowSrc), "AssistantWindow must declare mask Region to restrict clicks to floating card and allow pass-through");
-        assert(/BackgroundEffect\.blurRegion/.test(windowSrc), "AssistantWindow must apply compositor blurRegion to floating card");
-        assert(/onExternalWindowActivated/.test(windowSrc), "AssistantWindow must connect to onExternalWindowActivated handler");
-        assert(/assistantPinned/.test(windowSrc), "AssistantWindow must respect assistantPinned state");
-        assert(/minimizeAssistant/.test(windowSrc), "AssistantWindow must auto-minimize to dock when external app gains focus");
+        assert(/BackgroundEffect\.blurRegion/.test(windowSrc), "AssistantWindow must apply compositor blurRegion to the glass card");
+        assert(/screen:\s*targetScreen/.test(windowSrc), "AssistantWindow must place the toplevel on the target screen");
+        assert(/visible:\s*activeVisible\b/.test(windowSrc), "AssistantWindow must be mapped exactly while the chat is open");
+        assert(/minimumSize/.test(windowSrc) && /maximumSize/.test(windowSrc), "AssistantWindow must publish the drawer's resize limits as window size hints");
+        // Overlay-era workarounds have no place in a real window: switching
+        // applications is ordinary stacking, and a Wayland client cannot undo a
+        // minimize it asked the compositor for.
+        assert(!/onExternalWindowActivated/.test(windowSrc), "AssistantWindow must not auto-hide on app switches: a real window stacks behind them");
+        assert(!/assistantPinned/.test(windowSrc), "no pin state: pinning only existed to suppress the overlay's auto-minimize");
+        assert(!/minimized:\s*minimizedToDock/.test(windowSrc), "AssistantWindow must not drive a compositor minimize it could never undo");
 
         // 10. Streaming Content Reactivity Contract
         const chatViewSrc = readLocalFile("../assistant/components/ChatView.qml");
@@ -194,29 +248,24 @@ Item {
         assert(/messagesRevision/.test(chatViewSrc), "ChatView must reactively track messagesRevision");
         assert(/messagesRevision/.test(serviceSrc), "AssistantService must provide messagesRevision property");
 
-        // 11. Draggable & High-Contrast Visual Clarity Contract
+        // 11. Native Move & Glass Clarity Contract
+        // Moving a window is the compositor's interactive move: the shell must
+        // not emulate it by writing item coordinates.
         const drawerSrc = readLocalFile("../assistant/AssistantDrawer.qml");
         assert(drawerSrc.length > 500, "assistant/AssistantDrawer.qml must be readable");
-        assert(floatingDrawer.userMoved === false, "floatingDrawer userMoved must start false");
-        assert(typeof floatingDrawer.resetPosition === "function", "AssistantDrawer must expose resetPosition function");
-        assert(/headerItem/.test(drawerSrc) && /dragTarget/.test(drawerSrc), "AssistantDrawer must bind dragTarget to headerItem for header-based window dragging");
+        assert(/headerItem/.test(drawerSrc), "AssistantDrawer must expose the header drag zone");
         assert(/dialogDragArea/.test(drawerSrc), "AssistantDrawer must declare dialogDragArea for background surface dragging");
-        assert(/drag\.target:\s*root\.isFloating\s*\?\s*root\s*:\s*null/.test(drawerSrc), "AssistantDrawer must set drag.target to root when floating");
-        assert(/0\.82/.test(drawerSrc), "AssistantDrawer must use Ghostty-style slight transparency frosted glass substrate (82% alpha)");
-        assert(/userMoved/.test(windowSrc), "AssistantWindow must track userMoved state");
-        assert(/clampPosition/.test(windowSrc), "AssistantWindow must implement boundary clampPosition");
-
-        // Verify position reset logic
-        const initialX = floatingDrawer.x;
-        const initialY = floatingDrawer.y;
-        floatingDrawer.x = 100;
-        floatingDrawer.y = 80;
-        floatingDrawer.userMoved = true;
-        assert(floatingDrawer.x === 100 && floatingDrawer.y === 80, "floatingDrawer must support manual coordinate positioning");
-        floatingDrawer.resetPosition();
-        assert(floatingDrawer.userMoved === false, "resetPosition must reset userMoved flag");
-        assert(floatingDrawer.x === initialX, "resetPosition must restore centered x coordinate");
-        assert(floatingDrawer.y === initialY, "resetPosition must restore centered y coordinate");
+        assert(/startSystemMove/.test(drawerSrc), "AssistantDrawer must start a compositor move instead of dragging item coordinates");
+        assert(!/drag\.target/.test(drawerSrc), "AssistantDrawer must not drag item coordinates: the surface is a real window");
+        assert(!/clampPosition/.test(windowSrc), "AssistantWindow must not clamp positions: the compositor keeps windows on screen");
+        assert(!/resetPosition/.test(windowSrc + drawerSrc), "no recenter/position-reset logic: the compositor owns window placement");
+        assert(/Colors\.glassPanelSubstrate/.test(drawerSrc),
+            "AssistantDrawer must use the shared readable panel substrate");
+        assert(!/Qt\.rgba\(0\.07, 0\.08, 0\.12, 0\.82\)/.test(drawerSrc),
+            "the substrate recipe must live in Colors, not be re-inlined per surface");
+        const headerDragSrc = readLocalFile("../assistant/components/AssistantHeader.qml");
+        assert(/startSystemMove/.test(headerDragSrc), "AssistantHeader drag zone must start a compositor move");
+        assert(!/drag\.target/.test(headerDragSrc), "AssistantHeader must not drag item coordinates");
 
         // 12. Send Button Visibility & Interaction Contract
         const inputBarSrc = readLocalFile("../assistant/components/ChatInputBar.qml");
@@ -226,21 +275,20 @@ Item {
         assert(/Colors\.glassBorderSpecular/.test(inputBarSrc), "sendButton must have visible specular border");
         assert(/submitMessage/.test(inputBarSrc), "ChatInputBar must submit message when clicked");
 
-        // 13. Resizability & Minimum Dimension Constraints
-        assert(floatingDrawer.minWidth === 480, "AssistantDrawer minWidth must be 480px");
-        assert(floatingDrawer.minHeight === 520, "AssistantDrawer minHeight must be 520px");
-        assert(floatingDrawer.customWidth >= 0, "AssistantDrawer must expose customWidth");
-        assert(floatingDrawer.customHeight >= 0, "AssistantDrawer must expose customHeight");
+        // 13. Native Resize & Window Size Hints
+        // The handles start a compositor resize; the drawer's limits travel as
+        // the window's minimum/maximum size hints, so the compositor enforces
+        // them instead of item-level clamping.
         assert(/rightResizeHandle/.test(drawerSrc), "AssistantDrawer must declare rightResizeHandle");
         assert(/bottomResizeHandle/.test(drawerSrc), "AssistantDrawer must declare bottomResizeHandle");
         assert(/leftResizeHandle/.test(drawerSrc), "AssistantDrawer must declare leftResizeHandle");
         assert(/cornerResizeHandle/.test(drawerSrc), "AssistantDrawer must declare cornerResizeHandle");
-
-        // Test custom resize
-        floatingDrawer.customWidth = 640;
-        floatingDrawer.customHeight = 700;
-        assert(floatingDrawer.width === 640, "floatingDrawer width must reflect customWidth");
-        assert(floatingDrawer.height === 700, "floatingDrawer height must reflect customHeight");
+        assert(/startSystemResize\(Qt\.RightEdge\)/.test(drawerSrc), "rightResizeHandle must start a compositor resize from the right edge");
+        assert(/startSystemResize\(Qt\.BottomEdge\)/.test(drawerSrc), "bottomResizeHandle must start a compositor resize from the bottom edge");
+        assert(/startSystemResize\(Qt\.LeftEdge\)/.test(drawerSrc), "leftResizeHandle must start a compositor resize from the left edge");
+        assert(/startSystemResize\(Qt\.RightEdge\s*\|\s*Qt\.BottomEdge\)/.test(drawerSrc), "cornerResizeHandle must start a compositor resize from the bottom-right corner");
+        assert(floatingDrawer.maxWidth >= floatingDrawer.minWidth, "AssistantDrawer must expose a maximum width for the window size hints");
+        assert(floatingDrawer.maxHeight >= floatingDrawer.minHeight, "AssistantDrawer must expose a maximum height for the window size hints");
 
         // 14. Image Ingestion & In-Chat Previews Contract
         assert(testInputBar.stagedImages !== undefined, "ChatInputBar must expose stagedImages");
@@ -291,11 +339,10 @@ Item {
 
         const configSrc = readLocalFile("../config/Config.qml");
         assert(/assistantMinimized/.test(configSrc), "Config must declare assistantMinimized property");
-        assert(/assistantPinned/.test(configSrc), "Config must declare assistantPinned property");
+        assert(!/assistantPinned/.test(configSrc), "Config must not keep pin state: the auto-minimize it suppressed is gone");
         assert(/function minimizeAssistant\(/.test(configSrc), "Config must implement minimizeAssistant");
         assert(/function restoreAssistant\(/.test(configSrc), "Config must implement restoreAssistant");
         assert(/function toggleAssistant\(/.test(configSrc), "Config must implement toggleAssistant");
-        assert(/function toggleAssistantPinned\(/.test(configSrc), "Config must implement toggleAssistantPinned");
 
         const dockSrc = readLocalFile("../shell/UnifiedDock.qml");
         assert(/copilotDockItem/.test(dockSrc), "UnifiedDock must declare copilotDockItem");
@@ -331,10 +378,10 @@ Item {
         assert(/searchQuery/.test(pickerSrc), "LiquidGlassFilePicker must support search query filtering");
         assert(/formatSize/.test(pickerSrc), "LiquidGlassFilePicker must implement human-readable formatSize helper");
         assert(/submitSelection/.test(pickerSrc), "LiquidGlassFilePicker must implement submitSelection function");
-        assert(/dragTarget/.test(pickerSrc), "LiquidGlassFilePicker must accept dragTarget for window mobility");
-        assert(/userDragged/.test(pickerSrc), "LiquidGlassFilePicker must emit userDragged signal on dragging header");
-        assert(/dragTarget:\s*root\.isFloating/.test(drawerSrc), "AssistantDrawer must bind dragTarget to root");
-        assert(drawer.imagePickerVisible === false, "AssistantDrawer imagePickerVisible must default to false");
+        assert(/windowHandle/.test(pickerSrc), "LiquidGlassFilePicker must accept the window handle for system moves");
+        assert(/startSystemMove/.test(pickerSrc), "LiquidGlassFilePicker must start a compositor move from its header");
+        assert(/windowHandle:\s*root\.windowHandle/.test(drawerSrc), "AssistantDrawer must pass its window handle to the file picker");
+        assert(floatingDrawer.imagePickerVisible === false, "AssistantDrawer imagePickerVisible must default to false");
 
         // 18. Native File Dialog & Any File Types Staging Contract
         assert(/FileDialog/.test(inputBarSrc), "ChatInputBar must declare FileDialog");
@@ -368,7 +415,7 @@ Item {
         assert(!/root\.sessionSelected\([^)]*\);\s*root\.closed\(\)/.test(sessionDrawerSrc), "SessionListDrawer must NOT auto-close when selecting a session");
         assert(/delMouse[\s\S]*?z:\s*10/.test(sessionDrawerSrc) || /z:\s*10[\s\S]*?delMouse/.test(sessionDrawerSrc), "SessionListDrawer delete button must have explicit z: 10 priority");
         assert(/cardMouse[\s\S]*?z:\s*0/.test(sessionDrawerSrc), "SessionListDrawer cardMouse must have background z: 0 to avoid stealing delete clicks");
-        assert(drawer.sessionsVisible === false, "AssistantDrawer sessionsVisible must default to false");
+        assert(floatingDrawer.sessionsVisible === false, "AssistantDrawer sessionsVisible must default to false");
         assert(testSessionDrawer !== null, "SessionListDrawer must instantiate properly");
 
         // 20. Clean Liquid Glass Header Branding & Navigation
@@ -381,7 +428,7 @@ Item {
         // 21. E2E Header Action Buttons Clickability & Unblocked Drag Zone
         const hdr = floatingDrawer.headerItem;
         assert(hdr !== null && hdr !== undefined, "floatingDrawer must expose headerItem");
-        assert(hdr.dragTarget === floatingDrawer, "headerItem dragTarget must bind to floatingDrawer");
+        assert(hdr.windowHandle === floatingDrawer.windowHandle, "headerItem must be wired to the drawer's window handle for system moves");
 
         // Verify all action buttons have explicit z: 10 interactive priority
         assert(/id:\s*actionButtonsRow[\s\S]*?z:\s*10/.test(headerSrc), "AssistantHeader action buttons must reside in a z: 10 container above drag background");
@@ -396,16 +443,9 @@ Item {
         hdr.sessionsMouseItem.clicked(null);
         assert(sessionsFired === true, "Sessions button must trigger sessionsRequested and NOT be blocked by drag zone");
 
-        // Verify Pin button
-        assert(hdr.pinMouseItem !== undefined, "AssistantHeader must expose pinMouseItem");
-        assert(hdr.pinButtonItem !== undefined, "AssistantHeader must expose pinButtonItem");
-        if (typeof Config !== "undefined" && typeof Config.toggleAssistantPinned === "function") {
-            let initialPinned = Config.assistantPinned;
-            hdr.pinMouseItem.clicked(null);
-            assert(Config.assistantPinned === !initialPinned, "Pin button must toggle Config.assistantPinned");
-            hdr.pinMouseItem.clicked(null);
-            assert(Config.assistantPinned === initialPinned, "Pin button must toggle back Config.assistantPinned");
-        }
+        // The pin toggle only ever suppressed the overlay's auto-minimize; a
+        // real window needs no such switch.
+        assert(!/pinButton/.test(headerSrc), "AssistantHeader must not offer a pin toggle any more");
 
         let minFired = false;
         hdr.minimizeRequested.connect(function() { minFired = true; });
@@ -434,11 +474,14 @@ Item {
         const chatColumnLeftEdge = splitDrawer.chatContentColumnItem.x;
         assert(sidebarRightEdge <= chatColumnLeftEdge, "Sessions sidebar must NOT overlap chat content (sidebar right edge " + sidebarRightEdge + " <= chat column left edge " + chatColumnLeftEdge + ")");
         assert(splitDrawer.chatContentColumnItem.width >= 400, "Chat content column must maintain full reading width in split view");
-        assert(splitDrawer.width >= splitDrawer.baseDefaultWidth + 200, "Floating window width must expand to accommodate sidebar without squeezing messages");
+        // A Wayland toplevel cannot resize itself while it is mapped, so the
+        // sidebar squeezes the chat column inside the window instead of growing
+        // it; a window opened while the sidebar is visible is sized for it.
+        assert(splitDrawer.width === splitHost.width, "the sessions sidebar must not resize the mapped window");
+        assert(splitDrawer.preferredWidth === splitDrawer.baseDefaultWidth + 280,
+            "preferredWidth must include the sessions sidebar so a window opened with it visible is wide enough");
 
         // Dynamic toggle check
-        floatingDrawer.customWidth = 0;
-        floatingDrawer.customHeight = 0;
         floatingDrawer.sessionsVisible = false;
         assert(floatingDrawer.sessionsVisible === false, "floatingDrawer sessionsVisible must start false");
         floatingDrawer.sessionsVisible = true;
@@ -640,6 +683,116 @@ Item {
         assert(/normalizeMarkdown\(modelData\.text/.test(chatViewSrc), "ChatView must bind bubbleText through normalizeMarkdown");
         assert(/Theme\.fontBodySmall/.test(chatViewSrc), "ChatView must use Theme.fontBodySmall (13px) for bubbleText font size");
         assert(/isTool\s*\?\s*Text\.PlainText\s*:\s*Text\.MarkdownText/.test(chatViewSrc), "ChatView must render tool output as PlainText");
+
+        // 26. Dropdown Outside-Click Dismissal Contract
+        // A model/provider dropdown must close when the click lands anywhere
+        // outside it - the user's complaint was that it stayed open.
+        assert(testBar.dismissCatcherItem !== undefined, "ModelProviderBar must expose its outside-click catcher");
+        assert(testBar.menusOpen === false, "ModelProviderBar must expose menusOpen");
+        assert(testBar.dismissCatcherItem.enabled === false, "the catcher is disarmed while nothing is open");
+
+        testBar.modelMenuOpen = true;
+        assert(testBar.menusOpen === true, "opening the model dropdown must arm menusOpen");
+        assert(testBar.dismissCatcherItem.enabled === true, "the catcher is armed while a dropdown is open");
+        testBar.dismissCatcherItem.clicked(null);
+        assert(testBar.modelMenuOpen === false, "a click outside the model dropdown must close it");
+
+        testBar.providerMenuOpen = true;
+        testBar.dismissCatcherItem.clicked(null);
+        assert(testBar.providerMenuOpen === false, "a click outside the provider dropdown must close it");
+        assert(testBar.dismissCatcherItem.enabled === false, "the catcher is disarmed once nothing is open");
+
+        // It has to cover the whole window, not the 44px bar row: the dropdown
+        // is anchored to the bar but the click that dismisses it is anywhere.
+        const dropdownBarSrc = readLocalFile("../assistant/components/ModelProviderBar.qml");
+        assert(/Window\.window\.width/.test(dropdownBarSrc) && /Window\.window\.height/.test(dropdownBarSrc),
+            "the dismissal catcher must span the window, not just the bar");
+        assert(/z:\s*100/.test(dropdownBarSrc), "the catcher must sit below the popups (z: 150)");
+
+        // 27. Chat Scroll Affordance Contract
+        // The chat read as clipped because nothing showed that it scrolls.
+        assert(floatingDrawer.scrollIndicatorItem !== undefined, "AssistantDrawer must expose its chat scroll indicator");
+        assert(floatingDrawer.scrollIndicatorItem.flickable === floatingDrawer.chatViewItem,
+            "the indicator must track the chat flickable");
+        assert(/GlassScrollIndicator/.test(drawerSrc), "AssistantDrawer must use the shared scroll indicator");
+
+        assert(longScrollBar.scrollable === true, "an overflowing flickable must report itself scrollable");
+        assert(longScrollBar.visible === true, "an overflowing flickable must show its scrollbar");
+        assert(longScrollBar.barHeight > 0 && longScrollBar.barHeight < scrollProbe.height,
+            "the bar must be a fraction of the track, got " + longScrollBar.barHeight);
+        assert(longScrollBar.progress === 0, "the bar starts at the top");
+        scrollProbe.contentY = scrollProbe.contentHeight - scrollProbe.height;
+        assert(longScrollBar.progress === 1, "the bar reaches the bottom with the content, got " + longScrollBar.progress);
+        scrollProbe.contentY = 0;
+
+        assert(shortScrollBar.scrollable === false, "content that fits is not scrollable");
+        assert(shortScrollBar.visible === false, "content that fits shows no bar");
+
+        // Dragging: the bar must move the content, not just report it.
+        assert(typeof longScrollBar.contentYForBarTop === "function",
+            "the indicator must map a bar position to a content offset");
+        assert(longScrollBar.contentYForBarTop(0) === 0, "the top of the track is the start of the content");
+        assert(Math.abs(longScrollBar.contentYForBarTop(longScrollBar.travel) - (scrollProbe.contentHeight - scrollProbe.height)) < 0.01,
+            "the bottom of the track is the end of the content");
+        const midOffset = longScrollBar.contentYForBarTop(longScrollBar.travel / 2);
+        assert(midOffset > 0 && midOffset < scrollProbe.contentHeight - scrollProbe.height,
+            "the middle of the track is the middle of the content, got " + midOffset);
+        assert(longScrollBar.contentYForBarTop(99999) === scrollProbe.contentHeight - scrollProbe.height,
+            "a position past the track clamps to the end");
+
+        assert(longScrollBar.dragAreaItem !== undefined, "the indicator must expose its drag area");
+        assert(longScrollBar.dragAreaItem.enabled === true, "the drag strip is armed while the content overflows");
+        assert(shortScrollBar.dragAreaItem.enabled === false, "the drag strip is inert when everything fits");
+        assert(longScrollBar.hitWidth > longScrollBar.barWidth,
+            "the pointer target must be wider than the 3px bar, got " + longScrollBar.hitWidth);
+
+        // Simulate the drag the way the MouseArea does: press on the track,
+        // then move the pointer; the flickable must follow.
+        scrollProbe.contentY = 0;
+        longScrollBar.dragAreaItem.beginDrag(0);
+        assert(scrollProbe.contentY === 0, "grabbing the top of the track keeps the content at the start");
+
+        // Pressing the track (not the bar) centres the bar under the pointer.
+        longScrollBar.dragAreaItem.beginDrag(longScrollBar.travel);
+        const centred = longScrollBar.contentYForBarTop(longScrollBar.travel - longScrollBar.barHeight / 2);
+        assert(Math.abs(scrollProbe.contentY - centred) < 0.01,
+            "pressing the track centres the bar, got " + scrollProbe.contentY + " expected " + centred);
+
+        // Grabbing the bar itself and dragging it to the end reaches the end.
+        scrollProbe.contentY = 0;
+        longScrollBar.dragAreaItem.beginDrag(1);
+        longScrollBar.dragAreaItem.dragTo(longScrollBar.travel + 40);
+        assert(Math.abs(scrollProbe.contentY - (scrollProbe.contentHeight - scrollProbe.height)) < 0.01,
+            "dragging the grabbed bar past the track scrolls to the end, got " + scrollProbe.contentY);
+        scrollProbe.contentY = 0;
+
+        // The resize handles own the card's edges. The scroll strip must sit
+        // clear of them, or grabbing the bar resizes the window instead of
+        // scrolling - exactly the report this contract answers.
+        const handleSrc = readLocalFile("../assistant/AssistantDrawer.qml");
+        const stripMargin = /id:\s*chatScrollIndicator[\s\S]{0,600}?anchors\.rightMargin:\s*(\d+)/.exec(handleSrc);
+        const rightHandle = /id:\s*rightResizeHandle[\s\S]{0,400}?width:\s*(\d+)/.exec(handleSrc);
+        const cornerHandle = /id:\s*cornerResizeHandle[\s\S]{0,400}?width:\s*(\d+)/.exec(handleSrc);
+        assert(stripMargin !== null, "the chat scroll strip must declare its right margin");
+        assert(rightHandle !== null && cornerHandle !== null, "the resize handles must declare their widths");
+        const hostMargin = /id:\s*chatHost[\s\S]{0,500}?Layout\.rightMargin:\s*(\d+)/.exec(handleSrc);
+        assert(hostMargin !== null, "the chat area must reserve the strip's width, so the bar sits on the content's edge");
+        const widestHandle = Math.max(Number(rightHandle[1]), Number(cornerHandle[1]));
+        const stripInset = Number(hostMargin[1]) + Number(stripMargin[1]);
+        assert(stripInset >= widestHandle,
+            "the scroll strip must sit clear of the widest resize handle (" + widestHandle + "px), got " + stripInset);
+
+        const indicatorSrc = readLocalFile("../components/GlassScrollIndicator.qml");
+        assert(/restingOpacity/.test(indicatorSrc), "the indicator must expose a resting opacity");
+        assert(/activeOpacity/.test(indicatorSrc), "the indicator must brighten while scrolling");
+        assert(/progress/.test(indicatorSrc) && /travel/.test(indicatorSrc),
+            "the bar position must be derived from content progress");
+        assert(/onPositionChanged/.test(indicatorSrc) && /contentYForBarTop/.test(indicatorSrc),
+            "the bar must scroll the flickable while it is dragged");
+        assert(!/SizeVerCursor|SizeHorCursor|SizeFDiagCursor/.test(indicatorSrc),
+            "the scroll strip must not borrow the resize cursors: it scrolls, it does not resize");
+        assert(/restingOpacity:\s*0\b/.test(readLocalFile("../dock/popouts/FusedBottomPopout.qml")),
+            "the transient dock menu keeps its bar hidden at rest");
 
         console.log("PASS: All Assistant Drawer tests passed!");
         Qt.exit(0);

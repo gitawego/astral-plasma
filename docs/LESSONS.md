@@ -534,6 +534,100 @@ When building sliding edge drawers on the right screen border (e.g. `RightEdgeCo
     2. **Multi-Tier Hover Protection**: Add `HoverHandler` to `popCard` and call `Config.keepBottomPopout()` inside `ActionItem.onEntered` and `appPreviewCard.onEntered`.
     3. **Surface Stacking**: Explicitly set `z: 1000` on `fusedBottomPopoutWrapper` so it stacks evenly with the dock.
 
+### 8.9. A Window List Needs A Real Window: The Copilot Toplevel Migration
+
+- **The Symptom**: `Alt+Tab` never listed the AI Copilot, however it was opened.
+- **Root Cause**: KWin hard-codes `setSkipSwitcher(true)` on every
+  `zwlr_layer_shell_v1` surface (`src/layershellv1window.cpp`), and the switcher's
+  filter is `client->wantsTabFocus() && !client->skipSwitcher()`
+  (`src/tabbox/tabbox.cpp`). A layer-shell overlay therefore *cannot* be reached
+  with the system switcher - no configuration and no window rule changes that.
+  The copilot had to become an xdg-toplevel (`Quickshell.FloatingWindow`).
+- **What the toplevel costs, measured on KWin 6.7**:
+  1. **A toplevel is decorated by default.** KWin draws Breeze SSD around any
+     xdg-toplevel whose client does not request client-side decorations, and
+     Quickshell never does. The daemon therefore installs a window rule
+     (`kwinrulesrc`: `noborder=true`, `noborderrule=2` for `wmclass=org.quickshell`)
+     and reconfigures KWin. Verified live: `noBorder=true`, titlebar gone, and
+     `BackgroundEffect.blurRegion` still blurs the backdrop behind the card.
+  2. **A Wayland client can request a minimize but can never undo one.**
+     `xdg_toplevel` has `set_minimized` and no inverse, and Qt does not even keep
+     the requested state (`QWindow::windowStates()` flips back immediately, which
+     the QML `minimized` binding faithfully reports). Every "park in the dock"
+     state must therefore stay a shell-owned `visible: false`: the dock capsule
+     restores by mapping the window again, which the client *can* do.
+  3. **A visible toplevel cannot resize itself.** Quickshell only forwards
+     `implicitWidth`/`implicitHeight` while the window is hidden, and Wayland has
+     no client resize request at all. The sessions sidebar therefore squeezes the
+     chat column inside a fixed window instead of widening it, and a window
+     opened while the sidebar is visible is sized for it up front.
+  4. **Position belongs to the compositor.** KWin centers a new window and
+     remembers where the user drags it; the shell only supplies the size to open
+     with. Dragging and edge-resizing go through `startSystemMove()` and
+     `startSystemResize(edges)` instead of writing item coordinates.
+- **What the migration retires**: the full-screen overlay's input `mask`, its
+  "click through to the desktop" contract, and the overlay-era auto-minimize plus
+  Pin toggle (`WindowService.externalWindowActivated` ->
+  `Config.minimizeAssistant()`). A real window needs none of them: switching
+  applications now simply stacks the chat behind the window the user switched to,
+  and it stays in `Alt+Tab` the whole time.
+- **Verification**: `tests/tst_assistant_drawer.qml` pins the toplevel contract
+  (`FloatingWindow`, no `WlrLayershell`, no `mask`, window title, size hints,
+  `startSystemMove`/`startSystemResize`, no pin and no auto-minimize), and
+  `daemon/tests/test_kwin_window_rules.rs` covers the rule writer. Live KWin
+  window-list dump after the change:
+  `caption=Astral Copilot class=org.quickshell normal=true skipTaskbar=false skipSwitcher=false noBorder=true`.
+
+### 8.10. Process Signals Are Not User Intent: The Shortcut Outage
+
+- **The Symptom**: Restarting the shell left every global shortcut dead — bare
+  `Meta`, `Meta+Space`, `Meta+C`, `Meta+D` all did nothing — with no error shown
+  anywhere. Restarting again usually brought them back, which made it look like a
+  flaky daemon rather than a lifecycle bug.
+- **Root Cause (four restore paths, no lifecycle owner)**:
+  1. The daemon's SIGTERM/SIGINT handler restored the desktop
+     (`plasma.restore()` plus `shortcuts.restore_relevant_shortcuts()`).
+  2. The daemon's stdin-EOF handler - the shell exiting - restored the same state.
+  3. The shell restored too, from `Component.onDestruction` in `shell.qml` - and
+     that handler runs on every QML **reload**, not only on exit.
+  4. Nothing owned the re-claim. Taking the keys back depended on the daemon's
+     watcher starting promptly, so the window between "desktop restored" and
+     "keys claimed again" belonged to nobody.
+  Each path was defensible in isolation. Together they made a *reload*
+  indistinguishable from a *logout*, and left the keys' ownership to timing.
+- **The Two Rules That Prevent The Class**:
+  1. **A process signal is not user intent.** SIGTERM/SIGINT and stdin EOF say the
+     process is going away; they do not say the user wants their panels and
+     shortcuts back. Only the watchdog - which supervises the **shell** pid via
+     `libc::getppid()`, not its own - or an explicit `astral-plasma plasma
+     restore` releases the desktop. `restore_on_exit()` in
+     `daemon/src/domain/desktop_integration.rs` is that policy, with
+     `plasma.autoRestoreOnExit` as the user's opt-out.
+  2. **Desired state is reconciled, not applied once.** `DesktopReconciler`
+     re-derives the whole session every 5 s (`plan_repairs`: DisablePanels →
+     LoadShortcutScript → ClaimShortcuts → ApplyFramelessRule) from `DesiredState`
+     against `ObservedState`. A missed claim is drift to repair, not a startup race
+     to lose.
+- **What Was Retired**: restore-on-SIGTERM, restore-on-stdin-EOF,
+  restore-on-`Component.onDestruction`, and the panel-only watchdog that
+  supervised the panels alone. `bind_shortcuts()` became a no-op when the
+  requested mode is already claimed, and the session journal
+  (`AstralShortcutSessionBackup`) gained a `mode` field so a restart *resumes*
+  the recorded mode (`resume_mode()`) instead of guessing.
+- **Verification**: `daemon/tests/test_desktop_lifecycle.rs` spawns the real
+  binary against a temp `XDG_CONFIG_HOME` and asserts `claiming_twice_changes_nothing`,
+  `releasing_gives_the_original_keys_back` (byte-for-byte), and
+  `a_termination_signal_is_not_user_intent` (SIGTERM mutates no external file),
+  `a_restart_resumes_the_recorded_mode`, and `a_legacy_journal_learns_its_mode`. `daemon/tests/test_shell_scripts.rs`
+  pins the startup-claim contract, the bind/restore lock, "already bound is left
+  alone", the cross-language label agreement, and
+  `external_desktop_state_has_one_writer_each`.
+- **The General Rule**:
+  > A signal that can arrive for a reason the user did not ask for - a reload, a
+  > supervisor restart, a hot upgrade - must not trigger a user-visible,
+  > destructive, or once-only action. When it must, name the owner that decides
+  > *when*.
+
 ---
 
 ## 9. The Definitive Engineering Guide to Building the Liquid Glass Theme Correctly
@@ -1830,3 +1924,284 @@ The same shape applies to any "current X" the shell displays: if another
 component owns the state, the shell must read it back rather than trust its own
 record. Tests: `daemon/tests/test_wallpaper_ground_truth.rs`,
 `tests/tst_wallpaper_picker_focus.qml`.
+
+---
+
+## 19. Settings In The Background: A Loader Page Is Already Visible
+
+Two failures landed in the same surface, and both were about *when* the shell
+believes it is being shown something.
+
+### 19.1. The Settings Surface Was Still A Layer Overlay
+
+- **The Symptom**: the settings panel could not be pushed behind an application
+  window. `Alt+Tab` never listed it, and clicking another window left it pinned
+  on top of everything.
+- **Root Cause**: `settings_gui/SettingsWindow.qml` was a full-screen
+  `PanelWindow` on `WlrLayer.Overlay` with a card-sized input mask - the exact
+  contract §8.9 migrated the Copilot away from. A layer surface is
+  protocol-pinned above every xdg-toplevel, so "backgrounding" it is not a
+  window-rule matter; the surface has to stop being a layer surface.
+- **The Fix**: the settings window is now a `Quickshell.FloatingWindow` like the
+  Copilot: `title: "Astral Settings"` for the switcher, `visible:
+  Config.settingsVisible`, `implicitWidth/Height` publish the opening size with
+  the min/max card bounds as the window's size hints, the card fills the
+  surface, and `BackgroundEffect.blurRegion` tracks the card `item` instead of
+  recomputed screen coordinates. Dragging is `startSystemMove()`; the
+  overlay-era `userMoved`/`clampPosition`/`resetPosition` bookkeeping is gone
+  because position belongs to the compositor now. The daemon's existing
+  frameless rule (`kwinrulesrc`, `wmclass=org.quickshell`, `noborder=true`)
+  already covered this second toplevel - no rule change was needed.
+- **What It Buys**: the panel stacks exactly like any application window. The
+  user can keep it open while working in another program, it can be occluded,
+  and it appears in `Alt+Tab` (`skipSwitcher=false`) while staying frameless
+  (`noBorder=true`).
+
+### 19.2. "whisper.cpp engine not installed" Survived The Install
+
+- **The Symptom**: after installing `whisper-cpp`, the settings' AI page still
+  claimed the engine was missing (`Run: sudo pacman -S whisper-cpp`), while
+  `astral-plasma voice status` reported `engine_available: true`.
+- **Root Cause**: `NexusHub` loads pages through a `Loader`, so the page item is
+  constructed **already visible**. `visible` never *changes* on the first show,
+  which means `onVisibleChanged` - the hook the page used to re-probe - never
+  fires. `Component.onCompleted` additionally only probed when the cached
+  `AssistantService.voiceStatus` was `null`, so a status captured at shell start
+  (before the engine existed) survived every visit to the page.
+- **The Fix**: `AiPage` re-probes on construction *unconditionally*
+  (`refreshVoiceReadiness()`), keeps the `onVisibleChanged` hook, and adds a
+  `Connections` edge on `Config.settingsVisible`, because the window can be
+  closed and re-opened while the Loader keeps the page instantiated. Readiness
+  is never trusted from a cached probe; the probe itself is documented as cheap.
+- **The General Rule**: a `Loader`-hosted page is shown when it is
+  *constructed*, not when its `visible` property flips. Anything that must run
+  "on show" has to hang off construction and the hosting window's own visibility
+  edge - `onVisibleChanged` alone is dead code there.
+
+**Verification**: `tests/tst_voice_settings.qml` pins the unconditional
+construction probe, the retained visibility hook and the settings-window edge;
+`tests/tst_settings_draggable.qml` was rewritten into the toplevel contract
+(`FloatingWindow`, no `WlrLayershell`, no `mask`, title, size hints,
+`startSystemMove`, no item-coordinate dragging, blur tracks `dialogBox`). Live
+KWin dump with the panel open:
+`caption='Astral Settings' cls=org.quickshell normal=True skipTaskbar=False skipSwitcher=False noBorder=True`.
+
+---
+
+## 20. Voice Input: Three Silent Failures Between The Microphone And The Prompt
+
+The microphone was never the problem. Three independent defects each produced
+the same user-facing symptom - "voice input is not working, it seems it is not
+using the microphone" - and none of them surfaced a visible error in the shell.
+
+### 20.1. A Capability Is Not A Usability: `--vad` Without Its Model
+
+- **The Symptom**: every dictation ended in
+  `Speech engine failed: /usr/bin/whisper-cli: failed to process audio`. The
+  meter moved (audio was captured, levels up to 0.94) but no transcript ever
+  appeared.
+- **Root Cause**: the capability probe correctly saw `--vad` in `whisper-cli
+  --help`, and `build_args` emitted it. whisper-cli 1.9.4 exits 10 on a bare
+  `--vad`: the flag turns on Silero inference and there is no fallback model -
+  `--vad-model` is required. The asset is deliberately not provisioned (spec
+  D4: the upstream URL 404s), so the probe's "supported" was true but useless.
+- **The Rule**: when a flag only works together with a resource, the probe and
+  the argument builder must both know that. `EngineInvocation.vad_model` is an
+  `Option<PathBuf>`; `build_args` emits `--vad --vad-model <p>` only when the
+  file exists. One switch - the asset's presence - decides it, so a bare `--vad`
+  is unreachable by construction.
+
+### 20.2. The Stub Encoded Our Assumption, Not The Engine's Behavior
+
+- **The Symptom**: after the VAD fix the session completed cleanly but the
+  transcript was always empty - while the same engine transcribed the same kind
+  of audio from a shell prompt.
+- **Root Cause**: `whisper-cli -oj` does **not** print JSON to stdout; it writes
+  `<input>.json` beside the audio file and still prints the timestamped
+  transcript to stdout. The adapter parsed stdout as JSON, failed, and returned
+  `""` by design ("never splice raw engine output"). The session-protocol test
+  stub printed JSON to stdout, so the suite encoded the same wrong assumption
+  and stayed green.
+- **The Rule**: a stub must mirror the real tool's *output shape*, not the
+  caller's belief about it. The stub now writes the sidecar and prints the
+  timestamped transcript; the adapter reads the sidecar first and falls back to
+  parsing stdout, deleting both on every exit path.
+
+### 20.3. `root.childId` Is Undefined: Child Ids Are Lexical
+
+- **The Symptom**: the session worked, but the shell log filled with
+  `TypeError: Cannot read property 'stop' of undefined` at every `Final` and
+  every process exit. The elapsed timer never reset, the start handshake was
+  never re-armed for the next session, and the chat stream watchdog could not
+  cancel a timed-out stream (`root.streamProc`).
+- **Root Cause**: QML child ids are lexical captures, not properties of the
+  root object. `root.voiceElapsedTimer` is `undefined` inside a nested handler,
+  while the bare id resolves. A minimal offscreen probe shows both at once:
+  `root.timer` is `undefined`, `timer` is the `QQmlTimer`.
+- **The Rule**: reference sibling ids by name. `root.` is for properties and
+  methods declared on the root, never for ids. `tst_voice_input.qml` now runs a
+  scoping probe (so the rule is executable, not prose) and a source contract
+  forbidding `root.<childId>` in the service.
+
+**Verification**: `daemon/tests/test_whisper_stt_adapter.rs` (asset-gated VAD,
+sidecar-first reading, malformed input degrades honestly),
+`daemon/tests/test_voice_session_protocol.rs` (a stub that mirrors 1.9.4,
+including the fatal bare `--vad` and the `-oj` sidecar), and
+`tests/tst_voice_input.qml` (payload decoders, scoping probe, source
+contracts). Live: `voice session` returns a transcript; the shell log has no
+`AssistantService` TypeError; `voice.toggle` over IPC inserts spoken words into
+the composer.
+
+---
+
+## 21. Dictation Is Interactive: The Default Model, The Silence You Ship, And Honest Waiting
+
+The report was "it takes a year to capture a hello, 20 seconds after stop, and
+hello turns into Mario". None of the three was a capture bug.
+
+### 21.1. The Default Model Was Five Times Slower Than Realtime
+
+- **The Symptom**: a 4-second utterance took ~20s to produce text.
+- **The Root Cause**: the catalog default was `ggml-large-v3-turbo` (1.5 GiB).
+  The engine ships CPU-only on every distribution we support, and on a 12th-gen
+  i9 (16 cores) the measured decode was **26.0s for a 4.9s clip** and **12.2s
+  for the 11s JFK sample**. The catalog even labelled it "(default)", so the
+  heaviest interactive tier was also the one every new user downloaded first.
+- **The Rule**: a default must fit the machine the feature will run on, not the
+  best machine it could run on. `ggml-small` measured **4.0s** and **3.0s** on
+  the same two clips, with an identical JFK transcript. The large tiers stay in
+  the picker (a user who chose one is never overridden); the default is now the
+  largest tier that stays near realtime on CPU.
+- **Measured** (`whisper-cli` 1.9.4, 16 threads, no GPU backend in the distro
+  package):
+
+  | Model | 4.9s real-room clip | 11s JFK sample |
+  |---|---:|---:|
+  | `ggml-large-v3-turbo` | 26.0s | 12.2s |
+  | `ggml-small` | 4.0s | 3.0s |
+  | `ggml-base` | 1.7s | — |
+
+### 21.2. The Silence You Ship Is Inference Time
+
+- **The Symptom**: even short utterances felt slow, and long quiet stretches
+  produced hallucinated words.
+- **The Root Cause**: the WAV handed to the engine was the *entire* capture - the
+  leading silence before the user spoke and the 1.2s trailing hangover (or, in a
+  loud room where endpointing cannot fire, the whole 30s cap). Whisper decodes
+  every sample it is given.
+- **The Fix**: `trim_to_speech` keeps the region around the frames the
+  `SilenceDetector` already classified as speech, plus a 250 ms margin. There is
+  no second threshold: the trim reuses the endpointing decision. When no speech
+  was detected the full buffer is kept, so "nothing was said" stays
+  distinguishable from a capture failure.
+
+### 21.3. A Real Wait Needs A Real Label
+
+- **The Symptom**: during the multi-second inference the strip read "language
+  not determined" - technically true, useless, and indistinguishable from a hang.
+- **The Fix**: the state readout says `transcribing` while the engine runs.
+
+### 21.4. The Limitation Worth Naming
+
+Energy-based endpointing cannot auto-stop inside continuous loud audio: the
+noise floor *is* the music, so "silence" never arrives and the recording runs to
+the cap. That is physics, not a threshold to tune away - the stop button is the
+primary control, and `trim_to_speech` still keeps the engine's input bounded.
+The same loud room is why a spoken "hello" can come back as a music lyric: the
+built-in microphone is picking up the speakers, and that is a hardware/placement
+problem, not an ASR one.
+
+**Verification**: `test_voice_domain.rs` pins the new default; adapter unit tests
+cover `trim_to_speech` (padding, clamping, no-speech passthrough);
+`test_voice_session_protocol.rs` proves the engine is handed the trimmed WAV;
+`tst_voice_input.qml` pins the `transcribing` readout and the shipped default.
+
+---
+
+## 22. Bounded Decode: The Cost Knobs Whisper Leaves At Defaults
+
+"It takes years to analyse Chinese voice, and six seconds for an English hello."
+Both numbers came from the same place: whisper-cli's defaults are tuned for
+batch transcription quality, not for an interactive feature.
+
+### 22.1. The Encoder Always Sees Thirty Seconds
+
+`whisper-cli`'s own timings for a **2.5-second** clip with `ggml-small`:
+
+```
+load time =   103.65 ms
+mel time =      2.90 ms
+encode time = 3364.05 ms / 2 runs (1682.03 ms per run)
+decode time =   39.54 ms / 2 runs
+total time =  3790.83 ms
+```
+
+The encoder is 89% of the cost, and it runs **twice**: whisper.cpp always
+encodes its full `n_audio_ctx` window (1500 units = 30 s) regardless of clip
+length, and `language: auto` runs a language-detection encode before the
+transcription encode. A one-word utterance paid exactly the same encoder bill as
+thirty seconds of speech.
+
+- **Fix**: `build_args` passes `-ac <audio_context_for(duration)>` —
+  `ceil(duration / 20 ms) + 1.28 s`, clamped to 5.12 s–30 s. Below 5.12 s the
+  window no longer comfortably contains an utterance and the engine starts
+  re-processing segments (measured: `-ac 128` duplicated the transcript and took
+  twice as long as the 30 s default); above the utterance the extra is pure
+  waste. A 2.5 s English clip: 3.9 s → 2.5 s (`auto`) / 1.1 s (fixed language),
+  transcript identical.
+
+### 22.2. Beam Search And Fallback Explode On Non-Speech
+
+The decoder looked free (40 ms on clean speech) until it met a real room. On
+captures dominated by music the model generates long hallucinated sequences, and
+the CLI defaults multiply every one of those tokens: `--beam-size 5`,
+`--best-of 5`, and temperature fallback retrying the whole decode up to 1.0.
+Measured on the *same* 3.3 s capture:
+
+| Decode configuration | Time | Output |
+|---|---:|---|
+| CLI defaults (beam 5, best-of 5, fallback) | **44.8 s** | garbage |
+| Greedy + full fallback (`-bs 1 -bo 1`) | 24.2 s | garbage |
+| Greedy + one fallback (`-tpi 1.0`) | 8.6 s | garbage |
+| Greedy + no fallback (`-bs 1 -bo 1 -nf`) | **6.8 s** | garbage (bounded) |
+| Greedy + no fallback, clean JFK speech | **0.6 s** | exact transcript |
+
+- **Fix**: `build_args` pins `-bs 1 -bo 1 -nf` whenever the probed build
+  advertises them. Clean speech is unaffected (the fallback never triggered
+  there anyway); non-speech is bounded at ~6 s instead of 45 s. The output on
+  music is still music - see 22.3.
+- **The general rule**: an interactive engine must pin *every* knob that
+  multiplies its cost. The two costs here are independent and multiplicative:
+  a fixed encoder window and an unbounded decoder loop. Fixing one would still
+  have left the other.
+
+### 22.3. The Room, And A 401 That Was Not A Credential Problem
+
+The microphone in this environment hears the speakers at near-clipping level
+(RMS 0.6–0.9), so the engine was being asked to transcribe music. Bounded decode
+kept it from running away, but the output was still music.
+
+The proper filter is Silero VAD, and an earlier pass gave up on it because
+`ggml-org/whisper.cpp` answered **HTTP 401** on Hugging Face - which read as
+"gated, needs credentials". It was neither: **Hugging Face answers 401, not
+404, for paths an anonymous client may not see** (a made-up repo returns the
+same 401), and `ggml-org/whisper.cpp` is not a public repo at all. The asset
+lives in its own public repository, and upstream's own
+`models/download-vad-model.sh` is the source of truth for where:
+
+```
+https://huggingface.co/ggml-org/whisper-vad     (885 KiB, no credentials)
+```
+
+**The rule**: when a well-known project's asset 404s/401s, read the project's
+own download script before concluding the asset is gone. The daemon now
+provisions the asset (`voice install-vad`, and alongside every `install-model`)
+and passes `--vad --vad-model` whenever it is present. Measured on the same room
+captures: non-speech returns an empty transcript in **~0.2 s** instead of 6–45 s
+of hallucinated text, while clean speech is unchanged (JFK still exact).
+
+**Verification**: `audio_context_for` is unit-tested for its bounds and pinned
+in `build_args`; the session-protocol stub asserts the daemon passes the sized
+`-ac` and the bounded decode flags; live runs of room audio dropped from 6–45 s
+to ~1.5 s of inference, and an 11 s speech sample transcribes correctly in 3.3 s
+end to end.

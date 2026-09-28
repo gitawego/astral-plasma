@@ -1,4 +1,5 @@
 import QtQuick
+import "../theme"
 
 Item {
     id: testRoot
@@ -36,6 +37,14 @@ Item {
         running: true
         repeat: false
         onTriggered: runTests()
+    }
+
+    function readLocalFile(relUrl) {
+        const xhr = new XMLHttpRequest();
+        const bust = (relUrl.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now() + Math.random();
+        xhr.open("GET", Qt.resolvedUrl(relUrl) + bust, false);
+        xhr.send();
+        return xhr.responseText || "";
     }
 
     function assert(cond, msg) {
@@ -81,6 +90,35 @@ Item {
         nexusHarness.goBack();
         assert(nexusHarness.activePage === "wallpaper", "goBack returns to root wallpaper");
         assert(!nexusHarness.canGoBack, "Back button hides when at root page");
+
+        // The content pane must be readable over a bright wallpaper: the same
+        // substrate the Copilot card uses, not a fully transparent block. The
+        // token itself is checked at the source, because the theme singleton is
+        // not resolvable from a bare test shell.
+        const colorsSrc = readLocalFile("../theme/Colors.qml");
+        const substrateDef = /glassPanelSubstrate:\s*glassTinted\([\s\S]{0,120}?\)/.exec(colorsSrc);
+        assert(substrateDef !== null, "Colors must define a shared glassPanelSubstrate token");
+        const alphas = (colorsSrc.match(/panelAlpha:\s*([0-9.]+)/g) || []).map(m => Number(m.split(":")[1]));
+        assert(alphas.length >= 2, "both palette modes must define a panel alpha");
+        for (const a of alphas) {
+            assert(a >= 0.75, "the panel substrate must be nearly opaque for legibility, got " + a);
+            assert(a < 1.0, "the panel substrate must stay translucent (glass, not paint), got " + a);
+        }
+        // One plate: the window card carries the substrate; the rail and the
+        // content are parts of it, divided by one hairline. Two rounded panels
+        // butted together left the wallpaper visible in the corner notches
+        // between them - the seam the user reported.
+        const hubSrc = readLocalFile("../settings_gui/NexusHub.qml");
+        const windowSrc = readLocalFile("../settings_gui/SettingsWindow.qml");
+        assert(/id:\s*dialogBox[\s\S]{0,900}?Colors\.glassPanelSubstrate/.test(windowSrc),
+            "the settings window card must carry the readable panel substrate");
+        assert(!/id:\s*navRail[\s\S]{0,700}?radius:/.test(hubSrc),
+            "the navigation rail must not carry its own radius: it is part of the plate");
+        assert(!/id:\s*contentPane[\s\S]{0,400}?radius:/.test(hubSrc),
+            "the content pane must not carry its own radius either");
+        assert(/id:\s*contentPane[\s\S]{0,200}?color:\s*"transparent"/.test(hubSrc),
+            "the content pane must be part of the plate, not a second panel");
+        assert(/id:\s*railSeam/.test(hubSrc), "one hairline must divide the rail from the content");
 
         console.log("PASS: NexusHub Hierarchical Navigation & Back Stack Unit Tests");
         Qt.exit(0);

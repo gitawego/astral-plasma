@@ -44,6 +44,13 @@ Item {
         property string activeAppId: ""
         property string activeId: ""
 
+        // Mirrors `signal externalWindowActivated` and its routing. The counter
+        // makes the routing observable: this harness exists to catch the class
+        // of bug where the daemon spoke `type` and the service listened for
+        // `msg_type`, leaving re-activation of the recorded window silent.
+        signal externalWindowActivated(string winId, string winTitle)
+        property int externalActivationCount: 0
+
         property alias title: mockWindowService.activeTitle
         property alias appId: mockWindowService.activeIconName
         property alias materialIcon: mockWindowService.activeMaterialIcon
@@ -73,6 +80,7 @@ Item {
             const data = JSON.parse(raw);
             if (!data) return;
 
+            const prevActiveId = mockWindowService.activeId;
             if (data.activeTitle !== undefined) mockWindowService.activeTitle = data.activeTitle;
             if (data.activeMaterialIcon !== undefined) mockWindowService.activeMaterialIcon = data.activeMaterialIcon;
             if (data.activeIconName !== undefined) mockWindowService.activeIconName = data.activeIconName;
@@ -81,6 +89,17 @@ Item {
             if (data.hasMaximizedWindow !== undefined) mockWindowService.hasMaximizedWindow = Boolean(data.hasMaximizedWindow);
             if (data.windows) mockWindowService.windows = data.windows;
             if (data.tray) mockWindowService.tray = data.tray;
+
+            // Mirrors WindowService's routing verbatim. The daemon serialises
+            // `msg_type` as `type` (serde rename); a check for `msg_type` alone
+            // left the "active" branch dead, so the signal only fired when the
+            // active window *id* changed and switching back to the window the
+            // user came from left the assistant pinned on top.
+            if (data.type === "active" || data.msg_type === "active"
+                || (data.activeId !== undefined && data.activeId !== prevActiveId)) {
+                mockWindowService.externalActivationCount++;
+                mockWindowService.externalWindowActivated(data.activeId || "", data.activeTitle || "");
+            }
         }
     }
 
@@ -103,7 +122,7 @@ Item {
 
         // ---- 2. Full State Payload Ingestion (VS Code Active) ----
         mockWindowService.handleIncomingLine(JSON.stringify({
-            msg_type: "active",
+            type: "active",
             activeTitle: "Visual Studio Code",
             activeMaterialIcon: "code",
             activeIconName: "com.microsoft.VSCode",
@@ -149,7 +168,7 @@ Item {
 
         // ---- 3. Switching Focus to Terminal ----
         mockWindowService.handleIncomingLine(JSON.stringify({
-            msg_type: "active",
+            type: "active",
             activeTitle: "Terminal",
             activeMaterialIcon: "terminal",
             activeIconName: "com.mitchellh.ghostty",
@@ -191,7 +210,7 @@ Item {
 
         // ---- 4. Switching to Desktop (No active window) ----
         mockWindowService.handleIncomingLine(JSON.stringify({
-            msg_type: "active",
+            type: "active",
             activeTitle: "Desktop",
             activeMaterialIcon: "desktop_windows",
             activeIconName: "",
@@ -203,6 +222,56 @@ Item {
         assert(mockWindowService.activeTitle === "Desktop", "Title must return to 'Desktop'");
         assert(mockWindowService.activeIconName === "", "activeIconName must be cleared");
         assert(mockWindowService.materialIcon === "desktop_windows", "materialIcon must return to 'desktop_windows'");
+
+        // ---- 4b. Activation routing: re-activating the recorded window -----
+        // Regression: the routing read `data.msg_type === "active"` while the
+        // daemon serialises that field as `type` (ActiveWindowPayload carries
+        // #[serde(rename = "type")]). The branch was dead, so the signal only
+        // fired when the active id *changed* -- and clicking back into the
+        // window the user came from (id unchanged) never minimised the chat.
+        mockWindowService.externalActivationCount = 0;
+
+        mockWindowService.handleIncomingLine(JSON.stringify({
+            type: "active",
+            activeTitle: "Terminal",
+            activeMaterialIcon: "terminal",
+            activeIconName: "com.mitchellh.ghostty",
+            activeAppId: "com.mitchellh.ghostty",
+            activeId: "win-67890",
+            hasMaximizedWindow: false
+        }));
+        assert(mockWindowService.externalActivationCount === 1,
+            "re-activating the already-recorded window must still announce an activation, got: "
+                + mockWindowService.externalActivationCount);
+
+        // A window-list refresh is not a focus change: same id stays silent.
+        mockWindowService.handleIncomingLine(JSON.stringify({
+            type: "windows",
+            activeTitle: "Terminal",
+            activeMaterialIcon: "terminal",
+            activeIconName: "com.mitchellh.ghostty",
+            activeAppId: "com.mitchellh.ghostty",
+            activeId: "win-67890",
+            hasMaximizedWindow: false,
+            windows: []
+        }));
+        assert(mockWindowService.externalActivationCount === 1,
+            "a window-list refresh with an unchanged active id must not announce an activation");
+
+        // A refresh that moves the active window is a real switch.
+        mockWindowService.handleIncomingLine(JSON.stringify({
+            type: "windows",
+            activeTitle: "Visual Studio Code",
+            activeMaterialIcon: "code",
+            activeIconName: "com.microsoft.VSCode",
+            activeAppId: "com.microsoft.VSCode",
+            activeId: "win-12345",
+            hasMaximizedWindow: false,
+            windows: []
+        }));
+        assert(mockWindowService.externalActivationCount === 2,
+            "a window-list refresh that moves the active window must announce the switch, got: "
+                + mockWindowService.externalActivationCount);
 
         // ---- 5. Source Contract: services/WindowService.qml ----
         const winServiceSrc = readLocalFile("../services/WindowService.qml");
@@ -219,6 +288,12 @@ Item {
             "WindowService must expose appId alias");
         assert(/property\s+alias\s+materialIcon:\s*root\.activeMaterialIcon/.test(winServiceSrc),
             "WindowService must expose materialIcon alias");
+        // The watch payloads serialise `msg_type` as `type` (serde rename on
+        // ActiveWindowPayload / WindowsListPayload / TrayPayload). Routing on
+        // `msg_type` alone is dead code: it becomes an id-change-only trigger,
+        // and re-activating the recorded window never announces anything.
+        assert(/data\.type\s*===\s*"active"/.test(winServiceSrc),
+            "WindowService must route the daemon's `type: \"active\"` payload key to externalWindowActivated");
 
         // ---- 6. Source Contract: dock/components/ActiveWindow.qml ----
         const activeWinSrc = readLocalFile("../dock/components/ActiveWindow.qml");

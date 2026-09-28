@@ -6,7 +6,17 @@ import "../theme"
 import "../components"
 import "../config"
 
-PanelWindow {
+// The settings surface is a real desktop window, exactly like the Copilot
+// (docs/LESSONS.md §8.9).
+//
+// It used to be a full-screen layer-shell overlay (the Overlay layer plus a
+// card-sized input mask). A layer surface is protocol-pinned above every
+// application window - it can never be pushed to the background and Alt+Tab
+// can never reach it - so the panel could not be backgrounded the way the chat can. As an xdg-toplevel it stacks, moves and
+// shows in Alt+Tab with every other window. KWin's existing frameless rule
+// (kwinrulesrc, wmclass=org.quickshell) already covers this second toplevel,
+// and the card keeps drawing its own glass edge.
+FloatingWindow {
     id: root
 
     property ShellScreen targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
@@ -14,66 +24,62 @@ PanelWindow {
 
     visible: Config.settingsVisible
 
-    WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: Config.settingsVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    // Identity for Alt+Tab and any window list.
+    title: "Astral Settings"
+    color: "transparent"
 
+    // Size.
+    //
+    // A Wayland toplevel cannot resize itself while it is mapped, so the shell
+    // publishes the size the window should open with (bound through
+    // implicitWidth/implicitHeight) and the compositor owns the geometry from
+    // then on. The limits travel as the window's size hints.
+    readonly property int referenceWidth: (root.targetScreen && root.targetScreen.width > 0)
+        ? root.targetScreen.width
+        : ((typeof Window !== "undefined" && Window.window && Window.window.width > 0) ? Window.window.width : 1920)
+    readonly property int referenceHeight: (root.targetScreen && root.targetScreen.height > 0)
+        ? root.targetScreen.height
+        : ((typeof Window !== "undefined" && Window.window && Window.window.height > 0) ? Window.window.height : 1080)
+    readonly property int minCardWidth: Math.min(940, Math.max(640, root.referenceWidth - 32))
+    readonly property int minCardHeight: Math.min(640, Math.max(480, root.referenceHeight - 32))
+    readonly property int maxCardWidth: Math.max(root.minCardWidth, Math.min(1240, root.referenceWidth - 32))
+    readonly property int maxCardHeight: Math.max(root.minCardHeight, Math.min(860, root.referenceHeight - 32))
+    readonly property int preferredWidth: Math.min(root.maxCardWidth,
+        Math.max(root.minCardWidth, Math.round(root.referenceWidth * 0.52)))
+    readonly property int preferredHeight: Math.min(root.maxCardHeight,
+        Math.max(root.minCardHeight, Math.round(root.referenceHeight * 0.60)))
+
+    implicitWidth: root.preferredWidth
+    implicitHeight: root.preferredHeight
+    minimumSize: Qt.size(root.minCardWidth, root.minCardHeight)
+    maximumSize: Qt.size(root.maxCardWidth, root.maxCardHeight)
+
+    // Compositor backdrop blur behind the glass plate. The window surface is
+    // exactly the card, so the card item itself is the region.
     BackgroundEffect.blurRegion: Region {
-        x: dialogBox.x
-        y: dialogBox.y
-        width: Config.settingsVisible ? dialogBox.width : 0
-        height: Config.settingsVisible ? dialogBox.height : 0
+        item: dialogBox
     }
 
-    mask: Region {
-        x: dialogBox.x
-        y: dialogBox.y
-        width: Config.settingsVisible ? dialogBox.width : 0
-        height: Config.settingsVisible ? dialogBox.height : 0
+    function scrollTo(y) {
+        nexusHub.scrollTo(y);
     }
 
-    anchors {
-        top: true
-        bottom: true
-        left: true
-        right: true
-    }
-
-    color: "transparent" // Non-modal floating surface allows viewing and interacting with underlying windows
-
-    // User-dragged position tracking and boundary clamping
-    property bool userMoved: false
-
-    function resetPosition() {
-        userMoved = false;
-        dialogBox.x = Qt.binding(() => Math.round((root.width - dialogBox.width) / 2));
-        dialogBox.y = Qt.binding(() => Math.round((root.height - dialogBox.height) / 2));
-    }
-
-    function clampPosition() {
-        if (root.width <= 0 || root.height <= 0) return;
-        const minX = 16;
-        const maxX = Math.max(minX, root.width - dialogBox.width - 16);
-        const minY = 16;
-        const maxY = Math.max(minY, root.height - dialogBox.height - 16);
-        dialogBox.x = Math.max(minX, Math.min(dialogBox.x, maxX));
-        dialogBox.y = Math.max(minY, Math.min(dialogBox.y, maxY));
-    }
-
-    onWidthChanged: if (userMoved) clampPosition()
-    onHeightChanged: if (userMoved) clampPosition()
-
-    // Modal dialog box (Sculpted Liquid Glass)
+    // The card is the whole surface (Sculpted Liquid Glass)
     Rectangle {
         id: dialogBox
-        x: Math.round((root.width - width) / 2)
-        y: Math.round((root.height - height) / 2)
-        width: root.width > 0 ? Math.min(1240, Math.max(940, Math.round(root.width * 0.52))) : 1100
-        height: root.height > 0 ? Math.min(860, Math.max(640, Math.round(root.height * 0.60))) : 750
+        anchors.fill: parent
         radius: Theme.radiusLarge
-        color: Colors.glassSurface
+        // One plate for the whole surface: the rail and the content sit inside
+        // this substrate, so no second panel has to be butted against it (which
+        // is what put a rounded notch - and the wallpaper behind it - between
+        // the two halves of the window).
+        color: (typeof Colors !== "undefined") ? Colors.glassPanelSubstrate : Colors.glassSurface
         border.color: Colors.glassBorderSpecular
         border.width: 1
         clip: true
+
+        focus: true
+        Keys.onEscapePressed: Config.settingsVisible = false
 
         // Top specular hairline glint
         Rectangle {
@@ -107,28 +113,20 @@ PanelWindow {
             }
         }
 
-        focus: true
-        Keys.onEscapePressed: Config.settingsVisible = false
-
-        // Underlying Dialog Drag Area (consumes clicks and supports dragging empty surfaces)
+        // Card background drag area: starts a compositor-native window move,
+        // exactly like the Copilot card, so the window is repositioned by the
+        // compositor instead of by item coordinates.
         MouseArea {
             id: dialogDragArea
             anchors.fill: parent
+            z: 0
+            cursorShape: containsMouse ? Qt.OpenHandCursor : Qt.ArrowCursor
 
-            drag.target: dialogBox
-            drag.axis: Drag.XAndYAxis
-            drag.minimumX: 16
-            drag.maximumX: Math.max(16, root.width - dialogBox.width - 16)
-            drag.minimumY: 16
-            drag.maximumY: Math.max(16, root.height - dialogBox.height - 16)
-
-            onPositionChanged: {
-                if (drag.active) {
-                    root.userMoved = true;
+            onPressed: {
+                if (typeof root.startSystemMove === "function") {
+                    root.startSystemMove();
                 }
             }
-
-            onDoubleClicked: root.resetPosition()
             onClicked: {}
         }
 
@@ -142,23 +140,13 @@ PanelWindow {
             height: 52
             z: 1
 
-            hoverEnabled: true
-            cursorShape: drag.active ? Qt.ClosedHandCursor : (containsMouse ? Qt.OpenHandCursor : Qt.ArrowCursor)
+            cursorShape: containsMouse ? Qt.OpenHandCursor : Qt.ArrowCursor
 
-            drag.target: dialogBox
-            drag.axis: Drag.XAndYAxis
-            drag.minimumX: 16
-            drag.maximumX: Math.max(16, root.width - dialogBox.width - 16)
-            drag.minimumY: 16
-            drag.maximumY: Math.max(16, root.height - dialogBox.height - 16)
-
-            onPositionChanged: {
-                if (drag.active) {
-                    root.userMoved = true;
+            onPressed: {
+                if (typeof root.startSystemMove === "function") {
+                    root.startSystemMove();
                 }
             }
-
-            onDoubleClicked: root.resetPosition()
         }
 
         // Top-right Close Button
@@ -194,9 +182,5 @@ PanelWindow {
             anchors.fill: parent
             onCloseRequested: Config.settingsVisible = false
         }
-    }
-
-    function scrollTo(y) {
-        nexusHub.scrollTo(y);
     }
 }

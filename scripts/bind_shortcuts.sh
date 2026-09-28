@@ -2,6 +2,16 @@
 # Helper script to bind Astral Plasma keyboard shortcuts in KDE Plasma 6
 set -euo pipefail
 
+# Two callers claim the shortcuts at startup: the shell the moment it loads, and
+# the daemon's watcher when it comes up. Both rewrite the same KDE configs and
+# reload the same KWin script, and running them concurrently has left KWin's
+# scripting service and the daemon's D-Bus service wedged - after which every
+# shortcut silently did nothing. Serialise the whole bind on one lock; the
+# restore path takes the same one.
+LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/astral-plasma-shortcuts.lock"
+exec 9>"$LOCK_FILE"
+flock 9
+
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # The desktop entries launch through the Quickshell config symlink, so they
@@ -75,6 +85,24 @@ esac
 # kglobalaccel's invokeShortcut on a .desktop service only emits a signal nobody
 # launches). The `services` entries must stay unbound: two owners of one key
 # means neither reliably fires.
+#
+# Two callers claim the shortcuts on every start: the shell the moment it loads,
+# and the daemon's watcher when it comes up. When they are already bound in the
+# requested mode there is nothing to do - re-running the whole bind would reload
+# KWin's scripting service underneath the daemon and leave its D-Bus service
+# wedged, after which every shortcut silently did nothing.
+EXPECTED_LAUNCHER="$LAUNCHER_KEY,none,Astral Plasma: Toggle Launcher"
+CURRENT_LAUNCHER="$(kreadconfig6 --file kglobalshortcutsrc --group kwin --key AstralLauncher 2>/dev/null || true)"
+PLUGIN_ENABLED="$(kreadconfig6 --file kwinrc --group Plugins --key astral-plasma-shortcutsEnabled 2>/dev/null || true)"
+SCRIPT_LOADED="$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded astral-plasma-shortcuts 2>/dev/null || true)"
+if [ -f "$HOME/.local/share/astral-plasma/shortcuts-backup/shortcuts_backup.json" ] \
+    && [ "$PLUGIN_ENABLED" = "true" ] \
+    && [ "$CURRENT_LAUNCHER" = "$EXPECTED_LAUNCHER" ] \
+    && [ "$SCRIPT_LOADED" = "true" ]; then
+    echo "[*] Shortcuts already bound for mode '$MODE'; nothing to do."
+    exit 0
+fi
+
 kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralLauncher" "$LAUNCHER_KEY,none,Astral Plasma: Toggle Launcher"
 kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralWallpaper" "Meta+Shift+W,none,Astral Plasma: Open Wallpaper Picker"
 kwriteconfig6 --file kglobalshortcutsrc --group "kwin" --key "AstralAssistant" "Meta+C,none,Astral Plasma: Toggle AI Copilot"

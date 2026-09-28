@@ -2,6 +2,13 @@
 # Granularly restores only shortcuts modified by Astral Plasma, preserving user modifications
 set -euo pipefail
 
+# Same lock as scripts/bind_shortcuts.sh: a restore racing a bind leaves both
+# half-applied, and the concurrent KWin script reload has wedged KWin's
+# scripting service.
+LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/astral-plasma-shortcuts.lock"
+exec 9>"$LOCK_FILE"
+flock 9
+
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_FILE="$HOME/.local/share/astral-plasma/shortcuts-backup/shortcuts_backup.json"
 

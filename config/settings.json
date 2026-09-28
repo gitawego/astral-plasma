@@ -165,7 +165,6 @@
     "disablePanels": "all",
     "disableNotifications": true
   },
-  "dashboardVisible": true,
   "activeDashboardTab": "dashboard",
   "ai": {
     "enabled": true,
@@ -180,5 +179,15 @@
   },
   "media": {
     "visualizerStyle": "radial"
+  },
+  "voice": {
+    "enabled": true,
+    "engine": "whisper-cpp",
+    "model": "ggml-small",
+    "language": "auto",
+    "maxUtteranceSeconds": 30,
+    "silenceHangoverMs": 1200,
+    "autoFinalize": true,
+    "installModelOnDemand": true
   }
 }

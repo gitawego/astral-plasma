@@ -107,8 +107,6 @@ pub async fn run_watchdog_loop_with_ports(
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sigint = signal(SignalKind::interrupt())?;
 
-        let mut check_ticks = 0u32;
-
         loop {
             tokio::select! {
                 _ = sigterm.recv() => {
@@ -128,16 +126,6 @@ pub async fn run_watchdog_loop_with_ports(
                         break;
                     }
 
-                    // Periodically ensure no built-in panels have respawned while Astral Plasma is active
-                    check_ticks += 1;
-                    if check_ticks % 4 == 0 && !branding::test_mode() {
-                        if let Ok(panels) = plasma_port.query_panels() {
-                            if !panels.is_empty() {
-                                eprintln!("[astral-plasma watchdog] Detected {} respawned built-in panel(s); re-disabling...", panels.len());
-                                let _ = plasma_port.disable_panels("all");
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -150,10 +138,26 @@ pub async fn run_watchdog_loop_with_ports(
         }
     }
 
-    // Quickshell has exited or watchdog was terminated; restore original Plasma panels and shortcuts!
-    let _ = plasma_port.restore_config();
-    let _ = shortcut_port.restore_relevant_shortcuts();
+    // The supervised shell is gone: hand the desktop back - unless the user
+    // asked to keep the shell's desktop state after quitting.
+    if crate::domain::desktop_integration::restore_on_exit(shell_auto_restore_setting()) {
+        let _ = plasma_port.restore_config();
+        let _ = shortcut_port.restore_relevant_shortcuts();
+    } else {
+        eprintln!(
+            "[astral-plasma watchdog] plasma.autoRestoreOnExit is off; keeping the shell's desktop state."
+        );
+    }
 
     let _ = fs::remove_file(pid_file);
     Ok(())
+}
+
+/// `plasma.autoRestoreOnExit` from the shell's settings file, when readable.
+fn shell_auto_restore_setting() -> Option<bool> {
+    let path = branding::config_home()
+        .join(branding::APP_ID)
+        .join("settings.json");
+    let content = fs::read_to_string(path).ok()?;
+    crate::domain::desktop_integration::auto_restore_from_settings(&content)
 }

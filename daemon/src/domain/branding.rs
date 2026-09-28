@@ -19,6 +19,13 @@ pub const DBUS_PREFIX: &str = "org.astralplasma";
 pub const WINDOW_CLASS: &str = "astral-plasma";
 /// Window class reported by the settings surface.
 pub const WINDOW_CLASS_SETTINGS: &str = "astral-plasma-settings";
+/// Window class KWin reports for the shell's own xdg-toplevel windows.
+///
+/// A `Quickshell.FloatingWindow` is a real xdg-toplevel, not a layer-shell
+/// surface, so KWin decorates it by default. A `kwinrulesrc` rule keyed on this
+/// class removes the titlebar/frame; layer-shell panels use a different class
+/// (`quickshell`) and are unaffected.
+pub const WINDOW_CLASS_QUICKSHELL: &str = "org.quickshell";
 
 // --- XDG directories ---------------------------------------------------------
 
@@ -57,6 +64,14 @@ pub const KWIN_SCRIPT_SHORTCUTS: &str = "astral-plasma-shortcuts";
 pub const KWIN_SHORTCUTS_ENABLED_KEY: &str = "astral-plasma-shortcutsEnabled";
 /// KWin script that streams window/workspace events to the daemon.
 pub const KWIN_SCRIPT_WATCHER: &str = "astral-plasma-watcher";
+
+// --- KWin window rules -------------------------------------------------------
+
+/// `Description` marker of the frameless rule applied to the AI Copilot window.
+///
+/// KWin's rule list is user-visible, so this string is also the identity used to
+/// update an existing rule in place instead of appending duplicates.
+pub const KWIN_RULE_ASSISTANT_DESCRIPTION: &str = "Astral Plasma: AI Copilot window (frameless)";
 
 // --- KDE global shortcuts (visible in Plasma System Settings) ----------------
 

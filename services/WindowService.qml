@@ -652,7 +652,14 @@ Singleton {
                     if (data.windows) root.windows = data.windows;
                     if (data.tray) root.tray = data.tray;
 
-                    if (data.msg_type === "active" || (data.activeId !== undefined && data.activeId !== prevActiveId)) {
+                    // Watch payloads serialise `msg_type` as `type` (serde
+                    // rename on every payload struct), so routing on
+                    // `msg_type` alone was dead code: the signal fired only
+                    // when the active id *changed*, and re-activating the
+                    // window the user came from (id unchanged) left the
+                    // assistant pinned on top. Match the wire key.
+                    if (data.type === "active" || data.msg_type === "active"
+                        || (data.activeId !== undefined && data.activeId !== prevActiveId)) {
                         root.externalWindowActivated(data.activeId || "", data.activeTitle || "");
                     }
 

@@ -26,6 +26,59 @@ pub struct AstralShortcutSessionBackup {
     pub displaced_action: Option<DisplacedShortcut>,
     #[serde(default)]
     pub displaced_actions: Vec<DisplacedShortcut>,
+    /// Shortcut mode this session was claimed in (`meta-space`, `meta`,
+    /// `alt-space`). Absent in journals written before the field existed, which
+    /// reads as "claimed, mode unknown".
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
+/// Display label the KDE shortcuts editor shows for the launcher action.
+///
+/// This string is part of the *value* `scripts/bind_shortcuts.sh` writes, so it
+/// has to match that script byte for byte - otherwise the claim check never
+/// recognises its own work and every tick would re-bind. `test_shell_scripts`
+/// pins the two sides together.
+pub const LAUNCHER_BINDING_LABEL: &str = "Astral Plasma: Toggle Launcher";
+/// Display label for the overview action, same contract as the launcher's.
+pub const OVERVIEW_BINDING_LABEL: &str = "Astral Plasma: Active Apps Overview";
+
+/// The `kglobalshortcutsrc` value the launcher action takes in a given mode.
+///
+/// Lives in the domain so the bind path, the reconciler and the tests all agree
+/// on what "already claimed in this mode" means.
+pub fn launcher_binding(mode: &str) -> String {
+    let key = match mode {
+        "meta" | "super" => "Meta",
+        "alt-space" => "Alt+Space",
+        _ => "Meta+Space",
+    };
+    format!("{key},none,{LAUNCHER_BINDING_LABEL}")
+}
+
+/// The overview action: bare Meta is the primary binding, except in `meta` mode
+/// where the launcher owns Meta and the overview keeps Meta+W only.
+pub fn overview_binding(mode: &str) -> String {
+    let key = if matches!(mode, "meta" | "super") { "Meta+W" } else { "Meta\tMeta+W" };
+    format!("{key},none,{OVERVIEW_BINDING_LABEL}")
+}
+
+/// Is the desktop already claimed in exactly the requested mode?
+///
+/// The journal records the claim and the live configuration proves it; both must
+/// agree. A claim that is only half-present (journal there, keys overwritten by
+/// Plasma) must be re-applied, and a claim for a *different* mode must be
+/// re-applied rather than silently kept.
+pub fn claim_is_current(
+    journal_mode: Option<&str>,
+    requested_mode: &str,
+    launcher_value: Option<&str>,
+    plugin_enabled: bool,
+) -> bool {
+    let expected = launcher_binding(requested_mode);
+    journal_mode == Some(requested_mode)
+        && plugin_enabled
+        && launcher_value == Some(expected.as_str())
 }
 
 /// Merge freshly-read current entries into an EXISTING session backup.
@@ -92,4 +145,42 @@ pub fn merge_missing_entries_multi(
         }
     }
     (existing, changed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bindings_follow_the_mode() {
+        assert!(launcher_binding("meta-space").starts_with("Meta+Space,none,"));
+        assert!(launcher_binding("meta").starts_with("Meta,none,"));
+        assert!(launcher_binding("super").starts_with("Meta,none,"));
+        assert!(launcher_binding("alt-space").starts_with("Alt+Space,none,"));
+        assert!(overview_binding("meta-space").starts_with("Meta\tMeta+W,none,"));
+        assert!(overview_binding("meta").starts_with("Meta+W,none,"));
+    }
+
+    #[test]
+    fn a_claim_is_only_current_when_journal_and_config_agree() {
+        let launcher = launcher_binding("meta-space");
+        assert!(claim_is_current(
+            Some("meta-space"),
+            "meta-space",
+            Some(launcher.as_str()),
+            true
+        ));
+        // A different mode, a half-restored configuration, a disabled plugin or
+        // a legacy journal without a mode all mean the bind has to run again.
+        assert!(!claim_is_current(Some("meta"), "meta-space", Some(launcher.as_str()), true));
+        assert!(!claim_is_current(Some("meta-space"), "meta-space", None, true));
+        assert!(!claim_is_current(
+            Some("meta-space"),
+            "meta-space",
+            Some("Alt+F1,none,Activate Application Launcher"),
+            true
+        ));
+        assert!(!claim_is_current(Some("meta-space"), "meta-space", Some(launcher.as_str()), false));
+        assert!(!claim_is_current(None, "meta-space", Some(launcher.as_str()), true));
+    }
 }

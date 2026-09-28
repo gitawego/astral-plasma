@@ -30,6 +30,119 @@ impl KWinShortcutsAdapter {
     pub fn backup_file_path(&self) -> PathBuf {
         self.resolve_backup_dir().join(BACKUP_FILENAME)
     }
+
+    /// Is the KWin script that owns the shortcut actions loaded right now?
+    ///
+    /// KWin loads enabled script packages at startup, so this only goes false
+    /// after the script was unloaded or KWin restarted without the plugin -
+    /// both leave the keys bound to actions that no longer exist.
+    pub fn shortcut_script_loaded(&self) -> bool {
+        if branding::test_mode() {
+            return true;
+        }
+        Command::new("qdbus6")
+            .args([
+                "org.kde.KWin",
+                "/Scripting",
+                "org.kde.kwin.Scripting.isScriptLoaded",
+                branding::KWIN_SCRIPT_SHORTCUTS,
+            ])
+            .output()
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim() == "true")
+            .unwrap_or(false)
+    }
+
+    /// Load the shortcut script package into the running compositor.
+    ///
+    /// Used by the reconciler when the actions went missing. The normal claim
+    /// path loads the script from `scripts/bind_shortcuts.sh` together with the
+    /// keys; this is the repair for "script gone, keys still bound".
+    pub fn load_shortcut_script(&self) {
+        if branding::test_mode() {
+            return;
+        }
+        let installed = branding::data_dir()
+            .join("kwin")
+            .join("scripts")
+            .join(branding::KWIN_SCRIPT_SHORTCUTS)
+            .join("contents/code/main.js");
+        let script = if installed.exists() {
+            Some(installed)
+        } else {
+            branding::repo_root_from_exe()
+                .map(|root| {
+                    root.join("kwin")
+                        .join(branding::KWIN_SCRIPT_SHORTCUTS)
+                        .join("contents/code/main.js")
+                })
+                .filter(|path| path.exists())
+        };
+        let Some(script) = script else {
+            // The package was never installed: fall back to the full bind, which
+            // installs it first.
+            let _ = self.bind_shortcuts(crate::domain::desktop_integration::DEFAULT_SHORTCUT_MODE);
+            return;
+        };
+
+        let _ = Command::new("qdbus6")
+            .args([
+                "org.kde.KWin",
+                "/Scripting",
+                "org.kde.kwin.Scripting.unloadScript",
+                branding::KWIN_SCRIPT_SHORTCUTS,
+            ])
+            .output();
+        let _ = Command::new("qdbus6")
+            .args([
+                "org.kde.KWin",
+                "/Scripting",
+                "org.kde.kwin.Scripting.loadScript",
+                &script.to_string_lossy(),
+                branding::KWIN_SCRIPT_SHORTCUTS,
+            ])
+            .output();
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
+            .output();
+    }
+
+    /// The mode the session journal recorded, when a session is claimed.
+    ///
+    /// This is what a restart resumes: the user's choice survives a shell reload
+    /// instead of being reset to the default mode.
+    pub fn journal_mode(&self) -> Option<String> {
+        fs::read_to_string(self.backup_file_path())
+            .ok()
+            .and_then(|content| serde_json::from_str::<AstralShortcutSessionBackup>(&content).ok())
+            .and_then(|backup| backup.mode)
+    }
+
+    /// Is the session already claimed in exactly this mode?
+    ///
+    /// Reads the session journal plus the live KDE configuration - never the
+    /// process state - so both the bind path and the reconciler decide from the
+    /// same evidence.
+    pub fn shortcut_claim_is_current(&self, mode: &str) -> bool {
+        let journal_mode = self.journal_mode();
+        let config_dir = self.resolve_config_dir();
+        let launcher = fs::read_to_string(config_dir.join("kglobalshortcutsrc"))
+            .ok()
+            .map(|content| KdeIniFile::parse(&content))
+            .and_then(|ini| ini.get("kwin", branding::SHORTCUT_LAUNCHER_KEY));
+        let plugin_enabled = fs::read_to_string(config_dir.join("kwinrc"))
+            .ok()
+            .map(|content| KdeIniFile::parse(&content))
+            .and_then(|ini| ini.get("Plugins", branding::KWIN_SHORTCUTS_ENABLED_KEY))
+            .map(|value| value == "true")
+            .unwrap_or(false);
+        crate::domain::shortcuts::claim_is_current(
+            journal_mode.as_deref(),
+            mode,
+            launcher.as_deref(),
+            plugin_enabled,
+        )
+    }
+
 }
 
 impl Default for KWinShortcutsAdapter {
@@ -132,7 +245,11 @@ fn parse_kde_shortcuts(v: &str) -> (String, String) {
 }
 
 impl ShortcutControlPort for KWinShortcutsAdapter {
-    fn snapshot_relevant_shortcuts(&self, target_shortcut: &str) -> DynResult<AstralShortcutSessionBackup> {
+    fn snapshot_relevant_shortcuts(
+        &self,
+        target_shortcut: &str,
+        mode: &str,
+    ) -> DynResult<AstralShortcutSessionBackup> {
         let backup_dir = self.resolve_backup_dir();
         fs::create_dir_all(&backup_dir)?;
 
@@ -244,8 +361,16 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
         // `monitored_keys` after the session started), keep every recorded
         // original untouched, and rewrite only when something was appended.
         if let Some(existing) = existing {
-            let (merged, changed) = crate::domain::shortcuts::merge_missing_entries_multi(existing, affected, displaced_actions);
-            if changed {
+            let (mut merged, changed) =
+                crate::domain::shortcuts::merge_missing_entries_multi(existing, affected, displaced_actions);
+            // A journal written before the mode was recorded still vouches for
+            // the session; filling the mode in is what lets a restart resume the
+            // user's choice instead of resetting it.
+            let mode_filled = merged.mode.is_none();
+            if mode_filled {
+                merged.mode = Some(mode.to_string());
+            }
+            if changed || mode_filled {
                 fs::write(&backup_path, serde_json::to_string_pretty(&merged)?)?;
             }
             return Ok(merged);
@@ -257,6 +382,9 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
             previous_kwin_plugin_enabled: plugin_enabled,
             displaced_action: displaced,
             displaced_actions,
+            // The journal records the *mode*, not the key sequence: it is what a
+            // restart resumes and what the reconciler re-claims.
+            mode: Some(mode.to_string()),
         };
 
         fs::write(&backup_path, serde_json::to_string_pretty(&backup)?)?;
@@ -366,6 +494,14 @@ except Exception:
     }
 
     fn bind_shortcuts(&self, mode: &str) -> DynResult<()> {
+        // Claiming twice is a no-op: the journal records the mode and the live
+        // KDE configuration proves it. Without this guard every startup would
+        // reload KWin's scripting service for nothing - which is exactly what
+        // wedged the daemon's D-Bus service during a restart race.
+        if !branding::test_mode() && self.shortcut_claim_is_current(mode) {
+            return Ok(());
+        }
+
         if branding::test_mode() {
             // Test mode simulation: set the launcher shortcut in the mock config
             let config_dir = self.resolve_config_dir();
@@ -392,22 +528,17 @@ except Exception:
             ini.set(
                 "kwin",
                 branding::SHORTCUT_LAUNCHER_KEY,
-                &format!("Meta+Space,none,{}", branding::SHORTCUT_LAUNCHER_LABEL),
+                &crate::domain::shortcuts::launcher_binding(mode),
             );
             ini.set(
                 "kwin",
                 branding::SHORTCUT_WALLPAPER_KEY,
                 &format!("Meta+Shift+W,none,{}", branding::SHORTCUT_WALLPAPER_LABEL),
             );
-            let overview_bind = if mode == "meta" || mode == "super" {
-                format!("Meta+W,none,{}", branding::SHORTCUT_OVERVIEW_LABEL)
-            } else {
-                format!("Meta\tMeta+W,none,{}", branding::SHORTCUT_OVERVIEW_LABEL)
-            };
             ini.set(
                 "kwin",
                 branding::SHORTCUT_OVERVIEW_KEY,
-                &overview_bind,
+                &crate::domain::shortcuts::overview_binding(mode),
             );
             ini.set(
                 "kwin",

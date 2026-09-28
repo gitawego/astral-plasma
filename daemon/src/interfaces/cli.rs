@@ -8,6 +8,7 @@ use crate::application::workspace_control::WorkspaceControlUseCase;
 use crate::domain::branding;
 use crate::domain::ports::DynResult;
 use crate::infrastructure::embedded_bundle::{extract_embedded_theme, get_default_package_dir};
+use crate::infrastructure::kwin_window_rules::KWinWindowRulesAdapter;
 use crate::infrastructure::launcher::DesktopLauncherAdapter;
 use crate::infrastructure::plasma_adapter::PlasmaAdapter;
 use crate::infrastructure::proc_metrics::ProcMetricsAdapter;
@@ -464,6 +465,12 @@ pub async fn run_cli() -> DynResult<()> {
             }
         }
         "watch" | "--daemon" => {
+            // Best-effort: give the shell's xdg-toplevel windows a frameless
+            // KWin rule before publishing events. Never fatal - a non-KWin
+            // session simply has nothing to configure.
+            if KWinWindowRulesAdapter::new().apply().unwrap_or(false) {
+                eprintln!("[kwin] applied frameless window rule for the AI Copilot window");
+            }
             run_event_daemon().await?;
         }
         "activate" => {
@@ -1034,6 +1041,137 @@ pub async fn run_cli() -> DynResult<()> {
                 }
                 _ => {
                     eprintln!("Usage: astral-plasma desktop <install|cleanup>");
+                }
+            }
+        }
+        "voice" => {
+            use crate::application::voice_service::{write_event, VoiceService};
+            use crate::domain::voice::VoiceEvent;
+
+            let svc = VoiceService::local();
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
+            match sub {
+                "status" => {
+                    println!("{}", serde_json::to_string(&svc.status())?);
+                }
+                "engines" => {
+                    let (models, languages) = svc.catalogs();
+                    let probe = svc.probe().ok();
+                    println!(
+                        "{}",
+                        serde_json::to_string(&serde_json::json!({
+                            "probe": probe,
+                            "models": models,
+                            "languages": languages,
+                        }))?
+                    );
+                }
+                "remove-model" => {
+                    let model_id = args
+                        .get(3)
+                        .cloned()
+                        .or_else(|| Some(svc.settings().model.clone()))
+                        .unwrap_or_default();
+                    match svc.remove_model(&model_id) {
+                        Ok(removed) => {
+                            println!(
+                                "{}",
+                                serde_json::to_string(&serde_json::json!({
+                                    "success": true,
+                                    "model": model_id,
+                                    "removed": removed,
+                                    "status": svc.status(),
+                                }))?
+                            );
+                        }
+                        Err(e) => {
+                            println!(
+                                "{}",
+                                serde_json::to_string(&serde_json::json!({
+                                    "success": false,
+                                    "error": e.to_string(),
+                                }))?
+                            );
+                        }
+                    }
+                }
+                "install-model" => {
+                    let model_id = args
+                        .get(3)
+                        .cloned()
+                        .or_else(|| Some(svc.settings().model.clone()))
+                        .unwrap_or_default();
+                    // Progress is emitted as JSONL so the UI can render a real
+                    // bar rather than an indeterminate spinner.
+                    let result = svc.install_model(&model_id, |fraction| {
+                        let event = VoiceEvent::Progress(fraction);
+                        let _ = write_event(&mut std::io::stdout(), &event);
+                    });
+                    match result {
+                        Ok(path) => {
+                            println!(
+                                "{}",
+                                serde_json::to_string(&serde_json::json!({
+                                    "success": true,
+                                    "model": model_id,
+                                    "path": path.to_string_lossy(),
+                                    "status": svc.status(),
+                                }))?
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("[voice] {e}");
+                            println!(
+                                "{}",
+                                serde_json::to_string(&serde_json::json!({
+                                    "success": false,
+                                    "model": model_id,
+                                    "error": e.to_string(),
+                                }))?
+                            );
+                        }
+                    }
+                }
+                "install-vad" => {
+                    let result = svc.install_vad_model(|fraction| {
+                        let event = VoiceEvent::Progress(fraction);
+                        let _ = write_event(&mut std::io::stdout(), &event);
+                    });
+                    match result {
+                        Ok(path) => {
+                            println!(
+                                "{}",
+                                serde_json::to_string(&serde_json::json!({
+                                    "success": true,
+                                    "path": path.to_string_lossy(),
+                                    "status": svc.status(),
+                                }))?
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("[voice] {e}");
+                            println!(
+                                "{}",
+                                serde_json::to_string(&serde_json::json!({
+                                    "success": false,
+                                    "error": e.to_string(),
+                                }))?
+                            );
+                        }
+                    }
+                }
+                "session" => {
+                    // Control arrives on stdin, events leave on stdout. The
+                    // process exits when the utterance finalises, which is what
+                    // releases the capture device.
+                    let stdin = std::io::stdin();
+                    let stdout = std::io::stdout();
+                    svc.run_control_loop(stdin, stdout, |w, event| {
+                        write_event(w, event).map(|_| ())
+                    })?;
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma voice <status|engines|install-model [id]|install-vad|session>");
                 }
             }
         }

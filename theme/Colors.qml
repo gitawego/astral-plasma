@@ -435,7 +435,12 @@ Singleton {
             cardActiveAlpha: 0.40,
             cardActiveTint: 0.20,
             cardVibrantAlpha: 0.30,
-            cardVibrantTint: 0.30
+            cardVibrantTint: 0.30,
+            // Large content panels (the Copilot card, the settings pane): a
+            // lifted dark base at high alpha, because a page of options must stay
+            // legible over a bright wallpaper instead of dissolving into it.
+            panelBase: [0.07, 0.08, 0.12],
+            panelAlpha: 0.82
         },
         light: {
             surfaceBase: [1.0, 1.0, 1.0],
@@ -450,6 +455,9 @@ Singleton {
             cardActiveTint: 0.22,
             cardVibrantAlpha: 0.28,
             cardVibrantTint: 0.30
+,
+            panelBase: [0.95, 0.96, 0.99],
+            panelAlpha: 0.84
         }
     })
 
@@ -486,6 +494,12 @@ Singleton {
         root.glassActive.cardBase, root.glassActive.cardHoverAlpha, root.glassActive.cardHoverTint)
     readonly property color glassCardActive: glassTinted(
         root.glassActive.cardBase, root.glassActive.cardActiveAlpha, root.glassActive.cardActiveTint)
+
+    // Readable substrate for large content panels - the Copilot card and the
+    // settings content pane. Nearly opaque so options and long text stay legible
+    // over any wallpaper, still translucent enough to read as glass.
+    readonly property color glassPanelSubstrate: glassTinted(
+        root.glassActive.panelBase, root.glassActive.panelAlpha, root.isDarkMode ? 0.04 : 0.03)
 
     // Vibrant tinted glass card (e.g. Media Player, Highlighted cards)
     readonly property color glassCardVibrant: glassTinted(

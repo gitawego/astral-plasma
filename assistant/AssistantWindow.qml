@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 import "../theme"
@@ -7,7 +6,18 @@ import "../components"
 import "../config"
 import "../services"
 
-PanelWindow {
+// The AI Copilot is a real desktop window, not a layer-shell overlay.
+//
+// Alt+Tab - and every other window list - only ever offers application windows:
+// KWin hard-codes `skipSwitcher` for layer surfaces, so an overlay can never be
+// reached with the system switcher. The copilot is therefore a `FloatingWindow`
+// (docs/LESSONS.md §8.9): a normal toplevel that stacks, moves, resizes and
+// shows up in the switcher like any other application.
+//
+// KWin decorates every xdg-toplevel by default, so the daemon installs a
+// "no titlebar and frame" window rule for the shell's own toplevel class; the
+// card draws its own glass edge.
+FloatingWindow {
     id: root
 
     property ShellScreen targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
@@ -17,98 +27,40 @@ PanelWindow {
     property bool activeVisible: testMode ? true : (typeof Config !== "undefined" ? Config.assistantVisible : false)
     readonly property alias drawerItem: drawer
 
-    visible: activeVisible
-
-    WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: activeVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-
-    anchors {
-        top: true
-        bottom: true
-        left: true
-        right: true
-    }
-
-    // Non-modal floating surface: no underlay scrim, allowing viewing and interacting with underlying desktop windows
+    // Window identity: this is what the user reads in Alt+Tab and in any
+    // window list, so it names the product, not the implementation.
+    title: "Astral Copilot"
     color: "transparent"
 
-    // Input mask restricts pointer & touch interaction strictly to the floating card,
-    // allowing direct clicks to pass through to underlying desktop windows without closing the assistant.
-    mask: Region {
-        x: drawer ? drawer.x : 0
-        y: drawer ? drawer.y : 0
-        width: root.activeVisible && drawer ? drawer.width : 0
-        height: root.activeVisible && drawer ? drawer.height : 0
-    }
+    // The window is mapped exactly while the chat is open, and switching to
+    // another application is ordinary window stacking: the chat drops behind
+    // that window and stays in Alt+Tab. Parking it in the dock hides it instead,
+    // and that state stays the shell's own - a Wayland client may request a
+    // minimize but has no way to ask for a restore again, so a compositor
+    // minimize could never be undone from the dock capsule.
+    visible: activeVisible
 
-    // Compositor backdrop blur behind the floating modal card
+    // The compositor owns position and size once the surface is mapped, and
+    // quickshell only forwards implicit size changes while the window is
+    // hidden. The drawer therefore publishes the size to open with
+    // (screen-aware, and wide enough for the sessions sidebar when it is
+    // visible); whatever the user resizes the window to afterwards is what the
+    // window keeps.
+    implicitWidth: drawer ? drawer.preferredWidth : 740
+    implicitHeight: drawer ? drawer.preferredHeight : 840
+    minimumSize: Qt.size(drawer ? drawer.minWidth : 480, drawer ? drawer.minHeight : 520)
+    maximumSize: Qt.size(drawer ? drawer.maxWidth : 4096, drawer ? drawer.maxHeight : 4096)
+
+    // Compositor backdrop blur behind the floating glass card.
     BackgroundEffect.blurRegion: Region {
-        x: drawer ? drawer.x : 0
-        y: drawer ? drawer.y : 0
-        width: root.activeVisible && drawer ? drawer.width : 0
-        height: root.activeVisible && drawer ? drawer.height : 0
-    }
-
-    // User-dragged position tracking and boundary clamping
-    property bool userMoved: false
-    property double openedTime: 0
-
-    function resetPosition() {
-        userMoved = false;
-        if (drawer && typeof drawer.resetPosition === "function") {
-            drawer.resetPosition();
-        }
-    }
-
-    function clampPosition() {
-        if (!drawer || root.width <= 0 || root.height <= 0) return;
-        const minX = 16;
-        const maxX = Math.max(minX, root.width - drawer.width - 16);
-        const minY = 16;
-        const maxY = Math.max(minY, root.height - drawer.height - 16);
-        drawer.x = Math.max(minX, Math.min(drawer.x, maxX));
-        drawer.y = Math.max(minY, Math.min(drawer.y, maxY));
-    }
-
-    onWidthChanged: if (userMoved) clampPosition()
-    onHeightChanged: if (userMoved) clampPosition()
-
-    onActiveVisibleChanged: {
-        if (activeVisible) {
-            openedTime = Date.now();
-            if (!userMoved) {
-                resetPosition();
-            }
-        }
-    }
-
-    // Auto-minimize when focusing another application unless explicitly pinned to top
-    Connections {
-        target: (typeof WindowService !== "undefined") ? WindowService : null
-        function onExternalWindowActivated(winId, winTitle) {
-            if (typeof Config !== "undefined" && Config.assistantPinned) {
-                return;
-            }
-            if (Date.now() - root.openedTime < 350) {
-                return;
-            }
-            if (root.activeVisible && typeof Config !== "undefined") {
-                Config.minimizeAssistant();
-            }
-        }
+        item: drawer ? drawer.cardItem : null
     }
 
     AssistantDrawer {
         id: drawer
-        isFloating: true
+        anchors.fill: parent
+        windowHandle: root
+        testMode: root.testMode
         isOpen: root.activeVisible
-
-        onUserDragged: {
-            root.userMoved = true;
-        }
-
-        onResetRequested: {
-            root.resetPosition();
-        }
     }
 }

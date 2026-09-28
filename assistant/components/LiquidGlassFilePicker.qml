@@ -9,9 +9,10 @@ Rectangle {
 
     signal accepted(var files)
     signal canceled()
-    signal userDragged()
 
-    property Item dragTarget: null
+    // The Quickshell window this picker floats in. Dragging its header starts a
+    // compositor-native window move instead of writing item coordinates.
+    property var windowHandle: null
 
     color: Qt.rgba(0, 0, 0, 0.65)
     anchors.fill: parent
@@ -159,15 +160,13 @@ Rectangle {
                 implicitHeight: 52
                 color: "transparent"
 
-                // Header drag area allowing dragging the floating window from file picker
+                // Header drag area: moves the toplevel through the compositor.
                 MouseArea {
                     anchors.fill: parent
                     z: -1
-                    drag.target: root.dragTarget
-                    drag.axis: Drag.XAndYAxis
-                    onPositionChanged: {
-                        if (drag.active) {
-                            root.userDragged();
+                    onPressed: {
+                        if (root.windowHandle && typeof root.windowHandle.startSystemMove === "function") {
+                            root.windowHandle.startSystemMove();
                         }
                     }
                 }

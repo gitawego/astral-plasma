@@ -1149,6 +1149,21 @@ PanelWindow {
         }
     }
 
+    // Hover intent: the drawer opens only once the pointer has *stayed* on the
+    // top edge. Long enough that passing over it on the way to a browser tab
+    // never opens it, short enough to feel immediate when the hover was meant.
+    readonly property alias openIntentTimerItem: openIntentTimer
+    Timer {
+        id: openIntentTimer
+        interval: 450
+        repeat: false
+        onTriggered: {
+            if (Config.dashboardShowOnHover && !Config.dashboardVisible) {
+                Config.dashboardVisible = true;
+            }
+        }
+    }
+
     // Auto-close grace timer when leaving the dropdown
     Timer {
         id: closeTimer
@@ -1345,10 +1360,15 @@ PanelWindow {
             onEntered: {
                 if (Config.dashboardShowOnHover) {
                     closeTimer.stop();
-                    Config.dashboardVisible = true;
+                    // Crossing the top edge is what reaching for a browser tab
+                    // looks like, so a touch is not an intent. Give the pointer a
+                    // moment to prove it is staying.
+                    openIntentTimer.restart();
                 }
             }
+            onExited: openIntentTimer.stop()
             onClicked: {
+                openIntentTimer.stop();
                 Config.dashboardVisible = !Config.dashboardVisible;
                 if (!Config.dashboardVisible) {
                     closeTimer.stop();

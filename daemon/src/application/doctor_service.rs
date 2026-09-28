@@ -39,7 +39,99 @@ impl DoctorService {
         // 9. Spectacle
         checks.push(check_spectacle());
 
+        // 10. Voice Input (never required: a shell without it is a healthy shell)
+        checks.push(check_voice_engine());
+
         DoctorReport::new(checks)
+    }
+}
+
+/// Reports speech-to-text readiness.
+///
+/// `required: false` is the important part. Voice input is an optional
+/// convenience, so its absence must never make `DoctorReport::all_required_satisfied`
+/// false and imply the shell is broken.
+fn check_voice_engine() -> DependencyCheck {
+    use crate::domain::voice::VoiceSettings;
+
+    let engine_path = crate::infrastructure::whisper_stt_adapter::locate_engine();
+    let mut messages: Vec<String> = Vec::new();
+    let mut recommendations: Vec<String> = Vec::new();
+    let mut installed = false;
+    let mut version = None;
+
+    match &engine_path {
+        Some(_p) => {
+            installed = true;
+            let probe = crate::infrastructure::whisper_stt_adapter::WhisperCppAdapter::new();
+            version = crate::domain::ports::SpeechToTextPort::probe(&probe)
+                .ok()
+                .and_then(|p| p.version);
+            messages.push("whisper.cpp engine available for local voice input".to_string());
+        }
+        None => {
+            messages.push("whisper.cpp not found (voice input will remain unavailable)".to_string());
+            recommendations.push(format!(
+                "Install the engine: {}",
+                crate::application::voice_service::VoiceService::local()
+                    .engine_install_command()
+                    .unwrap_or_else(|| "build whisper.cpp from source: https://github.com/ggml-org/whisper.cpp".to_string())
+            ));
+        }
+    }
+
+    // A missing model is reported as a warning on its own, so a user who has the
+    // engine but not the weights gets an accurate picture rather than "ready".
+    let settings = VoiceSettings::default();
+    if installed {
+        match crate::infrastructure::whisper_stt_adapter::resolve_model_file(&settings.model) {
+            Some(_) => {
+                let mut m = messages.clone();
+                m.push(format!("speech model {} is downloaded", settings.model));
+                messages = m;
+            }
+            None => {
+                messages.push(format!(
+                    "speech model {} is not downloaded yet",
+                    settings.model
+                ));
+                recommendations.push(
+                    "Download the model from Settings > AI > Voice input, or run: astral-plasma voice install-model"
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    let ready = installed
+        && crate::infrastructure::whisper_stt_adapter::resolve_model_file(&settings.model).is_some()
+        && crate::infrastructure::whisper_stt_adapter::has_audio_source();
+
+    DependencyCheck {
+        name: "Voice Input (whisper.cpp)".to_string(),
+        // Reuses the existing optional bucket rather than introducing a section
+        // for a single check. `DoctorReport::render_terminal` iterates a fixed
+        // category list, so a new category would make the check present in the
+        // data yet invisible in the output.
+        category: "Optional Enhancements".to_string(),
+        required: false,
+        status: if ready {
+            CheckStatus::Pass
+        } else if installed {
+            CheckStatus::Warning
+        } else {
+            CheckStatus::Warning
+        },
+        installed,
+        detected_version: version,
+        required_version: None,
+        binary_path: engine_path.map(|p| p.to_string_lossy().into_owned()),
+        message: messages.join("; "),
+        recommendation: if recommendations.is_empty() {
+            None
+        } else {
+            Some(recommendations.join(" "))
+        },
     }
 }
 

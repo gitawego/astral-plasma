@@ -60,7 +60,40 @@ Rectangle {
         nativeFileDialog.open();
     }
 
-    implicitHeight: Math.min(190, Math.max(46, inputField.contentHeight + 20) + (stagedFiles.length > 0 ? 56 : 0))
+    // Height budget. The listening strip is counted *inside* the clamp rather
+    // than added on top, so a listening composer can never push the fixed
+    // controls off-screen on a short display (AGENTS.md 7.2). The transcript
+    // elides when the budget is tight; the meter and timer keep their size,
+    // because those carry the live state.
+    /**
+     * The voice backend. Defaults to the AssistantService singleton, but is
+     * injectable so the component's own gating logic is testable headlessly --
+     * `services/` has no qmldir, so the singleton is only resolvable as a
+     * registered type inside the running shell, not in an offscreen test.
+     */
+    property var voice: (typeof AssistantService !== "undefined") ? AssistantService : null
+
+    readonly property bool voiceEnabled: voice !== null ? !!voice.voiceEnabled : false
+    readonly property bool voiceRecording: voice !== null ? !!voice.isVoiceRecording : false
+    readonly property bool voiceBusy: voice !== null ? !!voice.isVoiceBusy : false
+    readonly property bool voiceReady: voice !== null ? !!voice.voiceReady : false
+    readonly property bool voiceMicUsable: voice !== null ? !!voice.voiceMicUsable : false
+    readonly property string voiceState: voice !== null ? voice.voiceState : "idle"
+    readonly property string voiceSetupMessage: voice !== null ? (voice.voiceSetupMessage || "") : ""
+    readonly property real voiceLevel: voice !== null ? (voice.voiceLevel || 0) : 0
+    readonly property int voiceElapsedMs: voice !== null ? (voice.voiceElapsedMs || 0) : 0
+    readonly property string voiceLanguage: voice !== null ? (voice.voiceLanguage || "") : ""
+    readonly property string voicePartialText: voice !== null ? (voice.voicePartialText || "") : ""
+
+    readonly property bool showVoiceStrip: voiceEnabled && (voiceBusy || voiceSetupMessage.length > 0)
+    readonly property int voiceStripHeight: showVoiceStrip ? 46 : 0
+
+    implicitHeight: Math.min(
+        190,
+        Math.max(46, inputField.contentHeight + 20)
+            + (stagedFiles.length > 0 ? 56 : 0)
+            + root.voiceStripHeight
+    )
     radius: 12
     color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.11, 0.16, 0.65) : Qt.rgba(0.94, 0.95, 0.98, 0.70)
     border.width: 1
@@ -226,6 +259,46 @@ Rectangle {
             }
         }
 
+        // 1b. Voice Listening Strip (Tier 2 liquid glass content card)
+        Item {
+            id: voiceStripHolder
+            Layout.fillWidth: true
+            Layout.leftMargin: 2
+            Layout.rightMargin: 2
+            implicitHeight: root.voiceStripHeight
+            visible: root.showVoiceStrip
+
+            VoiceListeningStrip {
+                id: voiceStrip
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: parent.height - 2
+
+                state: root.voiceState
+                level: root.voiceLevel
+                elapsedMs: root.voiceElapsedMs
+                detectedLanguage: root.voiceLanguage
+                partialText: root.voicePartialText
+                setupMessage: root.voiceSetupMessage
+
+                // Routed through the backend so the dismissal is scoped to the
+                // current gap: a *different* problem later still surfaces.
+                onDismissRequested: root.voice.dismissVoiceSetupNotice()
+
+                // Spring entrance so the strip grows organically rather than
+                // snapping, per DESIGN.md 2.
+                y: 0
+                Behavior on y {
+                    NumberAnimation {
+                        duration: Theme.animExpressiveFastSpatial
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveFastSpatial
+                    }
+                }
+            }
+        }
+
         // 2. Input Row
         RowLayout {
             Layout.fillWidth: true
@@ -327,6 +400,152 @@ Rectangle {
                 }
             }
 
+            // Microphone Button
+            //
+            // Visible but disabled when voice is not set up. A mic icon that
+            // simply disappears is undiscoverable: a user who never sees it
+            // will never go looking for it in Settings.
+            Rectangle {
+                id: micButton
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
+                implicitWidth: 32
+                implicitHeight: 32
+                radius: 8
+
+                readonly property bool serviceReady: root.voiceEnabled
+                readonly property bool recording: root.voiceRecording
+                readonly property bool finalizing: root.voiceState === "finalizing"
+                readonly property bool usable: root.voiceMicUsable
+                readonly property bool setupGap: root.voice !== null
+                    && root.voice.voiceStatus !== null
+                    && root.voice.voiceStatus.setup_complete === false
+
+                /**
+                 * Hover text. When voice is not ready it says what is missing and
+                 * that a click opens the fix, so the button is never a dead
+                 * control.
+                 */
+                readonly property string tooltipText: {
+                    if (!serviceReady) return "";
+                    if (recording) return "Stop dictation";
+                    if (finalizing) return "Transcribing...";
+                    if (usable) return "Dictate (click to record, then stop to transcribe)";
+                    if (root.voice === null || root.voice.voiceStatus === null) return "Checking voice engine...";
+                    const gap = root.voice.voiceStatus.gap;
+                    if (gap === "engine_missing") return "whisper.cpp is not installed - click to open Settings > AI";
+                    if (gap === "model_missing") return "Speech model not downloaded - click to open Settings > AI";
+                    if (gap === "no_audio_source") return "No microphone found - click to open Settings > AI";
+                    return "Voice input unavailable - click for details";
+                }
+
+                visible: serviceReady
+
+                scale: micMouse.pressed ? 0.94 : (micMouse.containsMouse && usable ? 1.05 : 1.0)
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: Theme.animExpressiveFastSpatial
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveFastSpatial
+                    }
+                }
+
+                color: recording
+                    ? (micMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.35) : Qt.alpha(Colors.m3error, 0.20))
+                    : (usable && micMouse.containsMouse ? Qt.alpha(Colors.primary, 0.18) : "transparent")
+
+                border.width: 1
+                border.color: recording
+                    ? Colors.m3error
+                    : (setupGap ? Qt.alpha(Colors.m3error, 0.45) : Colors.glassBorderSpecular)
+
+                Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
+                Behavior on border.color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
+
+                // Vector-drawn Lucide `mic-vocal`. The icon font has no
+                // microphone glyph, and the Material Design Icons range resolved
+                // to unrelated shapes rather than a missing-glyph box.
+                MicVocalIcon {
+                    id: micGlyph
+                    anchors.centerIn: parent
+                    visible: !micButton.recording
+                    size: 16
+                    color: micButton.usable ? Colors.primary : Colors.m3onSurfaceVariant
+                    opacity: micButton.usable ? 1.0 : 0.5
+
+                    Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
+                }
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    visible: micButton.recording
+                    iconName: "stop"
+                    size: 16
+                    color: Colors.m3error
+                }
+
+                // Explains the state on hover. A dimmed icon with no explanation
+                // is indistinguishable from a broken shell.
+                Rectangle {
+                    id: micTooltip
+                    visible: micMouse.containsMouse && micButton.tooltipText.length > 0
+                    anchors.bottom: parent.top
+                    anchors.bottomMargin: 6
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: Math.min(260, tipLabel.implicitWidth + 18)
+                    height: tipLabel.implicitHeight + 10
+                    radius: Theme.radiusExtraSmall
+                    color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                        ? Qt.rgba(0.10, 0.12, 0.17, 0.95)
+                        : Qt.rgba(0.96, 0.97, 1.0, 0.95)
+                    border.width: 1
+                    border.color: Colors.glassBorderSpecular
+                    z: 400
+
+                    Text {
+                        id: tipLabel
+                        anchors.centerIn: parent
+                        width: Math.min(240, implicitWidth)
+                        text: micButton.tooltipText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurface
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+
+                // Honest state: a busy mic must not look clickable, and an
+                // unconfigured one must lead somewhere useful rather than
+                // silently swallowing the click.
+                MouseArea {
+                    id: micMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    // Enabled whenever the feature is on: ready toggles
+                    // recording, unready opens the page that fixes the gap. A
+                    // hard-disabled button is what made this look broken.
+                    enabled: micButton.serviceReady
+                    cursorShape: micButton.serviceReady ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: {
+                        if (root.voice === null) return;
+                        if (micButton.recording) {
+                            root.voice.stopVoiceInput();
+                        } else if (micButton.usable) {
+                            root.voice.startVoiceInput();
+                            inputField.forceActiveFocus();
+                        } else {
+                            // Not configured. Answer the click in place: the
+                            // composer strip names the missing piece and links
+                            // into the page that installs it. Jumping straight to
+                            // Settings would move the user away from the
+                            // explanation before they had read it.
+                            root.voice.showVoiceSetupNotice();
+                        }
+                    }
+                }
+            }
+
             // Model Indicator Chip
             Rectangle {
                 implicitHeight: 24
@@ -420,6 +639,57 @@ Rectangle {
         }
     }
 
+    // Dictation lands here, and nowhere else.
+    //
+    // The transcript is APPENDED to whatever the user has already typed and is
+    // never submitted. Two reasons, both load-bearing:
+    //   1. Data loss: a half-written prompt must survive a dictation result.
+    //   2. Safety: a transcript becomes a prompt, a prompt can produce a
+    //      ToolCallProposal for sudo/rm/systemctl, and assess_safety only shows
+    //      a confirmation card. A recognition error must never reach a
+    //      tool-execution gate unattended (docs/VOICE-INPUT-SPEC.md D5).
+    Connections {
+        target: root.voice
+
+        function onVoiceTranscriptChanged() {
+            const addition = root.voice ? root.voice.voiceTranscript : "";
+            if (!addition || addition.trim().length === 0) {
+                // Silence is not content: clear it without touching the field.
+                if (root.voice) root.voice.voiceTranscript = "";
+                return;
+            }
+            inputField.text = root.appendTranscript(inputField.text, addition);
+            inputField.cursorPosition = inputField.text.length;
+            if (root.voice) root.voice.voiceTranscript = "";
+            // Deliberately no submitMessage() call here.
+        }
+    }
+
+    /**
+     * Appends a transcript without ever truncating typed text.
+     *
+     * Mirrors `domain::voice::append_transcript` so the QML and Rust sides agree
+     * on the join semantics, including preserving a deliberate trailing newline.
+     */
+    function appendTranscript(existing, addition) {
+        const extra = (addition || "").trim();
+        if (extra.length === 0) return existing;
+        const base = existing.replace(/\s+$/, "");
+        if (base.length === 0) return extra;
+        if (/\n$/.test(existing)) return base + "\n" + extra;
+        return base + " " + extra;
+    }
+
+    property alias inputText: inputField.text
+    readonly property alias micButtonItem: micButton
+    // Exposed so the click routing can be exercised: emitting `clicked()` runs the
+    // real onClicked handler rather than a re-implementation of it.
+    readonly property alias micMouseItem: micMouse
+    readonly property alias voiceStripItem: voiceStrip
+    readonly property alias voiceStripHolderItem: voiceStripHolder
+    readonly property alias attachButtonItem: attachButton
+    readonly property alias sendButtonItem: sendButton
+
     // Skill Autocomplete Popup Modal
     Rectangle {
         id: skillPopup
@@ -436,7 +706,12 @@ Rectangle {
         clip: true
 
         readonly property string query: inputField.text.substring(1).toLowerCase()
-        readonly property var allSkills: (typeof AssistantService !== "undefined") ? AssistantService.discoveredSkills : []
+        readonly property var allSkills: {
+            const src = (typeof AssistantService !== "undefined") ? AssistantService.discoveredSkills : [];
+            // Guarded: the list is empty until the async skills scan lands, and a
+            // null intermediate would throw on every keystroke of a "/".
+            return Array.isArray(src) ? src : [];
+        }
         readonly property var filteredSkills: {
             if (!query) return allSkills.slice(0, 5);
             return allSkills.filter(s => s.name.toLowerCase().includes(query) || s.description.toLowerCase().includes(query)).slice(0, 5);

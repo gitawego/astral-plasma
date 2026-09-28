@@ -11,7 +11,7 @@
 //!
 //! Every script must therefore resolve symlinks (`pwd -P`) before using `-p`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -135,4 +135,174 @@ fn run_sh_refuses_to_start_a_second_shell() {
         source.contains("quickshell -n -p \"$DIR\""),
         "the shell must be launched with --no-duplicate as a second guard"
     );
+}
+
+#[test]
+fn the_shell_claims_its_shortcuts_on_every_start() {
+    // Closing the shell hands the global shortcuts back to Plasma, and the only
+    // other place that binds them is the daemon's watcher - which can start
+    // minutes late when a stale watcher still holds the D-Bus name. A restart
+    // therefore left the whole desktop without its shortcut keys. shell.qml must
+    // claim them again on every start, for the KWin profile only.
+    let source = read("shell.qml");
+    let completed = source
+        .split("Component.onCompleted")
+        .nth(1)
+        .expect("shell.qml must have a Component.onCompleted block");
+    let block = completed
+        .split("Component.onDestruction")
+        .next()
+        .expect("Component.onDestruction follows Component.onCompleted");
+
+    assert!(
+        block.contains("\"shortcuts\", \"bind\""),
+        "shell.qml must re-bind the KWin shortcuts on startup: a shell restart must never \
+         leave the desktop without its shortcut keys"
+    );
+    assert!(
+        block.contains("DesktopSessionFacade.profile === \"kde\""),
+        "binding KDE global shortcuts is a KWin-profile concern"
+    );
+}
+
+#[test]
+fn shortcut_binds_are_serialised_across_callers() {
+    // Two callers claim the shortcuts at startup: the shell as soon as it loads,
+    // and the daemon's watcher when it comes up. Both rewrite the same KDE
+    // configs and reload the same KWin script; running them concurrently left
+    // KWin's scripting service and the daemon's D-Bus service wedged, so every
+    // shortcut stopped doing anything. Both entry points must take one lock.
+    for script in ["scripts/bind_shortcuts.sh", "scripts/restore_shortcuts.sh"] {
+        let source = read(script);
+        assert!(
+            source.contains("flock"),
+            "{script} must serialise shortcut config writes"
+        );
+        assert!(
+            source.contains("astral-plasma-shortcuts.lock"),
+            "{script} must take the shared shortcut lock"
+        );
+    }
+}
+
+#[test]
+fn an_already_bound_shortcut_set_is_left_alone() {
+    // The shell and the daemon's watcher both claim the shortcuts on every
+    // start. Re-running the full bind when the requested mode is already in
+    // place reloads KWin's scripting service underneath the daemon and wedges
+    // its D-Bus service, so the script must recognise that state and stop.
+    let source = read("scripts/bind_shortcuts.sh");
+    assert!(
+        source.contains("already bound"),
+        "bind_shortcuts.sh must no-op when the requested mode is already bound"
+    );
+    assert!(
+        source.contains("shortcuts_backup.json"),
+        "the bound state is recognised by the session backup the script writes"
+    );
+}
+
+#[test]
+fn the_binding_labels_agree_across_languages() {
+    // The Rust claim check recognises its own work by the exact
+    // `kglobalshortcutsrc` value, and `bind_shortcuts.sh` writes that value. If
+    // the labels drift apart the claim never looks current, so every reconciler
+    // tick re-binds - a typo turning into a hot loop. Pin the two sides together.
+    let script = read("scripts/bind_shortcuts.sh");
+    assert!(
+        script.contains(astral_plasma::domain::shortcuts::LAUNCHER_BINDING_LABEL),
+        "bind_shortcuts.sh must write the launcher label the claim check expects"
+    );
+    assert!(
+        script.contains(astral_plasma::domain::shortcuts::OVERVIEW_BINDING_LABEL),
+        "bind_shortcuts.sh must write the overview label the claim check expects"
+    );
+}
+
+#[test]
+fn external_desktop_state_has_one_writer_each() {
+    // Cross-domain regressions start when two components own the same external
+    // file: one binds, the other restores, and the ordering is nobody's job.
+    // Each of these files may only be touched by the modules listed here.
+    let owners: [(&str, &[&str]); 4] = [
+        (
+            "kglobalshortcutsrc",
+            &[
+                "daemon/src/infrastructure/kwin_shortcuts.rs",
+                "scripts/bind_shortcuts.sh",
+                "scripts/restore_shortcuts.sh",
+            ],
+        ),
+        ("kwinrulesrc", &["daemon/src/infrastructure/kwin_window_rules.rs"]),
+        (
+            "kwinrc",
+            &[
+                "daemon/src/infrastructure/kwin_blur.rs",
+                "daemon/src/infrastructure/kwin_shortcuts.rs",
+                "scripts/bind_shortcuts.sh",
+                "scripts/restore_shortcuts.sh",
+            ],
+        ),
+        (
+            "shortcuts_backup.json",
+            &[
+                "daemon/src/infrastructure/kwin_shortcuts.rs",
+                // Reads the journal to decide whether a claim is still needed.
+                "scripts/bind_shortcuts.sh",
+                "scripts/restore_shortcuts.sh",
+            ],
+        ),
+    ];
+
+    let mut sources: Vec<PathBuf> = Vec::new();
+    collect(&repo_root().join("daemon/src"), &mut sources);
+    collect(&repo_root().join("scripts"), &mut sources);
+    for entry in ["shell.qml", "config/Config.qml", "services/WindowService.qml"] {
+        sources.push(repo_root().join(entry));
+    }
+
+    for (file, allowed) in owners {
+        for source in &sources {
+            let Ok(content) = std::fs::read_to_string(source) else {
+                continue;
+            };
+            // Only *code* counts as ownership: a file name in a doc comment
+            // describes the state, it does not mutate it.
+            let code: String = content
+                .lines()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    !(trimmed.starts_with("//") || trimmed.starts_with('#'))
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !code.contains(file) {
+                continue;
+            }
+            let rel = source
+                .strip_prefix(repo_root())
+                .unwrap_or(source)
+                .to_string_lossy()
+                .replace('\\', "/");
+            assert!(
+                allowed.contains(&rel.as_str()),
+                "{rel} writes {file}, but the owner list says only {allowed:?} may. \
+                 Add it deliberately or route the write through the owner."
+            );
+        }
+    }
+}
+
+fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "rs" || ext == "sh") {
+            out.push(path);
+        }
+    }
 }

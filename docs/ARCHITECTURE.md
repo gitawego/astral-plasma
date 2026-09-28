@@ -187,7 +187,7 @@ Astral Plasma runs seamlessly across multiple Wayland compositors:
 ### 4.2. Hyprland Standalone (`HyprlandProfile`)
 - **Direct IPC Socket Stream**: Communicates directly over UNIX domain sockets (`.socket.sock` and `.socket2.sock`) with zero child-process overhead.
 - **Dynamic & Persistent Workspaces**: Supports Hyprland's dynamic on-demand workspace creation as well as persistent workspaces (`workspace = X, persistent:true`).
-- **Layer-Shell Surface Management**: Manages Quickshell `PanelWindow` layer-shell surfaces with blur rules.
+- **Layer-Shell Surface Management**: Manages Quickshell `PanelWindow` layer-shell surfaces with blur rules. The AI Copilot is a real xdg-toplevel (`FloatingWindow`) instead, so the compositor's window list and task switcher can reach it; the KWin profile installs the matching frameless window rule.
 
 ### 4.3. Hosted Omarchy Plugin (`HostedOmarchyProfile`)
 - **Single Host Rule**: In an Omarchy environment, `omarchy-shell` is the sole Quickshell host process. Astral Plasma integrates as a plugin rather than spawning a competing root shell.
@@ -198,6 +198,14 @@ Astral Plasma runs seamlessly across multiple Wayland compositors:
     - **Widget Mode**: Compact capsule widget embedded into an existing Omarchy bar.
     - **Complete Bar Mode**: Full-featured desktop bar providing launcher, workspaces, active window, clock, and status indicators.
 - **Standalone Guard**: `run_self_contained_app()` detects active Omarchy sessions and refuses to launch an independent standalone host beside `omarchy-shell` unless overridden by `ASTRAL_STANDALONE_OVERRIDE=1`.
+
+### 4.4. Desktop-integration session (claim → reconcile → release)
+
+Adopting a KDE desktop means writing files that other programs also write (`kglobalshortcutsrc`, `kwinrc`, `kwinrulesrc`), so the takeover is an explicit session lifecycle with a single owner at each step rather than a set of independent side effects.
+
+- **One writer per external file.** Each of `kglobalshortcutsrc`, `kwinrc`, `kwinrulesrc`, and the shortcut session journal (`AstralShortcutSessionBackup`, which records the keys it replaced plus the `mode` in force) has exactly one writer. Shortcut claims go through `ShortcutControlUseCase::backup_and_bind`, which persists the journal **before** the keys are taken, and `bind_shortcuts()` is a no-op when the requested mode is already claimed — a repeated claim therefore cannot overwrite the original backup with the shell's own bindings.
+- **The reconciler owns desired state.** `DesktopReconciler::{observe, apply, reconcile}` compares `DesiredState` against `ObservedState` and repairs drift in the Plasma panels, the shortcut claim, the shortcut KWin script, and the frameless window rule, in the fixed order `DisablePanels → LoadShortcutScript → ClaimShortcuts → ApplyFramelessRule` (`domain/desktop_integration.rs::plan_repairs`). The application layer runs it every 5 s (`run_desktop_reconcile_loop`), replacing the panel-only watchdog: nothing else decides what the desktop *should* look like, and a restart resumes the journaled mode (`resume_mode()`) instead of re-deriving it.
+- **Signals never release the desktop.** SIGTERM/SIGINT and stdin EOF mean the process is ending, not that the user wants their panels and shortcuts back; both paths exit without touching the desktop. The desktop is released only by the watchdog — which supervises the **shell** pid (`libc::getppid()`), not its own, and honours `plasma.autoRestoreOnExit` — or by an explicit `astral-plasma plasma restore`. The shell is not a lifecycle owner either: reloading the QML tree (`Component.onDestruction`) is not an exit.
 
 ---
 
