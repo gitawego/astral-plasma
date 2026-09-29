@@ -8,10 +8,16 @@ fn test_pw_record_sink_monitor_args_capture_sink_not_mic() {
     let args = build_pw_record_args();
     assert!(args.contains(&"--raw".to_string()), "pw-record must include --raw to avoid AU container header corruption");
 
-    let p_idx = args.iter().position(|a| a == "-P").expect("pw-record must include -P properties flag");
-    let prop_json = &args[p_idx + 1];
-    assert!(prop_json.contains("\"stream.capture.sink\": true") || prop_json.contains("\"stream.capture.sink\":true"),
-        "pw-record must set stream.capture.sink: true so PipeWire links to speaker monitor rather than physical microphone");
+    // NO `-P stream.capture.sink` property: verified live that combining it
+    // with `--target @DEFAULT_AUDIO_SINK@` binds a silent stream (31 KB of
+    // pure zeros while music plays), muting the visualizer, the audio-flow
+    // gate and all MPRIS arbitration. Targeting the sink alone selects its
+    // monitor with real audio. A test once pinned the property; it pinned
+    // the bug.
+    assert!(!args.iter().any(|a| a == "-P"),
+        "pw-record must not request stream properties: stream.capture.sink binds silence on PipeWire 1.x");
+    assert!(!args.iter().any(|a| a.contains("stream.capture.sink")),
+        "no capture-semantics property may be emitted for either target");
 
     let target_idx = args.iter().position(|a| a == "--target").expect("pw-record must specify target");
     assert_eq!(args[target_idx + 1], "@DEFAULT_AUDIO_SINK@", "pw-record must target @DEFAULT_AUDIO_SINK@");

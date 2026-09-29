@@ -65,14 +65,15 @@ impl CaptureTarget {
 
     /// The `-P` stream properties, or `None` when PipeWire's default is correct.
     ///
-    /// `pw-record` already defaults to source capture, so emitting an explicit
-    /// `"stream.capture.sink": false` would be noise. Only the sink-monitor
-    /// case needs the property, which is why this is an `Option`.
+    /// Always `None`: `pw-record` targeting a sink already selects its monitor
+    /// with live audio, while an explicit `"stream.capture.sink": true`
+    /// property bound a silent stream on PipeWire 1.x (verified live: tens of
+    /// KB of zeros during playback, muting the visualizer and the audio-flow
+    /// gate beneath all MPRIS arbitration). Emitting it anyway would re-mute
+    /// the shell's ears, so no target requests properties.
     pub fn stream_properties(self) -> Option<&'static str> {
-        match self {
-            CaptureTarget::Sink => Some("{\"stream.capture.sink\": true}"),
-            CaptureTarget::Source => None,
-        }
+        let _ = self;
+        None
     }
 }
 
@@ -80,9 +81,14 @@ impl CaptureTarget {
 ///
 /// This is the single builder for **both** the visualizer (sink monitor) and
 /// voice input (microphone). The `CaptureTarget::Sink` invocation with
-/// `rate = 8000, latency_ms = 32` must stay byte-identical to the historical
+/// `rate = 8000, latency_ms = 32` must stay byte-identical to the corrected
 /// `audio_visualizer::build_pw_record_args()` output; `daemon/tests/test_audio_visualizer.rs`
 /// asserts that and is deliberately left unmodified as the non-regression proof.
+///
+/// No `-P stream.capture.sink` property is ever emitted: targeting a sink
+/// already selects its monitor with live audio, while the explicit property
+/// bound a silent stream on PipeWire 1.x (verified live), muting the
+/// visualizer and the audio-flow gate beneath all MPRIS arbitration.
 pub fn pw_record_args(
     target: CaptureTarget,
     sample_rate: u32,
@@ -91,7 +97,6 @@ pub fn pw_record_args(
 ) -> Vec<String> {
     pw_record_args_for_target(
         target.target_token(),
-        target.stream_properties(),
         sample_rate,
         channels,
         latency_ms,
@@ -101,35 +106,27 @@ pub fn pw_record_args(
 /// Same contract as [`pw_record_args`], but for an explicit PipeWire node.
 ///
 /// Used for the echo-cancelled source, whose node name is not one of the
-/// `@DEFAULT_...@` tokens. No `stream.capture.sink` property is emitted: the
-/// AEC source is already a capture node, and forcing sink semantics on it would
-/// make `pw-record` fail.
+/// `@DEFAULT_...@` tokens. The node is captured as-is; no semantics are
+/// forced on it.
 pub fn pw_record_args_for_node(
     node: &str,
     sample_rate: u32,
     channels: u16,
     latency_ms: u32,
 ) -> Vec<String> {
-    pw_record_args_for_target(node, None, sample_rate, channels, latency_ms)
+    pw_record_args_for_target(node, sample_rate, channels, latency_ms)
 }
 
 /// The single `pw-record` argument builder both entry points share.
 fn pw_record_args_for_target(
     target: &str,
-    properties: Option<&str>,
     sample_rate: u32,
     channels: u16,
     latency_ms: u32,
 ) -> Vec<String> {
-    let mut args: Vec<String> = Vec::with_capacity(15);
+    let mut args: Vec<String> = Vec::with_capacity(13);
     // --raw: disables the AU container so stdout carries pure PCM frames.
     args.push("--raw".to_string());
-
-    if let Some(props) = properties {
-        args.push("-P".to_string());
-        args.push(props.to_string());
-    }
-
     args.push("--target".to_string());
     args.push(target.to_string());
 
@@ -1744,12 +1741,14 @@ mod tests {
     #[test]
     fn visualizer_args_are_byte_identical() {
         // Pins the exact historical argv so the visualizer cannot regress.
+        // NOTE: an earlier revision of this vector contained `-P
+        // {"stream.capture.sink": true}`; that property bound a silent
+        // stream on PipeWire 1.x (verified live), so pinning it pinned the
+        // bug. The correct contract is: target alone, no properties.
         assert_eq!(
             pw_record_args(CaptureTarget::Sink, 8000, 1, 32),
             vec![
                 "--raw",
-                "-P",
-                "{\"stream.capture.sink\": true}",
                 "--target",
                 "@DEFAULT_AUDIO_SINK@",
                 "--latency",

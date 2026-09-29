@@ -24,8 +24,12 @@ use std::path::Path;
 #[test]
 fn capture_target_sink_preserves_the_visualizer_contract() {
     let args = pw_record_args(CaptureTarget::Sink, 8000, 1, 32);
-    let p = args.iter().position(|a| a == "-P").expect("sink must request stream properties");
-    assert!(args[p + 1].contains("\"stream.capture.sink\": true"));
+    // The sink target alone selects the monitor with live audio. An explicit
+    // `stream.capture.sink` property bound a silent stream on PipeWire 1.x
+    // (verified: 31 KB of zeros during playback), muting the visualizer and
+    // all arbitration — so no properties flag may be emitted for any target.
+    assert!(!args.iter().any(|a| a == "-P"), "sink capture must not request stream properties");
+    assert!(!args.iter().any(|a| a.contains("stream.capture.sink")));
     let t = args.iter().position(|a| a == "--target").unwrap();
     assert_eq!(args[t + 1], "@DEFAULT_AUDIO_SINK@");
 }

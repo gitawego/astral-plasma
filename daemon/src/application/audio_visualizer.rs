@@ -305,8 +305,12 @@ pub fn pcm_bytes_to_samples(bytes: &[u8]) -> Vec<f32> {
 /// Builds the command line arguments for pw-record to capture audio directly
 /// from the default audio sink monitor port (speakers/headphones) as raw PCM bytes.
 /// - `--raw`: Disables AU/WAV container headers so stdout receives pure PCM frames.
-/// - `-P {"stream.capture.sink": true}`: Instructs PipeWire to link to the sink monitor rather than microphone.
-/// - `--target @DEFAULT_AUDIO_SINK@`: Links to the default audio output device.
+/// - `--target @DEFAULT_AUDIO_SINK@`: Links to the default audio output device;
+///   targeting a sink selects its monitor with live audio. No `-P`
+///   `stream.capture.sink` property is emitted: verified live that the
+///   explicit property binds a silent stream on PipeWire 1.x (tens of KB of
+///   zeros during playback), which muted the visualizer and the audio-flow
+///   gate beneath all MPRIS arbitration.
 /// - `--latency 32ms`: Enforces low latency period matching 256 samples @ 8000Hz.
 ///
 /// Capture argument construction is shared with voice input via
