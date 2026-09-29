@@ -9,6 +9,18 @@ Singleton {
     id: root
 
     readonly property var rawPlayers: Mpris.players.values
+    /**
+     * A raw Chromium instance bus (`...edge.instance3610`) duplicates the
+     * plasma-browser-integration player; Firefox's bus
+     * (`...firefox.instance_1_1212245`, underscores, not a bare PID) is a
+     * real player and must survive. Matching ".instance" alone deleted
+     * Firefox whenever Edge was present — the player was never even a
+     * candidate, so no arbitration could ever elect it.
+     */
+    function isRawChromiumInstance(busName) {
+        if (!busName) return false;
+        return /\.(chrome|chromium|edge|brave|vivaldi|opera|microsoft-edge)\.instance\d+$/.test(busName);
+    }
     readonly property var players: {
         let list = rawPlayers || [];
         if (!list || list.length <= 1) return list;
@@ -26,7 +38,7 @@ Singleton {
             let p = list[i];
             if (!p) continue;
             // When plasma-browser-integration is active, deduplicate raw Chromium instance bus names
-            if (p.dbusName && p.dbusName.indexOf(".instance") !== -1) {
+            if (isRawChromiumInstance(p.dbusName)) {
                 continue;
             }
             res.push(p);

@@ -107,6 +107,11 @@ Item {
                 return false;
             },
 
+            isRawChromiumInstance: function(busName) {
+                if (!busName) return false;
+                return /\.(chrome|chromium|edge|brave|vivaldi|opera|microsoft-edge)\.instance\d+$/.test(busName);
+            },
+
             filterPlayers: function(rawList) {
                 var list = rawList || [];
                 if (!list || list.length <= 1) return list;
@@ -123,7 +128,7 @@ Item {
                 for (var i = 0; i < list.length; i++) {
                     var p = list[i];
                     if (!p) continue;
-                    if (p.dbusName && p.dbusName.indexOf(".instance") !== -1) {
+                    if (this.isRawChromiumInstance(p.dbusName)) {
                         continue;
                     }
                     res.push(p);
@@ -248,6 +253,25 @@ Item {
         var preserved = service.filterPlayers(rawOnlyList);
         assert(preserved.length === 2, "Preserved list must keep raw Edge instance when PBI absent: got " + preserved.length);
         assert(preserved[1].dbusName === "org.mpris.MediaPlayer2.edge.instance3610", "Raw Edge is preserved");
+
+        // 5b. Firefox is never a "raw instance": its bus carries underscores,
+        // not a bare PID. The old ".instance" substring match deleted Firefox
+        // whenever Edge/PBI was present, so no arbitration could elect it.
+        var firefoxPlayer = {
+            dbusName: "org.mpris.MediaPlayer2.firefox.instance_1_1212245",
+            identity: "Mozilla firefox",
+            playbackState: 1,
+            isPlaying: true
+        };
+        var withFirefox = [pausedWinePlayer, rawEdgeInstance, playingEdgePlayer, firefoxPlayer];
+        var dedupedFirefox = service.filterPlayers(withFirefox);
+        assert(dedupedFirefox.length === 3, "PBI dedup must drop only the raw Edge instance: got " + dedupedFirefox.length);
+        assert(dedupedFirefox[2].dbusName === firefoxPlayer.dbusName, "Firefox must survive PBI dedup");
+        assert(service.isRawChromiumInstance("org.mpris.MediaPlayer2.edge.instance3610") === true, "bare-PID Edge bus is raw");
+        assert(service.isRawChromiumInstance("org.mpris.MediaPlayer2.chrome.instance123") === true, "bare-PID Chrome bus is raw");
+        assert(service.isRawChromiumInstance("org.mpris.MediaPlayer2.firefox.instance_1_1212245") === false, "Firefox bus is not raw");
+        assert(service.isRawChromiumInstance("org.mpris.MediaPlayer2.plasma-browser-integration") === false, "PBI itself is not raw");
+        assert(service.isRawChromiumInstance("") === false && service.isRawChromiumInstance(null) === false, "empty input never filters");
 
         // 6. Switching from Browser to Wine: Browser paused, Wine starts playing
         var pausedEdgePlayer = {
