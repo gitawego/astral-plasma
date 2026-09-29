@@ -75,12 +75,26 @@ Singleton {
         return bus.indexOf("cloudmusic") !== -1 || id.indexOf("NetEase") !== -1 || id.indexOf("Wine") !== -1;
     }
 
+    /**
+     * A finished session masquerading as Playing: position has reached a known
+     * duration while the state never cleared (e.g. 13:18 of 13:18). Browsers
+     * leave these behind on ended media; trusting the claim elects a dead
+     * session over the music that is actually audible.
+     */
+    function isStaleFinishedSession(p) {
+        if (!p) return false;
+        const length = Number(p.length || 0);
+        const position = Number(p.position || 0);
+        return length > 0 && position >= length;
+    }
+
     function hasOtherNativePlayingPlayer(excludePlayer) {
         if (!players || players.length === 0) return false;
         for (let i = 0; i < players.length; i++) {
             let other = players[i];
             if (!other || other === excludePlayer) continue;
             if (isWinePlayer(other)) continue;
+            if (isStaleFinishedSession(other)) continue;
             if (other.isPlaying === true || other.playbackState === 1 || (typeof MprisPlaybackState !== "undefined" && other.playbackState === MprisPlaybackState.Playing)) {
                 return true;
             }
@@ -103,6 +117,13 @@ Singleton {
     /// passages from flickering.
     property double silentSinceMs: 0
     property bool audioFlowing: false
+    onAudioFlowingChanged: {
+        // Rising edge only: music started somewhere, so the audible owner
+        // should hold the selection. The falling edge (pause) is deliberately
+        // not synced — there is no grounded winner in silence, and a sync
+        // there could only demote a correctly paused display.
+        if (audioFlowing) syncToPlayingPlayer(true);
+    }
 
     Timer {
         interval: 250
@@ -186,7 +207,9 @@ Singleton {
         }
 
         // Native MPRIS players (Edge, Chrome, Firefox, Strawberry, Elisa, etc.):
-        // DBus state is authoritative for native Linux players
+        // DBus state is authoritative for native Linux players, except for a
+        // finished session still claiming Playing (see isStaleFinishedSession).
+        if (isStaleFinishedSession(p)) return false;
         if (p.playbackState === 2 || p.playbackState === 0) return false;
         if (typeof MprisPlaybackState !== "undefined") {
             if (p.playbackState === MprisPlaybackState.Paused || p.playbackState === MprisPlaybackState.Stopped) return false;
@@ -216,32 +239,44 @@ Singleton {
         return false;
     }
 
-    function syncToPlayingPlayer() {
+    function syncToPlayingPlayer(corrective) {
         if (!players || players.length === 0) return;
+        // A corrective sync fires when ground truth arrives or changes (stream
+        // list, arbitration availability, audio flow). It may only demote a
+        // stale selection toward an arbitration-proven winner: promoting on
+        // bare DBus claims here would re-elect the same stale browser session
+        // the correction is meant to dethrone, and clearing a manual pick
+        // would make the dropdown useless (it reverts within one poll).
+        const isCorrection = corrective === true;
+        if (isCorrection && manualPlayerBusName !== "") return;
         // Prioritize any actively playing native player first (e.g. Edge, Chrome, Firefox)
+        let winner = null;
         for (let i = 0; i < players.length; i++) {
             let p = players[i];
             if (!isWinePlayer(p) && isPlayerPlaying(p)) {
-                manualPlayer = null;
-                manualPlayerBusName = "";
-                if (currentPlayer !== p) {
-                    currentPlayer = p;
-                }
-                return;
+                winner = p;
+                break;
             }
         }
-        // Then any other playing player (e.g. Wine)
-        for (let i = 0; i < players.length; i++) {
-            let p = players[i];
-            if (isPlayerPlaying(p)) {
-                manualPlayer = null;
-                manualPlayerBusName = "";
-                if (currentPlayer !== p) {
-                    currentPlayer = p;
+        if (!winner) {
+            for (let i = 0; i < players.length; i++) {
+                let p = players[i];
+                if (isPlayerPlaying(p)) {
+                    winner = p;
+                    break;
                 }
-                return;
             }
         }
+        if (isCorrection && !audioArbitrationAvailable) return;
+        if (winner) {
+            manualPlayer = null;
+            manualPlayerBusName = "";
+            if (currentPlayer !== winner) {
+                currentPlayer = winner;
+            }
+            return;
+        }
+        if (isCorrection) return;
         // If none playing, prefer Cloud Music if available
         for (let i = 0; i < players.length; i++) {
             let p = players[i];
@@ -265,6 +300,23 @@ Singleton {
             if (Config.dashboardVisible && (Config.activeDashboardTab === "dashboard" || Config.activeDashboardTab === "media")) {
                 root.syncToPlayingPlayer();
             }
+        }
+    }
+
+    // Ground truth arrives on its own schedule (daemon poll, visualizer
+    // energy), not on dashboard events. A selection made while arbitration
+    // was unavailable would otherwise keep a stale browser session forever:
+    // re-sync correctively so the audible player dethrones it within one
+    // poll. Corrective syncs never promote on bare claims and never clear a
+    // manual pick (see syncToPlayingPlayer), so pauses and dropdown choices
+    // are unaffected.
+    Connections {
+        target: (typeof AudioStreams !== "undefined") ? AudioStreams : null
+        function onAvailableChanged() {
+            if (AudioStreams.available) root.syncToPlayingPlayer(true);
+        }
+        function onStreamsChanged() {
+            root.syncToPlayingPlayer(true);
         }
     }
 

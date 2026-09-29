@@ -278,6 +278,146 @@ Item {
         var quietVisualizer = { isStreaming: true, energy: 0.0, beat: 0.0 };
         assert(service.isPlayerPlaying(winePlayerWithStaleState, quietVisualizer) === false, "Wine player must be not playing when visualizer has zero energy");
 
+        // ------------------------------------------------------------------
+        // 7. Stale-session demotion + corrective sync (mirrors the FIXED
+        // services/MprisMedia.qml: syncToPlayingPlayer(corrective),
+        // isStaleFinishedSession, arbitration-grounded promotion).
+        //
+        // The reported case: Firefox plays NetEase (only audible stream),
+        // Edge/PBI shows a finished 13:18/13:18 session still claiming
+        // Playing and is ordered first. The overlay credited Edge.
+        // ------------------------------------------------------------------
+        var arb = {
+            players: [],
+            currentPlayer: null,
+            manualPlayer: null,
+            manualPlayerBusName: "",
+            arbitrationAvailable: false,
+            audioFlowing: false,
+            streams: [],
+            isWinePlayer: function(p) {
+                if (!p) return false;
+                var bus = p.dbusName || "";
+                var id = p.identity || "";
+                return bus.indexOf("cloudmusic") !== -1 || id.indexOf("NetEase") !== -1 || id.indexOf("Wine") !== -1;
+            },
+            normalize: function(v) {
+                return String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            },
+            isAudible: function(identity, busName) {
+                for (var i = 0; i < this.streams.length; i++) {
+                    var s = this.streams[i];
+                    var cands = [this.normalize(s.name), this.normalize(s.binary)].filter(function(c) { return c.length >= 3; });
+                    var pls = [this.normalize(identity), this.normalize(busName)].filter(function(p) { return p.length >= 3; });
+                    for (var a = 0; a < cands.length; a++) {
+                        for (var b = 0; b < pls.length; b++) {
+                            if (cands[a].indexOf(pls[b]) !== -1 || pls[b].indexOf(cands[a]) !== -1) return true;
+                        }
+                    }
+                }
+                return false;
+            },
+            isStaleFinishedSession: function(p) {
+                if (!p) return false;
+                var length = Number(p.length || 0);
+                var position = Number(p.position || 0);
+                return length > 0 && position >= length;
+            },
+            isPlayerPlaying: function(p) {
+                if (!p) return false;
+                if (this.arbitrationAvailable) {
+                    return this.audioFlowing === true && this.isAudible(p.identity || "", p.dbusName || "");
+                }
+                if (this.isStaleFinishedSession(p)) return false;
+                if (p.playbackState === 2 || p.playbackState === 0) return false;
+                if (p.isPlaying === true) return true;
+                if (p.playbackState === 1) return true;
+                return false;
+            },
+            syncToPlayingPlayer: function(corrective) {
+                if (!this.players || this.players.length === 0) return;
+                var isCorrection = corrective === true;
+                if (isCorrection && this.manualPlayerBusName !== "") return;
+                var winner = null;
+                for (var i = 0; i < this.players.length; i++) {
+                    var p = this.players[i];
+                    if (!this.isWinePlayer(p) && this.isPlayerPlaying(p)) { winner = p; break; }
+                }
+                if (!winner) {
+                    for (var j = 0; j < this.players.length; j++) {
+                        var q = this.players[j];
+                        if (this.isPlayerPlaying(q)) { winner = q; break; }
+                    }
+                }
+                if (isCorrection && !this.arbitrationAvailable) return;
+                if (winner) {
+                    this.manualPlayer = null;
+                    this.manualPlayerBusName = "";
+                    if (this.currentPlayer !== winner) this.currentPlayer = winner;
+                    return;
+                }
+                if (isCorrection) return;
+            }
+        };
+
+        var staleEdge = {
+            dbusName: "org.mpris.MediaPlayer2.plasma-browser-integration",
+            identity: "Microsoft Edge",
+            playbackState: 1, isPlaying: true,
+            length: 798, position: 798
+        };
+        var liveFirefox = {
+            dbusName: "org.mpris.MediaPlayer2.firefox.instance1",
+            identity: "Firefox",
+            playbackState: 1, isPlaying: true,
+            length: 226, position: 35
+        };
+        arb.players = [staleEdge, liveFirefox];
+
+        assert(arb.isStaleFinishedSession(staleEdge) === true, "13:18/13:18 still claiming Playing is a finished session");
+        assert(arb.isStaleFinishedSession(liveFirefox) === false, "a mid-track session is not finished");
+        assert(arb.isStaleFinishedSession({}) === false, "unknown length never demotes");
+        assert(arb.isStaleFinishedSession(null) === false, "null never demotes");
+
+        // Cold start with no arbitration: the finished session must not win
+        // on its bare claim even when ordered first.
+        arb.arbitrationAvailable = false;
+        arb.audioFlowing = false;
+        arb.streams = [];
+        arb.currentPlayer = null;
+        arb.syncToPlayingPlayer(false);
+        assert(arb.currentPlayer === liveFirefox, "fallback must elect Firefox, not the finished Edge session");
+
+        // Stale selection self-heals when ground truth arrives: only Firefox
+        // owns a stream, audio flows, Edge is demoted.
+        arb.currentPlayer = staleEdge;
+        arb.arbitrationAvailable = true;
+        arb.audioFlowing = true;
+        arb.streams = [{ name: "Firefox", binary: "firefox" }];
+        arb.syncToPlayingPlayer(true);
+        assert(arb.currentPlayer === liveFirefox, "corrective sync must dethrone stale Edge for audible Firefox");
+
+        // A manual pick survives corrective syncs (dropdown stays usable).
+        arb.currentPlayer = staleEdge;
+        arb.manualPlayerBusName = staleEdge.dbusName;
+        arb.syncToPlayingPlayer(true);
+        assert(arb.currentPlayer === staleEdge, "corrective sync must never clear a manual pick");
+
+        // Corrective sync without arbitration changes nothing (no bare-claim promotion).
+        arb.manualPlayerBusName = "";
+        arb.currentPlayer = staleEdge;
+        arb.arbitrationAvailable = false;
+        arb.audioFlowing = false;
+        arb.syncToPlayingPlayer(true);
+        assert(arb.currentPlayer === staleEdge, "corrective sync without ground truth must not re-elect anyone");
+
+        // Pause keeps the display: no flow means no grounded winner, no change.
+        arb.currentPlayer = liveFirefox;
+        arb.arbitrationAvailable = true;
+        arb.audioFlowing = false;
+        arb.syncToPlayingPlayer(true);
+        assert(arb.currentPlayer === liveFirefox, "a pause must not demote the display");
+
         console.log("PASS: Browser Media Arbitration Tests");
         Qt.exit(0);
     }
