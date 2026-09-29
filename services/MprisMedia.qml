@@ -267,6 +267,32 @@ Singleton {
                 }
             }
         }
+        // Stream owners outrank bare claimants. Arbitration needs *flowing*
+        // audio, so a paused owner (uncorked stream, silent room) and a stale
+        // claimant (Playing state, no stream) tie at zero under it — yet the
+        // stream list still names the owner. Preferring an owner elects the
+        // paused Firefox over a stale Edge, and never elects anything that
+        // owns nothing. Paused displays are preserved: when no stream exists
+        // at all this finds nothing and selection keeps.
+        if (!winner && audioArbitrationAvailable && AudioStreams.streams && AudioStreams.streams.length > 0) {
+            for (let i = 0; i < players.length; i++) {
+                let p = players[i];
+                if (!isWinePlayer(p)
+                        && AudioStreams.matcher.isAudible(p.identity || "", p.dbusName || "")) {
+                    winner = p;
+                    break;
+                }
+            }
+            if (!winner) {
+                for (let j = 0; j < players.length; j++) {
+                    let q = players[j];
+                    if (AudioStreams.matcher.isAudible(q.identity || "", q.dbusName || "")) {
+                        winner = q;
+                        break;
+                    }
+                }
+            }
+        }
         if (isCorrection && !audioArbitrationAvailable) return;
         if (winner) {
             manualPlayer = null;

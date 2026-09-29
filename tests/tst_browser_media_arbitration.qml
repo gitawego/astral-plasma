@@ -349,6 +349,18 @@ Item {
                         if (this.isPlayerPlaying(q)) { winner = q; break; }
                     }
                 }
+                if (!winner && this.arbitrationAvailable && this.streams.length > 0) {
+                    for (var k = 0; k < this.players.length; k++) {
+                        var r = this.players[k];
+                        if (!this.isWinePlayer(r) && this.isAudible(r.identity || "", r.dbusName || "")) { winner = r; break; }
+                    }
+                    if (!winner) {
+                        for (var m = 0; m < this.players.length; m++) {
+                            var s = this.players[m];
+                            if (this.isAudible(s.identity || "", s.dbusName || "")) { winner = s; break; }
+                        }
+                    }
+                }
                 if (isCorrection && !this.arbitrationAvailable) return;
                 if (winner) {
                     this.manualPlayer = null;
@@ -417,6 +429,36 @@ Item {
         arb.audioFlowing = false;
         arb.syncToPlayingPlayer(true);
         assert(arb.currentPlayer === liveFirefox, "a pause must not demote the display");
+
+        // Stream owners outrank bare claimants even when nothing flows: a
+        // paused Firefox (uncorked stream, silent room) beats a stale Edge
+        // (Playing claim, no stream). The live machine showed exactly this.
+        var pausedFirefox = {
+            dbusName: "org.mpris.MediaPlayer2.firefox.instance1",
+            identity: "Mozilla firefox",
+            playbackState: 2, isPlaying: false,
+            length: 198, position: 52
+        };
+        var staleClaimEdge = {
+            dbusName: "org.mpris.MediaPlayer2.plasma-browser-integration",
+            identity: "Microsoft Edge",
+            playbackState: 1, isPlaying: true,
+            length: 200, position: 10
+        };
+        arb.players = [staleClaimEdge, pausedFirefox];
+        arb.currentPlayer = staleClaimEdge;
+        arb.manualPlayerBusName = "";
+        arb.arbitrationAvailable = true;
+        arb.audioFlowing = false;
+        arb.streams = [{ name: "Firefox", binary: "firefox" }];
+        arb.syncToPlayingPlayer(false);
+        assert(arb.currentPlayer === pausedFirefox, "a paused stream owner must outrank a stale claimant");
+
+        // With no streams at all, nobody is preferred and selection keeps.
+        arb.currentPlayer = staleClaimEdge;
+        arb.streams = [];
+        arb.syncToPlayingPlayer(false);
+        assert(arb.currentPlayer === staleClaimEdge, "unattributed silence must keep the display, not clear it");
 
         console.log("PASS: Browser Media Arbitration Tests");
         Qt.exit(0);
