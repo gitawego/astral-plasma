@@ -2205,3 +2205,393 @@ in `build_args`; the session-protocol stub asserts the daemon passes the sized
 `-ac` and the bounded decode flags; live runs of room audio dropped from 6–45 s
 to ~1.5 s of inference, and an 11 s speech sample transcribes correctly in 3.3 s
 end to end.
+
+---
+
+## 23. Speaker Bleed: Check The Input Before Tuning The Model
+
+Two reports - "speaks Chinese, gets Korean" and "speaks English, gets nothing" -
+looked like two ASR problems. They were one input problem.
+
+- **Measure, don't guess.** Recording the room through the built-in microphone
+  while the music played gave **0.64 RMS full scale** (the music's own monitor
+  measured 0.67–0.80). The microphone was delivering playback to the engine.
+  Language detection then keyed off the music - which is how Chinese came back
+  as Korean - and once VAD filtered the music there was nothing left, which is
+  how English came back empty.
+- **The fix is echo cancellation, not a model knob.** The playback is the
+  machine's own output, so PipeWire has a perfect reference for it:
+  `module-echo-cancel` (WebRTC AEC3) subtracts the sink monitor from the
+  capture. The same music measured **0.07 RMS** through the filtered source
+  (~19 dB down), while a live voice is uncorrelated with the reference and
+  passes through untouched. `voice.echoCancel` defaults on, the daemon
+  provisions `astral_echo_cancel` on the first session, and every failure path
+  falls back to the default source so dictation cannot break over an optional
+  filter.
+- **The rule**: when an ASR system outputs the wrong language or nothing at all,
+  measure the microphone signal against what the machine is playing before
+  touching thresholds, prompts, or models. A language-ID failure is often an
+  input-content failure.
+
+**Verification**: `echo_cancel::source_present`/`load_args` unit tests, a
+stub-`pactl` session test proving the module is loaded exactly once and the
+capture target is the provisioned node, a fallback test, and a status test
+proving a probe never loads the module. Live: capture args carried
+`--target astral_echo_cancel`, the module was provisioned, and a music-only
+session finished with an empty transcript in ~0.3 s.
+
+---
+
+## 24. Language Detection Follows Whatever Is Loudest
+
+"Chinese comes back as Korean", "French comes back as Chinese characters",
+"English produces nothing" - three languages, one mechanism.
+
+### 24.1. Measure The Input Before Touching The Model
+
+Recording the room through the built-in microphone while the music played:
+
+| Signal | RMS (full scale) |
+|---|---|
+| Built-in mic | 0.58–0.78 |
+| The music itself (sink monitor) | 0.67–0.80 |
+
+The microphone was delivering the speakers' playback at the same level as the
+playback itself. Whisper's language detection runs on whatever audio it is
+handed, so it followed the music: Chinese speech came back with Korean output,
+French with Chinese characters, and once VAD removed the music there was nothing
+left at all.
+
+### 24.2. The Detection Threshold Is A Ratio, And It Is Steep
+
+Mixing known speech with the room's music at controlled ratios and running
+whisper's own detection (`-dl`, no VAD):
+
+| Music vs voice | Detected | Transcript |
+|---|---|---|
+| 0 dB | `nn` | garbage |
+| -3 dB | `en` | `[water rushing]` |
+| -6 dB | `en` | `[water rushing]` |
+| -9 dB | `en` | `[sounds of water]` |
+| **-12 dB** | **`fr`** | **"Tu fais quoi ?"** |
+| -15 dB | `fr` | "Tu fais quoi ?" |
+
+The voice must be at least ~12 dB louder than the music **at the microphone**.
+No flag, model, or prompt changes that: it is an input requirement.
+
+### 24.3. Engine VAD Corrupted Detection And Was Removed
+
+whisper.cpp applies `--vad` *before* language detection: `whisper_full` replaces
+`samples` with the VAD-filtered audio and then calls `whisper_full_with_state`,
+which auto-detects the language from that filtered audio (`src/whisper.cpp`).
+Measured at -12 dB music-to-voice, the same clip:
+
+- **no VAD**: detected `fr`, transcript "Tu fais quoi ?"
+- **with VAD**: detected `en`, transcript "Quoi ?" (clipped)
+
+VAD cost ~3 dB of detection headroom and clipped the utterance. The daemon's
+own `SilenceDetector` gates the no-speech case instead, so engine VAD is gone.
+
+### 24.4. The +60 dB Input Gain Was Clipping The ADC
+
+`Capture` sat at 63/63 (**+30 dB**) and `Internal Mic Boost` at 3/3
+(**+30 dB**). The capture peaked at exactly 1.000 with **5.6–25.4% of samples
+hard-clipped**. Dropping the boost to 1 removed all clipping (peak 0.346) and
+improved AEC slightly. Clipping also worsens borderline detection (-6 dB:
+linear → `en` annotation, clipped → `nn` garbage), and it limits echo
+cancellation, which needs a linear echo path. The webcam microphone heard the
+music just as loudly (0.75 RMS, 20% clipped), so changing devices does not help.
+
+### 24.5. What Was Fixed, And What Only Physics Can Fix
+
+- **Fixed in code**: engine VAD removed; the detected language is read from the
+  `-oj` sidecar and reported (`Transcript.language` was hardcoded to `und`, so a
+  wrong detection was invisible); a capture with no speech skips the engine
+  instead of producing music annotations; AEC stays on by default.
+- **Only physics fixes the rest**: with the music louder than the voice at the
+  microphone, no ASR can recover the language. The user must lower the speakers,
+  use headphones, fix the input gain (`Internal Mic Boost` 3 → 1), or move
+  closer. The measured requirement is a ≥12 dB voice-to-music ratio at the mic.
+
+**The rule**: when an ASR system returns the wrong language, measure the
+microphone signal against what the machine is playing before touching any model
+knob. Language ID is an input problem, and the numbers say so immediately.
+
+### 24.6. Environmental Noise Has No Reference To Cancel
+
+The follow-up report - Chinese dictated as "(car engine revving) (speaking in
+foreign language)" - looked like a regression but was the same input problem in
+a different guise. The decisive measurement:
+
+| Signal | RMS |
+|---|---|
+| Jeecoo sink monitor (PC playback) | **0.0000** (paused) |
+| Built-in sink monitor | **0.0000** |
+| Built-in microphone | **0.73, 18.4% clipped** |
+| Echo-cancelled source | 0.16 (AEC + WebRTC NS, ~15 dB) |
+
+Both playback monitors were silent while the microphone was clipping: the loud
+sound was **not coming from the machine**. Echo cancellation is a *reference*
+filter - it subtracts the sink signal from the capture - so it cannot touch
+sound the machine never played. The AEC's noise suppression still removed ~15 dB
+of it, but with no reference there is nothing more to subtract, and whisper
+transcribed the room (engine/music) while annotating the buried speech as
+"foreign language" because its language detection keyed on the noise.
+
+The rule generalises §24.1: **check the monitors, not just the microphone.** If
+the mic is hot and the monitors are silent, the problem is the room, and no
+amount of software will fix it - a microphone at the mouth (headset), a quieter
+place, or a pinned language are the only real options.
+
+`parec --device=<source-or-monitor>` is the reliable way to read a specific
+node; `pw-record --target <name>` silently falls back to the default source when
+the name does not resolve, which once made the microphone look identical to the
+sink monitor.
+
+## 25. Never Park A Tokio Worker: The Daemon That Answered Nothing
+
+### 25.1. The Symptom Hid Two Different Bugs
+
+The report was "shortcut keys don't work again, and the panels can't be restored
+after exiting the theme". Those looked like one failure and were two:
+
+| Bug | Root cause | Where it lived |
+|---|---|---|
+| Shortcuts silently did nothing | `ShellIpc` ran `quickshell ipc` with a **blocking** `Command::status()` inside the async zbus handler, so a slow shell wedged the whole interface | `watch_events.rs::shell_ipc` |
+| Panels/shortcuts not handed back | the incoming session's `spawn_watchdog` killed the outgoing watchdog mid-restore, and the outgoing cleanup deleted the incoming watchdog's pid file | `plasma_service.rs`, `plasma_adapter.rs` |
+
+Both are fixed (async `run_shell_ipc_command` with a 5 s timeout; a
+`.restoring` hand-over wait plus compare-and-remove pid files), and both have
+tests. But a third, deeper failure was underneath: **the daemon's D-Bus
+interface could wedge permanently while the process stayed alive**.
+
+### 25.2. Measure The Process, Not The Theory
+
+The wedged daemon owned its bus name, answered nothing (not even
+`org.freedesktop.DBus.Peer.Ping`), and `ps` showed every thread parked:
+
+```
+u_str ESTAB 4461  0  * 195023826  * 195019949  users:(("astral-plasma",pid=309792,fd=9))
+```
+
+`ss -x` was the first real clue: **4461 unread bytes on the bus socket**. The
+connection was not reading its own socket. A heartbeat task added inside the
+daemon settled the question - in healthy runs it ticked 135 times, in wedged
+runs **0-2 times** while the process kept emitting window payloads:
+
+```
+[t=126] [hb] task started
+[t=127] [bg] name-health check          <- interval's first tick is immediate
+[t=366] [stage] 6b after backup_and_bind
+(no [hb] tick=1 ever)                    <- tokio's time driver never fired again
+```
+
+`tokio::time::sleep` never completing while `interval`'s first tick did means
+the **timer driver was not being polled** - and neither was the I/O driver, so
+the bus socket stayed unread. gdb on a wedged release build showed exactly who
+was at fault:
+
+```
+Thread 14 "tokio-rt-worker":
+  #1  poll () from /usr/lib/libc.so.6
+  #2  std::sys::process::unix::common::read_output
+  #6  std::process::Command::output
+  #7  OpenCodeAdapter as AgentSessionAdapter>::query_external_store
+  #8  AiActivityMonitor::run_inotify_loop::{{closure}}
+  #9  tokio::runtime::task::raw::poll
+```
+
+One runtime worker was executing an **async task** that called a **blocking
+subprocess** (`sqlite3`) inline. The other 23 workers sat in `park_condvar`, and
+the driver is handed off between workers only when one parks: while the owner
+was stuck in `poll()`, nobody polled the drivers. Every D-Bus reply, `sleep`,
+`interval` and shortcut in the process froze, permanently, with the process
+alive.
+
+### 25.3. The Rule: Blocking Work Goes To The Blocking Pool
+
+A tokio worker may never run a blocking syscall. Every port call that shells out
+(`qdbus6`, `busctl`, `bash`, `pactl`, `sqlite3`, KWin scripting, X11 focus
+calls) now runs on the blocking pool:
+
+```rust
+/// Runs a blocking port call without parking a tokio worker.
+pub async fn blocking<T, F>(work: F) -> T
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    match tokio::task::spawn_blocking(work).await {
+        Ok(value) => value,
+        Err(error) => std::panic::resume_unwind(error.into_panic()),
+    }
+}
+```
+
+`spawn_blocking` **plus await** is the important shape: the handler still waits
+for its result, so events keep their arrival order, but the runtime thread is
+free. Spawning the handler body into its own task instead (an earlier attempt
+here) breaks that order - a `WindowActivated` overtaken by later
+`UpdateWindowList` calls left the active-window indicator stuck on a stale
+window. Ordering is part of the contract; concurrency was not the fix.
+
+The same rule applies to sleeps: `wait_for_restore_to_finish` slept on the
+runtime thread for up to 15 s, so its async twin (`wait_for_restore_to_finish_async`)
+uses `tokio::time::sleep`.
+
+### 25.4. Proof, Not Vibes
+
+- **Reproducible harness**: the release daemon on a private FIFO stdin, probed
+  over D-Bus every 3 s. Before the fix: 5/10 runs wedged. After: **8/8 runs
+  responsive**, with the heartbeat at 135 ticks.
+- **Regression tests** (`daemon/tests/test_runtime_nonblocking.rs`): a
+  single-threaded runtime runs a 5 ms ticker while a slow port call (and the
+  hand-over wait) runs; the test asserts the ticker kept firing. Removing the
+  `blocking(...)` wrapper makes it fail (`saw 3 ticks`), which is what proves
+  the test guards the behaviour rather than restating it.
+- **Live session**: `ShellIpc overview.toggle` toggles the overview, and the
+  dock's active-window label follows Dolphin -> Ghostty on activation.
+
+The lesson generalises: when a process is alive but answers nothing, look for a
+worker that is parked inside a syscall, and check the socket queues before
+blaming the protocol.
+
+### 25.5. The Watchdog That Was Not There
+
+The second half of the report - "the panels can't be restored after exiting the
+theme" - was not the same bug as the wedged interface. The desktop is handed
+back by a detached `astral-plasma plasma watchdog <shell-pid>` process, and the
+live session was found **unarmed**: the daemon's watchdog was a zombie, the pid
+file was gone, and nothing was left to restore the panels.
+
+Four distinct root causes, each fixed and tested:
+
+| Root cause | Why it broke the hand-back | Fix |
+|---|---|---|
+| Two actors stop-and-spawn the watchdog (the daemon's startup *and* the `plasma disable` the shell runs from QML) with no serialization | an unserialized `stop` that lands after the last `spawn` leaves the session with **no** watchdog | `with_watchdog_lock`: an `flock` around the whole stop+spawn hand-over |
+| A watchdog wrote its pid over whatever the file held | a second watchdog could steal the file, so the session lost track of its watchdog and a later stop could not release it | `claim_watchdog_pid_file`: a live *watchdog* keeps its claim; a stale or recycled pid is replaced |
+| `stop_watchdog` signalled the pid in the file without checking what it was | the file lives in `/tmp` and outlives its watchdog; a recycled pid made the daemon `SIGKILL` an unrelated process - observed live, when the agent's own shell was killed by a `plasma disable` | `is_watchdog_process` / `is_watchdog_argv`: only `<exe> plasma watchdog <pid>` is ever signalled |
+| The watchdog's output went to `Stdio::null()` | a watchdog that died before the shell did left no evidence at all - which is why this looked like "panels are never restored" with nothing to read | it now appends to `/tmp/astral_plasma_watchdog.log` |
+
+The daemon also leaked a zombie per session (it spawned the watchdog and never
+waited); `spawn_reaped` reaps it in a detached thread.
+
+Proof, in the same spirit as §25.4:
+
+- `daemon/tests/test_watchdog_handover.rs` grew from 3 to 7 tests. Each has
+  teeth: removing the lock makes `watchdog_handover_is_serialized_across_processes`
+  fail ("two watchdog hand-overs ran at the same time"), and the argv check was
+  written after a *real* false positive - the test binary's own path contains
+  `test_watchdog_handover`, so substring matching classified it as a watchdog.
+- End-to-end: a stand-in shell was supervised by a real watchdog; killing it
+  logged `Monitored PID ... has terminated, restoring original Plasma state` and
+  `plasma status` went from `panels: []` to the two real panels (top and bottom,
+  72 px), then the running reconciler re-claimed them.
+- Safety: with the pid file poisoned by an unrelated process's pid, the next
+  `plasma disable` left that process alive and re-armed the session.
+
+A detached process whose only job is to act after its parent is gone must be
+observable, or its failure is indistinguishable from a feature that never
+existed.
+
+---
+
+## 26. Three Ways A Reading Can Be Right-Shaped And Useless
+
+Three bugs in the voice path, one shape. Each produced output that *looked*
+like the real thing — a plausible transcript, a live meter, a confident-looking
+label — and each was invisible because nothing in the system was willing to say
+"no" or "unsure".
+
+### 26.1 A Mean Is Not A Floor
+
+The endpointing detector estimated the room by averaging every frame below a
+hard ceiling. Ordinary dictation sits *just* under that ceiling, so speech was
+averaged into the estimate. The floor climbed to the speech level, the rule
+`level > floor * 3` became unsatisfiable, and the detector latched off
+mid-sentence. Measured: a 1.3 s utterance at 0.05 RMS in a 0.002 room was
+tracked for **260 ms**, and `trim_to_speech` then handed the engine that
+fragment.
+
+The fix was not a different threshold. It was changing the *statistic*: a low
+**quantile** of the frames that were not themselves speech. A quantile is
+robust to a minority of loud frames, and it still rises in a quiet room because
+there every frame is background.
+
+**Generalisation: when estimating a baseline, ask what the baseline is made of,
+not what it averages to.** Speech, motion, network idle — any of them are a
+minority of their own window, and any of them will poison a mean.
+
+The constant the old code used (`0.05`) was *right*. The dividing line between
+"a constant signal is the room" and "a constant signal is an event" is a real
+one, and no energy-based detector can place it elsewhere without a trained VAD.
+What was wrong was the mean, not the constant. Before replacing a threshold in
+a system, check whether the *estimator* is the actual defect.
+
+### 26.2 QML Does Not Signal A No-Op Assignment
+
+A session that captured audio but produced no words left the composer
+completely untouched — no error, no notice, nothing in the logs. The chain:
+
+1. The daemon emitted `Final` with an empty `text`.
+2. The service assigned `root.voiceTranscript = ""` — but that property was
+   *already* `""`.
+3. **QML emits no change signal when a property is assigned its current value.**
+4. `onVoiceTranscriptChanged` never ran, so the composer's only dictation path
+   was never entered.
+
+The guard written for exactly this case (`if (!addition) return`) was itself
+unreachable, because the function containing it never ran.
+
+**Generalisation: never drive a state change through a change signal when the
+state is allowed to be a no-op.** Handle the empty case explicitly in the
+producer, on a separate channel, and give the UI something to show. A result
+that is legitimately empty must still be *delivered* as a result.
+
+### 26.3 The Reading Was On Screen And Nowhere To Act
+
+Auto-detection was the default. whisper decides it with a bare `argmax` over
+100 language logits and commits the winner as a hard decoder constraint, so
+English speech could come back as valid-looking Japanese — `p = 0.08`, a tie
+between a hundred languages. The probability is printed to **stderr**, which
+the adapter captured and discarded on success.
+
+The UI was supposed to show the reading and let the user override it. It could
+not, for a structural reason: the strip rendered `"transcribing"` for the whole
+of the finalizing state, the language arrived only with the transcript, and the
+transcript's arrival also closed the strip. The label could only ever render
+"language not determined" or "transcribing".
+
+**Generalisation: a display that shows a value only *after* the decision is
+irreversible is not a control, it is a receipt.** Two rules follow, and both
+were needed:
+
+- **Decide before you commit, not while.** `whisper-cli -dl` identifies and
+  stops, so the language is known before the decode and can be gated, shown and
+  corrected. A fused pass has no such moment.
+- **Parse the engine's own confidence instead of discarding it.** The number
+  that proves a reading is weak was already in the captured stream, thrown away
+  on the success path where nobody thought to look.
+
+And the corollary: **separate "detected" from "trusted".** The gate must not
+silently discard a doubtful reading — it must report it with its doubt attached
+(`ja (unsure)`, error-tinted, one click from the picker). Discarding it
+invisibly produces output that looks exactly like a recognition bug.
+
+### 26.4 The Test Suite Was Blind By Construction
+
+Every speech test in the suite used **0.35 RMS**, seven times above the
+admission ceiling — so speech never entered the floor window and the estimator
+was never exercised. The "loud room" test used 0.09, *above* the ceiling, which
+is the branch that does not populate the window. The suite passed, in the
+regime where the code worked, and could not see the regime where it broke.
+
+One test asserted `floor() < 0.06` — a number from the estimator itself. That
+pinned the test to one implementation and to no user-visible property at all.
+
+**Generalisation: a test's inputs are a claim about where the code is used.**
+If every fixture sits in a regime the product never occupies, the suite is
+decorative. Reach for numbers you have *measured on the real device*, and assert
+on observable classifications ("background reads as silence", "the whole
+utterance is tracked") rather than on internal numbers that change with the
+estimator.

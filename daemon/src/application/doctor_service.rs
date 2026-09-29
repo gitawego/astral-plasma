@@ -103,6 +103,28 @@ fn check_voice_engine() -> DependencyCheck {
         }
     }
 
+    // Input gain staging (audit §4.1): flag a saturated ALSA capture path.
+    // Warn-only: never rewrites mixer controls. Absent `amixer` means "unknown",
+    // not "broken".
+    if let Some(warning) = check_mic_gain() {
+        messages.push(warning.clone());
+        recommendations.push(
+            "Lower the mic boost in alsamixer / system settings (e.g. `amixer -c 1 sset 'Internal Mic Boost' 1`)".to_string(),
+        );
+    }
+
+    // Neural endpointing upgrade (audit §4.2): worth naming when the STT path
+    // is otherwise ready, but never a readiness gate — energy fallback works.
+    if installed
+        && crate::infrastructure::whisper_stt_adapter::resolve_model_file(&settings.model).is_some()
+        && crate::domain::voice::resolve_vad_model_file().is_none()
+    {
+        messages.push("neural voice detection (Silero VAD) is not installed; energy fallback active".to_string());
+        recommendations.push(
+            "Install it for noise-robust endpointing: astral-plasma voice install-vad-model".to_string(),
+        );
+    }
+
     let ready = installed
         && crate::infrastructure::whisper_stt_adapter::resolve_model_file(&settings.model).is_some()
         && crate::infrastructure::whisper_stt_adapter::has_audio_source();
@@ -133,6 +155,56 @@ fn check_voice_engine() -> DependencyCheck {
             Some(recommendations.join(" "))
         },
     }
+}
+
+/// Inspects ALSA capture gain for ADC saturation risk (audit §1.1).
+///
+/// Returns a warning when `Capture` is at/near maximum with `Internal Mic
+/// Boost` also at maximum (the +60 dB ALC256 configuration measured at 68%
+/// hard clipping). Returns `None` when `amixer` is absent, the controls do not
+/// exist, or levels parse healthy — unknown is not a warning.
+fn check_mic_gain() -> Option<String> {
+    let out = Command::new("amixer").arg("sget").arg("Capture").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    // `amixer sget` prints lines like `Mono: Capture 63 [100%] [30.00dB]`.
+    let mut maxed = false;
+    for line in text.lines() {
+        if let Some(pct) = parse_amixer_percent(line) {
+            if pct >= 95 {
+                maxed = true;
+            }
+        }
+    }
+    if !maxed {
+        return None;
+    }
+    let boost = Command::new("amixer").arg("sget").arg("Internal Mic Boost").output().ok()?;
+    if !boost.status.success() {
+        return None;
+    }
+    let btext = String::from_utf8_lossy(&boost.stdout).into_owned();
+    for line in btext.lines() {
+        if let Some(pct) = parse_amixer_percent(line) {
+            if pct >= 95 {
+                return Some(
+                    "microphone analog gain near maximum (clipping risk): Capture ~100% + Mic Boost ~100%"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    None
+}
+
+/// Extracts the `[NN%]` field from one `amixer` output line.
+fn parse_amixer_percent(line: &str) -> Option<u32> {
+    let start = line.find('[')?;
+    let rest = &line[start + 1..];
+    let end = rest.find("%]")?;
+    rest[..end].trim().parse::<u32>().ok()
 }
 
 fn check_quickshell() -> DependencyCheck {

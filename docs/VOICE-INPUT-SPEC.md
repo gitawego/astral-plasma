@@ -62,9 +62,9 @@ The stop button and `Enter` work at all times. Auto-finalize is governed by an a
 
 **Why:** a user must be able to cut off mid-sentence.
 
-**Endpointing vs filtering, recorded honestly:** the original design expected whisper.cpp's Silero VAD to decide "the user stopped talking". That is still not what `--vad` does: it is an *inference-time filter over a completed file*, so live endpointing remains the daemon's **noise-floor-adaptive** `SilenceDetector` (a pure function, unit-tested against synthetic speech/noise, degradable to manual-only via `voice.autoFinalize: false`).
+**Endpointing vs filtering, recorded honestly:** the original design expected whisper.cpp's Silero VAD to decide "the user stopped talking". That is not what `--vad` does: it is an *inference-time filter over a completed file*, so live endpointing remains the daemon's **noise-floor-adaptive** `SilenceDetector` (a pure function, unit-tested against synthetic speech/noise, degradable to manual-only via `voice.autoFinalize: false`).
 
-The VAD *asset* was reported missing at authoring time because it was fetched from the wrong repository: `ggml-org/whisper.cpp` is not a public Hugging Face repo, and Hugging Face answers **HTTP 401** (not 404) for paths an anonymous client may not see — which read as "unreachable / needs credentials". Upstream's own `models/download-vad-model.sh` downloads from `https://huggingface.co/ggml-org/whisper-vad`, which is public, credential-free, and 885 KiB. The daemon now provisions it (`voice install-vad`, and alongside every `install-model`) and passes `--vad --vad-model` whenever the asset is present — still never a bare `--vad`, which fails the whole transcription. Filtering non-speech before decoding is what keeps music and room noise from becoming hallucinated text.
+**Engine VAD is not used at all, and that is a measured decision.** whisper.cpp applies `--vad` *before* language detection: `whisper_full` replaces the samples with the VAD-filtered audio and then calls `whisper_full_with_state`, which auto-detects the language from that filtered audio (`src/whisper.cpp`). On a music+speech mix the filtering therefore corrupts the one thing dictation depends on: at **-12 dB music-to-voice** the unfiltered run detects `fr` and returns the exact "Tu fais quoi ?", while the VAD run detects `en` and returns "Quoi ?" (clipped). The asset remains downloadable upstream (`ggml-org/whisper-vad`), but the daemon neither provisions nor passes it: endpointing and no-speech gating are the daemon's own detector, so engine VAD is both redundant and harmful.
 
 ### D4a — The hard cap is enforced by a watchdog, not by the frame loop
 
@@ -105,13 +105,43 @@ The engine and model are never downloaded silently. `check_voice_engine()` repor
 
 **Why:** silently pulling 1.5 GiB, or shelling out to a package manager unprompted, is hostile. But requiring manual setup means the feature is simply broken on first run with no route forward.
 
-### D8 — The detected language is displayed
+### D8 — The detected language is displayed, *while it can still matter*
 
-Auto-detection is the default, and the strip shows what was detected. This is not decoration: on a 2–5 second clip auto-detection is genuinely unreliable, and without a visible reading a wrong guess is indistinguishable from a recognition bug. Showing it turns a mystery into a one-glance override.
+D8 originally said auto-detection is the default and that showing the reading turns a mystery into a one-glance override. Both halves were unimplementable as written, and the failure was a real one: **English speech came back as "会議のも学び".**
+
+Two separate defects were behind it.
+
+**The decision was trusted unconditionally.** `whisper_lang_auto_detect_internal` sorts the language logits, softmaxes, and returns `logits_id[0].second` — a bare `argmax` over 100 candidates. The winner is written to `state->lang_id` and the decoder is then *constrained* to it, so nothing downstream can revisit the choice. On a 1.3 s clip whose encoder window is two-thirds zero padding, that argmax landed on `ja` at **p = 0.08**: not a reading, the shape of a tie between a hundred languages. whisper prints that probability to stderr; the adapter captured stderr and discarded it on success, so the one number that would have exposed the tie was already in hand and thrown away.
+
+**The display was structurally unreachable.** The strip rendered `"transcribing"` for the whole of the finalizing state; `voiceLanguage` was cleared at session start and set only on `Final`, which also set `voiceState = "idle"` and hid the strip. So during recording the label read "language not determined" and during finalizing it read "transcribing" — it could never render a real value. The reasoning in the code comment was correct (a language *cannot* have been detected yet at that point); the mistake was treating that as a reason to hide the field rather than as proof the affordance was in the wrong place.
+
+What replaces it:
+
+- **Detection is its own pass.** `whisper-cli -dl` identifies and stops, so the language decision happens *before* the decode and can be inspected. `LanguageSource` records whether the transcription used a configured language, a confident detection, or a detection that was overridden.
+- **The confidence gate is real.** Below `MIN_LANGUAGE_CONFIDENCE` (0.35) the detection is *reported* but not *transcribed with*, and the user's locale is used instead. A pinned language is never overridden at any confidence.
+- **The reading is on screen during the decode.** A new `Detected` event fires before the transcription pass, and the strip shows the tag — annotated `(unsure)` and tinted with the error tone when the confidence is a tie.
+- **A doubtful reading is one click from a correction.** Clicking the label opens the voice section of Settings. There is deliberately no inline locale list: twenty locales in a 46 px strip would be a worse control than the page the user already knows.
+
+The reading replaces the word "transcribing" when present. That is the right trade — the elapsed clock and the level meter already say work is happening, and a status word is worth less than the one thing the user can act on.
 
 ### D9 — Session-scoped language overrides are never persisted
 
-`voice.language` in `settings.json` is the **default**. A per-session override lives only in `AssistantService` runtime state. Persisting it would mean a user dictating Mandarin in one session silently reconfigures their shell.
+`voice.language` in `settings.json` is the **default**. A per-session override lives only in `AssistantService` runtime state and is passed as `voice session --lang <tag>`. Persisting it would mean a user dictating Mandarin in one session silently reconfigures their shell.
+
+The override property existed for the whole of v1 with **no reader and no writer**, and `tst_voice_input.qml` asserted only that the declaration was present — so the test passed on dead code. It now reaches the engine, and the test asserts the argument is built rather than the property is declared.
+
+**The default is the user's locale, not `auto`.** A dictation UI is a committed-language interaction: the user knows what they are speaking, and the whole value of the microphone is low-friction insertion into a prompt they are about to send. Delegating the decision that determines the output alphabet to the least reliable part of the model is not a defensible default. An **absent** `voice.language` resolves to the locale; an explicit `"auto"` remains available in the picker for people who switch languages while dictating. Keeping those two apart matters — collapsing them is what made the ungated argmax the default.
+
+### D11 — Echo cancellation is the default input path
+
+A desktop microphone hears the machine's own speakers, and that - not the model, not the language setting - is the most common cause of bad dictation output. Measured on a reporter's machine: the built-in microphone carried the playing music at **0.64 RMS full scale** (the music itself measured 0.67–0.80), so the engine was asked to transcribe playback. The playback drove language detection (Chinese speech came back as Korean) or, once VAD filtered it, left nothing at all (English speech produced no text).
+
+PipeWire's `module-echo-cancel` (WebRTC AEC3) subtracts the sink reference from the capture. The same music measured **0.07 RMS** through the filtered source (~19 dB down), while a live voice - uncorrelated with the reference - passes through. `voice.echoCancel` therefore defaults to on:
+
+- The daemon provisions a source named `astral_echo_cancel` on the first session (`pactl load-module module-echo-cancel aec_method=webrtc ...`) and captures from it.
+- When PipeWire, `pactl`, or the module is unavailable, it silently falls back to the default source - dictation must never break over an optional filter.
+- Loading the module does not change the default sink or source, so playback routing is untouched.
+- `voice status` reports both the setting (`echo_cancel`) and whether the source is present (`echo_cancel_active`); a status probe never mutates the audio graph.
 
 ### D10 — Voice is never a required dependency
 
@@ -174,13 +204,23 @@ Speech capture is fixed at **16 kHz, mono, signed 16-bit little-endian** — whi
 
 ### 4.3 `SilenceDetector`
 
-Adaptive endpointing, per D4. Holds an exponential moving average of the observed quiet floor and compares the live frame level against it.
+Adaptive endpointing, per D4. It tracks **two** statistics rather than one, because a single number cannot serve both jobs at once:
+
+- a **room estimate** — the 20th percentile of the frames that were not themselves speech, over a 2 s window, admitting only frames at or below `FLOOR_ADMIT_CEILING` (0.05);
+- a **peak** — the loudest recent level, decaying with a ~1.5 s time constant.
+
+A frame is speech when it clears `max(peak / SILENCE_HEADROOM, floor * SILENCE_HEADROOM)`. Requiring both would mean an unmeasured room could veto real speech, and a measured one could veto a quiet word.
 
 - `push(frame_rms) -> SilenceDecision`
-- `SilenceDecision { level: f32, silent: bool, silent_for_ms: u64 }`
-- Floor tracks the low percentile of recent frames; a frame is silent when it sits below `floor * SILENCE_HEADROOM` for at least `SILENCE_FLOOR_WARMUP_FRAMES` frames. Warm-up prevents the very first silent frames from being read as a completed utterance.
+- `SilenceDecision { level, floor, speaking, active, silent_for_ms }`
+- `speaking` drives **endpointing**; `active` is the same test at the looser `SPEECH_ACTIVITY_HEADROOM` (1.5) and drives **trimming bounds** and `has_speech()`. They are separate because "did the user stop talking" is a precision question and "was anything said at all" is a recall one, and gating the engine on the precision answer discarded whole utterances.
+- Warm-up (`SILENCE_WARMUP_FRAMES`) gates **only** the silence accumulator, never speech classification. Gating classification is what discarded the first 500 ms of any utterance that began the moment the microphone opened.
 - Auto-finalize fires when `silent_for_ms >= silence_hangover_ms` **or** `elapsed >= max_utterance_secs`.
-- Pure, so it is tested against synthetic signal: a tone burst in quiet noise must detect the trailing silence; a constant DC latch must never be read as speech; an all-silent buffer must not immediately finalize.
+- Pure, so it is tested against synthetic signal **at the levels a real microphone produces** (room 0.002, speech 0.05), not only at levels no room produces.
+
+**Why the estimator is a low quantile and not a mean.** The previous version averaged every frame below the admission ceiling. Ordinary dictation sits just under that ceiling, so the estimate climbed to the speech level, `level > floor * 3` became unsatisfiable, and the detector latched off mid-sentence: measured, a 1.3 s utterance at 0.05 in a 0.002 room was tracked for 260 ms, and the engine was handed a 260 ms fragment. A low quantile is immune, because speech is a minority of any window shorter than a continuous utterance.
+
+**The dividing line is a level judgement.** A *constant* signal at or below 0.05 is measurably a room; one above it is measurably an event. No energy-based detector can place that line anywhere else without a real VAD, so a steady background above it is read as speech, costing one wasted inference that returns nothing. That is the preferable trade to discarding utterances, and §11 records it.
 
 ### 4.4 `VoiceState` and `VoiceEvent`
 
@@ -214,10 +254,13 @@ pub struct Transcript {
     pub duration_ms: u64,
     pub engine: String,
     pub model: String,
+    pub speech_detected: bool, // did the capture contain recognised speech?
 }
 ```
 
 `language: "und"` is honest for an inconclusive detection; the UI shows "not determined" rather than inventing a guess.
+
+`speech_detected` distinguishes "the microphone heard nothing" from "the engine heard something and had no words for it". Those send the user to different places, and without the field an empty transcript arrives with no explanation at all — indistinguishable from a broken feature, leaving the user with a composer that silently refused to change. See §9a.
 
 ### 4.6 `VoiceSettings`
 
@@ -238,11 +281,13 @@ Serde struct with `#[serde(default = …)]` on every field, so a partial or abse
 
 ### 4.7 Language handling
 
-- `normalize_language("")` → `"auto"`
+- `normalize_language("")` → `"auto"` for a *value a user typed*. An **absent** `voice.language` is a different thing and is resolved to the system locale by `VoiceSettings::sanitized`; see D8.
+- `system_language()` reads `LC_ALL`, then `LC_MESSAGES`, then `LANG` — the POSIX precedence order — and strips region, codeset and modifier (`de_DE.UTF-8@euro` → `de`). An unresolvable primary falls through rather than poisoning the lookup. It returns `"auto"` only when nothing resolves, and the confidence gate is what keeps that honest.
 - Region tags collapse to base: `"zh-CN"`, `"zh_TW"`, `"ZH"` → `"zh"`
 - Case is canonicalised to lowercase
 - An unknown non-`auto` tag falls back to `"auto"` rather than being passed to the engine, where it would produce an opaque failure
 - The supported set is declared as data in `SUPPORTED_LANGUAGES`; the language picker in settings renders it
+- `resolve_transcription_language(requested, fallback, detected)` is the single decision point, and it is asymmetric on purpose: a pinned `requested` language is never overridden, only an *unconfident* detection is. See D8.
 
 ### 4.8 `VoiceStatus` and `ModelDescriptor`
 
@@ -290,11 +335,13 @@ Passing a `&mut dyn FnMut(VoiceEvent)` sink keeps the trait synchronous and triv
 
 **Engine invocation facts, verified live against whisper-cli 1.9.4.** Each of these was learned the hard way and is now pinned by tests:
 
-- **`--vad` is only ever passed together with `--vad-model`.** `--help` advertises the flag, but a bare `--vad` makes whisper-cli exit 10 with `failed to process audio` — it turns on Silero inference with no fallback model, and the asset is not provisioned (D4). `build_args` emits the pair only when `EngineInvocation.vad_model` resolves to a real file (`resolve_vad_model`, the canonical `ggml-silero-v5.1.2.bin` beside the speech models); it is `None` in every install we ship, and endpointing is the daemon's own `SilenceDetector`, so nothing is lost.
+- **Language is decided before it is trusted.** See D8. When the user has not pinned a language, the adapter runs a detection pass (`-dl`, probed like every other flag and absent on builds that predate it) and then a transcription pass with `-l <resolved>`. The engine's own `auto-detected language: <tag> (p = <float>)` line is parsed off **stderr**; below `MIN_LANGUAGE_CONFIDENCE` the detection is reported but not transcribed with. A build without `-dl` falls back to a single `-l auto` pass, which is the old behaviour, rather than emitting a flag it will reject.
+
+- **Engine VAD is never requested.** See D4: `--vad` rewrites the audio before language detection and costs ~3 dB of detection headroom. The daemon's `SilenceDetector` gates the no-speech case instead (`has_speech` from capture), and the engine only runs when speech was detected.
 - **`-oj` writes the JSON document beside the audio file (`<input>.json`), not to stdout.** stdout still carries the timestamped transcript, so parsing stdout as JSON returned an empty transcript for every utterance. The adapter reads the sidecar when the build advertises structured output, falls back to the timestamped stdout transcript when it is missing, and removes both files on every exit path.
 - **The encoder window is sized to the utterance (`-ac`).** whisper.cpp encodes `n_audio_ctx * 20 ms` per window regardless of clip length, so the trained 30 s default made a one-second "hello" pay the same encoder pass as thirty seconds of speech — and with `language: auto` that pass happens twice (language detection, then transcription). `audio_context_for` computes `ceil(duration / 20 ms) + 1.28 s`, clamped to 5.12 s–30 s. Measured on a 12th-gen i9 with `ggml-small`, a 2.5 s English clip went 3.9 s → 2.5 s (`auto`) / 1.1 s (fixed language), with an identical transcript.
 - **The decode is bounded (`-bs 1 -bo 1 -nf`).** whisper-cli's defaults (beam 5, best-of 5, temperature fallback to 1.0) are tuned for batch quality; on non-speech audio the decoder generated long hallucinated sequences. The same 3.3 s room capture took **45 s** with the defaults, **24 s** with greedy plus full fallback, and **~6 s** with greedy plus no fallback. Clean speech is unaffected (JFK: 0.6 s, identical transcript), so interactive dictation pins every multiplier.
-- **The VAD asset is provisioned and used when present.** `--vad --vad-model <path>` is emitted only when `ggml-silero-v5.1.2.bin` exists (never a bare `--vad`: it fails every transcription). Silero filters non-speech before decoding; measured on a room capture dominated by music, the engine returned an empty transcript in **~0.2 s** instead of 6–45 s of hallucinated text, while clean speech was unchanged (JFK still exact).
+- **The engine's detected language is reported.** The `-oj` sidecar carries `result.language`; the adapter reads it into `Transcript.language` (it was hardcoded to `und` whenever `language: auto`), so the UI can show `fr` or `ko` instead of "language not determined" - which is what makes a wrong detection visible and correctable from the language picker.
 
 ---
 
@@ -304,7 +351,9 @@ Passing a `&mut dyn FnMut(VoiceEvent)` sink keeps the trait synchronous and triv
 astral-plasma voice status                  -> VoiceStatus JSON
 astral-plasma voice engines                 -> engine + model catalog JSON
 astral-plasma voice install-model <id>      -> progress JSONL, then final status
+astral-plasma voice install-vad-model       -> Silero VAD asset, progress JSONL
 astral-plasma voice session                 -> control on stdin, VoiceEvent JSONL on stdout
+astral-plasma voice serve [socket] [idle-s] -> resident STT server (§14)
 ```
 
 **`voice session` control vocabulary** (one command per line on stdin):
@@ -329,13 +378,13 @@ Commands after the process has finalised are ignored rather than fatal, so a `st
 `CaptureTarget` argv for both variants; byte-identical visualizer argv; WAV header field-by-field and round-trip; silence detector against synthetic tone/noise/DC; `VoiceSettings` defaults, clamping, and survival of a partial JSON block; language normalisation table; `VoiceEvent` JSON round-trip; `MODEL_CATALOG` internal consistency (unique ids, non-zero sizes, all ids end in `.bin`).
 
 ### 8.2 `daemon/tests/test_voice_service.rs`
-A hand-written fake `SpeechToTextPort` proving `VoiceService` orchestrates capture→finalize→`Final` and that a `cancel` produces no `Final`. Proves the application layer is engine-independent. The real-binary store suite (`test_voice_model_store.rs`) drives `install-model`, `install-vad` and `remove-model` with a stub `curl` on `PATH`, asserting staged `.part` files, monotonic progress, the rename into place, and that a model install also provisions the VAD asset.
+A hand-written fake `SpeechToTextPort` proving `VoiceService` orchestrates capture→finalize→`Final` and that a `cancel` produces no `Final`. Proves the application layer is engine-independent. The real-binary store suite (`test_voice_model_store.rs`) drives `install-model` and `remove-model` with a stub `curl` on `PATH`, asserting staged `.part` files, monotonic progress and the rename into place.
 
 ### 8.3 `daemon/tests/test_whisper_stt_adapter.rs`
-`build_args` against synthetic capability sets: VAD flags omitted when unsupported, VAD never emitted without its model asset, `-l auto` honoured, model path always passed, a stdin-reading engine never hangs, the encoder context sized to the utterance (`audio_context_for` bounds) and the decode bounded (`-bs 1 -bo 1 -nf`) whenever the build advertises the knobs. Plus probe-parsing of a synthetic `--help` blob, sidecar-first transcript reading (`read_transcript`), and speech-region trimming (`trim_to_speech`: padding, clamping, and the no-speech passthrough).
+`build_args` against synthetic capability sets: engine VAD never requested, `-l auto` honoured, model path always passed, a stdin-reading engine never hangs, the encoder context sized to the utterance (`audio_context_for` bounds) and the decode bounded (`-bs 1 -bo 1 -nf`) whenever the build advertises the knobs. Plus the language decision in isolation: `parse_detected_language` recovering the tag and probability from a realistic stderr, `resolve_transcription_language` overriding a tie but never a pinned language, `build_detect_args` emitting `-dl` only on a build that advertises it, and the probe finding `-dl` in a real `whisper-cli` help banner. Plus probe-parsing of a synthetic `--help` blob, sidecar-first transcript reading with the detected language (`read_transcript` -> `EngineOutput`), and speech-region trimming (`trim_to_speech`: padding, clamping, and the no-speech passthrough).
 
 ### 8.4 `daemon/tests/test_voice_session_protocol.rs`
-Drives the real `astral-plasma voice session` binary with `ASTRAL_VOICE_ENGINE_BIN` pointed at a generated stub script that mirrors whisper-cli 1.9.4's actual behavior — a bare `--vad` is fatal, and `-oj` writes the JSON sidecar while stdout carries the timestamped transcript — asserting the full event contract, the control vocabulary, idempotent `stop`, clean exit, that the WAV handed to the engine is the trimmed speech region rather than the whole recording, and that the cost knobs (`-ac` sized to the trimmed audio, `-bs 1 -bo 1 -nf`, `--vad --vad-model` when the asset is installed) reach the engine. Uses a stub capture too, so it needs no microphone.
+Drives the real `astral-plasma voice session` binary with `ASTRAL_VOICE_ENGINE_BIN` pointed at a generated stub script that mirrors whisper-cli 1.9.4's actual behavior — a bare `--vad` is fatal, and `-oj` writes the JSON sidecar while stdout carries the timestamped transcript — asserting the full event contract, the control vocabulary, idempotent `stop`, clean exit, that the WAV handed to the engine is the trimmed speech region rather than the whole recording, that the cost knobs (`-ac` sized to the trimmed audio, `-bs 1 -bo 1 -nf`) reach the engine while the VAD flags never do, that the engine's detected language is reported in `Final`, and that a capture with no speech skips the engine entirely. Uses a stub capture too, so it needs no microphone.
 
 ### 8.5 `daemon/tests/test_doctor_voice.rs`
 `check_voice_engine()` appears in the report; `all_required_satisfied` is unaffected by voice being absent (D10).
@@ -367,6 +416,40 @@ The listening strip is a **Tier 2 content card** (`docs/LESSONS.md` §9.2): it i
 
 **Setup notice.** A setup gap (`ModelMissing`, `EngineMissing`) renders as a persistent inline notice above the input row carrying the install action, per Q12 — distinct from the existing crash carousel, which is reserved for genuine runtime deaths. The reason stays plain body text; the destination is rendered by the notice as its own chip (see §11a), which is why `describeVoiceGap` messages name the reason alone instead of composing a "— Settings › AI › Voice input" tail that would only duplicate it.
 
+### 9a. An empty result is reported, never swallowed
+
+The composer's only path from a `Final` event to the text field is
+`Connections { onVoiceTranscriptChanged }` in `ChatInputBar.qml`. QML emits **no
+change signal when a property is assigned its current value**, and
+`voiceTranscript` is already `""` when a session produced no words. So an empty
+`Final` never invoked the handler: the microphone opened, the level meter moved
+(the meter shows raw RMS for *every* frame, speech or not), the strip closed,
+and the composer was untouched — with no error, no notice, and nothing in the
+logs. The guard written for this case, `if (!addition ...) return`, was itself
+unreachable, because the handler it lived in never ran.
+
+This is also the structural point: **the meter and the transcript gate read two
+different signals.** The meter is the raw RMS of whatever the microphone heard;
+`has_speech` is a much stricter test. Displaying the first while the second
+decides the outcome is fine, but it must be reconciled somewhere, or "I can see
+it capturing" and "I get a transcript" are decoupled with nothing in between.
+
+The resolution has no new mechanism, only a separation that already existed:
+
+- `hasSetupMessage` — a persistent configuration gap. Has a destination, so the
+  strip links into Settings. Unchanged.
+- `emptyNotice` — a one-off outcome of the recording just finished. **No
+  destination**, because a page of settings cannot explain why one recording was
+  silent. Offering the link anyway would send the user somewhere that cannot
+  help, which is worse than offering nothing.
+
+`AssistantService` decides between them from `Transcript.speech_detected`, and
+`ChatInputBar.showVoiceStrip` holds the strip open for either, so the
+explanation is not created and destroyed in the same tick. The two notices
+collapse the live readouts exactly as a setup gap does: a level meter reading
+for a session that is over is the same "dead microphone" misread as a setup
+error shown next to a live meter (D-in-Q12).
+
 ---
 
 ## 10. Configuration
@@ -390,9 +473,9 @@ The settings UI is a **"Voice input" group inside the existing `settings_gui/pag
 | `cancel` mid-utterance | Audio discarded, no `Final`, mic released. |
 | Utterance exceeds cap | Auto-finalize at `maxUtteranceSeconds`. Reported in the transcript duration. |
 | Engine exits non-zero | `Error{recoverable:false}` → crash carousel. Temp file removed. |
-| Engine produces empty output | `Final` with empty text; **no** `Final` is fabricated from nothing. Strip clears. |
+| Engine produces empty output | `Final` with empty text and `speech_detected: true`; **no** text is fabricated from nothing. The composer shows an outcome notice (see §9a) — the result is empty, but it is never unexplained. |
 | Language undetermined | `language: "und"`. UI shows "not determined". Never guesses. |
-| All-silent utterance | Silence detector warm-up prevents premature finalize; cap eventually fires. |
+| All-silent utterance | `has_speech()` is false, the engine is skipped, and `Final` carries empty text with `speech_detected: false`. The composer shows "No speech was detected in that recording". Honest, and said out loud. |
 | Config block missing / partial | `#[serde(default)]` everywhere. Shell starts normally. |
 | Out-of-range config value | Clamped to the documented range, not rejected. |
 | Voice disabled in config | Button hidden, `voice session` still runnable manually via IPC. |
@@ -487,4 +570,32 @@ Two further issues were caught the same way and are not defects in the shipped c
 
 - **The `mic` and `hourglass_top` glyphs do not exist** in this shell's Nerd Font build, and the Material Design Icons private-use range maps to unrelated shapes. Adding them anyway rendered a factory silhouette and a pair of bars rather than a missing-glyph box. Presence in `cmap` is not identity; only rendering the component settled it. Voice now uses glyphs proven to render (`chat`, `stop`, `graphic_eq`, `info`), and `tst_voice_input.qml` asserts the unverified names are never requested.
 - **`services/` and `theme/` ship no `qmldir`**, so `AssistantService`, `Theme` and `Colors` resolve as *types* rather than registered singletons in a plain `qml` offscreen test. This is why the existing assistant suite asserts on source text rather than live values. Rather than add a `qmldir` — which would change module resolution for the whole shell — `ChatInputBar` takes its voice backend as an injectable property, which also decouples the component properly.
+
+---
+
+## 14. Audit Remediation Amendments (2026-09-29)
+
+Implements `docs/VOICE-INPUT-AUDIT.md` §4. Each item supersedes the section noted; the original reasoning above is kept for history. All verified live on ALC256 + whisper.cpp 1.9.4 (`ggml-small`, `ggml-silero-v5.1.2`).
+
+### A1 — Gain guard (new; no prior section)
+
+`capture_loop` audits the first 500 ms: `clipping_ratio() >= 0.02` emits one warn-only `VoiceEvent::Warning` with the `amixer` remediation and the session continues. `doctor` warns when `Capture ~100%` + `Internal Mic Boost ~100%`. Never auto-mutes (D7). QML handles `Warning` into `voiceWarning` without failing the session.
+
+### A2 — Neural VAD replaces energy gating (supersedes D4's "engine VAD is not used", extends §4.3)
+
+`whisper-vad-speech-segments` + provisioned `ggml-silero-v5.1.2.bin` (`voice install-vad-model`, `VoiceStatus.vad_model_present`) judges the FULL capture; its union span trims via the single `trim_to_speech` margin and its silence skips inference. Proven: `Front_Center.wav` → 2 segments (the two words); a full-scale sine → 0 segments (energy would call it speech); a live room → empty `Final`, no wasted inference. Absent binary/model degrades to the energy detector, never breaks. `ASTRAL_VOICE_VAD_BIN` injects a stub in tests.
+
+### A3 — Single-pass decode + resident server (supersedes D8's `-dl` two-pass)
+
+One decode with `-l <pinned|locale>`; the sidecar `result.language` is display-only `Detected` before `Final`. `voice serve` supervises `whisper-server` (model resident, per-request `language` field verified: `fr` → "Centre", `auto` → detected) behind the Unix-socket protocol; `ASTRAL_VOICE_SERVER_SOCK` selects it with one-shot CLI fallback. Proven: repeat requests, one backend boot. `build_detect_args` / `parse_detected_language` retained for probe compat but spawn nothing.
+
+### A4 — Echo cancellation off by default (supersedes D11)
+
+The legacy `module-echo-cancel` path loads nothing without sink routing (zero reference samples + blind AGC distortion, audit §3.3). `echoCancel` defaults `false`; `ensure_source()` requires `ASTRAL_VOICE_AEC_ALLOW_LEGACY=1`; `rnnoise` filter-chain is the evaluated replacement.
+
+Implemented as `voice.noiseSuppress` (default `false`, Settings toggle): capture-side only, operator-provisioned node (`ASTRAL_VOICE_NOISE_SUPPRESS_SOURCE` override wins), presence-probed with default-source fallback. `voice status` reports `noise_suppress{,_active}` + `rnnoise_available` (LADSPA scan). Verdict on this host: plugin absent, no sudo — path code-complete with stubs, suppression effect unevaluated-live; VAD gating already covers noise-induced hallucinations.
+
+### A5 — Native capture backend (extends §4.1/§6)
+
+`ASTRAL_VOICE_CAPTURE_BACKEND=native` captures in-process via `cpal` (exact 16 kHz mono s16/f32, else honest `CaptureFailed`) through the same frame loop (`FrameRead`), endpointing, watchdog (deadline, no signals needed) and trim contract. Proven live: 7.76 s ALC256 capture end-to-end. Default stays `pw-record`; an explicit capture-binary override always takes the spawn path (the test seam).
 

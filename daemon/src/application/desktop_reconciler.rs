@@ -75,11 +75,23 @@ impl DesktopReconciler {
 pub async fn run_desktop_reconcile_loop(desired: DesiredState, interval: Duration) {
     let plasma: Arc<dyn PlasmaControlPort> =
         Arc::new(crate::infrastructure::plasma_adapter::PlasmaAdapter::new());
-    let reconciler = DesktopReconciler::new(plasma);
+    let reconciler = Arc::new(DesktopReconciler::new(plasma));
     let mut ticker = tokio::time::interval(interval);
     loop {
         ticker.tick().await;
-        let repairs = reconciler.reconcile(&desired);
+        // `reconcile` reads and repairs the desktop through `qdbus6`, `busctl`
+        // and `bash`. On a runtime worker that parks the thread for seconds and
+        // stops the tokio I/O and timer drivers from being polled, which freezes
+        // every D-Bus reply in the process (see `watch_events::blocking`).
+        let observed_desired = desired.clone();
+        let reconciler = Arc::clone(&reconciler);
+        let repairs = match tokio::task::spawn_blocking(move || reconciler.reconcile(&observed_desired)).await {
+            Ok(repairs) => repairs,
+            Err(error) => {
+                eprintln!("[reconciler] reconcile task failed: {error}");
+                continue;
+            }
+        };
         if !repairs.is_empty() {
             eprintln!("[reconciler] repaired {:?} (mode {})", repairs, desired.mode);
         }

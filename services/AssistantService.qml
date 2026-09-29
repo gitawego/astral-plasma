@@ -98,15 +98,58 @@ Singleton {
     property string voicePartialText: ""
     /** The most recent finalized transcript, awaiting insertion into the composer. */
     property string voiceTranscript: ""
+    /**
+     * Why a session that ran produced no text, or "" when the last one did.
+     *
+     * This exists because the empty case used to be invisible. `voiceTranscript`
+     * was already `""` when a `Final` carried no words, so assigning it emitted
+     * no change signal, the composer's `onVoiceTranscriptChanged` never ran,
+     * and the user was left with a microphone that visibly worked and a
+     * composer that silently did not. An honest outcome still has to be said
+     * out loud.
+     */
+    property string voiceEmptyNotice: ""
+    /** Whether the last session's capture contained speech, as the engine saw it. */
+    property bool voiceSpeechDetected: true
+    /**
+     * The language the in-flight session settled on, reported before the
+     * transcript. Empty when the language is pinned rather than detected, in
+     * which case there is nothing to show and nothing to override.
+     */
+    property string voiceDetectedLanguage: ""
+    /**
+     * The engine's own probability for `voiceDetectedLanguage`, or -1 when it
+     * gave none.
+     *
+     * Carried through rather than collapsed into a boolean so the UI can say
+     * *how* sure it was. A detection at 0.9 and one at 0.11 are both "the engine
+     * guessed", and the second is the one worth overriding.
+     */
+    property real voiceLanguageConfidence: -1
+    /**
+     * A session-scoped language override, or "" for the configured default.
+     *
+     * Passed to `voice session --lang` and never persisted (D9): dictating in a
+     * second language for one prompt must not reconfigure the shell. This
+     * property used to exist with no reader and no writer, and a test asserted
+     * only that the declaration was there.
+     */
+    property string voiceLanguageOverride: ""
     /** Model download progress in [0.0, 1.0], and whether a download is running. */
     property real voiceModelInstallProgress: 0.0
     property bool voiceModelInstalling: false
+    /** Silero VAD asset download progress in [0.0, 1.0], and whether it runs. */
+    property real voiceVadInstallProgress: 0.0
+    property bool voiceVadInstalling: false
     /** A setup gap the user can fix, shown inline beside the mic button. */
     property string voiceSetupMessage: ""
+    /**
+     * Non-fatal session warning (e.g. input clipping). Never fails the session;
+     * shown in the listening strip while recording continues.
+     */
+    property string voiceWarning: ""
     /** Readiness from `voice status`; null until probed. */
     property var voiceStatus: null
-    /** Session-scoped language override. Never persisted (D9). */
-    property string voiceLanguageOverride: ""
     /**
      * True between spawning the session process and successfully sending
      * `start`. Cleared as soon as the command is written, and reset on exit so a
@@ -417,6 +460,14 @@ Singleton {
         runProc(voiceRemoveProc, [daemonBin, "voice", "remove-model", id]);
     }
 
+    /** Downloads the Silero VAD asset; absence only costs accuracy, never readiness. */
+    function installVoiceVadModel() {
+        cancelProc(voiceVadInstallProc);
+        voiceVadInstallProgress = 0.0;
+        voiceVadInstalling = true;
+        runProc(voiceVadInstallProc, [daemonBin, "voice", "install-vad-model"]);
+    }
+
     /** Starts capture. No-op unless the engine and model are both present. */
     function startVoiceInput() {
         if (!voiceMicUsable) return;
@@ -426,13 +477,25 @@ Singleton {
         voiceLevel = 0.0;
         voiceElapsedMs = 0;
         voiceLanguage = "";
+        voiceDetectedLanguage = "";
+        voiceLanguageConfidence = -1;
         voicePartialText = "";
         voiceSetupMessage = "";
+        voiceWarning = "";
         voiceTranscript = "";
+        // A stale notice from the previous session must not survive into this
+        // one, or it would greet the user the moment they clicked the mic.
+        voiceEmptyNotice = "";
         voiceAwaitingStart = true;
         voiceElapsedTimer.restart();
 
-        runProc(voiceSessionProc, [daemonBin, "voice", "session"]);
+        // The override is per-session (D9): it is read here, passed once, and
+        // never written back to settings. Passing it as an argument rather than
+        // mutating the settings block is what keeps that guarantee structural.
+        const command = root.voiceLanguageOverride.trim().length > 0
+            ? [daemonBin, "voice", "session", "--lang", root.voiceLanguageOverride.trim()]
+            : [daemonBin, "voice", "session"];
+        runProc(voiceSessionProc, command);
         // The daemon deliberately waits for an explicit `start` before opening
         // the microphone, so spawning the process is not enough -- the pipe does
         // not exist yet. The `voiceAwaitingStart` handshake inside the Process
@@ -446,9 +509,36 @@ Singleton {
         }
     }
 
+    /**
+     * Sets a session-scoped language override, or clears it.
+     *
+     * Applies to sessions started from now on and is deliberately not
+     * persisted: a user who dictates one prompt in another language has not
+     * reconfigured their shell (D9). The persisted default lives in
+     * `voice.language` in `settings.json`, changed through Settings.
+     */
+    function setVoiceLanguageOverride(language) {
+        voiceLanguageOverride = language ? String(language).trim() : "";
+    }
+
+    /** Clears the session-scoped override and returns to the configured default. */
+    function clearVoiceLanguageOverride() {
+        voiceLanguageOverride = "";
+    }
+
+    /**
+     * Clears an empty-outcome notice.
+     *
+     * Not remembered, unlike the setup-gap dismissal: an empty outcome is a fact
+     * about one finished recording, so it is stale the moment the next one
+     * starts. Persisting it would reopen a complaint the user already answered.
+     */
+    function dismissVoiceEmptyNotice() {
+        voiceEmptyNotice = "";
+    }
+
     /** Aborts capture, discarding audio without transcribing. */
-    function cancelVoiceInput() {
-        if (voiceSessionProc.running) {
+    function cancelVoiceInput() {        if (voiceSessionProc.running) {
             voiceSessionProc.write("cancel\n");
         }
         voiceState = "idle";
@@ -1065,10 +1155,52 @@ Singleton {
         }
     }
 
+    // VAD asset download: the same JSONL contract as the model installer
+    // (Progress fractions, then a final {"success":...}). Absence only costs
+    // accuracy, so a failure warns rather than breaking readiness.
+    Process {
+        id: voiceVadInstallProc
+        property bool discardOutput: false
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => {
+                if (voiceVadInstallProc.discardOutput) return;
+                const line = chunk.trim();
+                if (!line) return;
+                try {
+                    const ev = JSON.parse(line);
+                    if (ev.type === "Progress" && typeof ev.payload === "number") {
+                        root.voiceVadInstallProgress = Math.max(0, Math.min(1, ev.payload));
+                        return;
+                    }
+                    root.voiceVadInstalling = false;
+                    if (ev.success === true) {
+                        root.voiceVadInstallProgress = 1.0;
+                        root.refreshVoiceStatus();
+                    } else if (ev.error) {
+                        console.warn("[AssistantService] VAD install failed:", ev.error);
+                    }
+                } catch (e) {
+                    console.warn("[AssistantService] vad install parse failed:", e);
+                }
+            }
+        }
+
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => console.warn("[AssistantService vad install stderr]:", chunk.trim())
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            root.voiceVadInstalling = false;
+            root.refreshVoiceStatus();
+        }
+    }
+
     // Removing a model: the same JSON contract as the installer, minus progress.
     Process {
         id: voiceRemoveProc
-
         stdout: SplitParser {
             splitMarker: "\n"
             onRead: chunk => {
@@ -1129,6 +1261,13 @@ Singleton {
 
                 if (ev.type === "StateChanged") {
                     root.voiceState = ev.payload.state;
+                    // The microphone is released the moment capture ends, so the
+                    // level must die with it. Leaving the last live reading on
+                    // screen while the engine works is a dead meter under a strip
+                    // that still claims to be recording.
+                    if (ev.payload.state === "finalizing") {
+                        root.voiceLevel = 0.0;
+                    }
                     if (ev.payload.state === "idle" || ev.payload.state === "failed") {
                         voiceElapsedTimer.stop();
                         root.voiceLevel = 0.0;
@@ -1138,9 +1277,46 @@ Singleton {
                     root.voiceLevel = voiceEventCodec.level(ev);
                 } else if (ev.type === "Partial") {
                     root.voicePartialText = voiceEventCodec.partial(ev);
-                } else if (ev.type === "Final") {
-                    // `payload` is the transcript object itself.
-                    root.voiceTranscript = ev.payload.text || "";
+                } else if (ev.type === "Warning") {
+                    // Non-fatal: the session continues. Cleared on next start.
+                    root.voiceWarning = (ev.payload && ev.payload.message) || "Audio input warning";
+                } else if (ev.type === "Detected") {
+                    // The reading arrives before the decode, so it is on screen
+                    // while the transcript is still being produced. That is the
+                    // whole point: with a fused `-l auto` pass there was nothing
+                    // to show here, and by the time the language could be read
+                    // the wrong text was already written and the strip closed.
+                    root.voiceDetectedLanguage = ev.payload.language || "";
+                    root.voiceLanguageConfidence = typeof ev.payload.confidence === "number"
+                        ? ev.payload.confidence
+                        : -1;
+                } else if (ev.type === "Final") {                    // `payload` is the transcript object itself.
+                    //
+                    // The empty case is handled here, explicitly, rather than
+                    // left to the composer's change handler. Assigning `""` to
+                    // `voiceTranscript` when it is already `""` emits no change
+                    // signal, so `onVoiceTranscriptChanged` never ran and a
+                    // session that heard nothing ended with the microphone
+                    // visibly working and the composer silently untouched. An
+                    // honest outcome still has to be reported.
+                    const text = ev.payload.text || "";
+                    root.voiceSpeechDetected = ev.payload.speech_detected !== false;
+                    if (text.trim().length > 0) {
+                        root.voiceTranscript = text;
+                        root.voiceEmptyNotice = "";
+                    } else {
+                        root.voiceTranscript = "";
+                        // Two different problems, and the distinction decides
+                        // where the user's attention should go.
+                        //
+                        // Both are kept short on purpose: the strip is 46 px and
+                        // the text elides, so a long sentence loses exactly the
+                        // actionable end. The first version read "…check the
+                        // microphone, or tr…" in the rendered proof.
+                        root.voiceEmptyNotice = root.voiceSpeechDetected
+                            ? "Heard you, but got no words - try again or use a larger model"
+                            : "No speech detected - check your microphone, then try again";
+                    }
                     root.voiceLanguage = ev.payload.language || "und";
                     root.voicePartialText = "";
                     root.voiceState = "idle";

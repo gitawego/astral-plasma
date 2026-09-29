@@ -51,6 +51,7 @@ Item {
             "model_present": true,
             "model_path": "/home/u/.cache/astral-plasma/models/ggml-small.bin",
             "model_size_bytes": 487601967,
+            "vad_model_present": false,
             "language": "auto",
             "setup_complete": true,
             "gap": "ready",
@@ -87,8 +88,24 @@ Item {
         // ------------------------------------------------------------------
         assert(page.voiceEnabled === true, "voice must default to enabled");
         assert(page.voiceModel === "ggml-small", "default model must be the CPU-interactive tier");
-        assert(page.voiceLanguage === "auto", "default language must be auto-detect");
+        // Empty is "follow the system locale". The reported failure was English
+        // speech transcribed as Japanese, which happened because `auto` was the
+        // default and whisper's auto-detect is an ungated argmax. `auto` is now
+        // something a user chooses, not something they inherit.
+        assert(page.testVoiceLanguage === "", "the default language must be the system locale, not auto");
         assert(page.voiceAutoFinalize === true, "auto-finalize must default on");
+        assert(page.voiceEchoCancel === false,
+            "echo cancellation defaults off (audit §3.3): blind AEC distorts the mic");
+        page.setVoiceEchoCancel(true);
+        assert(page.voiceEchoCancel === true, "the echo-cancellation toggle must be writable");
+        page.setVoiceEchoCancel(false);
+        assert(page.voiceEchoCancel === false, "the toggle must restore");
+        assert(page.voiceNoiseSuppress === false,
+            "noise suppression defaults off: its node is operator-provisioned");
+        page.setVoiceNoiseSuppress(true);
+        assert(page.voiceNoiseSuppress === true, "the noise-suppression toggle must be writable");
+        page.setVoiceNoiseSuppress(false);
+        assert(page.voiceNoiseSuppress === false, "the toggle must restore");
         assert(page.voiceSilenceHangoverMs === 1200, "default hangover must match the daemon");
         assert(page.voiceMaxUtteranceSeconds === 30, "default cap must match the daemon");
 
@@ -101,7 +118,16 @@ Item {
         assert(page.voiceModelOptions[0].label.indexOf("74 MiB") !== -1,
             "model options must carry the human-readable size, got: " + page.voiceModelOptions[0].label);
 
-        const langCodes = page.voiceLanguageOptions.map(l => l.code);
+        // "System default" must be the first entry: it is the shipped default,
+        // and a picker whose first row is "Auto-detect" is inviting the failure
+        // above back.
+        const codes = page.voiceLanguageOptions.map(l => l.code);
+        assert(codes[0] === "",
+            "the first language option must be the system default, got: " + codes[0]);
+        assert(page.voiceLanguageOptions[0].label.indexOf("System default") === 0,
+            "the system default must be labelled, not left blank: a blank control "
+                + "reads as a bug rather than a default, got: " + page.voiceLanguageOptions[0].label);
+        const langCodes = codes;
         for (const required of ["auto", "zh", "en", "fr", "de", "it", "es"]) {
             assert(langCodes.indexOf(required) !== -1,
                 "the language picker must offer " + required + ", got: " + langCodes.join(","));
@@ -187,6 +213,25 @@ Item {
         page.testVoiceStatus = testRoot.readyStatus();
 
         // ------------------------------------------------------------------
+        // 4b. VAD asset row follows the same explicit-install contract (D7)
+        // ------------------------------------------------------------------
+        page.testVoiceVadModelPresent = false;
+        page.testVoiceVadInstalling = false;
+        page.testVoiceVadInstallProgress = 0.0;
+        assert(page.voiceVadModelPresent === false,
+            "neural VAD must report absent until downloaded, never assumed");
+        assert(page.voiceVadInstalling === false, "no VAD download may run unless requested");
+        page.testVoiceVadInstalling = true;
+        page.testVoiceVadInstallProgress = 0.5;
+        assert(Math.abs(page.voiceVadInstallProgress - 0.5) < 1e-6,
+            "VAD progress must be reported, not animated");
+        page.testVoiceVadModelPresent = true;
+        assert(page.voiceVadModelPresent === true, "a downloaded VAD asset must read as present");
+        page.testVoiceVadInstalling = false;
+        page.testVoiceVadInstallProgress = 0.0;
+        page.testVoiceVadModelPresent = false;
+
+        // ------------------------------------------------------------------
         // 5. Dropdowns are mutually exclusive
         // ------------------------------------------------------------------
         assert(page.modelMenuOpen === false, "no dropdown starts open");
@@ -205,6 +250,18 @@ Item {
         assert(/Config\.setVoiceLanguage\(/.test(pageSrc), "AiPage must persist the language choice");
         assert(/Config\.setVoiceAutoFinalize\(/.test(pageSrc), "AiPage must persist auto-finalize");
         assert(/installVoiceModel\(/.test(pageSrc), "AiPage must trigger the explicit download");
+        assert(/voiceVadInstallButton/.test(pageSrc),
+            "AiPage must offer the explicit VAD asset download beside the model row");
+        assert(/installVoiceVadModel\(\)/.test(pageSrc),
+            "AiPage must trigger the VAD download through AssistantService");
+        assert(/voiceEchoCancelToggle/.test(pageSrc),
+            "the voice section must render the echo-cancellation toggle");
+        assert(/voiceNoiseSuppressToggle/.test(pageSrc),
+            "the voice section must render the noise-suppression toggle");
+        assert(/function setVoiceEchoCancel\(/.test(pageSrc),
+            "AiPage must persist the echo-cancellation choice");
+        assert(/function setVoiceNoiseSuppress\(/.test(pageSrc),
+            "AiPage must persist the noise-suppression choice");
         // Voice belongs to the assistant, so it lives in the AI page rather
         // than a new page of its own (AGENTS.md 6).
         assert(!/ComboBox/.test(pageSrc), "QtQuick.Controls is not imported in this shell; do not use ComboBox");
@@ -238,6 +295,9 @@ Item {
         const serviceSrc = readLocalFile("../services/AssistantService.qml");
         assert(/voiceModelInstallProgress/.test(serviceSrc), "AssistantService must track install progress");
         assert(/installVoiceModel/.test(serviceSrc), "AssistantService must expose installVoiceModel");
+        assert(/installVoiceVadModel/.test(serviceSrc), "AssistantService must expose installVoiceVadModel");
+        assert(/voice", "install-vad-model"/.test(serviceSrc),
+            "the VAD installer must drive the daemon's install-vad-model subcommand");
 
         console.log("PASS: tst_voice_settings");
         Qt.exit(0);

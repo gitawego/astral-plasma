@@ -4,14 +4,16 @@
 //! see `docs/VOICE-INPUT-SPEC.md` §8.1.
 
 use astral_plasma::domain::voice::{
-    append_transcript, format_size, frame_rms, is_known_model, model_by_id, normalize_language,
-    package_manager_for_os_release, vad_model_url, PackageManager,
+    LanguageSource,
+    append_transcript, clipping_advice, clipping_ratio, format_size, frame_rms, is_known_model, model_by_id, normalize_language,
+    package_manager_for_os_release, pw_record_args_for_node, vad_is_speech, vad_model_file_name, PackageManager,
     pcm_bytes_to_f32, pw_record_args, should_finalize, staged_download_paths, wav_container,
     wav_header, CaptureTarget, EngineCapabilities, FinalizeReason, LanguageOption,
     PcmSpec, SetupGap, SilenceDetector, Transcript, VoiceEvent, VoiceSessionConfig, VoiceSettings,
-    VoiceState, DEFAULT_MAX_UTTERANCE_SECS, DEFAULT_MODEL_ID, MAX_MAX_UTTERANCE_SECS,
+    VoiceState, CLIPPING_WARN_RATIO, DEFAULT_MAX_UTTERANCE_SECS, DEFAULT_MODEL_ID, MAX_MAX_UTTERANCE_SECS,
     MIN_MAX_UTTERANCE_SECS, MODEL_CATALOG, PcmSpec as Spec, SILENCE_HEADROOM,
-    SILENCE_WARMUP_FRAMES, SPEECH_SAMPLE_RATE, VAD_MODEL_FILE, VAD_MODEL_SIZE_BYTES, WAV_HEADER_LEN,
+    SILENCE_WARMUP_FRAMES, SPEECH_SAMPLE_RATE, VAD_SPEECH_PROB_THRESHOLD, WAV_HEADER_LEN, LANGUAGE_AUTO,
+    is_supported_language,
 };
 use std::path::Path;
 
@@ -203,9 +205,15 @@ fn silence_detector_tracks_a_speech_burst_and_its_trailing_gap() {
 }
 
 #[test]
-fn silence_detector_floor_stays_bounded_in_a_noisy_room() {
+fn silence_detector_floor_stays_bounded_in_a_loud_room() {
     // In a loud room the floor must not creep up until steady background noise
     // starts reading as silence, which would truncate every utterance.
+    //
+    // The assertion is on the estimate rather than the classification, because
+    // "a constant signal is the room" versus "a constant signal is speech" is a
+    // level judgement no energy-based detector can make any other way. Where
+    // that line sits is pinned by
+    // `a_session_with_no_speech_is_reported_as_having_none`.
     let mut d = SilenceDetector::new(320, 16_000);
     for _ in 0..600 {
         d.push(0.09);
@@ -248,6 +256,158 @@ fn silence_headroom_is_a_ratio_not_an_absolute_gate() {
     }
     assert!(!loud.push(0.05).speaking, "0.05 is unremarkable against a 0.05 floor");
     assert!(SILENCE_HEADROOM > 1.0);
+}
+
+/// The floor is a low quantile of frames that were not themselves speech.
+///
+/// The previous estimator averaged every frame below a hard ceiling, so
+/// ordinary dictation (0.04-0.05 RMS, comfortably under that ceiling) was
+/// averaged into the floor. Once the floor reached the speech level,
+/// `level > floor * 3` could never be satisfied again and the detector latched
+/// off mid-sentence, handing the engine a fragment. Regression guard, at the
+/// levels a desktop microphone actually produces.
+#[test]
+fn ordinary_dictation_is_tracked_for_its_whole_length() {
+    const ROOM: f32 = 0.002;
+    const SPEECH: f32 = 0.05;
+    const SPEECH_FRAMES: u32 = 65; // 1.3 s: "can you help me"
+
+    let mut d = SilenceDetector::new(320, 16_000);
+    for _ in 0..30 {
+        d.push(ROOM);
+    }
+    let mut first: Option<u32> = None;
+    let mut last = 0;
+    for i in 0..SPEECH_FRAMES {
+        if d.push(SPEECH).speaking {
+            first.get_or_insert(i);
+            last = i;
+        }
+    }
+    let first = first.expect("speech at 0.05 in a 0.002 room must register");
+    assert_eq!(
+        (first, last),
+        (0, SPEECH_FRAMES - 1),
+        "speech tracked for only {} of {} frames: the floor absorbed the speech",
+        last - first + 1,
+        SPEECH_FRAMES
+    );
+}
+
+/// A continuously speaking user must not be cut off.
+///
+/// The floor is learned from the room before the user starts, so sustained
+/// speech can never drag it up. Without that, a long utterance latched off
+/// after about a second and finalized on its own silence.
+#[test]
+fn continuous_speech_is_never_mistaken_for_its_own_silence() {
+    let mut d = SilenceDetector::new(320, 16_000);
+    for _ in 0..30 {
+        d.push(0.002);
+    }
+    // 10 s of unbroken speech: well past the hangover, many times over.
+    for i in 0..500 {
+        assert!(
+            d.push(0.05).speaking,
+            "frame {i} of continuous speech read as silence; the utterance would be truncated"
+        );
+        assert_eq!(d.silent_for_ms(), 0, "silence accumulated during continuous speech");
+    }
+}
+
+/// Whether a session contained speech is an evidence question, not a
+/// single-frame one.
+///
+/// `has_speech` decides whether the engine runs at all, so this is a recall
+/// test: a false negative costs the user their entire utterance, because the
+/// session then reports an empty transcript and nothing reaches the composer.
+#[test]
+fn speech_presence_survives_a_noisy_room() {
+    // Room at 0.03 is a fan or an open window; speech at 0.06 is ordinary
+    // dictation raised a little to compete with it.
+    let mut d = SilenceDetector::new(320, 16_000);
+    for _ in 0..60 {
+        d.push(0.03);
+    }
+    for _ in 0..20 {
+        d.push(0.06);
+    }
+    assert!(
+        d.has_speech(),
+        "0.06 of speech over 0.03 of room noise is transcribable and must count as speech"
+    );
+}
+
+#[test]
+fn a_session_with_no_speech_is_reported_as_having_none() {
+    // The guard that keeps an accidental mic click from spending an inference
+    // on silence. These are levels a quiet room and a fan actually sit at.
+    //
+    // The boundary is `FLOOR_ADMIT_CEILING`: a *constant* signal at or below it
+    // is measurably the room, and one above it is measurably an event. No
+    // energy-based detector can place that line anywhere else, so a steady
+    // background above it is read as speech. That costs one wasted inference
+    // which returns nothing -- and which the UI now reports, rather than the
+    // composer silently refusing to change. It is the preferable trade to
+    // discarding utterances, which is what a stricter line caused.
+    for (name, background) in [
+        ("silent room", 0.0002f32),
+        ("quiet room", 0.002),
+        ("fan", 0.02),
+        ("busy room", 0.04),
+    ] {
+        let mut d = SilenceDetector::new(320, 16_000);
+        for _ in 0..300 {
+            d.push(background);
+        }
+        assert!(!d.has_speech(), "{name} at {background} was read as speech");
+    }
+}
+
+/// Warm-up must not gate speech classification, only the silence accumulator.
+///
+/// The previous detector wrote `speaking = warmed_up && ...`, so the first
+/// 500 ms of every session was classified as "not yet measurable" at any level.
+/// A user who starts talking the instant they click the mic therefore had the
+/// whole sentence scored as silence.
+#[test]
+fn speech_is_classified_before_the_lead_in_has_ended() {
+    let mut d = SilenceDetector::new(320, 16_000);
+    // Still inside SILENCE_WARMUP_FRAMES.
+    for _ in 0..5 {
+        d.push(0.0002);
+    }
+    let dec = d.push(0.30);
+    assert!(
+        dec.speaking,
+        "a 0.30 frame inside the lead-in was not classified as speech; \
+         the first word of an immediate utterance is discarded"
+    );
+    assert_eq!(dec.silent_for_ms, 0, "speech must not leave a silence balance");
+}
+
+/// A single transient must not pin the threshold.
+///
+/// The peak is a decaying maximum, not an all-time one: without the decay, one
+/// cough or door slam would raise the speech threshold for the rest of the
+/// session and every following word would read as silence.
+#[test]
+fn a_transient_does_not_pin_the_threshold() {
+    let mut d = SilenceDetector::new(320, 16_000);
+    for _ in 0..40 {
+        d.push(0.002);
+    }
+    d.push(0.9); // a door
+    // ~4.5 s later the peak has decayed well past the room.
+    for _ in 0..225 {
+        d.push(0.002);
+    }
+    assert!(
+        d.push(0.05).speaking,
+        "ordinary speech stopped registering after a transient; peak={} floor={}",
+        d.peak(),
+        d.floor()
+    );
 }
 
 #[test]
@@ -339,26 +499,6 @@ fn model_catalog_entries_are_internally_consistent() {
 }
 
 #[test]
-fn vad_asset_points_at_the_public_repo() {
-    // The asset is not in the ASR model repo. Upstream's own
-    // `models/download-vad-model.sh` fetches it from `ggml-org/whisper-vad`,
-    // and an earlier attempt at `ggml-org/whisper.cpp` saw HTTP 401 and
-    // concluded "unreachable" - Hugging Face answers 401, not 404, for paths
-    // an anonymous client may not see. Pin the working, credential-free source.
-    assert_eq!(VAD_MODEL_FILE, "ggml-silero-v5.1.2.bin");
-    assert!(
-        VAD_MODEL_SIZE_BYTES > 100_000 && VAD_MODEL_SIZE_BYTES < 10_000_000,
-        "the VAD asset is a small model, got {VAD_MODEL_SIZE_BYTES} bytes"
-    );
-    assert!(
-        vad_model_url().starts_with("https://huggingface.co/ggml-org/whisper-vad/"),
-        "the VAD asset lives in its own public repo, got {}",
-        vad_model_url()
-    );
-    assert!(vad_model_url().ends_with(VAD_MODEL_FILE));
-}
-
-#[test]
 fn default_model_is_the_documented_tier() {
     // The default must stay interactive on a CPU-only install: whisper-cli
     // 1.9.4's large-v3-turbo measured ~5x slower than realtime on a 12th-gen
@@ -425,10 +565,22 @@ fn settings_default_to_the_documented_values() {
     let s = VoiceSettings::default();
     assert!(s.enabled);
     assert_eq!(s.model, DEFAULT_MODEL_ID);
-    assert_eq!(s.language, "auto");
+    // The default is the user's locale, not auto-detect. The reported failure
+    // was English speech coming back as Japanese: whisper auto-detects with a
+    // bare argmax over 100 language logits and no confidence gate, so shipping
+    // `auto` as the default handed the output alphabet to a coin toss. See
+    // `the_default_language_is_the_user_s_locale_not_a_guess`.
+    assert_ne!(s.language, LANGUAGE_AUTO,
+        "auto-detect must be opt-in; it is the wrong default for a dictation UI");
+    assert!(is_supported_language(&s.language),
+        "the default language {} must be one the engine can be asked for", s.language);
     assert_eq!(s.max_utterance_seconds, DEFAULT_MAX_UTTERANCE_SECS);
     assert!(s.auto_finalize);
     assert!(s.install_model_on_demand);
+    assert!(!s.echo_cancel,
+        "echo cancellation defaults off (audit §3.3): the legacy module-echo-cancel path ships zero reference samples without sink routing");
+    assert!(!s.noise_suppress,
+        "noise suppression defaults off: its source node is operator-provisioned");
     assert_eq!(s.max_utterance_ms(), 30_000);
 }
 
@@ -473,9 +625,33 @@ fn session_config_is_derived_from_sanitized_settings() {
     let cfg = VoiceSessionConfig::from_settings(&settings);
     assert_eq!(cfg.language, "zh");
     assert_eq!(cfg.capture, CaptureTarget::Source, "voice always captures the microphone");
+    assert!(!cfg.echo_cancel, "the session inherits the echo-cancellation setting (default off)");
     assert_eq!(cfg.silence_hangover_ms, 0, "autoFinalize:false must disable the hangover");
     assert_eq!(cfg.sample_rate, 16_000);
     assert!(cfg.frame_len > 0);
+
+    settings.echo_cancel = true;
+    assert!(VoiceSessionConfig::from_settings(&settings).echo_cancel);
+    assert!(!VoiceSessionConfig::from_settings(&settings).noise_suppress,
+        "noise suppression is opt-in per session like echo cancellation");
+    settings.noise_suppress = true;
+    assert!(VoiceSessionConfig::from_settings(&settings).noise_suppress);
+}
+
+#[test]
+fn explicit_node_capture_keeps_the_pcm_contract() {
+    // The echo-cancelled source is not a `@DEFAULT_...@` token, so it needs its
+    // own builder - with the same format contract as the default one.
+    let args = pw_record_args_for_node("astral_echo_cancel", 16_000, 1, 32);
+    let target = args.iter().position(|a| a == "--target").expect("--target");
+    assert_eq!(args[target + 1], "astral_echo_cancel");
+    assert_eq!(args.iter().position(|a| a == "-P"), None,
+        "a capture node must not be asked for sink semantics");
+    let rate = args.iter().position(|a| a == "--rate").expect("--rate");
+    assert_eq!(args[rate + 1], "16000");
+    let format = args.iter().position(|a| a == "--format").expect("--format");
+    assert_eq!(args[format + 1], "s16");
+    assert_eq!(args.last().map(String::as_str), Some("-"), "stdout is the sink");
 }
 
 #[test]
@@ -511,6 +687,9 @@ fn final_event_payload_is_the_transcript_object_itself() {
         duration_ms: 900,
         engine: "whisper-cpp".into(),
         model: "ggml-tiny".into(),
+        speech_detected: true,
+        language_confidence: None,
+        language_source: LanguageSource::Configured,
     };
     let json = serde_json::to_value(VoiceEvent::Final(t.clone())).unwrap();
     assert_eq!(json["type"], "Final");
@@ -528,6 +707,9 @@ fn every_event_variant_round_trips() {
         duration_ms: 2340,
         engine: "whisper-cpp".into(),
         model: DEFAULT_MODEL_ID.into(),
+        speech_detected: true,
+        language_confidence: None,
+        language_source: LanguageSource::Configured,
     };
     let events = vec![
         VoiceEvent::StateChanged { state: VoiceState::Idle },
@@ -536,6 +718,7 @@ fn every_event_variant_round_trips() {
         VoiceEvent::StateChanged { state: VoiceState::Failed },
         VoiceEvent::Level { rms: 0.42 },
         VoiceEvent::Partial { text: "bonjour".into() },
+        VoiceEvent::Warning { message: "clipping 68%".into() },
         VoiceEvent::Final(transcript.clone()),
         VoiceEvent::setup_error("model missing"),
         VoiceEvent::fatal_error("engine killed"),
@@ -578,6 +761,9 @@ fn empty_transcript_is_recognised_as_such() {
         duration_ms: 900,
         engine: "whisper-cpp".into(),
         model: DEFAULT_MODEL_ID.into(),
+        speech_detected: false,
+        language_confidence: None,
+        language_source: LanguageSource::Configured,
     };
     assert!(t.is_empty(), "whitespace is not a transcript");
     let mut real = t.clone();
@@ -680,4 +866,96 @@ fn every_named_manager_yields_a_runnable_command_for_the_engine() {
         None,
         "an unknown distro gets the upstream build, not an invented package"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Audit remediation: gain guard, warning event, neural VAD gate
+// ---------------------------------------------------------------------------
+
+#[test]
+fn clipping_ratio_detects_adc_saturation() {
+    // Silence and ordinary speech never trip the guard.
+    assert_eq!(clipping_ratio(&[]), 0.0);
+    assert_eq!(clipping_ratio(&vec![0.0f32; 100]), 0.0);
+    assert!(clipping_ratio(&vec![0.35f32; 1000]) < CLIPPING_WARN_RATIO);
+    assert_eq!(clipping_ratio(&[f32::NAN, 0.1, -0.1]), 0.0);
+    // 68% hard-clipped ambient (the measured ALC256 failure) trips it hard.
+    let mut clipped = vec![0.99997f32; 684];
+    clipped.extend(vec![0.1f32; 316]);
+    assert!(clipping_ratio(&clipped) >= 0.68);
+    // DC latch at the rails counts as clipped; DC near zero does not.
+    assert_eq!(clipping_ratio(&vec![1.0f32; 50]), 1.0);
+    assert_eq!(clipping_ratio(&vec![0.7f32; 50]), 0.0);
+}
+
+#[test]
+fn clipping_advice_names_the_fix() {
+    let msg = clipping_advice(0.684);
+    assert!(msg.contains("68%"), "must quantify the saturation: {msg}");
+    assert!(msg.contains("alsamixer") || msg.contains("Mic Boost"), "must name the remediation: {msg}");
+}
+
+#[test]
+fn warning_event_round_trips_and_never_fails_the_session() {
+    let e = VoiceEvent::Warning { message: "clipping".into() };
+    assert_eq!(e.kind(), "Warning");
+    let json = serde_json::to_string(&e).unwrap();
+    assert!(json.contains(r#""type":"Warning""#), "{json}");
+    let back: VoiceEvent = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, e);
+}
+
+#[test]
+fn vad_gate_uses_probability_not_energy() {
+    assert!(vad_is_speech(0.91));
+    assert!(vad_is_speech(0.5001));
+    assert!(!vad_is_speech(0.5), "the gate is strict: p > 0.5");
+    assert!(!vad_is_speech(0.08), "a 0.08 tie is not speech");
+    assert!(!vad_is_speech(f32::NAN), "non-finite scores never open the gate");
+    assert!(!vad_is_speech(f32::INFINITY));
+    assert_eq!(VAD_SPEECH_PROB_THRESHOLD, 0.5);
+    assert!(!vad_model_file_name().is_empty());
+}
+
+#[test]
+fn vad_segment_output_parses_to_seconds() {
+    use astral_plasma::domain::voice::{parse_vad_segments, vad_segments_to_frames};
+    // Live shape from whisper-vad-speech-segments on Front_Center.wav.
+    let output = "\
+whisper_vad_segments_from_probs: Final speech segments after filtering: 2
+Detected 2 speech segments:
+Speech segment 0: start = 7.00, end = 54.00
+Speech segment 1: start = 77.00, end = 144.00
+";
+    let segs = parse_vad_segments(output);
+    assert_eq!(segs.len(), 2);
+    assert!((segs[0].start_s - 0.07).abs() < 1e-6);
+    assert!((segs[0].end_s - 0.54).abs() < 1e-6);
+    assert!((segs[1].start_s - 0.77).abs() < 1e-6);
+    assert!((segs[1].end_s - 1.44).abs() < 1e-6);
+
+    // Silence, banners and garbage parse to nothing — never fabricated.
+    assert!(parse_vad_segments("").is_empty());
+    assert!(parse_vad_segments("Detected 0 speech segments:\n").is_empty());
+    assert!(parse_vad_segments("whisper_print_system_info: n_mels = 80\n").is_empty());
+    assert!(parse_vad_segments("Speech segment 0: start = 90.00, end = 10.00\n").is_empty(),
+        "an end before its start must not become a negative span");
+
+    // Frame conversion at 16 kHz / 20 ms frames: 0.07s -> frame 3, 1.44s -> frame 72.
+    let bounds = vad_segments_to_frames(&segs, 16_000, 320, 200).expect("bounds");
+    assert_eq!(bounds, (3, 72));
+    assert!(vad_segments_to_frames(&[], 16_000, 320, 200).is_none());
+    assert!(vad_segments_to_frames(&segs, 16_000, 0, 200).is_none());
+    assert!(vad_segments_to_frames(&segs, 0, 320, 200).is_none());
+}
+
+#[test]
+fn capture_backend_selection_defaults_to_the_subprocess() {
+    use astral_plasma::domain::voice::{select_capture_backend, CaptureBackend};
+    assert_eq!(select_capture_backend(""), CaptureBackend::PwRecord);
+    assert_eq!(select_capture_backend("pw-record"), CaptureBackend::PwRecord);
+    assert_eq!(select_capture_backend("anything-unknown"), CaptureBackend::PwRecord,
+        "unknown values must never enable the experimental path by accident");
+    assert_eq!(select_capture_backend("native"), CaptureBackend::Native);
+    assert_eq!(select_capture_backend(" Native "), CaptureBackend::Native);
 }

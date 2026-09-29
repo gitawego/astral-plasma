@@ -13,6 +13,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
+use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
@@ -86,6 +87,64 @@ pub fn shell_ipc_arguments(action: &str) -> Option<Vec<&'static str>> {
     }
 }
 
+/// How long a shortcut's shell IPC call may take before it is abandoned.
+///
+/// A shell that is reloading can leave `quickshell ipc` waiting; the daemon
+/// must not wait with it (see [`run_shell_ipc_command`]).
+pub const SHELL_IPC_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Runs one whitelisted shell IPC action with a hard deadline.
+///
+/// This used to be a blocking `std::process::Command::status()` with no
+/// timeout inside the async `ShellIpc` handler. When the shell was slow to
+/// answer (a reload, a busy IPC thread), the handler blocked and the whole
+/// `WindowWatcher` interface queued behind it - every subsequent shortcut call
+/// silently did nothing until it recovered. An async child keeps the interface
+/// free, and the deadline bounds the wait.
+/// Runs a blocking port call without parking a tokio worker.
+///
+/// The desktop ports shell out (`qdbus6`, `busctl`, `bash`, KWin scripting) and
+/// several of them take seconds to return. Calling them inline parks a runtime
+/// worker thread, and a worker parked in a syscall stops polling the tokio I/O
+/// and timer drivers: every D-Bus reply, `sleep`, `interval` and shortcut in the
+/// process then freezes while the process stays alive. That is the failure this
+/// helper exists to prevent, so every blocking port call made from an async
+/// context goes through it.
+pub async fn blocking<T, F>(work: F) -> T
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    match tokio::task::spawn_blocking(work).await {
+        Ok(value) => value,
+        Err(error) => std::panic::resume_unwind(error.into_panic()),
+    }
+}
+
+pub async fn run_shell_ipc_command(
+    binary: &str,
+    directory: &Path,
+    arguments: &[&str],
+    timeout: Duration,
+) -> bool {
+    let mut command = tokio::process::Command::new(binary);
+    command.arg("ipc").arg("-p").arg(directory).args(arguments);
+    match tokio::time::timeout(timeout, command.status()).await {
+        Ok(Ok(status)) => status.success(),
+        Ok(Err(error)) => {
+            eprintln!("[shell-ipc] cannot run {binary}: {error}");
+            false
+        }
+        Err(_) => {
+            eprintln!(
+                "[shell-ipc] {binary} did not answer within {:?}; abandoning the call",
+                timeout
+            );
+            false
+        }
+    }
+}
+
 /// Serves the window/tray event interface. Cheap to clone: every field is a
 /// shared handle, so a connection attempt can be retried without rebuilding
 /// state.
@@ -120,25 +179,24 @@ impl WatcherService {
         // extracted package (installed); both are addressed the same way.
         let directory = crate::application::shell_lifecycle::shell_config_dir();
 
-        let status = Command::new("quickshell")
-            .arg("ipc")
-            .arg("-p")
-            .arg(&directory)
-            .args(&arguments)
-            .status();
-
-        match status {
-            Ok(status) if status.success() => true,
-            _ => {
-                eprintln!(
-                    "[shell-ipc] {action} failed (no running shell at {})",
-                    directory.display()
-                );
-                false
-            }
+        let ok = run_shell_ipc_command("quickshell", &directory, &arguments, SHELL_IPC_TIMEOUT).await;
+        if !ok {
+            eprintln!(
+                "[shell-ipc] {action} failed (no running shell at {})",
+                directory.display()
+            );
         }
+        ok
     }
 
+    // zbus dispatches method calls one at a time, and the desktop state machine
+    // depends on that: an activation must be applied before the window list that
+    // follows it, or a list captured before the activation re-marks the previous
+    // window as active and the indicator sticks. Handlers therefore stay inline
+    // and keep their order - the work that used to park a runtime worker (X11
+    // focus calls, icon/desktop-entry lookups, tray queries) is moved to the
+    // blocking pool instead, so the dispatch never blocks without going
+    // concurrent.
     #[zbus(name = "WindowActivated")]
     async fn window_activated(&self, title: &str, cls: &str, app: &str, wid: &str) {
         // Wine windows are X11 clients: activating one leaves Xwayland's
@@ -363,7 +421,7 @@ impl WatcherService {
 
     async fn window_list_changed(&self) {
         let wm = crate::infrastructure::desktop_factory::create_window_manager_port();
-        let query_res = wm.query_windows();
+        let query_res = blocking(move || wm.query_windows()).await;
         if let Ok((windows, active_opt)) = query_res {
             let mut st = self.state.lock().await;
             st.cached_windows = windows.clone();
@@ -393,7 +451,8 @@ impl WatcherService {
 
     #[zbus(name = "RefreshTray")]
     async fn refresh_tray(&self) {
-        if let Ok(new_tray) = self.tray.query_tray() {
+        let tray_port = Arc::clone(&self.tray);
+        if let Ok(new_tray) = blocking(move || tray_port.query_tray()).await {
             let mut st = self.state.lock().await;
             st.cached_tray = new_tray.clone();
             let payload = TrayPayload {
@@ -650,6 +709,7 @@ pub fn cleanup_kwin_script() {
         .output();
 }
 
+
 pub async fn run_event_daemon() -> DynResult<()> {
     // A test session has no compositor, no session bus and no desktop to
     // integrate with. The lifecycle tests spawn this command to observe what a
@@ -659,21 +719,25 @@ pub async fn run_event_daemon() -> DynResult<()> {
         return run_test_session().await;
     }
 
+
     #[cfg(target_os = "linux")]
     unsafe {
         libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
     }
     if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
-        cleanup_kwin_script();
+        blocking(cleanup_kwin_script).await;
     }
 
     let state = Arc::new(Mutex::new(DaemonState::default()));
     let wm = crate::infrastructure::desktop_factory::create_window_manager_port();
     let tray_port = crate::infrastructure::desktop_factory::create_tray_port();
 
-    // Query initial state
-    let (initial_wins, initial_active) = wm.query_windows().unwrap_or_default();
-    let initial_tray = tray_port.query_tray().unwrap_or_default();
+    // Query initial state. Both ports run KWin scripting / `busctl`, so they
+    // belong on the blocking pool (see `blocking`).
+    let initial_wm = Arc::clone(&wm);
+    let (initial_wins, initial_active) = blocking(move || initial_wm.query_windows()).await.unwrap_or_default();
+    let initial_tray_port = Arc::clone(&tray_port);
+    let initial_tray = blocking(move || initial_tray_port.query_tray()).await.unwrap_or_default();
 
     {
         let mut st = state.lock().await;
@@ -844,7 +908,10 @@ pub async fn run_event_daemon() -> DynResult<()> {
                 // merely claims Playing silence the bridge while the bridge was
                 // the one actually making sound.
                 let identity = mpris_audio.identity().await;
-                if let Ok(streams) = audible_streams() {
+                // `audible_streams` shells out to `pactl`; keep it off the
+                // runtime workers like every other blocking port call.
+                let streams = blocking(audible_streams).await;
+                if let Ok(streams) = streams {
                     if another_app_owns_audio(&streams, &identity, WINE_MPRIS_BUS_NAME) {
                         let _ = mpris_audio.update_playback_status(false).await;
                     }
@@ -858,15 +925,29 @@ pub async fn run_event_daemon() -> DynResult<()> {
         // Claim the desktop. The mode comes from the session journal, so a
         // restart resumes what the user chose instead of resetting the default.
         let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
-        let mode = crate::domain::desktop_integration::resume_mode(shortcuts.journal_mode().as_deref())
-            .to_string();
+        // Reading the session journal shells out to `kwin_shortcuts`/`bash`.
+        let mode = blocking(move || {
+            crate::domain::desktop_integration::resume_mode(shortcuts.journal_mode().as_deref())
+                .to_string()
+        })
+        .await;
         // Claim through the use case, never the adapter directly: the session
         // journal has to be written *before* the keys are taken, or a later
         // release would have nothing to give back.
         let claim = crate::application::shortcut_service::ShortcutControlUseCase::new(
             crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new(),
         );
-        let _ = claim.backup_and_bind(&mode);
+        // A restart can overlap the outgoing watchdog's hand-back. Wait for it
+        // to finish before claiming: otherwise the outgoing restore reverts the
+        // keys *after* this session bound them (leaving them dead) and the
+        // incoming bind is skipped because the journal still looks current.
+        crate::application::plasma_service::wait_for_restore_to_finish_async(
+            &crate::infrastructure::plasma_adapter::PlasmaAdapter::new().resolve_backup_dir(),
+            crate::application::plasma_service::RESTORE_HANDOVER_TIMEOUT,
+        )
+        .await;
+        let claim_mode = mode.clone();
+        let _ = blocking(move || claim.backup_and_bind(&claim_mode)).await;
 
         // Everything below drives a live compositor and desktop. A test session
         // has neither, and must not restart plasmashell or load KWin scripts.
@@ -878,7 +959,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
                 crate::infrastructure::plasma_adapter::PlasmaAdapter::new(),
             );
             let shell_pid = unsafe { libc::getppid() } as u32;
-            let _ = plasma.backup_and_disable("all", Some(shell_pid));
+            let _ = blocking(move || plasma.backup_and_disable("all", Some(shell_pid))).await;
 
             // One loop owns every desktop-integration resource: panels respawn,
             // a KWin restart drops the shortcut script, Plasma can overwrite the
@@ -893,37 +974,48 @@ pub async fn run_event_daemon() -> DynResult<()> {
                 crate::application::desktop_reconciler::RECONCILE_INTERVAL,
             ));
 
-            cleanup_kwin_script();
-            let script_file = branding::tmp_file("kwin_watcher.js");
-            fs::write(&script_file, get_kwin_watcher_script())?;
+            blocking(|| {
+                cleanup_kwin_script();
+                let script_file = branding::tmp_file("kwin_watcher.js");
+                if fs::write(&script_file, get_kwin_watcher_script()).is_err() {
+                    return;
+                }
 
-            let _ = Command::new("qdbus6")
-                .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
-                .output();
-            let _ = Command::new("qdbus6")
-                .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
-                .output();
+                let _ = Command::new("qdbus6")
+                    .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
+                    .output();
+                let _ = Command::new("qdbus6")
+                    .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
+                    .output();
+            })
+            .await;
 
             // KWin Script Watchdog: if KWin restarts or script is unloaded, restore it
             tokio::spawn(async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(5));
                 loop {
                     interval.tick().await;
-                    let is_loaded = Command::new("qdbus6")
-                        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.isScriptLoaded", KWIN_SCRIPT_NAME])
-                        .output()
-                        .map(|out| String::from_utf8_lossy(&out.stdout).trim() == "true")
-                        .unwrap_or(false);
+                    let is_loaded = blocking(|| {
+                        Command::new("qdbus6")
+                            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.isScriptLoaded", KWIN_SCRIPT_NAME])
+                            .output()
+                            .map(|out| String::from_utf8_lossy(&out.stdout).trim() == "true")
+                            .unwrap_or(false)
+                    })
+                    .await;
 
                     if !is_loaded {
-                        let script_file = branding::tmp_file("kwin_watcher.js");
-                        let _ = fs::write(&script_file, get_kwin_watcher_script());
-                        let _ = Command::new("qdbus6")
-                            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
-                            .output();
-                        let _ = Command::new("qdbus6")
-                            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
-                            .output();
+                        blocking(|| {
+                            let script_file = branding::tmp_file("kwin_watcher.js");
+                            let _ = fs::write(&script_file, get_kwin_watcher_script());
+                            let _ = Command::new("qdbus6")
+                                .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy(), KWIN_SCRIPT_NAME])
+                                .output();
+                            let _ = Command::new("qdbus6")
+                                .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"])
+                                .output();
+                        })
+                        .await;
                     }
                 }
             });
@@ -964,7 +1056,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
                 if crate::infrastructure::x11_input::is_wine_class(&active_cls) {
                     continue;
                 }
-                crate::infrastructure::x11_input::release_stale_wine_focus(&active_cls);
+                blocking(move || crate::infrastructure::x11_input::release_stale_wine_focus(&active_cls)).await;
             }
         });
     }
@@ -980,7 +1072,8 @@ pub async fn run_event_daemon() -> DynResult<()> {
         let mut interval = tokio::time::interval(Duration::from_millis(1000));
         loop {
             interval.tick().await;
-            if let Ok(new_tray) = tray_poller_port.query_tray() {
+            let poll_port = Arc::clone(&tray_poller_port);
+            if let Ok(new_tray) = blocking(move || poll_port.query_tray()).await {
                 let mut st = tray_state.lock().await;
                 if new_tray != st.cached_tray {
                     st.cached_tray = new_tray.clone();
@@ -1007,7 +1100,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
                     // touching the desktop: releasing it belongs to the watchdog
                     // (which supervises the shell) or to an explicit request.
                     if crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin {
-                        cleanup_kwin_script();
+                        blocking(cleanup_kwin_script).await;
                     }
                     std::process::exit(0);
                 }

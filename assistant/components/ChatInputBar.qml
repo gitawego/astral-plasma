@@ -80,12 +80,35 @@ Rectangle {
     readonly property bool voiceMicUsable: voice !== null ? !!voice.voiceMicUsable : false
     readonly property string voiceState: voice !== null ? voice.voiceState : "idle"
     readonly property string voiceSetupMessage: voice !== null ? (voice.voiceSetupMessage || "") : ""
+    /**
+     * Why the last session produced nothing.
+     *
+     * Kept beside the setup message rather than inside it, because the two send
+     * the user to different places: a setup gap is fixed in Settings, whereas
+     * "that recording heard nothing" is a fact about one recording and is
+     * already over. Conflating them would send the user to a settings page
+     * that cannot help.
+     */
+    readonly property string voiceEmptyNotice: voice !== null ? (voice.voiceEmptyNotice || "") : ""
+    /** Non-fatal mid-capture warning (e.g. clipping); live-only, no dismiss. */
+    readonly property string voiceWarning: voice !== null ? (voice.voiceWarning || "") : ""
     readonly property real voiceLevel: voice !== null ? (voice.voiceLevel || 0) : 0
     readonly property int voiceElapsedMs: voice !== null ? (voice.voiceElapsedMs || 0) : 0
     readonly property string voiceLanguage: voice !== null ? (voice.voiceLanguage || "") : ""
+    /**
+     * The language the in-flight session settled on, and how sure the engine
+     * was. Both arrive before the transcript, so a wrong reading is correctable
+     * while it still costs nothing but a click.
+     */
+    readonly property string voiceDetectedLanguage: voice !== null ? (voice.voiceDetectedLanguage || "") : ""
+    readonly property real voiceLanguageConfidence: voice !== null ? (voice.voiceLanguageConfidence || -1) : -1
     readonly property string voicePartialText: voice !== null ? (voice.voicePartialText || "") : ""
 
-    readonly property bool showVoiceStrip: voiceEnabled && (voiceBusy || voiceSetupMessage.length > 0)
+    // The strip stays up for a notice as well as for a live session. Without
+    // the notice term it vanished the instant `Final` arrived carrying no
+    // words, which is exactly when the user needs an explanation.
+    readonly property bool showVoiceStrip: voiceEnabled
+        && (voiceBusy || voiceSetupMessage.length > 0 || voiceEmptyNotice.length > 0)
     readonly property int voiceStripHeight: showVoiceStrip ? 46 : 0
 
     implicitHeight: Math.min(
@@ -279,12 +302,26 @@ Rectangle {
                 level: root.voiceLevel
                 elapsedMs: root.voiceElapsedMs
                 detectedLanguage: root.voiceLanguage
+                pendingLanguage: root.voiceDetectedLanguage
+                languageConfidence: root.voiceLanguageConfidence
                 partialText: root.voicePartialText
                 setupMessage: root.voiceSetupMessage
+                emptyNotice: root.voiceEmptyNotice
+                warningMessage: root.voiceWarning
+
+                // One click from a doubtful reading to the place that changes
+                // it. D8 promised a "one-glance override" and there was none;
+                // this is the smallest honest version of it -- it does not
+                // re-render the audio, it takes the user to the picker.
+                onCorrectLanguageRequested: {
+                    if (typeof Config !== "undefined" && typeof Config.openSettings === "function")
+                        Config.openSettings("ai", "voice");
+                }
 
                 // Routed through the backend so the dismissal is scoped to the
                 // current gap: a *different* problem later still surfaces.
                 onDismissRequested: root.voice.dismissVoiceSetupNotice()
+                onDismissEmptyRequested: root.voice.dismissVoiceEmptyNotice()
 
                 // Spring entrance so the strip grows organically rather than
                 // snapping, per DESIGN.md 2.

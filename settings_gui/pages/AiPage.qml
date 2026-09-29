@@ -133,13 +133,19 @@ ColumnLayout {
     // --- Voice input test seams (mirroring the existing pattern) -----------
     property bool testVoiceEnabled: true
     property string testVoiceModel: "ggml-small"
-    property string testVoiceLanguage: "auto"
+    // Empty = "follow the system locale", matching the shipped default.
+    property string testVoiceLanguage: ""
     property bool testVoiceAutoFinalize: true
+    property bool testVoiceEchoCancel: false
+    property bool testVoiceNoiseSuppress: false
     property int testVoiceSilenceHangoverMs: 1200
     property int testVoiceMaxUtteranceSeconds: 30
     property var testVoiceStatus: null
     property real testVoiceModelInstallProgress: 0.0
     property bool testVoiceModelInstalling: false
+    property bool testVoiceVadModelPresent: false
+    property bool testVoiceVadInstalling: false
+    property real testVoiceVadInstallProgress: 0.0
 
     /** Which voice dropdown is open. Mutually exclusive by construction. */
     property bool modelMenuOpen: false
@@ -149,10 +155,22 @@ ColumnLayout {
         : ((typeof Config !== "undefined" && Config.voiceEnabled !== undefined) ? Config.voiceEnabled : true)
     readonly property string voiceModel: testMode ? testVoiceModel
         : ((typeof Config !== "undefined" && Config.voiceModel) ? Config.voiceModel : "ggml-small")
+    // Empty means "follow the system locale", which is the shipped default.
+    // Falling back to "auto" here instead would quietly reinstate the ungated
+    // language argmax for anyone whose settings block is missing a `language`
+    // key -- exactly the user a partial settings file produces.
     readonly property string voiceLanguage: testMode ? testVoiceLanguage
-        : ((typeof Config !== "undefined" && Config.voiceLanguage) ? Config.voiceLanguage : "auto")
+        : ((typeof Config !== "undefined" && Config.voiceLanguage) ? Config.voiceLanguage : "")
     readonly property bool voiceAutoFinalize: testMode ? testVoiceAutoFinalize
         : ((typeof Config !== "undefined" && Config.voiceAutoFinalize !== undefined) ? Config.voiceAutoFinalize : true)
+    readonly property bool voiceEchoCancel: testMode ? testVoiceEchoCancel
+        : ((typeof Config !== "undefined" && Config.voiceEchoCancel !== undefined) ? Config.voiceEchoCancel : false)
+
+    /** Capture-side noise suppression (operator-provisioned rnnoise node). */
+    readonly property bool voiceNoiseSuppress: testMode ? testVoiceNoiseSuppress
+        : ((typeof Config !== "undefined" && Config.voiceNoiseSuppress !== undefined) ? Config.voiceNoiseSuppress : false)
+    readonly property bool voiceNoiseSuppressActive: (voiceStatus !== null && voiceStatus.noise_suppress_active === true)
+    readonly property bool voiceRnnoiseAvailable: (voiceStatus !== null && voiceStatus.rnnoise_available === true)
     readonly property int voiceSilenceHangoverMs: testMode ? testVoiceSilenceHangoverMs
         : ((typeof Config !== "undefined" && Config.voiceSilenceHangoverMs) ? Config.voiceSilenceHangoverMs : 1200)
     readonly property int voiceMaxUtteranceSeconds: testMode ? testVoiceMaxUtteranceSeconds
@@ -169,6 +187,14 @@ ColumnLayout {
         : ((typeof AssistantService !== "undefined") ? (AssistantService.voiceModelInstallProgress || 0) : 0)
     readonly property bool voiceModelInstalling: testMode ? testVoiceModelInstalling
         : ((typeof AssistantService !== "undefined") ? (AssistantService.voiceModelInstalling === true) : false)
+
+    /** Silero VAD asset: neural endpointing when present, energy fallback when not. */
+    readonly property bool voiceVadModelPresent: testMode ? testVoiceVadModelPresent
+        : ((voiceStatus !== null && voiceStatus.vad_model_present === true))
+    readonly property bool voiceVadInstalling: testMode ? testVoiceVadInstalling
+        : ((typeof AssistantService !== "undefined") ? (AssistantService.voiceVadInstalling === true) : false)
+    readonly property real voiceVadInstallProgress: testMode ? testVoiceVadInstallProgress
+        : ((typeof AssistantService !== "undefined") ? (AssistantService.voiceVadInstallProgress || 0) : 0)
 
     readonly property string voiceModelSizeLabel: {
         const models = (voiceStatus && voiceStatus.models_available) ? voiceStatus.models_available : [];
@@ -187,10 +213,29 @@ ColumnLayout {
         return [{ "id": "ggml-small", "label": "Small (balanced, default)" }];
     }
 
+    /**
+     * "System default", named after the locale it resolves to.
+     *
+     * The stored value for this is the empty string, which the daemon resolves
+     * to the system locale. Showing an empty trigger instead would leave the
+     * field blank with no explanation, so the label says what will actually
+     * happen -- a blank control reads as a bug, not as a default.
+     */
+    readonly property string systemLocaleName: {
+        try {
+            const name = Qt.locale().name;      // e.g. "en_US"
+            return name && name !== "C" ? name : "your locale";
+        } catch (e) {
+            return "your locale";
+        }
+    }
+
     readonly property var voiceLanguageOptions: {
         const langs = (voiceStatus && voiceStatus.languages) ? voiceStatus.languages : [];
-        if (langs.length > 0) return langs.map(l => ({ "code": l.code, "label": l.label }));
-        return [{ "code": "auto", "label": "Auto-detect" }];
+        // First, and explicitly: the shipped default. Auto-detect is opt-in.
+        const withDefault = [{ "code": "", "label": "System default (" + root.systemLocaleName + ")" }];
+        if (langs.length > 0) return withDefault.concat(langs.map(l => ({ "code": l.code, "label": l.label })));
+        return withDefault.concat([{ "code": "auto", "label": "Auto-detect" }]);
     }
 
     /** Honest, specific status text -- never a generic "ready". */
@@ -237,6 +282,22 @@ ColumnLayout {
             testVoiceAutoFinalize = v;
         } else if (typeof Config !== "undefined") {
             Config.setVoiceAutoFinalize(v);
+        }
+    }
+
+    function setVoiceEchoCancel(v) {
+        if (testMode) {
+            testVoiceEchoCancel = v;
+        } else if (typeof Config !== "undefined") {
+            Config.setVoiceEchoCancel(v);
+        }
+    }
+
+    function setVoiceNoiseSuppress(v) {
+        if (testMode) {
+            testVoiceNoiseSuppress = v;
+        } else if (typeof Config !== "undefined") {
+            Config.setVoiceNoiseSuppress(v);
         }
     }
 
@@ -1618,6 +1679,65 @@ ColumnLayout {
                     }
                 }
 
+                // Neural voice detection (Silero): gates inference on phoneme
+                // probability rather than volume, so fan noise stops costing
+                // hallucinations. An accuracy upgrade, never a requirement —
+                // absence falls back to energy endpointing.
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+
+                    MaterialIcon {
+                        text: "graphic_eq"
+                        size: 14
+                        color: Colors.secondary
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.voiceVadModelPresent
+                            ? "Neural voice detection ready (Silero)"
+                            : "Neural voice detection not installed — energy fallback active"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.m3onSurface
+                        elide: Text.ElideRight
+                    }
+
+                    Rectangle {
+                        objectName: "voiceVadInstallButton"
+                        Layout.preferredWidth: 132
+                        Layout.preferredHeight: 32
+                        radius: Theme.radiusSmall
+                        color: root.voiceVadModelPresent ? Qt.alpha(Colors.primary, 0.14) : Qt.alpha(Colors.primary, 0.20)
+                        border.color: Qt.alpha(Colors.primary, 0.40)
+                        border.width: 1
+                        enabled: root.voiceEnabled && !root.voiceVadModelPresent && !root.voiceVadInstalling
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: root.voiceVadInstalling
+                                ? Math.round(root.voiceVadInstallProgress * 100) + "%"
+                                : (root.voiceVadModelPresent ? "Ready" : "Install (1 MB)")
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                            color: root.voiceVadModelPresent ? Colors.primary : Colors.m3onSurface
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: parent.enabled
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                                if (typeof AssistantService !== "undefined") {
+                                    AssistantService.installVoiceVadModel();
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Expands INLINE rather than overlaying.
                 //
                 // As an absolutely positioned popup this painted straight over the
@@ -1729,7 +1849,7 @@ ColumnLayout {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Auto-detect is unreliable on short clips. The detected language is shown while you speak, so you can override it."
+                    text: "Auto-detect is unreliable on short clips, so the default is your system's language and the reading is shown while it transcribes. Pick Auto-detect only if you switch languages while dictating."
                     font.family: Theme.fontFamily
                     font.pixelSize: 10
                     color: Colors.m3onSurfaceVariant
@@ -1751,7 +1871,9 @@ ColumnLayout {
                                 return root.voiceLanguageOptions[i].label;
                             }
                         }
-                        return root.voiceLanguage;
+                        // A value the daemon stored but the picker does not offer
+                        // must still be readable, not rendered as a blank field.
+                        return root.voiceLanguage.length > 0 ? root.voiceLanguage : "?";
                     }
 
                     Rectangle {
@@ -1961,6 +2083,136 @@ ColumnLayout {
                     text: root.voiceAutoFinalize
                         ? "Finishes after " + root.voiceSilenceHangoverMs + " ms of silence, or at " + root.voiceMaxUtteranceSeconds + " s, whichever comes first. Stopping manually always works."
                         : "Only the stop button ends a recording. Maximum " + root.voiceMaxUtteranceSeconds + " s."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10
+                    color: Colors.m3onSurfaceVariant
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            // --- Input cleanup ---------------------------------------------
+            //
+            // A desktop microphone hears the machine's own speakers, and the
+            // engine then transcribes the playback - wrong language,
+            // hallucinated words - or, once VAD filters it, nothing at all.
+            // The legacy echo-cancellation module is deprecated: without
+            // playback routed through its sink it receives zero reference
+            // samples and distorts the mic, so it defaults off (audit §3.3).
+            // The evaluated replacement is a capture-only noise filter
+            // (rnnoise), which needs no playback reference to work.
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceSmall
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Echo cancellation"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Colors.m3onSurface
+                    }
+
+                    Rectangle {
+                        width: 40
+                        height: 22
+                        radius: 11
+                        color: root.voiceEchoCancel ? Colors.primary : Colors.surfaceContainerHighest
+                        border.color: root.voiceEchoCancel ? Colors.primary : Theme.borderSubtle
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+
+                        Rectangle {
+                            width: 16
+                            height: 16
+                            radius: 8
+                            color: root.voiceEchoCancel ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: root.voiceEchoCancel ? parent.width - width - 3 : 3
+
+                            Behavior on x {
+                                NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveFastSpatial }
+                            }
+                        }
+
+                        MouseArea {
+                            objectName: "voiceEchoCancelToggle"
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setVoiceEchoCancel(!root.voiceEchoCancel)
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "Legacy path, off by default: without playback routed through its sink the canceller hears no reference and distorts the mic. Prefer noise suppression below."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10
+                    color: Colors.m3onSurfaceVariant
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceSmall
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Noise suppression"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Colors.m3onSurface
+                    }
+
+                    Rectangle {
+                        width: 40
+                        height: 22
+                        radius: 11
+                        color: root.voiceNoiseSuppress ? Colors.primary : Colors.surfaceContainerHighest
+                        border.color: root.voiceNoiseSuppress ? Colors.primary : Theme.borderSubtle
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+
+                        Rectangle {
+                            width: 16
+                            height: 16
+                            radius: 8
+                            color: root.voiceNoiseSuppress ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: root.voiceNoiseSuppress ? parent.width - width - 3 : 3
+
+                            Behavior on x {
+                                NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveFastSpatial }
+                            }
+                        }
+
+                        MouseArea {
+                            objectName: "voiceNoiseSuppressToggle"
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setVoiceNoiseSuppress(!root.voiceNoiseSuppress)
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: root.voiceNoiseSuppressActive
+                        ? "Capturing through the noise-suppressed source."
+                        : (root.voiceRnnoiseAvailable
+                            ? "Captures through your noise-suppression source when one is present; otherwise the default microphone. Needs an operator-provisioned rnnoise node."
+                            : "Needs an operator-provisioned suppression source (rnnoise plugin not detected here); falls back to the default microphone.")
                     font.family: Theme.fontFamily
                     font.pixelSize: 10
                     color: Colors.m3onSurfaceVariant

@@ -184,10 +184,12 @@
     "enabled": true,
     "engine": "whisper-cpp",
     "model": "ggml-small",
-    "language": "auto",
+    "language": "",
     "maxUtteranceSeconds": 30,
     "silenceHangoverMs": 1200,
     "autoFinalize": true,
+    "echoCancel": false,
+    "noiseSuppress": false,
     "installModelOnDemand": true
   }
 }

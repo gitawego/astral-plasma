@@ -385,14 +385,33 @@ impl AiActivityMonitor {
         let mut last_seen_store_time: HashMap<String, u64> = HashMap::new();
         let mut last_seen_store_tokens: HashMap<String, u64> = HashMap::new();
 
-        // Synchronize initial ground-truth state across all adapters
+        // Synchronize initial ground-truth state across all adapters.
+        //
+        // Both scans walk the session directories and the external stores shell
+        // out (`sqlite3`), so they are filesystem/subprocess work: on a runtime
+        // worker they park the thread for as long as the scan takes and stop the
+        // tokio I/O and timer drivers from being polled, which freezes every
+        // D-Bus reply in the daemon. They therefore run on the blocking pool.
         let now_ms = current_epoch_ms();
-        let initial_active_files = self.registry.scan_all_active_files(&home, ACTIVE_AGENT_WINDOW_MS);
-        for file_info in initial_active_files {
+        let scan_registry = Arc::clone(&self.registry);
+        let scan_home = home.clone();
+        let (initial_active_files, initial_store_results) = tokio::task::spawn_blocking(move || {
+            let files = scan_registry
+                .scan_all_active_files(&scan_home, ACTIVE_AGENT_WINDOW_MS)
+                .into_iter()
+                .map(|info| {
+                    let parsed = scan_registry.parse_model_tokens_and_status(&info.path);
+                    (info, parsed)
+                })
+                .collect::<Vec<_>>();
+            let stores = scan_registry.query_all_external_stores(&scan_home);
+            (files, stores)
+        })
+        .await
+        .unwrap_or_default();
+        for (file_info, parsed) in initial_active_files {
             seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
-            if let Some((model, tool, tokens, is_completed)) =
-                self.registry.parse_model_tokens_and_status(&file_info.path)
-            {
+            if let Some((model, tool, tokens, is_completed)) = parsed {
                 if !is_completed || now_ms.saturating_sub(file_info.mtime) < COMPLETED_WINDOW_MS {
                     let session_key = extract_session_key(&file_info.path);
                     self.record_activity_full_with_session(&session_key, &model, &tool, tokens, is_completed)
@@ -402,7 +421,7 @@ impl AiActivityMonitor {
         }
 
         // External stores initial check
-        for store_res in self.registry.query_all_external_stores(&home) {
+        for store_res in initial_store_results {
             let updated = store_res.timestamp_ms.unwrap_or(0);
             let tokens = store_res.tokens.unwrap_or(0);
             last_seen_store_time.insert(store_res.tool_source.clone(), updated);
@@ -427,9 +446,21 @@ impl AiActivityMonitor {
 
         // Fallback if completely idle: set identity from latest known session file
         if self.get_state().await.active_agents.is_empty() {
-            if let Some((path, mtime, size)) = self.registry.find_latest_session_file(&home) {
+            let fallback_registry = Arc::clone(&self.registry);
+            let fallback_home = home.clone();
+            let latest = tokio::task::spawn_blocking(move || {
+                fallback_registry
+                    .find_latest_session_file(&fallback_home)
+                    .map(|(path, mtime, size)| {
+                        let parsed = fallback_registry.parse_file(&path);
+                        (path, mtime, size, parsed)
+                    })
+            })
+            .await
+            .unwrap_or(None);
+            if let Some((path, mtime, size, parsed)) = latest {
                 seen_sessions.insert(path.clone(), (mtime, size));
-                if let Some(parsed) = self.registry.parse_file(&path) {
+                if let Some(parsed) = parsed {
                     let mut st = self.state.write().await;
                     st.identity = resolve_model_metadata(&parsed.model_id, &parsed.tool_source);
                     st.is_active = false;
@@ -517,9 +548,26 @@ impl AiActivityMonitor {
                                                 *wds = watch_map.clone();
                                             }
                                         }
-                                    } else if let Some(adapter) = self.registry.find_adapter_for_path(&full_path) {
+                                    } else if self.registry.find_adapter_for_path(&full_path).is_some() {
                                         // 1. External store update
-                                        if let Some(store_res) = adapter.query_external_store(&home) {
+                                        //
+                                        // `query_external_store` shells out (`sqlite3`). Running
+                                        // it here - on the runtime worker that owns this task -
+                                        // parks the worker inside `poll()` for the life of the
+                                        // child process, and a parked worker stops polling the
+                                        // tokio I/O and timer drivers: every D-Bus reply in the
+                                        // daemon then hangs until the process is restarted. It is
+                                        // therefore run on the blocking pool.
+                                        let store_registry = Arc::clone(&self.registry);
+                                        let store_path = full_path.clone();
+                                        let store_home = home.clone();
+                                        let store_res = tokio::task::spawn_blocking(move || {
+                                            store_registry
+                                                .query_external_store_for_path(&store_path, &store_home)
+                                        })
+                                        .await
+                                        .unwrap_or(None);
+                                        if let Some(store_res) = store_res {
                                             let time_updated = store_res.timestamp_ms.unwrap_or(0);
                                             let tokens = store_res.tokens.unwrap_or(0);
                                             let prev_time = last_seen_store_time.get(&store_res.tool_source).copied().unwrap_or(0);
@@ -550,7 +598,14 @@ impl AiActivityMonitor {
                                             let now_ms = current_epoch_ms();
                                             let is_fresh = now_ms.saturating_sub(mtime) < ACTIVE_AGENT_WINDOW_MS;
                                             if is_fresh {
-                                                if let Some(parsed) = self.registry.parse_file(&full_path) {
+                                                let parse_registry = Arc::clone(&self.registry);
+                                                let parse_path = full_path.clone();
+                                                let parsed = tokio::task::spawn_blocking(move || {
+                                                    parse_registry.parse_file(&parse_path)
+                                                })
+                                                .await
+                                                .unwrap_or(None);
+                                                if let Some(parsed) = parsed {
                                                     if !parsed.is_turn_completed || now_ms.saturating_sub(mtime) < COMPLETED_WINDOW_MS {
                                                         let session_key = extract_session_key(&full_path);
                                                         self.record_activity_full_with_session(&session_key, &parsed.model_id, &parsed.tool_source, parsed.tokens, parsed.is_turn_completed).await;
@@ -602,9 +657,23 @@ impl AiActivityMonitor {
                         }
                     }
 
-                    // 1. Concurrent poll: scan active session files across all adapters
-                    let active_files = self.registry.scan_all_active_files(&home, ACTIVE_AGENT_WINDOW_MS);
-                    for file_info in active_files {
+                    // 1. Concurrent poll: scan active session files across all adapters.
+                    // Walking the session directories is filesystem work: run it on the
+                    // blocking pool so the runtime keeps polling its drivers.
+                    let scan_registry = Arc::clone(&self.registry);
+                    let scan_home = home.clone();
+                    let active_files = tokio::task::spawn_blocking(move || {
+                        let files = scan_registry.scan_all_active_files(&scan_home, ACTIVE_AGENT_WINDOW_MS);
+                        let parsed: Vec<_> = files
+                            .iter()
+                            .map(|info| scan_registry.parse_file(&info.path))
+                            .collect();
+                        (files, parsed)
+                    })
+                    .await
+                    .unwrap_or_default();
+                    let (active_files, parsed_files) = active_files;
+                    for (file_info, parsed) in active_files.iter().zip(parsed_files.into_iter()) {
                         let prev = seen_sessions.get(&file_info.path).copied();
                         let is_new_event = match prev {
                             None => true,
@@ -612,7 +681,7 @@ impl AiActivityMonitor {
                         };
                         if is_new_event {
                             seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
-                            if let Some(parsed) = self.registry.parse_file(&file_info.path) {
+                            if let Some(parsed) = parsed {
                                 let now_ms = current_epoch_ms();
                                 if !parsed.is_turn_completed || now_ms.saturating_sub(file_info.mtime) < COMPLETED_WINDOW_MS {
                                     let session_key = extract_session_key(&file_info.path);
@@ -623,8 +692,16 @@ impl AiActivityMonitor {
                         }
                     }
 
-                    // 2. Poll external stores across all adapters
-                    for store_res in self.registry.query_all_external_stores(&home) {
+                    // 2. Poll external stores across all adapters. Each adapter shells
+                    // out (`sqlite3`), so this belongs on the blocking pool as well.
+                    let store_registry = Arc::clone(&self.registry);
+                    let store_home = home.clone();
+                    let store_results = tokio::task::spawn_blocking(move || {
+                        store_registry.query_all_external_stores(&store_home)
+                    })
+                    .await
+                    .unwrap_or_default();
+                    for store_res in store_results {
                         let time_updated = store_res.timestamp_ms.unwrap_or(0);
                         let tokens = store_res.tokens.unwrap_or(0);
                         let prev_time = last_seen_store_time.get(&store_res.tool_source).copied().unwrap_or(0);

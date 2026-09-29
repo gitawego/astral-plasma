@@ -129,46 +129,41 @@ fn install_streams_progress_fractions_and_remove_deletes_the_model() {
 }
 
 #[test]
-fn install_vad_downloads_the_speech_detection_asset() {
-    // The VAD asset is optional for a session but is what filters music and
-    // room noise out of the audio before decoding, so it must be installable on
-    // its own and land at the exact name `resolve_vad_model` looks for.
-    let root = temp_root("vad");
+fn status_reports_echo_cancellation_without_loading_it() {
+    // A status probe must never mutate the audio graph. It reports the setting
+    // and whether the source is already present, and nothing else.
+    let root = temp_root("echo-cancel-status");
     let models = root.join("models");
     let bin = env!("CARGO_BIN_EXE_astral-plasma");
-    stub_curl(&root);
+    let marker = root.join("pactl-calls");
+    let pactl = root.join("pactl");
+    fs::write(
+        &pactl,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"{}\"\ncase \"$1\" in\n  list) exit 0 ;;\n  *) exit 0 ;;\nesac\n",
+            marker.display()
+        ),
+    )
+    .expect("stub pactl");
+    fs::set_permissions(&pactl, fs::Permissions::from_mode(0o755)).expect("chmod");
 
-    let stdout = run(bin, &root, &models, &["voice", "install-vad"]);
-    assert!(stdout.contains("\"success\":true"), "install-vad must report success, got:\n{stdout}");
+    let out = Command::new(bin)
+        .args(["voice", "status"])
+        .env("ASTRAL_VOICE_MODEL_DIR", &models)
+        .env("PATH", format!("{}:{}", root.display(), std::env::var("PATH").unwrap_or_default()))
+        .output()
+        .expect("run the daemon binary");
+    let status: serde_json::Value = serde_json::from_slice(&out.stdout).expect("valid JSON");
+    assert_eq!(status.get("echo_cancel"), Some(&serde_json::Value::Bool(false)),
+        "echo cancellation defaults off (audit §3.3)");
+    assert_eq!(status.get("echo_cancel_active"), Some(&serde_json::Value::Bool(false)),
+        "the stub publishes no source, so it must report inactive");
 
-    let vad = models.join("ggml-silero-v5.1.2.bin");
-    assert!(vad.exists(), "the VAD asset must land at {}", vad.display());
-    assert!(
-        fs::read_to_string(&vad).unwrap().contains("model-bytes"),
-        "the staged .part file must be moved into place"
-    );
-    assert!(
-        !models.join("ggml-silero-v5.1.2.bin.part").exists(),
-        "the staged file must not survive"
-    );
-
-    let _ = fs::remove_dir_all(&root);
-}
-
-#[test]
-fn installing_a_model_also_fetches_the_vad_asset() {
-    let root = temp_root("vad-with-model");
-    let models = root.join("models");
-    let bin = env!("CARGO_BIN_EXE_astral-plasma");
-    stub_curl(&root);
-
-    let stdout = run(bin, &root, &models, &["voice", "install-model", "ggml-tiny"]);
-    assert!(stdout.contains("\"success\":true"), "got:\n{stdout}");
-    assert!(models.join("ggml-tiny.bin").exists());
-    assert!(
-        models.join("ggml-silero-v5.1.2.bin").exists(),
-        "a model install must provision the speech detection asset"
-    );
+    let calls = fs::read_to_string(&marker).unwrap_or_default();
+    assert!(calls.contains("list short sources"),
+        "status must check for the source, got: {calls}");
+    assert!(!calls.contains("load-module"),
+        "a status probe must never load the module, got: {calls}");
 
     let _ = fs::remove_dir_all(&root);
 }

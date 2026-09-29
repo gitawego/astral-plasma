@@ -17,9 +17,11 @@
 
 use crate::domain::ports::{DynError, DynResult, SpeechToTextPort};
 use crate::domain::voice::{
-    frame_rms, pcm_bytes_to_f32, should_finalize, wav_container, EngineCapabilities, EngineProbe,
-    FinalizeReason, PcmSpec, SilenceDetector, Transcript, VoiceEvent, VoiceSessionConfig,
-    LANGUAGE_AUTO, LANGUAGE_UNDETERMINED,
+    clipping_advice, clipping_ratio, frame_rms, parse_vad_segments, pcm_bytes_to_f32,
+    should_finalize, vad_is_speech, vad_model_file_name, vad_segments_to_frames, wav_container,
+    EngineCapabilities, EngineProbe, FinalizeReason, PcmSpec, SilenceDetector, Transcript,
+    VoiceEvent, VoiceSessionConfig, CLIPPING_WARN_RATIO, CLIPPING_WINDOW_MS, LANGUAGE_AUTO,
+    LANGUAGE_UNDETERMINED,
 };
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -41,6 +43,29 @@ pub const MODEL_DIR_ENV: &str = "ASTRAL_VOICE_MODEL_DIR";
 /// microphone, and as an escape hatch for setups where `pw-record` is not the
 /// right capture tool. It is a test seam, not a supported configuration path.
 pub const CAPTURE_BIN_ENV: &str = "ASTRAL_VOICE_CAPTURE_BIN";
+
+/// Environment variable pointing at a neural VAD sidecar (audit §4.2).
+///
+/// When set to a VAD binary path, the session confirms the energy detector's
+/// `has_speech` verdict per utterance against the sidecar's file-based scoring
+/// before running the engine. Empty/absent means "energy detector only" — the
+/// shipped default until the Silero asset is provisioned. Keeps the daemon
+/// free of an ONNX native dependency while making the VAD boundary explicit.
+pub const VAD_BIN_ENV: &str = "ASTRAL_VOICE_VAD_BIN";
+
+/// Environment variable selecting the capture backend (audit architecture table).
+///
+/// `pw-record` (default) preserves the tested subprocess path. `native` opts
+/// into in-process capture via `cpal` (exact 16 kHz mono, same endpointing
+/// contract); device choice via [`INPUT_DEVICE_ENV`].
+pub const CAPTURE_BACKEND_ENV: &str = "ASTRAL_VOICE_CAPTURE_BACKEND";
+
+/// Environment variable selecting the native capture device by name substring.
+///
+/// Only read on the `native` backend. Empty means the system default input.
+/// A value matching nothing fails the session honestly and lists the devices
+/// that do exist.
+pub const INPUT_DEVICE_ENV: &str = "ASTRAL_VOICE_INPUT_DEVICE";
 
 /// Engine ids this adapter answers to.
 pub const ENGINE_ID: &str = "whisper-cpp";
@@ -127,22 +152,6 @@ pub fn resolve_model_file(model_id: &str) -> Option<PathBuf> {
     }
 }
 
-/// File name of the Silero VAD asset whisper.cpp expects beside the speech
-/// models. The daemon provisions it through `voice install-vad` (and alongside
-/// every model install); a user who placed one in the models directory manually
-/// gets the same effect. The asset's presence is the only switch, which is what
-/// keeps a bare `--vad` (the flag that fails every transcription) unreachable.
-pub const VAD_MODEL_FILE: &str = crate::domain::voice::VAD_MODEL_FILE;
-
-/// Resolves the optional VAD asset, treating a zero-length file as absent.
-pub fn resolve_vad_model() -> Option<PathBuf> {
-    let path = models_dir().join(VAD_MODEL_FILE);
-    match std::fs::metadata(&path) {
-        Ok(meta) if meta.len() > 0 => Some(path),
-        _ => None,
-    }
-}
-
 /// Parses `--help` output into a capability set.
 ///
 /// A flag is considered supported when its long (`--name`) or short (`-x`) form
@@ -161,6 +170,7 @@ pub fn probe_capabilities(help_text: &str) -> EngineCapabilities {
         best_of: has("--best-of") || has("-bo "),
         no_fallback: has("--no-fallback") || has("-nf"),
         language_auto: has("--language-auto") || has("auto"),
+        detect_language: has("--detect-language") || has("-dl"),
         output_json: has("--output-json") || has("-oj"),
         no_prints: has("--no-prints") || has("-np"),
         threads: has("--threads") || has("-t "),
@@ -214,12 +224,12 @@ pub fn parse_version(text: &str) -> Option<String> {
 pub struct EngineInvocation {
     pub binary: PathBuf,
     pub model: PathBuf,
-    /// Silero VAD asset, when one is actually present. whisper.cpp's `--vad`
-    /// fails the whole transcription unless `--vad-model` names a file, so the
-    /// two flags travel together or not at all. `None` in every install we
-    /// provision: the upstream asset 404s (docs/VOICE-INPUT-SPEC.md D4).
-    pub vad_model: Option<PathBuf>,
+    /// What to ask for as `-l`: a language, or [`LANGUAGE_AUTO`].
     pub language: String,
+    /// The language to fall back on when an automatic detection cannot be
+    /// trusted. Always a real language -- the user's locale -- so "we were not
+    /// sure" resolves to the right alphabet rather than to a second guess.
+    pub fallback_language: String,
     pub threads: usize,
     pub capabilities: EngineCapabilities,
 }
@@ -313,22 +323,160 @@ pub fn build_args(inv: &EngineInvocation, audio_path: &Path, audio_duration_ms: 
     if caps.no_fallback {
         args.push("-nf".to_string());
     }
-    // VAD preprocessing is only ever requested with its model asset.
-    //
-    // whisper-cli exits "failed to process audio" for a bare `--vad`: the flag
-    // turns on Silero inference, and there is no built-in fallback when
-    // `--vad-model` is missing. The probe therefore records the flag as
-    // advertised, but the invocation stays honest about what it can run - the
-    // daemon's own SilenceDetector is the endpointing mechanism
-    // (docs/VOICE-INPUT-SPEC.md D4), so skipping engine VAD costs nothing.
-    if caps.vad && caps.vad_model {
-        if let Some(vad_model) = &inv.vad_model {
-            args.push("--vad".to_string());
-            args.push("--vad-model".to_string());
-            args.push(vad_model.to_string_lossy().into_owned());
-        }
+    // No VAD flags are emitted. whisper.cpp applies `--vad` *before* language
+    // detection - `whisper_full` replaces the samples with the VAD-filtered
+    // audio and then calls `whisper_full_with_state`, which auto-detects the
+    // language from that filtered audio (src/whisper.cpp). Measured with a
+    // music+speech mix, that costs ~3 dB of detection headroom and clips the
+    // utterance: at -12 dB music-to-voice, no VAD detects `fr` with the exact
+    // transcript while VAD detects `en` and returns "Quoi ?". Endpointing and
+    // no-speech gating are the daemon's own `SilenceDetector`, so engine VAD
+    // is both redundant and harmful.
+
+    args
+}
+
+/// Minimum detection confidence before the answer is allowed to stand.
+///
+/// whisper spreads its language probability across 100 candidates, so a
+/// detection below roughly a third is barely distinguishable from a coin toss
+/// -- and it is exactly there that a bare argmax turns English speech into
+/// Japanese-looking text. The reported failure had `p = 0.08`: 100 languages
+/// share that mass, and the winner was still committed as a decoder constraint.
+pub const MIN_LANGUAGE_CONFIDENCE: f32 = 0.35;
+
+/// Where the language used for transcription came from.
+///
+/// Defined in the domain so it travels on the wire in `Transcript`; re-exported
+/// here because this is where the decision is made.
+pub use crate::domain::voice::LanguageSource;
+
+/// The language decision, and the reasoning behind it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedLanguage {
+    /// What to hand the engine as `-l`.
+    pub transcription_language: String,
+    /// What to show the user. A detection that was overridden is still shown.
+    pub detected_language: String,
+    pub source: LanguageSource,
+    /// The engine's own probability, when it reported one.
+    pub confidence: Option<f32>,
+}
+
+/// Decides which language to transcribe in.
+///
+/// The rule is deliberately asymmetric. `requested` is what the user's settings
+/// or an explicit override asked for; `fallback` is the locale-derived language
+/// to use when an automatic detection cannot be trusted. A specific
+/// `requested` language is never overridden, because a bilingual user pinning
+/// one has said what they meant. Only an *unconfident* automatic detection is
+/// discarded, and when that happens the detection is still reported rather than
+/// quietly dropped -- an invisible override looks exactly like a bug.
+pub fn resolve_transcription_language(
+    requested: &str,
+    fallback: &str,
+    detected: Option<(String, f32)>,
+) -> ResolvedLanguage {
+    let confidence = detected.as_ref().map(|(_, p)| *p);
+
+    // A pinned language wins outright. The detection is still carried so the UI
+    // can show a disagreement rather than hide it.
+    if requested.trim() != crate::domain::voice::LANGUAGE_AUTO {
+        return ResolvedLanguage {
+            transcription_language: requested.to_string(),
+            detected_language: detected
+                .as_ref()
+                .map(|(l, _)| l.clone())
+                .unwrap_or_else(|| requested.to_string()),
+            source: LanguageSource::Configured,
+            confidence,
+        };
     }
 
+    match detected {
+        Some((language, p)) if p >= MIN_LANGUAGE_CONFIDENCE => ResolvedLanguage {
+            transcription_language: language.clone(),
+            detected_language: language,
+            source: LanguageSource::Detected,
+            confidence: Some(p),
+        },
+        Some((language, p)) => ResolvedLanguage {
+            // 0.084 is not a reading, it is the shape of a tie between 100
+            // languages. Transcribing with it is what produced Japanese-looking
+            // output from English speech.
+            transcription_language: fallback.to_string(),
+            detected_language: language,
+            source: LanguageSource::DetectedOverridden,
+            confidence: Some(p),
+        },
+        None => ResolvedLanguage {
+            transcription_language: fallback.to_string(),
+            detected_language: fallback.to_string(),
+            source: LanguageSource::Configured,
+            confidence: None,
+        },
+    }
+}
+
+/// Recovers the language the engine says it detected, and its confidence.
+///
+/// `whisper_full_with_state` logs `auto-detected language: <tag> (p = <float>)`
+/// at INFO level, which lands on **stderr**. The adapter already captured that
+/// stream and threw it away on success, so the one number that would have shown
+/// the detection was a coin toss was already in hand and discarded.
+pub fn parse_detected_language(stderr: &str) -> Option<(String, f32)> {
+    for line in stderr.lines().rev() {
+        let Some(rest) = line.split("auto-detected language:").nth(1) else {
+            continue;
+        };
+        // `<tag> (p = <float>)`. A malformed line is skipped rather than
+        // aborting the scan: stderr carries other chatter, and one unexpected
+        // line must not cost us the reading.
+        let Some((tag, prob)) = rest.trim().split_once('(') else {
+            continue;
+        };
+        let tag = tag.trim();
+        let Ok(p) = prob
+            .rsplit_once('=')
+            .map(|(_, v)| v)
+            .unwrap_or(prob)
+            .trim()
+            .trim_end_matches(')')
+            .trim()
+            .parse::<f32>()
+        else {
+            continue;
+        };
+        if tag.is_empty() || !p.is_finite() {
+            continue;
+        }
+        return Some((
+            crate::domain::voice::normalize_language(tag),
+            p.clamp(0.0, 1.0),
+        ));
+    }
+    None
+}
+
+/// Builds the argument vector for the detection pass of a two-pass session.
+///
+/// Empty when the installed build does not advertise the flag: the caller then
+/// runs a single `-l auto` pass, which is the old behaviour, rather than
+/// emitting a flag the engine will reject.
+pub fn build_detect_args(inv: &EngineInvocation, audio_path: &Path) -> Vec<String> {
+    if !inv.capabilities.detect_language {
+        return Vec::new();
+    }
+    let mut args: Vec<String> = Vec::with_capacity(6);
+    args.push("-m".to_string());
+    args.push(inv.model.to_string_lossy().into_owned());
+    args.push("-f".to_string());
+    args.push(audio_path.to_string_lossy().into_owned());
+    args.push("-dl".to_string());
+    if inv.capabilities.threads {
+        args.push("-t".to_string());
+        args.push(inv.threads.to_string());
+    }
     args
 }
 
@@ -421,13 +569,49 @@ pub fn json_sidecar_path(audio_path: &Path) -> PathBuf {
 /// the build advertises structured output; a missing or unreadable sidecar
 /// falls back to the timestamped stdout transcript rather than throwing away
 /// real speech.
-pub fn read_transcript(audio_path: &Path, stdout: &str, capabilities: &EngineCapabilities) -> String {
+/// What a finished engine run produced.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EngineOutput {
+    pub text: String,
+    /// The language the engine detected. `None` when the run was not allowed to
+    /// detect (a fixed language was requested) or the sidecar was unreadable.
+    pub language: Option<String>,
+}
+
+/// Reads the transcript and detected language a finished engine run produced.
+///
+/// whisper-cli's `-oj` does **not** print JSON to stdout: it saves the document
+/// next to the input (`<audio>.json`) and still prints the timestamped
+/// transcript to stdout. The sidecar also carries `result.language`, which is
+/// the engine's own detection result - reporting it is what lets the UI show
+/// "fr" or "ko" instead of an unhelpful "language not determined".
+pub fn read_transcript(
+    audio_path: &Path,
+    stdout: &str,
+    capabilities: &EngineCapabilities,
+) -> EngineOutput {
     if capabilities.output_json {
         if let Ok(json) = std::fs::read_to_string(json_sidecar_path(audio_path)) {
-            return extract_transcript(&json, true);
+            let language = serde_json::from_str::<serde_json::Value>(&json)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("result")
+                        .and_then(|result| result.get("language"))
+                        .and_then(|lang| lang.as_str())
+                        .map(str::to_string)
+                })
+                .filter(|lang| !lang.is_empty());
+            return EngineOutput {
+                text: extract_transcript(&json, true),
+                language,
+            };
         }
     }
-    extract_transcript(stdout, false)
+    EngineOutput {
+        text: extract_transcript(stdout, false),
+        language: None,
+    }
 }
 
 /// Strips a leading `[hh:mm:ss.mmm --> hh:mm:ss.mmm]` segment prefix.
@@ -509,7 +693,7 @@ impl WhisperCppAdapter {
         }
     }
 
-    fn prepare(&self, model_id: &str, language: &str) -> DynResult<EngineInvocation> {
+    fn prepare(&self, model_id: &str, language: &str, fallback: &str) -> DynResult<EngineInvocation> {
         let binary = self
             .binary
             .clone()
@@ -524,11 +708,15 @@ impl WhisperCppAdapter {
         Ok(EngineInvocation {
             binary,
             model,
-            vad_model: resolve_vad_model(),
             language: if language.is_empty() {
                 LANGUAGE_AUTO.to_string()
             } else {
                 language.to_string()
+            },
+            fallback_language: if fallback.trim().is_empty() {
+                crate::domain::voice::default_voice_language()
+            } else {
+                fallback.to_string()
             },
             threads: self.threads,
             capabilities: self.capabilities.clone(),
@@ -618,7 +806,7 @@ impl WhisperCppAdapter {
         cancel: &CancelHandle,
         sink: &mut dyn FnMut(VoiceEvent),
     ) -> DynResult<Transcript> {
-        let inv = match self.prepare(&cfg.model, &cfg.language) {
+        let inv = match self.prepare(&cfg.model, &cfg.language, &cfg.fallback_language()) {
             Ok(inv) => inv,
             Err(e) => {
                 // A missing engine or model is a setup gap the user can fix from
@@ -633,12 +821,33 @@ impl WhisperCppAdapter {
             state: crate::domain::voice::VoiceState::Recording,
         });
 
-        let pcm = match capture_utterance(cfg, cancel, sink) {
-            Ok(pcm) => pcm,
-            Err(e) => {
-                sink(VoiceEvent::fatal_error(e.to_string()));
-                return Err(e);
-            }
+        let (full_pcm, energy_first, energy_last, energy_speech) =
+            match capture_utterance(cfg, cancel, sink) {
+                Ok(captured) => captured,
+                Err(e) => {
+                    sink(VoiceEvent::fatal_error(e.to_string()));
+                    return Err(e);
+                }
+            };
+
+        // Speech gating and trimming (audit §4.2): neural segment bounds win
+        // when the VAD is provisioned; otherwise the energy detector's verdict
+        // and bounds stand (generic sidecar probability overrides the verdict
+        // only, never the bounds). No VAD output is ever fabricated: `None`
+        // means "unavailable", and silence means silence.
+        let (pcm, has_speech) = match apply_neural_vad(&full_pcm, cfg) {
+            Some((Some((first, last)), true)) => (
+                trim_to_speech(&full_pcm, cfg.sample_rate, cfg.frame_len, Some(first), Some(last)),
+                true,
+            ),
+            Some((_, neural_speech)) => (Vec::new(), neural_speech),
+            None => (
+                trim_to_speech(&full_pcm, cfg.sample_rate, cfg.frame_len, energy_first, energy_last),
+                match vad_generic_prob(&full_pcm) {
+                    Some(p) => vad_is_speech(p),
+                    None => energy_speech,
+                },
+            ),
         };
 
         if cancel.is_discarded() {
@@ -652,12 +861,38 @@ impl WhisperCppAdapter {
                 duration_ms: 0,
                 engine: ENGINE_ID.to_string(),
                 model: inv.model.to_string_lossy().into_owned(),
+                speech_detected: false,
+                language_confidence: None,
+                language_source: LanguageSource::Configured,
             });
         }
 
         sink(VoiceEvent::StateChanged {
             state: crate::domain::voice::VoiceState::Finalizing,
         });
+
+        // The detector saw nothing resembling speech. Asking the engine anyway
+        // makes it answer with music annotations ("(upbeat music)") or
+        // hallucinated words; an empty transcript is the honest outcome
+        // (AGENTS.md §4). This replaces engine VAD, which suppressed the same
+        // cases but rewrote the audio before language detection while doing it
+        // (see `build_args`).
+        if !has_speech {
+            let transcript = Transcript {
+                text: String::new(),
+                language: LANGUAGE_UNDETERMINED.to_string(),
+                duration_ms: 0,
+                engine: ENGINE_ID.to_string(),
+                model: cfg.model.clone(),
+                // Reported so the UI can say the microphone heard nothing,
+                // rather than leaving an empty result looking like a bug.
+                speech_detected: false,
+                language_confidence: None,
+                language_source: LanguageSource::Configured,
+            };
+            sink(VoiceEvent::Final(transcript.clone()));
+            return Ok(transcript);
+        }
 
         let spec = PcmSpec::speech();
         let duration_ms = spec.duration_ns(pcm.len()) / 1_000_000;
@@ -666,7 +901,7 @@ impl WhisperCppAdapter {
         // An inference failure must still surface as a typed event. Letting the
         // `?` propagate would end the stream silently, leaving the UI showing a
         // composer that will never receive a transcript.
-        let transcript = match self.infer(&inv, &wav, duration_ms, &cfg.model) {
+        let transcript = match self.infer(&inv, &wav, duration_ms, &cfg.model, sink) {
             Ok(t) => t,
             Err(e) => {
                 sink(VoiceEvent::fatal_error(e.to_string()));
@@ -681,12 +916,14 @@ impl WhisperCppAdapter {
 
 impl WhisperCppAdapter {
     /// Runs inference over a WAV payload, cleaning up the temp file on every path.
+    #[allow(clippy::too_many_arguments)]
     fn infer(
         &self,
         inv: &EngineInvocation,
         wav: &[u8],
         duration_ms: u64,
         model_id: &str,
+        sink: &mut dyn FnMut(VoiceEvent),
     ) -> DynResult<Transcript> {
         let dir = models_dir();
         std::fs::create_dir_all(&dir)
@@ -702,14 +939,94 @@ impl WhisperCppAdapter {
 
         // The temp file and the `-oj` sidecar are removed on every exit path,
         // including failure.
-        let result = self.run_engine(inv, &audio_path, duration_ms, model_id);
+        let result = self.run_session_passes(inv, &audio_path, duration_ms, model_id, sink);
         let _ = std::fs::remove_file(&audio_path);
         let _ = std::fs::remove_file(json_sidecar_path(&audio_path));
         let _ = std::fs::remove_file(&tmp_path);
         result
     }
 
-    fn run_engine(
+    /// Single-pass transcription (audit §4.3).
+    ///
+    /// Audit remediation: eliminate the separate `-dl` detection spawn and the
+    /// double model reload it implies. One decode with `-l <pinned|locale>` as
+    /// the language prior; the engine's own `result.language` from the `-oj`
+    /// sidecar is reported as `Detected` display-only before `Final`.
+    ///
+    /// Rationale: whisper's `-dl` argmax over 100 logits on 1-2 s clips is a
+    /// coin toss (EN → `ja p=0.08`), and below `MIN_LANGUAGE_CONFIDENCE` the old
+    /// code fell back to locale anyway — paying a full extra encoder pass to
+    /// arrive at the same language a single prior would have used. A pinned
+    /// language is never overridden; `auto` resolves to the locale prior and
+    /// the sidecar reading stays visible for correction next utterance.
+    /// `build_detect_args` / `parse_detected_language` are retained for
+    /// backwards-compat probes but no longer spawn a pass.
+    fn run_session_passes(
+        &self,
+        inv: &EngineInvocation,
+        audio_path: &Path,
+        duration_ms: u64,
+        model_id: &str,
+        sink: &mut dyn FnMut(VoiceEvent),
+    ) -> DynResult<Transcript> {
+        let wants_detection = inv.language == LANGUAGE_AUTO;
+        // Single prior: pinned wins outright, `auto` uses the locale fallback.
+        // No second decode is ever triggered from a low confidence reading.
+        let prior = if wants_detection {
+            inv.fallback_language.clone()
+        } else {
+            inv.language.clone()
+        };
+
+        let mut effective = inv.clone();
+        effective.language = prior.clone();
+
+        // Resident-server fast path (audit §4.3): a warm Unix-socket server
+        // answers without a model reload. Falls back to one-shot CLI below.
+        let transcript = match self.transcribe_via_server(&effective, audio_path, duration_ms, model_id) {
+            Some(result) => result?,
+            None => self.transcribe(&effective, audio_path, duration_ms, model_id)?,
+        };
+
+        if wants_detection {
+            // Display-only reading from the decode just finished. Confidence is
+            // `None`: single-pass decoding reports a tag, not a probability.
+            // Still emitted before `Final` so D8's strip affordance holds.
+            let detected = if transcript.language.trim().is_empty() {
+                prior.clone()
+            } else {
+                transcript.language.clone()
+            };
+            let source = if detected == prior {
+                LanguageSource::Detected
+            } else {
+                LanguageSource::DetectedOverridden
+            };
+            sink(VoiceEvent::Detected {
+                language: detected.clone(),
+                confidence: None,
+            });
+            Ok(Transcript {
+                language: detected,
+                language_confidence: None,
+                language_source: source,
+                ..transcript
+            })
+        } else {
+            // Pinned language stands verbatim: the sidecar guess must never
+            // replace an explicit prior (the `session_carries_the_real_transcript`
+            // contract).
+            Ok(Transcript {
+                language: prior,
+                language_confidence: None,
+                language_source: LanguageSource::Configured,
+                ..transcript
+            })
+        }
+    }
+
+    /// The transcription pass: one engine run over the finished clip.
+    fn transcribe(
         &self,
         inv: &EngineInvocation,
         audio_path: &Path,
@@ -724,14 +1041,15 @@ impl WhisperCppAdapter {
         // real, and the text arrives at the end. An adapter that genuinely
         // streams (a whisper-server or cloud backend) can emit `Partial` here.
         let args = build_args(inv, audio_path, duration_ms);
-        let output = Command::new(&inv.binary)
+        let binary = inv.binary.clone();
+        let output = Command::new(&binary)
             .args(&args)
             .stdin(Stdio::null())
             .output()
             .map_err(|e| -> DynError { format!("Failed to run speech engine: {e}").into() })?;
 
+        let stderr = String::from_utf8_lossy(&output.stderr);
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
             let detail = stderr
                 .lines()
                 .rev()
@@ -742,24 +1060,247 @@ impl WhisperCppAdapter {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let text = read_transcript(audio_path, &stdout, &inv.capabilities);
+        let engine_output = read_transcript(audio_path, &stdout, &inv.capabilities);
 
         // An empty result is a real outcome (silence, noise) and is reported as
-        // such. Nothing is invented to fill the gap.
+        // such. Nothing is invented to fill the gap. `speech_detected` is true
+        // here: the capture held speech, so an empty result is the engine's
+        // answer rather than the microphone's, and the two are told apart.
+        // The sidecar `result.language` rides along when present; the caller
+        // (`run_session_passes`) decides whether it stands (single-pass `auto`)
+        // or the pinned prior does.
         Ok(Transcript {
-            text,
-            language: if inv.language == LANGUAGE_AUTO {
-                LANGUAGE_UNDETERMINED.to_string()
-            } else {
-                inv.language.clone()
-            },
+            text: engine_output.text,
+            language: engine_output
+                .language
+                .filter(|l| !l.trim().is_empty())
+                .unwrap_or_else(|| inv.language.clone()),
             duration_ms,
             engine: ENGINE_ID.to_string(),
             // The catalog id, not the resolved path: this is shown in the UI
             // and persisted with the session, and a cache path is neither stable
             // nor meaningful to a reader.
             model: model_id.to_string(),
+            speech_detected: true,
+            language_confidence: None,
+            language_source: LanguageSource::Configured,
         })
+    }
+
+    /// Resident-server fast path (audit §4.3).
+    ///
+    /// When `ASTRAL_VOICE_SERVER_SOCK` points at a live `voice serve` socket,
+    /// the WAV plus its resolved single-pass prior go there instead of spawning
+    /// `whisper-cli`, dropping the ~543 ms model reload to zero (the server
+    /// holds `whisper-server` with the model resident). `None` means "no server
+    /// reachable" and the caller falls back to the one-shot CLI — dictation
+    /// never breaks over an optional accelerator.
+    fn transcribe_via_server(
+        &self,
+        _inv: &EngineInvocation,
+        audio_path: &Path,
+        duration_ms: u64,
+        model_id: &str,
+    ) -> Option<DynResult<Transcript>> {
+        let sock = std::env::var("ASTRAL_VOICE_SERVER_SOCK").ok()?;
+        if sock.trim().is_empty() {
+            return None;
+        }
+        let wav = std::fs::read(audio_path).ok()?;
+        let header = serde_json::json!({
+            "language": _inv.language,
+            "model": model_id,
+            "duration_ms": duration_ms,
+        });
+        let mut stream = std::os::unix::net::UnixStream::connect(sock).ok()?;
+        use std::io::{Read, Write};
+        stream.write_all(header.to_string().as_bytes()).ok()?;
+        stream.write_all(b"\n").ok()?;
+        let len = (wav.len() as u64).to_le_bytes();
+        stream.write_all(&len).ok()?;
+        stream.write_all(&wav).ok()?;
+        stream.flush().ok()?;
+        let mut buf = Vec::new();
+        stream.read_to_end(&mut buf).ok()?;
+        let text = String::from_utf8_lossy(&buf).trim().to_string();
+        // Server replies with plain transcript text (empty on failure); the
+        // language prior stands since the server performs the same single pass.
+        Some(Ok(Transcript {
+            text,
+            language: _inv.language.clone(),
+            duration_ms,
+            engine: ENGINE_ID.to_string(),
+            model: model_id.to_string(),
+            speech_detected: true,
+            language_confidence: None,
+            language_source: LanguageSource::Configured,
+        }))
+    }
+}
+
+/// Environment override for the echo-cancelled capture node.
+///
+/// Set to a node name to capture from it without touching PipeWire (the test
+/// seam), or to an empty string to disable echo cancellation entirely.
+pub const AEC_SOURCE_ENV: &str = "ASTRAL_VOICE_AEC_SOURCE";
+
+/// Resolves the PipeWire node a session should capture from.
+///
+/// Precedence: explicit AEC override, noise-suppression node (explicit
+/// override or setting-gated documented node when present), legacy AEC module
+/// when opted in, else `None` (default source). Every filtered path falls
+/// back to the default source rather than breaking dictation.
+fn resolve_capture_node(cfg: &VoiceSessionConfig) -> Option<String> {
+    if let Ok(explicit) = std::env::var(AEC_SOURCE_ENV) {
+        return if explicit.is_empty() { None } else { Some(explicit) };
+    }
+    if let Some(node) = crate::infrastructure::noise_suppress::resolve_node(cfg.noise_suppress) {
+        return Some(node);
+    }
+    if !cfg.echo_cancel {
+        return None;
+    }
+    crate::infrastructure::echo_cancel::ensure_source()
+}
+
+/// Scores one trimmed utterance with the neural VAD sidecar, if provisioned.
+///
+/// Protocol: `$ASTRAL_VOICE_VAD_BIN <wav-path>` prints a single speech
+/// probability `0.0..=1.0` on stdout (Silero `p > 0.5` gate). Returns `None`
+/// when no sidecar is configured, it fails, or its output does not parse —
+/// the caller then keeps the energy detector's verdict. Never fabricates: no
+/// output means no override.
+fn vad_utterance_prob(pcm: &[u8]) -> Option<f32> {
+    vad_generic_prob(pcm)
+}
+
+/// Generic float-probability VAD sidecar (`$ASTRAL_VOICE_VAD_BIN <wav-path>`).
+fn vad_generic_prob(pcm: &[u8]) -> Option<f32> {
+    let bin = std::env::var(VAD_BIN_ENV).ok()?;
+    if bin.trim().is_empty() || pcm.is_empty() {
+        return None;
+    }
+    let dir = models_dir();
+    let path = dir.join(format!("vad-probe-{}.wav", std::process::id()));
+    let spec = PcmSpec::speech();
+    std::fs::create_dir_all(&dir).ok()?;
+    std::fs::write(&path, wav_container(spec, pcm)).ok()?;
+    let out = Command::new(&bin).arg(&path).stdin(Stdio::null()).output().ok()?;
+    let _ = std::fs::remove_file(&path);
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    for tok in text.split_whitespace() {
+        if let Ok(p) = tok.trim().parse::<f32>() {
+            if p.is_finite() && (0.0..=1.0).contains(&p) {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// Locates the neural VAD segmenter binary.
+///
+/// Explicit `$ASTRAL_VOICE_VAD_BIN` wins (test seam + escape hatch); otherwise
+/// `whisper-vad-speech-segments` on `PATH` (shipped by every whisper.cpp ≥1.7
+/// package, including this host's). `None` means neural VAD is unavailable and
+/// the session keeps energy endpointing.
+fn vad_segments_binary() -> Option<PathBuf> {
+    if let Ok(explicit) = std::env::var(VAD_BIN_ENV) {
+        if !explicit.trim().is_empty() {
+            let p = PathBuf::from(explicit.trim());
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    which("whisper-vad-speech-segments").ok().map(PathBuf::from)
+}
+
+/// Resolves the Silero VAD model file, honouring the models-dir test override.
+fn vad_model_path() -> Option<PathBuf> {
+    let path = models_dir().join(vad_model_file_name());
+    match std::fs::metadata(&path) {
+        Ok(meta) if meta.len() > 0 => Some(path),
+        _ => None,
+    }
+}
+
+/// Applies neural VAD gating and trimming to a full capture (audit §4.2).
+///
+/// Stages the capture as a WAV, runs the segmenter, and converts the neural
+/// union span to frame bounds the caller trims with (via the same
+/// `trim_to_speech` margin policy energy trimming uses — one margin, not
+/// two). Returns `(bounds, has_speech)`:
+/// * `Some((Some((first, last)), true))` — neural bounds + speech.
+/// * `Some((None, false))` — the VAD ran and heard no speech; the caller
+///   reports no-speech without invoking the engine. (A pure sine tone lands
+///   here too — correctly, per live verification.)
+/// * `Some((None, verdict))` — a generic float sidecar spoke; the verdict
+///   wins but bounds stay energy (a scalar carries no bounds).
+/// * `None` — VAD unavailable (no binary/model, failure, unparsable output);
+///   the caller keeps energy bounds and verdict.
+fn apply_neural_vad(
+    full_pcm: &[u8],
+    cfg: &VoiceSessionConfig,
+) -> Option<(Option<(usize, usize)>, bool)> {
+    let binary = vad_segments_binary()?;
+    if full_pcm.is_empty() {
+        return Some((None, false));
+    }
+    // The Silero asset is required for the segment protocol; a generic float
+    // sidecar ($ASTRAL_VOICE_VAD_BIN override) speaks without it. Never spawn
+    // a whisper-vad binary known to fail for lack of its model: that would add
+    // a fork+exec to every utterance for no information.
+    let is_whisper_vad = binary
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.contains("whisper-vad"));
+    let model = vad_model_path();
+    if is_whisper_vad && model.is_none() {
+        return None;
+    }
+    let dir = models_dir();
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join(format!("vad-full-{}.wav", std::process::id()));
+    std::fs::write(&path, wav_container(PcmSpec::speech(), full_pcm)).ok()?;
+    let mut cmd = Command::new(&binary);
+    if let Some(m) = &model {
+        cmd.arg("-f").arg(&path).arg("--vad-model").arg(m).arg("-np");
+    } else {
+        cmd.arg(&path);
+    }
+    let out = cmd.stdin(Stdio::null()).output().ok()?;
+    let _ = std::fs::remove_file(&path);
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let lowered = text.to_lowercase();
+    if lowered.contains("speech segment") || lowered.contains("detected") {
+        // Segment protocol is authoritative: it ran and reported.
+        let segments = parse_vad_segments(&text);
+        if segments.is_empty() {
+            return Some((None, false));
+        }
+        let frame_bytes = (cfg.frame_len * 2).max(2);
+        let total_frames = full_pcm.len() / frame_bytes;
+        match vad_segments_to_frames(&segments, cfg.sample_rate, cfg.frame_len, total_frames) {
+            Some((first, last)) => Some((Some((first, last)), true)),
+            None => Some((None, false)),
+        }
+    } else {
+        // Generic float protocol: a scalar verdict, no bounds.
+        for tok in text.split_whitespace() {
+            if let Ok(p) = tok.trim().parse::<f32>() {
+                if p.is_finite() && (0.0..=1.0).contains(&p) {
+                    return Some((None, vad_is_speech(p)));
+                }
+            }
+        }
+        None
     }
 }
 
@@ -771,13 +1312,33 @@ fn capture_utterance(
     cfg: &VoiceSessionConfig,
     cancel: &CancelHandle,
     sink: &mut dyn FnMut(VoiceEvent),
-) -> DynResult<Vec<u8>> {
-    let args = crate::domain::voice::pw_record_args(
-        cfg.capture,
-        cfg.sample_rate,
-        crate::domain::voice::SPEECH_CHANNELS,
-        32,
-    );
+) -> DynResult<(Vec<u8>, Option<usize>, Option<usize>, bool)> {
+    // Backend selection (audit architecture table): an explicit capture-binary
+    // override always takes the spawn path (it IS the test seam); otherwise
+    // `ASTRAL_VOICE_CAPTURE_BACKEND=native` opts into in-process capture.
+    // Default stays `pw-record` until native matches its field record.
+    let override_bin = std::env::var(CAPTURE_BIN_ENV).unwrap_or_default();
+    if override_bin.is_empty()
+        && crate::domain::voice::select_capture_backend(
+            &std::env::var(CAPTURE_BACKEND_ENV).unwrap_or_default(),
+        ) == crate::domain::voice::CaptureBackend::Native
+    {
+        return capture_utterance_native(cfg, cancel, sink);
+    }
+    let args = match resolve_capture_node(cfg) {
+        Some(node) => crate::domain::voice::pw_record_args_for_node(
+            &node,
+            cfg.sample_rate,
+            crate::domain::voice::SPEECH_CHANNELS,
+            32,
+        ),
+        None => crate::domain::voice::pw_record_args(
+            cfg.capture,
+            cfg.sample_rate,
+            crate::domain::voice::SPEECH_CHANNELS,
+            32,
+        ),
+    };
 
     let mut child = spawn_capture(&args)
         .map_err(|e| -> DynError { format!("Cannot open the microphone: {e}").into() })?;
@@ -859,8 +1420,18 @@ fn capture_utterance(
     });
 
     let result = capture_loop(
-        &mut stdout, &mut child, &mut pcm, &mut detector, started, &mut speech, cancel,
-        sink, cfg, frame_bytes,
+        &mut PipeFrameRead { inner: &mut stdout },
+        &mut || {
+            let _ = child.kill();
+        },
+        &mut pcm,
+        &mut detector,
+        started,
+        &mut speech,
+        cancel,
+        sink,
+        cfg,
+        frame_bytes,
     );
 
     // Retire the watchdog, then reap the child. The order is load-bearing:
@@ -874,13 +1445,226 @@ fn capture_utterance(
 
     // Ship the engine the speech region, not the silence the capture carried.
     // See `trim_to_speech`: every untrimmed sample is inference time and the
-    // quiet stretches are where hallucinated text comes from.
+    // quiet stretches are where hallucinated text comes from. Trimming itself
+    // happens in the caller, which prefers neural segment bounds (audit §4.2)
+    // and falls back to these energy bounds: the VAD needs the FULL capture,
+    // so trimming here would amputate the signal it must judge.
     result.map(|pcm| {
-        trim_to_speech(&pcm, cfg.sample_rate, cfg.frame_len, speech.first, speech.last)
+        (
+            pcm,
+            speech.first,
+            speech.last,
+            detector.has_speech(),
+        )
     })
 }
 
-/// Frame indices the detector classified as speech, for trimming.
+/// Records one utterance from the in-process device (`cpal` backend).
+///
+/// Same detector/endpointing/trim contract as the subprocess path, minus the
+/// child process: the 200 ms channel deadline unblocks the loop, so the
+/// cooperative stop flag and the hard cap fire without any signal. The stream
+/// is dropped on return, releasing the microphone.
+fn capture_utterance_native(
+    cfg: &VoiceSessionConfig,
+    cancel: &CancelHandle,
+    sink: &mut dyn FnMut(VoiceEvent),
+) -> DynResult<(Vec<u8>, Option<usize>, Option<usize>, bool)> {
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+    if cfg.sample_rate != crate::domain::voice::SPEECH_SAMPLE_RATE {
+        return Err("native capture supports 16 kHz sessions only".into());
+    }
+    let host = cpal::default_host();
+    // Device selection: `$ASTRAL_VOICE_INPUT_DEVICE` matches a substring of the
+    // input device name (case-insensitive); empty means the system default. A
+    // match that names nothing fails honestly and lists what exists, so a typo
+    // reads as a fixable setup gap rather than silent default capture.
+    let wanted = std::env::var("ASTRAL_VOICE_INPUT_DEVICE").unwrap_or_default();
+    let wanted = wanted.trim().to_string();
+    let device = if wanted.is_empty() {
+        host.default_input_device().ok_or_else(|| -> DynError {
+            "No audio input device: check the microphone, or unset ASTRAL_VOICE_CAPTURE_BACKEND".into()
+        })?
+    } else {
+        let mut available = Vec::new();
+        let mut picked = None;
+        let devices = host.input_devices().map_err(|e| -> DynError {
+            format!("Cannot list input devices: {e}").into()
+        })?;
+        for d in devices {
+            let name = d
+                .description()
+                .map(|desc| desc.name().to_string())
+                .unwrap_or_else(|_| "<unnamed>".to_string());
+            if picked.is_none() && name.to_lowercase().contains(&wanted.to_lowercase()) {
+                picked = Some(d);
+            }
+            available.push(name);
+        }
+        picked.ok_or_else(|| -> DynError {
+            format!(
+                "No input device matches '{wanted}' (available: {}), or unset ASTRAL_VOICE_CAPTURE_BACKEND",
+                if available.is_empty() { "<none>".to_string() } else { available.join(", ") }
+            )
+            .into()
+        })?
+    };
+    let device_name = device
+        .description()
+        .map(|d| d.name().to_string())
+        .unwrap_or_else(|_| "<unnamed>".to_string());
+
+    // Exact 16 kHz mono in s16 (preferred) or f32 (converted); anything else
+    // fails honestly rather than resampling blindly in-session.
+    enum NativeFormat {
+        S16,
+        F32,
+    }
+    let mut chosen: Option<(cpal::SupportedStreamConfigRange, NativeFormat)> = None;
+    for range in device
+        .supported_input_configs()
+        .map_err(|e| -> DynError { format!("Cannot query {device_name}: {e}").into() })?
+    {
+        if range.channels() != 1
+            || range.min_sample_rate() > cfg.sample_rate
+            || range.max_sample_rate() < cfg.sample_rate
+        {
+            continue;
+        }
+        match range.sample_format() {
+            cpal::SampleFormat::I16 => {
+                chosen = Some((range, NativeFormat::S16));
+                break;
+            }
+            cpal::SampleFormat::F32 if chosen.is_none() => {
+                chosen = Some((range, NativeFormat::F32));
+            }
+            _ => {}
+        }
+    }
+    let (range, format) = chosen.ok_or_else(|| -> DynError {
+        format!("{device_name} offers no 16 kHz mono input; unset ASTRAL_VOICE_CAPTURE_BACKEND").into()
+    })?;
+    let stream_config: cpal::StreamConfig = range
+        .try_with_sample_rate(cfg.sample_rate)
+        .map(|s| s.config())
+        .ok_or_else(|| -> DynError {
+            format!("{device_name} rejects 16 kHz mono; unset ASTRAL_VOICE_CAPTURE_BACKEND").into()
+        })?;
+
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<i16>>(64);
+    let err_fn = |err| eprintln!("[voice] native capture error: {err}");
+    let stream = match format {
+        NativeFormat::S16 => device.build_input_stream(
+            stream_config.clone(),
+            move |data: &[i16], _| {
+                let _ = tx.try_send(data.to_vec());
+            },
+            err_fn,
+            None,
+        ),
+        NativeFormat::F32 => device.build_input_stream(
+            stream_config.clone(),
+            move |data: &[f32], _| {
+                let _ = tx.try_send(
+                    data.iter()
+                        .map(|v| (v.clamp(-1.0, 1.0) * 32767.0) as i16)
+                        .collect(),
+                );
+            },
+            err_fn,
+            None,
+        ),
+    }
+    .map_err(|e| -> DynError { format!("Cannot open {device_name}: {e}").into() })?;
+    stream
+        .play()
+        .map_err(|e| -> DynError { format!("Cannot start {device_name}: {e}").into() })?;
+
+    let frame_bytes = (cfg.frame_len * 2).max(2); // s16 mono
+    let mut pcm: Vec<u8> = Vec::with_capacity(cfg.sample_rate as usize * 2);
+    let mut detector = SilenceDetector::new(cfg.frame_len, cfg.sample_rate);
+    let started = Instant::now();
+    let mut speech = SpeechBounds::default();
+    let mut source = ChannelFrameRead::new(rx);
+    let mut noop = || {};
+    let result = capture_loop(
+        &mut source, &mut noop, &mut pcm, &mut detector, started, &mut speech, cancel, sink,
+        cfg, frame_bytes,
+    );
+    drop(stream);
+    result.map(|pcm| (pcm, speech.first, speech.last, detector.has_speech()))
+}
+
+/// PCM byte source for the frame loop: a capture pipe or an in-process device.
+///
+/// Unifies the subprocess and native backends behind one loop: both deliver
+/// raw s16 mono bytes, and both honour the same endpointing, watchdog and
+/// trim contract. A timeout/deadline miss surfaces as `Interrupted` (the loop
+/// continues and re-checks stop/cap) rather than EOF (which ends the session).
+trait FrameRead {
+    fn read_chunk(&mut self, buf: &mut [u8]) -> std::io::Result<usize>;
+}
+
+/// `FrameRead` over a spawned capture process's stdout pipe.
+struct PipeFrameRead<'a> {
+    inner: &'a mut std::process::ChildStdout,
+}
+
+impl FrameRead for PipeFrameRead<'_> {
+    fn read_chunk(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+/// `FrameRead` over an in-process device stream bridged by a channel.
+///
+/// The audio callback never blocks (bounded `try_send`; overruns drop, which
+/// the level meter shows as a gap rather than deadlocking the callback).
+/// An empty channel beyond the deadline is `Interrupted`, so a quiet device
+/// never ends the session the way a closed pipe does.
+struct ChannelFrameRead {
+    rx: std::sync::mpsc::Receiver<Vec<i16>>,
+    carry: Vec<u8>,
+}
+
+impl ChannelFrameRead {
+    fn new(rx: std::sync::mpsc::Receiver<Vec<i16>>) -> Self {
+        Self { rx, carry: Vec::new() }
+    }
+}
+
+impl FrameRead for ChannelFrameRead {
+    fn read_chunk(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        while self.carry.is_empty() {
+            match self.rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(samples) => {
+                    self.carry.reserve(samples.len() * 2);
+                    for s in samples {
+                        self.carry.extend_from_slice(&s.to_le_bytes());
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Ok(0),
+            }
+        }
+        let n = buf.len().min(self.carry.len());
+        buf[..n].copy_from_slice(&self.carry[..n]);
+        self.carry.drain(..n);
+        Ok(n)
+    }
+}
+
+/// Frame indices the detector classified as carrying speech, for trimming.
+///
+/// Bounds come from `decision.active`, the *looser* of the detector's two
+/// verdicts, not from `speaking`. A frame that is unambiguously speech but fell
+/// short of the endpointing bar still belongs in the clip handed to the engine;
+/// keying the bounds off the stricter test silently dropped whole words from
+/// the ends of utterances.
 #[derive(Debug, Default, Clone, Copy)]
 struct SpeechBounds {
     first: Option<usize>,
@@ -888,8 +1672,8 @@ struct SpeechBounds {
 }
 
 impl SpeechBounds {
-    fn observe(&mut self, frame_index: usize, speaking: bool) {
-        if !speaking {
+    fn observe(&mut self, frame_index: usize, active: bool) {
+        if !active {
             return;
         }
         if self.first.is_none() {
@@ -897,17 +1681,13 @@ impl SpeechBounds {
         }
         self.last = Some(frame_index);
     }
-
-    fn has_speech(&self) -> bool {
-        self.first.is_some()
-    }
 }
 
 /// The frame loop, factored out so the watchdog can own the hard cap.
 #[allow(clippy::too_many_arguments)]
 fn capture_loop(
-    stdout: &mut std::process::ChildStdout,
-    child: &mut std::process::Child,
+    source: &mut dyn FrameRead,
+    kill_capture: &mut dyn FnMut(),
     pcm: &mut Vec<u8>,
     detector: &mut SilenceDetector,
     started: Instant,
@@ -920,9 +1700,16 @@ fn capture_loop(
     let mut pending: Vec<u8> = Vec::with_capacity(frame_bytes * 2);
     let mut chunk = vec![0u8; frame_bytes * 8];
     let mut frame_index = 0usize;
+    // Opening-window clipping audit (audit §4.1): collect normalized samples
+    // for the first CLIPPING_WINDOW_MS, then emit one warn-only Warning event.
+    // Never aborts the session; never touches ALSA.
+    let mut clip_probe: Vec<f32> = Vec::new();
+    let clip_probe_max =
+        (CLIPPING_WINDOW_MS as usize * cfg.sample_rate as usize / 1000).max(frame_bytes);
+    let mut clip_warned = false;
 
     loop {
-        let n = match stdout.read(&mut chunk) {
+        let n = match source.read_chunk(&mut chunk) {
             Ok(0) => break, // capture ended on its own
             Ok(n) => n,
             Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
@@ -935,18 +1722,33 @@ fn capture_loop(
             let frame: Vec<u8> = pending[consumed..consumed + frame_bytes].to_vec();
             consumed += frame_bytes;
 
-            let level = frame_rms(&pcm_bytes_to_f32(&frame));
+            let floats = pcm_bytes_to_f32(&frame);
+            let level = frame_rms(&floats);
             let decision = detector.push(level);
-            speech.observe(frame_index, decision.speaking);
+            speech.observe(frame_index, decision.active);
             frame_index += 1;
             sink(VoiceEvent::Level { rms: level });
             pcm.extend_from_slice(&frame);
+
+            if !clip_warned && clip_probe.len() < clip_probe_max {
+                clip_probe.extend_from_slice(&floats);
+                if clip_probe.len() >= clip_probe_max {
+                    let ratio = clipping_ratio(&clip_probe);
+                    if ratio >= CLIPPING_WARN_RATIO {
+                        sink(VoiceEvent::Warning {
+                            message: clipping_advice(ratio),
+                        });
+                    }
+                    clip_warned = true;
+                    clip_probe.clear();
+                }
+            }
 
             // Cooperative stop, so the mic is always released promptly. This is
             // the only way a `stop` on the control channel can interrupt a loop
             // that is blocked reading the capture pipe.
             if cancel.is_stopped() {
-                let _ = child.kill();
+                kill_capture();
                 return Ok(pcm.clone());
             }
 
@@ -967,11 +1769,11 @@ fn capture_loop(
                     reason,
                     elapsed_ms,
                     decision.silent_for_ms,
-                    speech.has_speech(),
+                    detector.has_speech(),
                     cfg.silence_hangover_ms,
                     cfg.max_utterance_ms,
                 ) {
-                    let _ = child.kill();
+                    kill_capture();
                     return Ok(pcm.clone());
                 }
             }
@@ -983,8 +1785,7 @@ fn capture_loop(
         }
     }
 
-    let _ = child.kill();
-    // Reaped by the caller, after the watchdog has been joined.
+    kill_capture();
     Ok(pcm.clone())
 }
 
@@ -1161,8 +1962,8 @@ mod tests {
         let inv = EngineInvocation {
             binary: PathBuf::from("/usr/bin/whisper-cli"),
             model: PathBuf::from("/models/ggml-base.bin"),
-            vad_model: None,
             language: "auto".into(),
+            fallback_language: "en".to_string(),
             threads: 8,
             capabilities: EngineCapabilities::default(),
         };
@@ -1186,8 +1987,8 @@ mod tests {
         let inv = EngineInvocation {
             binary: PathBuf::from("/usr/bin/whisper-cli"),
             model: PathBuf::from("/models/ggml-base.bin"),
-            vad_model: Some(PathBuf::from("/models/ggml-silero-v5.1.2.bin")),
             language: "zh".into(),
+            fallback_language: "en".to_string(),
             threads: 4,
             capabilities: EngineCapabilities {
                 reads_stdin: true,
@@ -1197,6 +1998,7 @@ mod tests {
                 beam_search: true,
                 best_of: true,
                 no_fallback: true,
+                detect_language: false,
                 language_auto: true,
                 output_json: true,
                 no_prints: true,
@@ -1207,9 +2009,9 @@ mod tests {
         let args = build_args(&inv, Path::new("/tmp/u.wav"), 4_000);
         assert!(args.iter().any(|a| a == "-np"), "progress bars would corrupt the transcript parse");
         assert!(args.iter().any(|a| a == "-oj"));
-        assert!(args.iter().any(|a| a == "--vad"));
-        assert_eq!(flag_value(&args, "--vad-model"),
-            Some("/models/ggml-silero-v5.1.2.bin".to_string()));
+        assert!(!args.iter().any(|a| a == "--vad"),
+            "engine VAD rewrites the audio before language detection and costs ~3 dB of detection headroom");
+        assert!(!args.iter().any(|a| a == "--vad-model"));
         assert_eq!(flag_value(&args, "-ac"), Some(audio_context_for(4_000).to_string()));
         assert_eq!(flag_value(&args, "-bs"), Some("1".to_string()));
         assert_eq!(flag_value(&args, "-bo"), Some("1".to_string()));
@@ -1225,8 +2027,8 @@ mod tests {
         let inv = EngineInvocation {
             binary: PathBuf::from("/usr/bin/whisper-cli"),
             model: PathBuf::from("/m.bin"),
-            vad_model: None,
             language: "auto".into(),
+            fallback_language: "en".to_string(),
             threads: 1,
             capabilities: EngineCapabilities {
                 reads_stdin: true,
@@ -1292,13 +2094,18 @@ mod tests {
         let caps = EngineCapabilities { output_json: true, ..Default::default() };
         let stdout = "[00:00:00.000 --> 00:00:02.000]   from stdout\n";
 
-        std::fs::write(&sidecar, r#"{"transcription":[{"text":" from json"}]}"#).unwrap();
-        assert_eq!(read_transcript(&audio, stdout, &caps), "from json");
+        std::fs::write(&sidecar,
+            r#"{"result":{"language":"fr"},"transcription":[{"text":" from json"}]}"#).unwrap();
+        let from_json = read_transcript(&audio, stdout, &caps);
+        assert_eq!(from_json.text, "from json");
+        assert_eq!(from_json.language.as_deref(), Some("fr"),
+            "the sidecar's detected language must be reported, not discarded");
         let _ = std::fs::remove_file(&sidecar);
 
         // A missing sidecar must not discard the transcript stdout already carries.
-        assert_eq!(read_transcript(&audio, stdout, &caps), "from stdout");
-        assert_eq!(read_transcript(&audio, stdout, &EngineCapabilities::default()), "from stdout");
+        assert_eq!(read_transcript(&audio, stdout, &caps).text, "from stdout");
+        assert_eq!(read_transcript(&audio, stdout, &EngineCapabilities::default()).text, "from stdout");
+        assert_eq!(read_transcript(&audio, stdout, &caps).language, None);
     }
 
     #[test]
@@ -1375,5 +2182,98 @@ mod tests {
 
     fn flag_value(args: &[String], flag: &str) -> Option<String> {
         args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned()
+    }
+
+    fn server_env_lock() -> &'static std::sync::Mutex<()> {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        LOCK.get_or_init(|| std::sync::Mutex::new(()))
+    }
+
+    #[test]
+    fn server_path_sends_the_prior_and_returns_server_text() {
+        // The resident-server protocol: header prior + wav in, text out. A fake
+        // socket server stands in for `voice serve`; no model, no engine.
+        // NOTE: process-global env is mutated, so both server-path tests share
+        // one lock and never interleave.
+        let _guard = server_env_lock().lock().unwrap();
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::os::unix::net::UnixListener;
+
+        let dir = std::env::temp_dir().join(format!("astral-voice-srv-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock = dir.join("test.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut header = String::new();
+            reader.read_line(&mut header).unwrap();
+            assert!(header.contains("\"language\":\"en\""), "prior must travel: {header}");
+            assert!(header.contains("\"model\":\"ggml-tiny\""), "model must travel: {header}");
+            let mut len_buf = [0u8; 8];
+            reader.read_exact(&mut len_buf).unwrap();
+            let len = u64::from_le_bytes(len_buf) as usize;
+            let mut wav = vec![0u8; len];
+            reader.read_exact(&mut wav).unwrap();
+            assert!(wav.starts_with(b"RIFF"), "payload must be a WAV container");
+            drop(reader);
+            stream.write_all(b"served transcript\n").unwrap();
+        });
+
+        // SAFETY: scoped env mutation for this test only; restored after.
+        std::env::set_var("ASTRAL_VOICE_SERVER_SOCK", &sock);
+        let result = {
+            let adapter = WhisperCppAdapter::with_binary(
+                PathBuf::from("/nonexistent"),
+                EngineCapabilities::default(),
+            );
+            let inv = EngineInvocation {
+                binary: PathBuf::from("/nonexistent"),
+                model: PathBuf::from("/models/ggml-tiny.bin"),
+                language: "en".into(),
+                fallback_language: "en".into(),
+                threads: 1,
+                capabilities: EngineCapabilities::default(),
+            };
+            let audio = dir.join("u.wav");
+            std::fs::write(&audio, wav_container(PcmSpec::speech(), &[0u8; 320])).unwrap();
+            adapter.transcribe_via_server(&inv, &audio, 10, "ggml-tiny")
+        };
+        std::env::remove_var("ASTRAL_VOICE_SERVER_SOCK");
+        server.join().unwrap();
+
+        let transcript = result.expect("server reachable").expect("transcript");
+        assert_eq!(transcript.text, "served transcript");
+        assert_eq!(transcript.language, "en", "the prior stands on the server path");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn server_path_falls_back_when_no_server_listens() {
+        let _guard = server_env_lock().lock().unwrap();
+        std::env::set_var(
+            "ASTRAL_VOICE_SERVER_SOCK",
+            "/nonexistent-dir-astral-voice/no.sock",
+        );
+        let adapter = WhisperCppAdapter::with_binary(
+            PathBuf::from("/nonexistent"),
+            EngineCapabilities::default(),
+        );
+        let inv = EngineInvocation {
+            binary: PathBuf::from("/nonexistent"),
+            model: PathBuf::from("/models/ggml-tiny.bin"),
+            language: "en".into(),
+            fallback_language: "en".into(),
+            threads: 1,
+            capabilities: EngineCapabilities::default(),
+        };
+        let dir = std::env::temp_dir();
+        let audio = dir.join(format!("astral-voice-nosrv-{}.wav", std::process::id()));
+        std::fs::write(&audio, b"wav").unwrap();
+        assert!(adapter.transcribe_via_server(&inv, &audio, 10, "ggml-tiny").is_none(),
+            "an unreachable server must yield the CLI fallback, not an error");
+        std::env::remove_var("ASTRAL_VOICE_SERVER_SOCK");
+        let _ = std::fs::remove_file(&audio);
     }
 }

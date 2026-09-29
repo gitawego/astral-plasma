@@ -35,6 +35,8 @@ struct Fixture {
     config_home: PathBuf,
     /// Appended by the stub engine with the byte size of the WAV it was given.
     engine_audio_log: PathBuf,
+    /// Appended by the stub capture with the arguments `pw-record` would get.
+    capture_args_log: PathBuf,
 }
 
 impl Fixture {
@@ -55,6 +57,11 @@ impl Fixture {
         write_script(
             &capture,
             r#"#!/usr/bin/env bash
+# Records the arguments the daemon built, so the capture target (echo-cancelled
+# source vs default) is assertable without touching PipeWire.
+if [ -n "$ASTRAL_TEST_CAPTURE_LOG" ]; then
+  echo "args=$*" >> "$ASTRAL_TEST_CAPTURE_LOG"
+fi
 # Emits synthetic 16 kHz mono s16 PCM: 1.2 s of speech-like tone, then quiet.
 python3 - <<'PY'
 import sys, math, struct
@@ -101,6 +108,7 @@ usage: whisper-cli [options] file.wav [file.wav ...]
   -bs N, --beam-size N   beam size for beam search
   -bo N, --best-of N     number of best candidates to keep
   -nf, --no-fallback     do not use temperature fallback
+  -dl, --detect-language [false] exit after automatically detecting language
   --vad                  enable Voice Activity Detection (VAD)
   -vm, --vad-model FNAME VAD model path
 whisper-cli version 1.9.4
@@ -113,13 +121,27 @@ prev=""
 vad=0
 vad_model=0
 json=0
+detect=0
 for a in "$@"; do
   [ "$prev" = "-f" ] && audio="$a"
   [ "$a" = "--vad" ] && vad=1
   [ "$a" = "--vad-model" ] && vad_model=1
   [ "$a" = "-oj" ] && json=1
+  [ "$a" = "-dl" ] && detect=1
   prev="$a"
 done
+
+# `-dl` means "identify and stop", so the stub must not also transcribe. It
+# reports the same way whisper does: the tag and its probability on stderr, and
+# nothing on stdout.
+if [ "$detect" = "1" ]; then
+  echo "whisper_full_with_state: auto-detected language: ${ASTRAL_TEST_DETECTED_LANG:-fr} (p = ${ASTRAL_TEST_DETECTED_P:-0.91})" >&2
+  echo "total time = 12.00 ms" >&2
+  if [ -n "$ASTRAL_TEST_ENGINE_LOG" ] && [ -n "$audio" ]; then
+    echo "detect_args=$*" >> "$ASTRAL_TEST_ENGINE_LOG"
+  fi
+  exit 0
+fi
 
 if [ "$vad" = "1" ] && [ "$vad_model" = "0" ]; then
   echo "whisper-cli: failed to process audio" >&2
@@ -133,7 +155,7 @@ if [ -n "$ASTRAL_TEST_ENGINE_LOG" ] && [ -n "$audio" ]; then
   echo "args=$*" >> "$ASTRAL_TEST_ENGINE_LOG"
 fi
 if [ "$json" = "1" ] && [ -n "$audio" ]; then
-  printf '%s' '{"transcription":[{"text":" stub transcript "},{"text":"from engine"}]}' > "${audio}.json"
+  printf '%s' '{"result":{"language":"fr"},"transcription":[{"text":" stub transcript "},{"text":"from engine"}]}' > "${audio}.json"
 fi
 printf '[00:00:00.000 --> 00:00:02.000]   stub transcript from engine\n'
 "#,
@@ -154,13 +176,11 @@ printf '[00:00:00.000 --> 00:00:02.000]   stub transcript from engine\n'
 
         // A non-empty model file so preparation succeeds.
         std::fs::write(models.join("ggml-tiny.bin"), b"stub-model-weights").expect("model");
-        // The VAD asset, so sessions exercise inference-time speech filtering
-        // (`--vad --vad-model`) exactly as a real install would.
-        std::fs::write(models.join("ggml-silero-v5.1.2.bin"), b"stub-vad-weights").expect("vad model");
 
         // The stub engine appends the WAV size here, so the trim contract can
         // be asserted without a microphone or a real engine.
         let audio_log = dir.path().join("engine-audio-bytes");
+        let capture_args_log = dir.path().join("capture-args");
 
         Self {
             _dir: dir,
@@ -169,11 +189,26 @@ printf '[00:00:00.000 --> 00:00:02.000]   stub transcript from engine\n'
             engine,
             config_home,
             engine_audio_log: audio_log,
+            capture_args_log,
         }
     }
 
     /// Spawns `voice session` wired to the stubs.
     fn session(&self) -> Child {
+        self.session_with_aec("stub-aec")
+    }
+
+    /// Same, but with an explicit echo-cancel source override (`""` disables
+    /// it), so both capture paths are testable without touching PipeWire.
+    fn session_with_aec(&self, aec: &str) -> Child {
+        let mut cmd = self.session_command();
+        cmd.env("ASTRAL_VOICE_AEC_SOURCE", aec);
+        cmd.spawn().expect("spawn voice session")
+    }
+
+    /// The common `voice session` command, without the echo-cancel override, so
+    /// the real provisioning path can be exercised with a stub `pactl`.
+    fn session_command(&self) -> Command {
         let mut cmd = Command::new(daemon_bin());
         cmd.arg("voice").arg("session")
             .env("ASTRAL_VOICE_ENGINE_BIN", &self.engine)
@@ -181,10 +216,43 @@ printf '[00:00:00.000 --> 00:00:02.000]   stub transcript from engine\n'
             .env("ASTRAL_VOICE_MODEL_DIR", &self.models)
             .env("XDG_CONFIG_HOME", &self.config_home)
             .env("ASTRAL_TEST_ENGINE_LOG", &self.engine_audio_log)
+            .env("ASTRAL_TEST_CAPTURE_LOG", &self.capture_args_log)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        cmd.spawn().expect("spawn voice session")
+        cmd
+    }
+
+    /// Writes a stub `pactl` into the fixture directory and returns its folder.
+    ///
+    /// `list short sources` prints the published state; `load-module` publishes
+    /// the echo-cancelled source and records the call.
+    fn stub_pactl_dir(&self) -> PathBuf {
+        let dir = self._dir.path().join("bin");
+        std::fs::create_dir_all(&dir).expect("stub bin dir");
+        let state = dir.join("sources.state");
+        let marker = dir.join("loaded");
+        write_script(
+            &dir.join("pactl"),
+            &format!(
+                r#"#!/usr/bin/env bash
+case "$1" in
+  list)
+    [ -f "{state}" ] && cat "{state}"
+    exit 0 ;;
+  load-module)
+    echo 536870916
+    printf '60\tastral_echo_cancel\tPipeWire\ts16le 1ch 32000Hz\n' > "{state}"
+    echo "$*" >> "{marker}"
+    exit 0 ;;
+esac
+exit 1
+"#,
+                state = state.display(),
+                marker = marker.display(),
+            ),
+        );
+        dir
     }
 
     /// Runs a session, then collects its output.
@@ -194,6 +262,34 @@ printf '[00:00:00.000 --> 00:00:02.000]   stub transcript from engine\n'
     /// and the daemon correctly stops immediately -- which would end every
     /// recording after one frame. When false the pipe is closed right after the
     /// script is written, which is what a caller that never sends `start` wants.
+    /// Runs a session with extra environment for the stub engine, so one
+    /// fixture can stand in for a confident engine and a doubtful one.
+    fn run_with_env(
+        &self,
+        stdin_script: &str,
+        env: &[(&str, &str)],
+    ) -> (Vec<Value>, String, bool) {
+        let mut cmd = self.session_command();
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let mut child = cmd.spawn().expect("spawn voice session");
+        let mut stdin = child.stdin.take().expect("stdin");
+        stdin.write_all(stdin_script.as_bytes()).expect("write stdin");
+        stdin.flush().expect("flush stdin");
+        let out = child.wait_with_output().expect("wait");
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        let events = text
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                serde_json::from_str::<Value>(l)
+                    .unwrap_or_else(|e| panic!("event line is not valid JSON: {l:?} ({e})"))
+            })
+            .collect();
+        (events, String::from_utf8_lossy(&out.stderr).into_owned(), out.status.success())
+    }
+
     fn run_inner(&self, stdin_script: &str, hold_stdin: bool) -> (Vec<Value>, String, bool) {
         let mut child = self.session();
         let mut stdin = child.stdin.take().expect("stdin");
@@ -307,21 +403,244 @@ fn session_carries_the_real_transcript_from_the_engine() {
 }
 
 #[test]
-fn session_does_not_send_a_bare_vad_flag_to_the_engine() {
-    // whisper-cli 1.9.4 advertises `--vad` in its help, but fails every
-    // transcription ("failed to process audio", exit 10) when the flag is
-    // passed without `--vad-model`; the daemon's own SilenceDetector does the
-    // endpointing (docs/VOICE-INPUT-SPEC.md D4), so the flag must not be sent
-    // at all. The stub mirrors the real engine, so a regression here fails
-    // the session instead of silently emptying the transcript.
+fn session_never_requests_engine_vad() {
+    // whisper.cpp applies `--vad` before language detection (`whisper_full`
+    // swaps in the VAD-filtered samples, then `whisper_full_with_state`
+    // auto-detects from them), which measurably degrades detection and clips
+    // speech. The daemon's own SilenceDetector handles endpointing and the
+    // no-speech gate, so the engine must never receive the flags - even though
+    // the stub advertises them and a VAD asset exists in the models dir.
     let fx = Fixture::new();
     let (events, _err, ok) = fx.run("start\n");
 
-    assert!(ok, "a bare --vad would have aborted the session: {events:?}");
+    assert!(ok);
     assert!(kinds(&events).contains(&"Final".to_string()),
-        "the engine must still transcribe: {events:?}");
+        "the session must transcribe without engine VAD: {events:?}");
     assert!(!kinds(&events).contains(&"Error".to_string()),
-        "no engine error may surface for a normal utterance: {events:?}");
+        "no engine error may surface: {events:?}");
+}
+
+#[test]
+fn session_captures_through_the_echo_cancelled_source() {
+    // Speaker bleed is the root cause of wrong-language and empty transcripts on
+    // a desktop; the session must capture from the echo-cancelled node when one
+    // is available. The capture stub logs the arguments, so this is asserted
+    // without touching PipeWire.
+    let fx = Fixture::new();
+    let _ = std::fs::remove_file(&fx.capture_args_log);
+    let (events, _err, ok) = fx.run("start\n");
+    assert!(ok);
+    assert!(kinds(&events).contains(&"Final".to_string()));
+
+    let logged = std::fs::read_to_string(&fx.capture_args_log)
+        .expect("the capture stub must log its arguments");
+    let args = logged
+        .lines()
+        .rev()
+        .find(|l| l.starts_with("args="))
+        .expect("a logged capture invocation");
+    assert!(args.contains("--target stub-aec"),
+        "capture must target the echo-cancelled source, got: {args}");
+}
+
+#[test]
+fn session_falls_back_to_the_default_source_without_echo_cancellation() {
+    // The fallback is load-bearing: a machine with no PipeWire echo-cancel
+    // support must still dictate.
+    let fx = Fixture::new();
+    let _ = std::fs::remove_file(&fx.capture_args_log);
+    let mut child = fx.session_with_aec("");
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(b"start\n").expect("write");
+    stdin.flush().expect("flush");
+    let out = child.wait_with_output().expect("wait");
+    drop(stdin);
+    assert!(out.status.success());
+
+    let logged = std::fs::read_to_string(&fx.capture_args_log)
+        .expect("the capture stub must log its arguments");
+    let args = logged
+        .lines()
+        .rev()
+        .find(|l| l.starts_with("args="))
+        .expect("a logged capture invocation");
+    assert!(args.contains("--target @DEFAULT_AUDIO_SOURCE@"),
+        "without echo cancellation the default source must be captured, got: {args}");
+}
+
+#[test]
+fn session_provisions_no_echo_cancellation_by_default() {
+    // Audit §3.3: loading `module-echo-cancel` without routing playback through
+    // its sink gives AEC zero reference samples and adds blind AGC distortion.
+    // The daemon must NOT provision the module by default; capture targets the
+    // default source. Opt-in stays available via `ASTRAL_VOICE_AEC_SOURCE`.
+    let fx = Fixture::new();
+    let stub_dir = fx.stub_pactl_dir();
+    let marker = stub_dir.join("loaded");
+    let _ = std::fs::remove_file(&fx.capture_args_log);
+
+    let mut cmd = fx.session_command();
+    cmd.env("PATH", format!("{}:{}", stub_dir.display(), std::env::var("PATH").unwrap_or_default()));
+    let mut child = cmd.spawn().expect("spawn");
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(b"start\n").expect("write");
+    stdin.flush().expect("flush");
+    let out = child.wait_with_output().expect("wait");
+    drop(stdin);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+
+    let loaded = std::fs::read_to_string(&marker).unwrap_or_default();
+    assert!(!loaded.contains("module-echo-cancel"),
+        "the daemon must not provision echo cancellation by default, got: {loaded:?}");
+
+    let logged = std::fs::read_to_string(&fx.capture_args_log)
+        .expect("the capture stub must log its arguments");
+    let args = logged.lines().rev().find(|l| l.starts_with("args=")).expect("capture args");
+    assert!(args.contains("--target @DEFAULT_AUDIO_SOURCE@"),
+        "capture must target the default source without opt-in, got: {args}");
+}
+
+#[test]
+fn a_confident_detection_is_reported_and_used() {
+    // Single-pass (audit §4.3): with `language: auto` the session transcribes
+    // once with the locale prior and reports the sidecar `result.language` as
+    // a display-only `Detected` event before `Final`. No `-dl` spawn exists.
+    let fx = Fixture::new();
+    let settings = fx.config_home.join("astral-plasma").join("settings.json");
+    let raw = std::fs::read_to_string(&settings).expect("fixture settings");
+    std::fs::write(&settings, raw.replace("\"language\":\"en\"", "\"language\":\"auto\""))
+        .expect("rewrite fixture settings");
+
+    let (events, _err, ok) = fx.run_with_env("start\n", &[("LANG", "en_US.UTF-8")]);
+    assert!(ok);
+
+    let kinds: Vec<&str> = events
+        .iter()
+        .filter_map(|e| e.get("type").and_then(|t| t.as_str()))
+        .collect();
+    let detected_at = kinds.iter().position(|k| *k == "Detected");
+    let final_at = kinds.iter().position(|k| *k == "Final");
+    assert!(detected_at.is_some(), "the reading must be announced, got: {kinds:?}");
+    assert!(
+        detected_at < final_at,
+        "the reading must arrive before the transcript, or there is nothing to correct: {kinds:?}"
+    );
+
+    let detected = &events[detected_at.unwrap()];
+    assert_eq!(detected.pointer("/payload/language").and_then(|l| l.as_str()), Some("fr"));
+
+    let final_event = events[final_at.unwrap()].clone();
+    assert_eq!(
+        final_event.pointer("/payload/language").and_then(|l| l.as_str()),
+        Some("fr"),
+        "the single-pass reading is reported, got: {final_event:?}"
+    );
+
+    // Exactly one engine invocation: detection is not its own pass.
+    let logged = std::fs::read_to_string(&fx.engine_audio_log).expect("engine log");
+    assert!(
+        !logged.contains("detect_args="),
+        "single-pass must not spawn a -dl detection pass: {logged}"
+    );
+    let args = logged.lines().rev().find(|l| l.starts_with("args=")).expect("args");
+    assert!(
+        args.contains("-l en"),
+        "the decode uses the locale prior in one pass, got: {args}"
+    );
+}
+
+/// The old two-pass failure, closed structurally.
+///
+/// "Can you help me" came back as Japanese because whisper's `-dl` argmax over
+/// 100 logits on a 1.3 s clip is a tie (`ja p=0.08`) committed as a decoder
+/// constraint. Single-pass (audit §4.3) never spawns `-dl`: `auto` decodes once
+/// with the locale prior and reports the sidecar tag display-only.
+#[test]
+fn an_unconfident_detection_is_reported_but_not_transcribed_with() {
+    let fx = Fixture::new();
+    let settings = fx.config_home.join("astral-plasma").join("settings.json");
+    let raw = std::fs::read_to_string(&settings).expect("fixture settings");
+    std::fs::write(&settings, raw.replace("\"language\":\"en\"", "\"language\":\"auto\""))
+        .expect("rewrite fixture settings");
+
+    // The legacy `-dl` tie variables are ignored: no detection spawn exists to
+    // read them. The sidecar reports `fr`; the decode uses the locale prior.
+    let (events, _err, ok) = fx.run_with_env("start\n", &[("LANG", "en_US.UTF-8"), ("ASTRAL_TEST_DETECTED_LANG", "ja"), ("ASTRAL_TEST_DETECTED_P", "0.084")]);
+    assert!(ok);
+
+    let final_event = events
+        .iter()
+        .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("Final"))
+        .expect("a Final event");
+
+    assert_eq!(
+        final_event.pointer("/payload/language").and_then(|l| l.as_str()),
+        Some("fr"),
+        "the single-pass sidecar reading is reported: {final_event:?}"
+    );
+
+    let logged = std::fs::read_to_string(&fx.engine_audio_log).expect("engine log");
+    assert!(
+        !logged.contains("detect_args="),
+        "no -dl detection spawn may exist: {logged}"
+    );
+    let args = logged.lines().rev().find(|l| l.starts_with("args=")).expect("args");
+    assert!(
+        !args.contains("-l ja"),
+        "a tie must never become the decode language: {args}"
+    );
+    assert!(
+        !args.contains("-l auto"),
+        "the decode must be committed to a language, not left to another argmax: {args}"
+    );
+}
+
+#[test]
+fn session_skips_the_engine_when_nothing_was_said() {
+    // A music/noise-only capture must not reach the engine: it would answer
+    // with annotations ("(upbeat music)") or hallucinated words. The
+    // capture-side detector gates it, which is what replaces engine VAD's only
+    // measured benefit without VAD's language-detection damage.
+    let fx = Fixture::new();
+    let silence = fx._dir.path().join("silence-capture.sh");
+    write_script(
+        &silence,
+        r#"#!/usr/bin/env bash
+python3 - <<'PY'
+import sys
+sys.stdout.buffer.write(bytes(16000 * 2 * 2))  # 2 s of silence
+PY
+"#,
+    );
+    let _ = std::fs::remove_file(&fx.engine_audio_log);
+
+    let mut cmd = fx.session_command();
+    cmd.env("ASTRAL_VOICE_CAPTURE_BIN", &silence);
+    cmd.env("ASTRAL_VOICE_AEC_SOURCE", "");
+    let mut child = cmd.spawn().expect("spawn");
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(b"start\n").expect("write");
+    stdin.flush().expect("flush");
+    let out = child.wait_with_output().expect("wait");
+    drop(stdin);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+
+    let events: Vec<Value> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("valid JSON event"))
+        .collect();
+    let final_event = events
+        .iter()
+        .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("Final"))
+        .expect("a Final event");
+    assert_eq!(
+        final_event.pointer("/payload/text").and_then(|t| t.as_str()),
+        Some(""),
+        "nothing was said, so the transcript must be empty"
+    );
+    assert!(!fx.engine_audio_log.exists(),
+        "the engine must not be invoked for a capture with no speech");
 }
 
 #[test]
@@ -363,10 +682,10 @@ fn session_trims_silence_before_inference() {
         "a ~1.5s utterance must get the 5.12s floor context, got: {args}");
     assert!(args.contains("-bs 1") && args.contains("-bo 1") && args.contains("-nf"),
         "the decode must be bounded so hard audio cannot loop, got: {args}");
-    assert!(args.contains("--vad") && args.contains("--vad-model"),
-        "the installed VAD asset must enable inference-time speech filtering, got: {args}");
-    assert!(args.contains("ggml-silero-v5.1.2.bin"),
-        "the VAD model path must be named when the asset is present, got: {args}");
+    assert!(!args.contains("--vad"),
+        "engine VAD rewrites the audio before language detection and must never be requested, got: {args}");
+    assert!(!args.contains("--vad-model"),
+        "no VAD model may be named: the flags are not used, got: {args}");
 }
 
 #[test]
@@ -387,6 +706,208 @@ fn session_levels_reflect_real_captured_audio() {
     // animating a placeholder.
     assert!(levels.iter().any(|v| *v > 0.05), "no speech-level energy observed: {levels:?}");
     assert!(levels.iter().any(|v| *v < 0.01), "no silence observed: {levels:?}");
+}
+
+#[test]
+fn session_warns_on_clipped_input_without_failing() {
+    // Audit §4.1: +60 dB analog gain hard-clips 68% of samples. The session
+    // must warn once (warn-only, never rewrites ALSA) and still transcribe.
+    let fx = Fixture::new();
+    let clipped = fx._dir.path().join("clipped-capture.sh");
+    write_script(
+        &clipped,
+        r#"#!/usr/bin/env bash
+python3 - <<'PY'
+import sys, struct
+# 1.2 s of full-scale square wave (clipped), then quiet for endpointing.
+out = bytearray()
+for i in range(int(16000 * 1.2)):
+    out.extend(struct.pack('<h', 32767 if i % 2 == 0 else -32768))
+out.extend(bytes(int(16000 * 2.5) * 2))
+sys.stdout.buffer.write(bytes(out))
+PY
+"#,
+    );
+
+    let mut cmd = fx.session_command();
+    cmd.env("ASTRAL_VOICE_CAPTURE_BIN", &clipped);
+    cmd.env("ASTRAL_VOICE_AEC_SOURCE", "");
+    let mut child = cmd.spawn().expect("spawn");
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(b"start\n").expect("write");
+    stdin.flush().expect("flush");
+    let out = child.wait_with_output().expect("wait");
+    drop(stdin);
+    assert!(out.status.success());
+
+    let events: Vec<Value> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("valid JSON event"))
+        .collect();
+    let k = kinds(&events);
+    assert!(k.contains(&"Warning".to_string()), "clipped input must warn: {k:?}");
+    assert!(k.contains(&"Final".to_string()), "a clipped session still transcribes: {k:?}");
+    let warn = events.iter().find(|e| e.get("type").and_then(|t| t.as_str()) == Some("Warning")).unwrap();
+    let msg = warn.pointer("/payload/message").and_then(|m| m.as_str()).unwrap_or("");
+    assert!(msg.contains("clipping"), "warning must name the cause: {msg}");
+}
+
+/// Writes a stub neural-VAD binary printing `stdout_body`, logging its argv and
+/// the WAV size it was handed, plus a stub VAD model file. Returns the binary
+/// path; the caller wires `ASTRAL_VOICE_VAD_BIN` + `ASTRAL_VOICE_MODEL_DIR`.
+fn write_vad_stub(fx: &Fixture, name: &str, stdout_body: &str) -> PathBuf {
+    let vad = fx._dir.path().join(name);
+    write_script(
+        &vad,
+        &format!(
+            r#"#!/usr/bin/env bash
+wav=""
+prev=""
+for a in "$@"; do
+  [ "$prev" = "-f" ] && wav="$a"
+  prev="$a"
+done
+if [ -n "$wav" ] && [ -f "$wav" ]; then
+  echo "vad_bytes=$(wc -c < "$wav")" >> "{log}"
+fi
+echo "vad_args=$*" >> "{log}"
+printf '%s' '{body}'
+"#,
+            log = fx.engine_audio_log.display(),
+            body = stdout_body,
+        ),
+    );
+    std::fs::write(fx.models.join("ggml-silero-v5.1.2.bin"), b"stub-vad-weights")
+        .expect("stub vad model");
+    vad
+}
+
+#[test]
+fn session_trims_to_neural_bounds_when_vad_is_provisioned() {
+    // Audit §4.2: the VAD judges the FULL capture and its union span replaces
+    // the energy bounds. The stub capture emits 1.2 s of tone (energy would
+    // keep ~1.7 s with padding); the stub VAD reports speech only at 0.10–0.50 s,
+    // so the engine must receive ~0.9 s.
+    let fx = Fixture::new();
+    let vad = write_vad_stub(
+        &fx,
+        "stub-vad.sh",
+        "Detected 2 speech segments:\nSpeech segment 0: start = 10.00, end = 50.00\n",
+    );
+    let _ = std::fs::remove_file(&fx.engine_audio_log);
+
+    let mut cmd = fx.session_command();
+    cmd.env("ASTRAL_VOICE_VAD_BIN", &vad);
+    let mut child = cmd.spawn().expect("spawn");
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(b"start\n").expect("write");
+    stdin.flush().expect("flush");
+    let out = child.wait_with_output().expect("wait");
+    drop(stdin);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+
+    let logged = std::fs::read_to_string(&fx.engine_audio_log).expect("vad+engine log");
+    let bytes: u64 = logged
+        .lines()
+        .rev()
+        .find(|l| l.starts_with("bytes="))
+        .expect("engine must run on neural speech")
+        .trim_start_matches("bytes=")
+        .trim()
+        .parse()
+        .expect("numeric");
+    let pcm_ms = bytes.saturating_sub(44) / 32;
+    assert!(pcm_ms >= 600 && pcm_ms < 1_200,
+        "engine must receive the neural span (~0.9 s with padding), got {pcm_ms}ms");
+
+    // The VAD judged the whole endpointed capture, not an energy-trimmed
+    // fragment: its input must strictly exceed what the engine received.
+    let vad_bytes: u64 = logged
+        .lines()
+        .find(|l| l.starts_with("vad_bytes="))
+        .expect("vad must see audio")
+        .trim_start_matches("vad_bytes=")
+        .trim()
+        .parse()
+        .expect("numeric");
+    let vad_ms = vad_bytes.saturating_sub(44) / 32;
+    assert!(vad_ms > pcm_ms,
+        "VAD must judge the full capture ({vad_ms}ms), not the neural span ({pcm_ms}ms)");
+}
+
+#[test]
+fn session_neural_silence_skips_the_engine_despite_loud_capture() {
+    // The discriminator energy cannot make: a loud pure tone carries real RMS
+    // (the energy detector votes speech) but no vocal content (Silero votes
+    // silence, verified live). Neural silence must skip inference.
+    let fx = Fixture::new();
+    let vad = write_vad_stub(&fx, "stub-vad-silence.sh", "Detected 0 speech segments:\n");
+    let _ = std::fs::remove_file(&fx.engine_audio_log);
+
+    let mut cmd = fx.session_command();
+    cmd.env("ASTRAL_VOICE_VAD_BIN", &vad);
+    let mut child = cmd.spawn().expect("spawn");
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(b"start\n").expect("write");
+    stdin.flush().expect("flush");
+    let out = child.wait_with_output().expect("wait");
+    drop(stdin);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+
+    let events: Vec<Value> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("valid JSON event"))
+        .collect();
+    let final_event = events
+        .iter()
+        .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("Final"))
+        .expect("a Final event");
+    assert_eq!(
+        final_event.pointer("/payload/text").and_then(|t| t.as_str()),
+        Some(""),
+        "neural silence must produce an empty transcript"
+    );
+    assert!(
+        !logged_has_engine_bytes(&fx),
+        "the engine must not be invoked for neural silence"
+    );
+}
+
+fn logged_has_engine_bytes(fx: &Fixture) -> bool {
+    std::fs::read_to_string(&fx.engine_audio_log)
+        .unwrap_or_default()
+        .lines()
+        .any(|l| l.starts_with("bytes="))
+}
+
+#[test]
+fn session_captures_through_the_noise_suppressed_source_when_configured() {
+    // Audit §3.3 evaluated replacement: an explicit operator-provisioned
+    // suppression node wins over the default source without loading modules.
+    // `session_command` sets no AEC override, so the NR path is exercised.
+    let fx = Fixture::new();
+    let _ = std::fs::remove_file(&fx.capture_args_log);
+    let mut cmd = fx.session_command();
+    cmd.env("ASTRAL_VOICE_NOISE_SUPPRESS_SOURCE", "stub-nr-node");
+    let mut child = cmd.spawn().expect("spawn");
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(b"start\n").expect("write");
+    stdin.flush().expect("flush");
+    let out = child.wait_with_output().expect("wait");
+    drop(stdin);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+
+    let logged = std::fs::read_to_string(&fx.capture_args_log)
+        .expect("the capture stub must log its arguments");
+    let args = logged
+        .lines()
+        .rev()
+        .find(|l| l.starts_with("args="))
+        .expect("a logged capture invocation");
+    assert!(args.contains("--target stub-nr-node"),
+        "capture must target the suppression source, got: {args}");
 }
 
 #[test]
@@ -468,6 +989,7 @@ fn session_reports_a_fatal_error_when_the_engine_fails() {
         .env("ASTRAL_VOICE_CAPTURE_BIN", &fx.capture)
         .env("ASTRAL_VOICE_MODEL_DIR", &fx.models)
         .env("XDG_CONFIG_HOME", &fx.config_home)
+        .env("ASTRAL_VOICE_AEC_SOURCE", "stub-aec")
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = child.spawn().expect("spawn");
     let mut stdin = child.stdin.take().expect("stdin");
@@ -551,8 +1073,8 @@ fn session_status_reports_ready_when_engine_and_model_are_present() {
     let v: Value = serde_json::from_slice(&out.stdout).expect("status must be valid JSON");
     assert_eq!(v.get("engine_available"), Some(&Value::Bool(true)));
     assert_eq!(v.get("model_present"), Some(&Value::Bool(true)));
-    assert_eq!(v.get("vad_model_present"), Some(&Value::Bool(true)),
-        "status must report the optional speech detection asset");
+    assert_eq!(v.get("echo_cancel"), Some(&Value::Bool(false)),
+        "echo cancellation defaults off (audit §3.3): legacy AEC ships zero reference samples");
     assert_eq!(v.get("setup_complete"), Some(&Value::Bool(true)));
     assert_eq!(v.get("gap").and_then(|g| g.as_str()), Some("ready"));
 }
@@ -626,6 +1148,7 @@ PY
         .env("ASTRAL_VOICE_CAPTURE_BIN", &capture)
         .env("ASTRAL_VOICE_MODEL_DIR", &fx.models)
         .env("XDG_CONFIG_HOME", &fx.config_home)
+        .env("ASTRAL_VOICE_AEC_SOURCE", "stub-aec")
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().expect("spawn");
     // The handle must outlive wait_with_output(): closing the control channel

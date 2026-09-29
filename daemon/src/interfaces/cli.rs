@@ -1132,7 +1132,30 @@ pub async fn run_cli() -> DynResult<()> {
                         }
                     }
                 }
-                "install-vad" => {
+                "session" => {
+                    // Control arrives on stdin, events leave on stdout. The
+                    // process exits when the utterance finalises, which is what
+                    // releases the capture device.
+                    //
+                    // `--lang <tag>` is a session-scoped override (D9): it
+                    // reaches the engine for this session and is never written
+                    // back to settings, so dictating in a second language once
+                    // does not reconfigure the shell.
+                    let language = voice_language_flag(&args);
+                    let stdin = std::io::stdin();
+                    let stdout = std::io::stdout();
+                    match language.as_deref() {
+                        Some(tag) => svc.run_control_loop_with_language(stdin, stdout, tag, |w, event| {
+                            write_event(w, event).map(|_| ())
+                        })?,
+                        None => svc.run_control_loop(stdin, stdout, |w, event| {
+                            write_event(w, event).map(|_| ())
+                        })?,
+                    }
+                }
+                "install-vad-model" => {
+                    // Neural endpointing asset (audit §4.2). Same JSONL progress
+                    // contract as model installs; absence is never fatal.
                     let result = svc.install_vad_model(|fraction| {
                         let event = VoiceEvent::Progress(fraction);
                         let _ = write_event(&mut std::io::stdout(), &event);
@@ -1143,6 +1166,7 @@ pub async fn run_cli() -> DynResult<()> {
                                 "{}",
                                 serde_json::to_string(&serde_json::json!({
                                     "success": true,
+                                    "model": "silero-vad",
                                     "path": path.to_string_lossy(),
                                     "status": svc.status(),
                                 }))?
@@ -1160,18 +1184,17 @@ pub async fn run_cli() -> DynResult<()> {
                         }
                     }
                 }
-                "session" => {
-                    // Control arrives on stdin, events leave on stdout. The
-                    // process exits when the utterance finalises, which is what
-                    // releases the capture device.
-                    let stdin = std::io::stdin();
-                    let stdout = std::io::stdout();
-                    svc.run_control_loop(stdin, stdout, |w, event| {
-                        write_event(w, event).map(|_| ())
-                    })?;
+                "serve" => {
+                    // Resident STT server (audit §4.3): holds whisper-server
+                    // with the model resident and translates the Unix-socket
+                    // session protocol to its /inference endpoint, so repeat
+                    // utterances skip the ~543 ms model reload entirely.
+                    let socket = args.get(3).cloned().unwrap_or_default();
+                    let idle_secs = args.get(4).and_then(|s| s.parse::<u64>().ok()).unwrap_or(60);
+                    crate::infrastructure::voice_server::serve(socket, idle_secs)?;
                 }
                 _ => {
-                    eprintln!("Usage: astral-plasma voice <status|engines|install-model [id]|install-vad|session>");
+                    eprintln!("Usage: astral-plasma voice <status|engines|install-model [id]|install-vad-model|session [--lang <tag>]|serve [socket] [idle-secs]>");
                 }
             }
         }
@@ -1383,6 +1406,33 @@ pub async fn run_cli() -> DynResult<()> {
     }
 
     Ok(())
+}
+
+/// Extracts `--lang <tag>` from a `voice session` argument vector.
+///
+/// Supports both `--lang en` and `--lang=en`. Returns `None` when the flag is
+/// absent *or* malformed, so a bad invocation degrades to the configured default
+/// rather than failing the session outright.
+fn voice_language_flag(args: &[String]) -> Option<String> {
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        if a == "--lang" {
+            return args
+                .get(i + 1)
+                .filter(|v| !v.trim().is_empty())
+                .cloned();
+        }
+        if let Some(value) = a.strip_prefix("--lang=") {
+            return if value.trim().is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            };
+        }
+        i += 1;
+    }
+    None
 }
 
 fn print_usage() {

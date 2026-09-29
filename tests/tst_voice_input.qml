@@ -60,6 +60,7 @@ Item {
         property string voiceLanguage: ""
         property string voicePartialText: ""
         property string voiceSetupMessage: ""
+        property string voiceEmptyNotice: ""
         property string voiceTranscript: ""
         property var voiceStatus: null
         property int startCount: 0
@@ -503,6 +504,140 @@ Item {
         strip.detectedLanguage = "";
 
         // ------------------------------------------------------------------
+        // 7b. A session that produced nothing must say so
+        // ------------------------------------------------------------------
+        //
+        // The reported failure: the microphone opened, the meter moved, the
+        // strip closed, and the composer never changed -- with no error
+        // anywhere. `Final` carrying an empty transcript is a real outcome, but
+        // it reached the composer through a change signal that an empty string
+        // does not emit, so the explanation has to live on its own property.
+        strip.emptyNotice = "";
+        assert(strip.hasNotice === false, "an idle strip with no notice is not a notice");
+        assert(strip.transcriptItem.visible === false,
+            "a strip with nothing to report must render no message");
+
+        strip.emptyNotice = "No speech was detected in that recording";
+        assert(strip.hasEmptyNotice === true, "an empty-outcome notice must register");
+        assert(strip.hasNotice === true, "an empty outcome is a notice like any other");
+        assert(strip.transcriptItem.visible === true, "the empty outcome must be visible");
+        assert(strip.transcriptItem.text === strip.emptyNotice,
+            "the empty outcome must be the visible text, got: " + strip.transcriptItem.text);
+
+        // A session that heard nothing is not a settings problem, so it must
+        // not offer a settings link. Sending the user to a page that cannot
+        // explain "that recording was silent" is worse than saying nothing.
+        assert(strip.noticeNavigates === false,
+            "an empty outcome has no destination, so it must not claim one");
+        assert(strip.noticeLinkItem.visible === false,
+            "an empty outcome must not be clickable toward Settings");
+        assert(strip.noticeActionItem.visible === false,
+            "an empty outcome must not show a Settings chip");
+
+        // A setup gap, by contrast, does have a destination and must keep it.
+        strip.setupMessage = "whisper.cpp is not installed";
+        assert(strip.noticeNavigates === true, "a setup gap must keep its destination");
+        assert(strip.noticeLinkItem.visible === true, "a setup gap must stay linked to Settings");
+        assert(strip.noticeActionItem.visible === true, "a setup gap must keep its Settings chip");
+        assert(strip.transcriptItem.text === strip.setupMessage,
+            "the setup gap takes precedence over a stale empty outcome");
+
+        // The live readouts stay collapsed for either notice: they are capture
+        // readouts, and reporting a level for a session that is over is the
+        // "dead microphone" misread all over again.
+        for (const readout of ["meterItem", "timerItem", "stateLabelItem"]) {
+            assert(strip[readout].visible === false,
+                readout + " must be hidden behind a notice, it reports nothing");
+        }
+        strip.setupMessage = "";
+        strip.emptyNotice = "";
+
+        // While a session is live, a leftover notice must not take over: the
+        // strip is a live readout, not a stale explanation.
+        strip.state = "recording";
+        strip.emptyNotice = "No speech was detected in that recording";
+        assert(strip.hasEmptyNotice === false,
+            "a notice from a finished session must not override a live one");
+        assert(strip.transcriptItem.text === "",
+            "a live session shows live text, not a previous outcome");
+        strip.emptyNotice = "";
+        strip.state = "idle";
+
+        // ------------------------------------------------------------------
+        // 7c. The language reading must be visible while it can still matter
+        // ------------------------------------------------------------------
+        const languageStripSrc = readLocalFile("../assistant/components/VoiceListeningStrip.qml");
+        //
+        // D8 promised that the detected language is displayed and that this
+        // turns a mystery into a one-glance override. It could not: the strip
+        // rendered "transcribing" for the whole of the finalizing state, the
+        // language only ever arrived with the transcript, and the strip was gone
+        // by then. So the reading could only ever be "language not determined".
+        strip.state = "recording";
+        strip.detectedLanguage = "";
+        strip.pendingLanguage = "";
+        strip.languageConfidence = -1;
+        assert(strip.stateLabelText === "language not determined",
+            "with nothing detected the label must not invent a reading, got: " + strip.stateLabelText);
+
+        strip.state = "finalizing";
+        assert(strip.stateLabelText === "transcribing",
+            "with no reading yet the status word is the honest thing to show");
+
+        // A confident reading replaces the status word.
+        strip.pendingLanguage = "zh";
+        strip.languageConfidence = 0.93;
+        assert(strip.stateLabelText === "zh",
+            "a confident reading must be shown during the decode, got: " + strip.stateLabelText);
+        assert(strip.languageIsUncertain === false, "0.93 is not uncertain");
+
+        // A doubtful one says so. This is the case that produced Japanese text
+        // from English speech: whisper's auto-detect is a bare argmax over 100
+        // language logits, and a tie is not a reading.
+        strip.pendingLanguage = "ja";
+        strip.languageConfidence = 0.084;
+        assert(strip.languageIsUncertain === true, "0.084 is a tie, not a reading");
+        assert(strip.stateLabelText === "ja (unsure)",
+            "a doubtful reading must announce its doubt rather than assert itself, got: "
+                + strip.stateLabelText);
+        // The tint is asserted from source, not from a live colour: `Colors` is
+        // a qmldir-less singleton and does not resolve to real values offscreen,
+        // so comparing it here would compare `undefined` to `undefined`. What is
+        // testable live is the decision, above; what the reader must see is the
+        // contract that the error tone is what renders it.
+        assert(/root\.languageIsUncertain\s*\?\s*Colors\.m3error/.test(languageStripSrc),
+            "a doubtful reading is a warning and must be tinted with the error tone");
+
+        // And it must be correctable: the label is the only reading the user can
+        // act on, so it is the only thing worth clicking.
+        assert(strip.languageHitItem.visible === true,
+            "a live reading must be clickable, or the override D8 promised does not exist");
+        assert(strip.languageHitItem.enabled === true, "and it must actually be clickable");
+        // Drive the real signal rather than re-implementing the handler.
+        let corrections = 0;
+        strip.correctLanguageRequested.connect(function() { corrections++; });
+        strip.correctLanguageRequested();
+
+        // No reading, nothing to correct.
+        strip.pendingLanguage = "";
+        strip.languageConfidence = -1;
+        assert(strip.languageHitItem.visible === false,
+            "with no reading there is nothing to correct, so nothing may look clickable");
+        assert(corrections === 1,
+            "clicking a doubtful reading must ask for a correction exactly once, got " + corrections);
+        strip.state = "idle";
+
+        // The composer must keep the strip up for a notice, or the explanation
+        // is created and destroyed in the same tick and the user never sees it.
+        fakeVoice.voiceEmptyNotice = "No speech was detected in that recording";
+        assert(bar.voiceEmptyNotice.length > 0, "the composer must read the empty outcome");
+        assert(bar.showVoiceStrip === true,
+            "the strip must stay visible for an empty outcome, got: " + bar.showVoiceStrip);
+        assert(bar.voiceStripHeight > 0, "an empty outcome must hold the strip open");
+        fakeVoice.voiceEmptyNotice = "";
+        assert(bar.showVoiceStrip === false, "with no notice the strip collapses again");
+
+        // ------------------------------------------------------------------
         // 7. Real elapsed time formatting
         // ------------------------------------------------------------------
         strip.elapsedMs = 0;
@@ -693,8 +828,19 @@ Item {
             assert(/Layout\.minimumWidth: 0/.test(block),
                 id + " must drop Layout.minimumWidth or it cannot collapse: a Text's "
                     + "implicitWidth is the layout's minimum, so preferredWidth: 0 is clamped away");
-            assert(/visible: root\.isCapturing/.test(block),
-                id + " must be hidden outright when nothing is being captured");
+            // Three different questions, three different gates.
+            //
+            //   meter  - is audio arriving *now*? Once capture ends a level on
+            //            screen is a frozen reading, so `isRecording`.
+            //   clock  - how long did the utterance take? Monotonic and still
+            //            meaningful, so it stays up through the decode.
+            //   label  - what language did the engine decide? The one thing the
+            //            user can still act on, so it stays up too.
+            const gate = id === "meter" ? "isRecording" : "isCapturing";
+            const regex = new RegExp("visible: root\\." + gate);
+            assert(regex.test(block),
+                id + " must be gated on root." + gate
+                    + ", got: " + block.split("\n").find((l) => l.includes("visible:")));
         }
         assert(/function cancelProc\(proc\)/.test(serviceSrc),
             "cancelling a one-shot probe must go through one named helper");
@@ -765,7 +911,37 @@ Item {
         assert(/property real voiceLevel/.test(serviceSrc), "AssistantService must track the measured level");
         assert(/property string voiceLanguageOverride/.test(serviceSrc),
             "AssistantService must keep a session-scoped language override");
+        // The override used to be declared and then never read or written, and
+        // this very assertion passed on the dead property. It has to reach the
+        // engine now, and it has to do so as an argument rather than by writing
+        // settings, because D9 forbids persisting it.
+        assert(/function setVoiceLanguageOverride\(/.test(serviceSrc),
+            "there must be a way to set the override, not just a property to hold it");
+        assert(/function clearVoiceLanguageOverride\(/.test(serviceSrc),
+            "and a way to clear it");
+        assert(/"--lang",\s*root\.voiceLanguageOverride\.trim\(\)/.test(serviceSrc),
+            "the override must be passed to `voice session --lang`; declaring it is not using it");
+        assert(!/setVoiceSettings|settings\.voice\s*=|voiceSettings\.language\s*=/.test(
+                serviceSrc.slice(serviceSrc.indexOf("function setVoiceLanguageOverride"),
+                                 serviceSrc.indexOf("function clearVoiceLanguageOverride"))),
+            "the override must not be written into settings; D9 says it is session-scoped");
         assert(/"voice",\s*"session"/.test(serviceSrc), "the session must be launched as `voice session`");
+        // The language reading must be consumed, and it must be distinguishable
+        // from a confidence-less one, or "auto-detect" is a word without a meaning.
+        assert(/ev\.type === "Detected"/.test(serviceSrc),
+            "the service must consume the pre-decode language reading");
+        assert(/ev\.payload\.confidence/.test(serviceSrc),
+            "the engine's own probability must be carried through, not discarded");
+        assert(/property real voiceLanguageConfidence/.test(serviceSrc),
+            "AssistantService must expose the confidence so the UI can judge the reading");
+        // The reported failure: `auto` as the default handed the output alphabet
+        // to whisper's ungated language argmax. The shipped default is now the
+        // system locale, and `auto` is something a user has to choose.
+        assert(/voiceEmptyNotice = root\.voiceSpeechDetected/.test(serviceSrc),
+            "an empty outcome must distinguish 'heard nothing' from 'no words', or the "
+                + "message points the user at the wrong problem");
+        assert(/speech_detected/.test(serviceSrc),
+            "the transcript's speech_detected flag must be read, not ignored");
         // The daemon waits for an explicit `start` before opening the mic, so
         // spawning the process is not sufficient. Regression guard for a live
         // bug: the composer showed "recording" while the daemon sat blocked on
@@ -888,6 +1064,9 @@ Item {
         assert(/readonly property string voiceLanguage/.test(configSrc), "Config must expose voiceLanguage");
         assert(/function setVoiceModel\(/.test(configSrc), "Config must expose setVoiceModel");
         assert(/function setVoiceAutoFinalize\(/.test(configSrc), "Config must expose setVoiceAutoFinalize");
+        assert(/function setVoiceEchoCancel\(/.test(configSrc), "Config must expose setVoiceEchoCancel");
+        assert(/readonly property bool voiceNoiseSuppress/.test(configSrc), "Config must expose voiceNoiseSuppress");
+        assert(/function setVoiceNoiseSuppress\(/.test(configSrc), "Config must expose setVoiceNoiseSuppress");
 
         // Shipped defaults must match the daemon's documented defaults.
         const settings = readLocalFile("../config/settings.json");
@@ -895,10 +1074,42 @@ Item {
         const parsed = JSON.parse(settings);
         assert(parsed.voice !== undefined, "settings.json must ship a voice block");
         assert(parsed.voice.model === "ggml-small", "default model must be the CPU-interactive tier the daemon defaults to");
-        assert(parsed.voice.language === "auto", "default language must be auto-detect");
+        // The reported failure: "can you help me" came back as Japanese. The
+        // engine auto-detects with a bare argmax over 100 language logits and
+        // no confidence gate, and the winner becomes a hard decoder constraint.
+        // Shipping `auto` as the default handed the output alphabet to a coin
+        // toss. The default is now "whatever the system locale says", and `auto`
+        // is something a user has to go and choose.
+        assert(parsed.voice.language === "",
+            "the default language must be empty, i.e. follow the system locale; "
+                + "'auto' must be opt-in, not the shipped default");
+        assert(/voiceLanguage[^\n]*: *\(root\.voiceSettings\.language\) ?\? ?root\.voiceSettings\.language : ""/.test(configSrc),
+            "Config must fall back to the empty value, not to \"auto\"");
         assert(parsed.voice.maxUtteranceSeconds === 30, "default utterance cap must be 30s");
         assert(parsed.voice.silenceHangoverMs === 1200, "default hangover must match the daemon default");
         assert(parsed.voice.autoFinalize === true, "auto-finalize must default on");
+        assert(parsed.voice.echoCancel === false,
+            "echo cancellation must default off (audit §3.3): legacy AEC ships zero reference samples without sink routing");
+        assert(parsed.voice.noiseSuppress === false,
+            "noise suppression defaults off: its source node is operator-provisioned");
+        // The session must tolerate a non-fatal Warning event without failing:
+        // the clipping guard warns once and still transcribes.
+        const warningSrc = readLocalFile("../services/AssistantService.qml");
+        assert(/ev\.type === "Warning"/.test(warningSrc),
+            "AssistantService must handle the non-fatal Warning event (gain guard)");
+        // The warning must reach the strip as a live readout: error-toned text
+        // beside a live meter, never collapsing capture readouts and never
+        // surviving past the session that produced it.
+        const vadStripSrc = readLocalFile("../assistant/components/VoiceListeningStrip.qml");
+        assert(/property string warningMessage/.test(vadStripSrc),
+            "the strip must accept the live warning text");
+        assert(/hasWarning: warningMessage\.length > 0 && isCapturing/.test(vadStripSrc),
+            "the warning must be live-only: showing it beside a dead meter reads as a broken microphone");
+        assert(/hasWarning && root\.partialText\.length === 0/.test(vadStripSrc),
+            "a real partial always wins over the warning; the warning borrows the error tone");
+        const barSrc2 = readLocalFile("../assistant/components/ChatInputBar.qml");
+        assert(/warningMessage: root\.voiceWarning/.test(barSrc2),
+            "the composer must pass the backend warning into the strip");
         // Pre-existing keys must be untouched by this feature.
         assert(parsed.media !== undefined && parsed.dock !== undefined && parsed.theme !== undefined,
             "existing settings blocks must be preserved");

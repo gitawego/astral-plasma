@@ -526,3 +526,263 @@ Daemon-built engine arguments, logged live:
 Note `-ac 572`: the encoder window is sized to the actual 10.16s utterance (`ceil(ms/20) + 64`), not the 30s default.
 
 **Automated verification**: `make test` - Rust 597 passed / 0 failed, all QML suites green. New coverage: VAD constants pinned to the public repo, `install-vad` + auto-provision-on-model-install against a stub `curl`, `vad_model_present` in `voice status`, and session-protocol assertions that `--vad --vad-model` reach the engine.
+
+---
+
+## 16. "Chinese Becomes Korean, English Becomes Nothing" Was One Input Problem
+
+### 16.1. Diagnosis
+
+- Measured the room through the built-in microphone while the music played: **0.64 RMS full scale** (the music's own monitor measured 0.67–0.80). The engine was being handed the speakers' playback.
+- Language detection keyed off that playback - Chinese speech came back as Korean - and once VAD filtered the music, nothing was left, so English speech produced an empty transcript.
+- No model, prompt, or threshold change can fix a microphone whose dominant content is the machine's own output.
+
+### 16.2. Fix: PipeWire echo cancellation, on by default
+
+- New setting `voice.echoCancel` (Settings → AI → Voice input → **Echo cancellation**), default on.
+- The daemon provisions a source named `astral_echo_cancel` on the first session (`pactl load-module module-echo-cancel aec_method=webrtc source_name=astral_echo_cancel sink_name=astral_echo_cancel_sink`) and captures from it. If PipeWire, `pactl`, or the module is unavailable, it silently falls back to the default source.
+- Loading the module leaves the default sink and source unchanged, so playback routing is untouched.
+- Measured effect: the same music through the echo-cancelled source is **0.07 RMS** — ~19 dB below the raw microphone.
+- `voice status` reports `echo_cancel` (the setting) and `echo_cancel_active` (the source is present); a status probe never loads the module.
+
+### 16.3. Live verification
+
+Capture arguments built by the daemon during a real session:
+
+```
+--raw --target astral_echo_cancel --latency 32ms --rate 16000 --channels 1 --format s16 -
+```
+
+A music-only session (no speech) finished with an empty transcript in ~0.3 s of inference — the correct outcome, and previously 6–45 s of hallucinated text.
+
+**Automated verification**: `make test` - Rust 605 passed / 0 failed, all QML suites green. New coverage: echo-cancel source detection and load-argument tests, stub-`pactl` provisioning + fallback + status-does-not-load tests, `pw_record_args_for_node`, and the settings/toggle contracts.
+
+### 16.4. What to expect now
+
+Chinese and English speech are captured with the music removed, so language detection sees the voice and the transcript should follow the spoken language. The toggle is in **Settings → AI → Voice input → Echo cancellation**; turning it off reverts to the raw microphone.
+
+---
+
+## 17. "Chinese Becomes Korean / French Becomes Chinese" - The Input Was The Root Cause
+
+### 17.1. Diagnosis With Numbers
+
+- The built-in microphone carried the playing music at **0.58–0.78 RMS** while the music's own monitor measured 0.67–0.80: the engine was being asked to transcribe the speakers.
+- Whisper's language detection follows whatever is loudest. Measured detection vs the music-to-voice ratio: 0 to -9 dB → `nn`/`en` garbage; **-12 dB → `fr` + "Tu fais quoi ?"**. The voice must be ~12 dB louder than the music at the microphone.
+- **Engine VAD made it worse**: whisper.cpp applies `--vad` before language detection (`whisper_full` swaps in the VAD-filtered samples, then `whisper_full_with_state` detects from them - `src/whisper.cpp`). At -12 dB the unfiltered run detected `fr` with the exact transcript while the VAD run detected `en` and returned "Quoi ?". VAD is removed.
+- **The input gain was +60 dB** (`Capture` 63/63 = +30 dB, `Internal Mic Boost` 3/3 = +30 dB) with **5.6–25.4% of samples hard-clipped** (peak exactly 1.000). Lowering the boost to 1 removed all clipping. Clipping distorts the waveform and limits AEC, which needs a linear echo path.
+- AEC (previous round) removes ~19 dB of the playback; the webcam microphone hears the music just as loudly, so a device swap is not a fix.
+
+### 17.2. Code Changes
+
+- **Engine VAD removed** (`build_args`): it corrupted detection and clipped speech; the daemon's own `SilenceDetector` gates the no-speech case.
+- **The detected language is reported**: `read_transcript` now parses `result.language` from the `-oj` sidecar into `Transcript.language` (it was hardcoded to `und` whenever `language: auto`), so the strip shows `fr`/`ko` instead of "language not determined" - making a wrong detection visible and correctable from the language picker.
+- **No-speech gate**: a capture the detector saw no speech in returns an empty transcript without invoking the engine (no music annotations).
+- AEC stays on by default (previous round).
+
+### 17.3. Proof
+
+The exact case that previously produced `en`/"Quoi ?", run through the rebuilt daemon with the real engine:
+
+```
+fr + music at -12 dB   Final: language='fr'  text='Tu fais quoi ?'
+fr clean               Final: language='fr'  text='Tu fais quoi ?'
+music only             Final: language='nn'  text=''
+```
+
+`make test`: Rust 603 passed / 0 failed, all QML suites green. New coverage: the engine's detected language surfaces in `Final`; a no-speech capture skips the engine; VAD flags are never requested.
+
+### 17.4. What Only You Can Fix
+
+The remaining failures are physical: at your current speaker level the music reaches the microphone louder than your voice. Options, in order of effect:
+
+1. **Headphones** (removes the problem entirely).
+2. **Lower the speaker volume**, or move the microphone closer.
+3. **Fix the input gain** - `Capture` and `Internal Mic Boost` are both at maximum:
+   ```bash
+   amixer -c 1 sset 'Internal Mic Boost' 1
+   amixer -c 1 sset 'Capture' 60%
+   ```
+4. If you speak one language for a session, pin it in **Settings → AI → Voice input → Language**; a fixed language skips detection entirely and is ~2x faster.
+
+---
+
+## 18. "Car Engine Revving / Speaking In Foreign Language" - The Sound Wasn't From The PC
+
+### 18.1. The Decisive Measurement
+
+| Signal (`parec`) | RMS |
+|---|---|
+| Jeecoo sink monitor (PC playback) | **0.0000** (paused) |
+| Built-in sink monitor | **0.0000** |
+| Built-in microphone | **0.73**, peak 1.000, **18.4% clipped** |
+| Echo-cancelled source | 0.16 (AEC + WebRTC noise suppression, ~15 dB) |
+
+Both playback monitors were silent while the microphone was clipping: the loud
+sound was **external**. Echo cancellation subtracts the sink signal from the
+capture, so it has no reference for sound the machine never played; its noise
+suppression still removed ~15 dB, but the remaining 0.08-0.16 RMS floor still
+competes with a normal voice. Whisper therefore transcribed the room (engine
+/ music) and annotated the buried Chinese speech as "foreign language", with
+language detection following the noise (`en`).
+
+Note: `pw-record --target <name>` silently falls back to the default source when
+a name does not resolve, which briefly made the microphone look bit-identical to
+the sink monitor. `parec --device=<node>` is the reliable way to read a specific
+node and is what produced the table above.
+
+### 18.2. No Code Fix Remains For External Noise
+
+The pipeline is already doing what it can: AEC + noise suppression on by
+default, engine VAD removed, the detected language reported, and a no-speech
+gate that skips the engine entirely. What remains is physical:
+
+1. **A microphone at your mouth** (headset/earbud) - rejects the room, the only
+   complete fix.
+2. **A quieter place** or lower ambient volume.
+3. **Fix the input gain** (still `Capture` 63/63 +30 dB and `Internal Mic Boost`
+   3/3 +30 dB, 18% of samples clipped):
+   ```bash
+   amixer -c 1 sset 'Internal Mic Boost' 1
+   amixer -c 1 sset 'Capture' 60%
+   ```
+4. **Pin the language** - Settings → AI → Voice input → Language. Detection is
+   what fails in noise; a pinned language skips it entirely and is ~2x faster.
+
+---
+
+## 19. Voice Input: The Three Silent Failures, Fixed
+
+Three defects made voice input look broken in ways that produced no error at
+all. They are documented together because they share a shape: each produced
+output that *looked* right and was never questioned.
+
+### 19.1 English Speech Came Back As Japanese
+
+`会議のも学び` from "can you help me". Two independent causes.
+
+**The decision was trusted unconditionally.** whisper auto-detects by taking a
+bare `argmax` over 100 language logits
+(`whisper_lang_auto_detect_internal` → `return logits_id[0].second`). The
+winner is written to `state->lang_id` and the decoder is then *constrained* to
+it, so nothing downstream can revisit the choice. The measured run: `p = 0.08`
+— not a reading, the shape of a tie between a hundred languages. whisper prints
+that probability to **stderr**; the adapter captured stderr and discarded it on
+the success path, so the one number that would have exposed the tie was already
+in hand and thrown away.
+
+**The display was structurally unreachable.** The strip rendered `"transcribing"`
+for the whole finalizing state, the language arrived only with the transcript,
+and the transcript's arrival also closed the strip. During recording the label
+read "language not determined"; during finalizing it read "transcribing". It
+could never render a real value.
+
+The fix: detection is now **its own pass** (`whisper-cli -dl`, probed like every
+other flag and verified against the installed `whisper-cli 1.9.4`), so the
+language is known *before* the decode and can be gated, shown and corrected. A
+reading below `MIN_LANGUAGE_CONFIDENCE` (0.35) is reported but not transcribed
+with. **And the default is no longer `auto`** — it is the user's system locale,
+read from `LC_ALL` / `LC_MESSAGES` / `LANG`. `auto` remains available in the
+picker for people who switch languages while dictating.
+
+A pinned language is never overridden, at any confidence: a bilingual user who
+sets Chinese has said what they meant.
+
+| | before | after |
+|---|---|---|
+| Default language | `auto` (ungated argmax) | system locale |
+| Detection | fused into the decode | separate pass, pre-decode |
+| Confidence | logged to stderr, discarded | parsed, gated, shown |
+| A wrong reading | invisible | `ja (unsure)`, error-tinted, one click to fix |
+
+![Confident reading](docs/voice-proof/language-confident-reading.png)
+
+A confident reading is shown while the decode runs. It replaces the word
+"transcribing" — the level meter and clock already say work is happening, and a
+status word is worth less than the one thing the user can act on.
+
+![Doubtful reading](docs/voice-proof/language-doubtful-reading.png)
+
+A doubtful one says so. `ja (unsure)`, tinted with the error tone, clickable
+straight into the language picker. This is the case that produced the Japanese
+transcript, and it is the case a user can now catch in time.
+
+### 19.2 The Microphone Worked And Nothing Was Written
+
+`Final` arrived with an empty `text`. The service assigned
+`voiceTranscript = ""` — which it already was — and **QML emits no change
+signal when a property is assigned its current value.** So
+`onVoiceTranscriptChanged` never ran, and the composer's only dictation path was
+never entered. Mic opens, meter moves, strip closes, composer untouched. No
+error, no notice, nothing in the logs. The guard written for exactly this case
+lived inside a function that never ran.
+
+Fixed by handling the empty case in the producer, on its own channel
+(`voiceEmptyNotice`), and holding the strip open for it. `Transcript` also
+grew `speech_detected`, because "the microphone heard nothing" and "the engine
+heard something and had no words for it" send the user to different places.
+
+![No speech reported](docs/voice-proof/no-speech-reported.png)
+
+Note what is *not* there: a Settings chip. A session that heard nothing is a
+fact about one recording, and a settings page cannot explain it. Offering the
+link anyway would send the user somewhere that cannot help.
+
+### 19.3 The Detector Latched Off Mid-Sentence
+
+The floor was estimated by **averaging** every frame below a hard ceiling. Normal
+dictation sits just under that ceiling, so speech was averaged in. The floor
+climbed to the speech level, `level > floor * 3` became unsatisfiable, and the
+detector stopped responding — while the user kept talking.
+
+| scenario (20 ms frames) | before | after |
+|---|---|---|
+| 1.3 s @ 0.05 RMS, quiet room | tracked **260 ms** | tracked **1300 ms** |
+| continuous speech 10 s | — | no premature finalize |
+| 0.06 speech over 0.03 room noise | `has_speech = false` | `has_speech = true` |
+| speech starting at mic-open | discarded | classified |
+| quiet room / fan / busy room, nothing said | — | `has_speech = false` |
+
+Three fixes: the floor is a **low quantile** of the frames that were not
+themselves speech (a quantile is robust to a minority of loud frames, and still
+rises in a quiet room where every frame is background); a **decaying peak** is
+followed alongside it; and `has_speech` is now a **cumulative** verdict over 120
+ms at a deliberately loose 1.5× ratio, because gating the engine on a
+single-frame precision test discarded whole utterances.
+
+The constant the old code used (0.05) was *right* — it is the dividing line
+between "a constant signal is the room" and "a constant signal is an event", and
+no energy-based detector can place it elsewhere without a trained VAD. The mean
+was the defect, not the constant.
+
+### 19.4 Why The Test Suite Missed All Three
+
+Every speech test used **0.35 RMS**, seven times above the admission ceiling, so
+speech never entered the floor window and the estimator was never exercised. The
+"loud room" test used 0.09 — *above* the ceiling, i.e. the branch that does not
+populate the window. The suite passed, in the regime where the code worked.
+
+One test asserted `floor() < 0.06` — a number from the estimator itself, which
+pins a test to one implementation and to no user-visible property. The fix was
+to assert observable classifications ("background reads as silence", "the whole
+utterance is tracked") at levels a real microphone produces.
+
+The same blindness appeared in QML: `tst_voice_input.qml` asserted that
+`voiceLanguageOverride` was *declared*, and it passed for the whole of v1 on a
+property with no reader and no writer. It now asserts the `--lang` argument is
+built.
+
+### 19.5 One More Dead Readout, Found In The Render
+
+Rendering the states caught a fourth: the level meter stayed up through
+`finalizing`, when the microphone has already been released. Any level on screen
+there is a frozen reading of audio that has stopped — the "dead microphone"
+misread pointed the other way. The meter is now gated on `isRecording`; the
+clock and the language reading stay up through the decode, because those are not
+live capture readings.
+
+![All states](docs/voice-proof/language-and-empty-outcome-states.png)
+
+Seven states, all reachable: idle, recording (honestly "language not
+determined" — detection has not happened yet), finalizing, a confident reading,
+a doubtful reading, an empty outcome, and a setup gap.

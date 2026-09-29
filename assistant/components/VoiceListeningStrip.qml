@@ -37,11 +37,63 @@ LiquidGlassCard {
     /// Engine-reported language tag, or "und" when detection was inconclusive.
     property string detectedLanguage: ""
 
+    /**
+     * The language the in-flight session settled on, reported before the
+     * transcript exists.
+     *
+     * Separate from `detectedLanguage` because they appear at different times.
+     * `detectedLanguage` arrives with the transcript, by which point the strip
+     * is already closing; this one arrives while the decode is still running, so
+     * it is the only reading a user can actually see and correct.
+     */
+    property string pendingLanguage: ""
+
+    /// The engine's probability for `pendingLanguage`, or -1 when it gave none.
+    property real languageConfidence: -1
+
+    /**
+     * Whether the reading is too weak to be acted on.
+     *
+     * A detection and a guess are both "the engine answered"; only the
+     * confidence separates them. whisper spreads its probability across 100
+     * candidates, so anything under about a third is a tie, and transcribing a
+     * tie is what turned English speech into Japanese-looking text.
+     */
+    readonly property bool languageIsUncertain: languageConfidence >= 0
+        && languageConfidence < 0.35
+
     /// Live partial text, when the engine actually streams one.
     property string partialText: ""
 
     /// Why the feature is unavailable, when it is.
     property string setupMessage: ""
+
+    /**
+     * Non-fatal session warning, when one fired mid-capture (e.g. input
+     * clipping from saturated ALSA gain).
+     *
+     * Unlike `setupMessage`/`emptyNotice` this is a *live* readout: it only
+     * ever exists while capturing, never collapses the meter/timer/language
+     * (a warning beside a live meter is information; beside a dead one it
+     * would read as a broken microphone), and needs no dismiss — the next
+     * `start` clears it at the backend.
+     */
+    property string warningMessage: ""
+
+    /**
+     * Why a session that ran produced nothing, when it did.
+     *
+     * Distinct from `setupMessage` on purpose. A setup gap is a persistent
+     * configuration problem with a fix in Settings; a session that heard
+     * nothing is a one-off outcome of this recording, and pointing the user at
+     * Settings for it would be a lie about where the answer is.
+     *
+     * It exists at all because the alternative is the failure this whole
+     * feature must not have: the microphone opens, the level meter moves, the
+     * strip closes, and the composer is untouched with no explanation. Silence
+     * is an honest outcome (AGENTS.md §4) but it has to be *reported*.
+     */
+    property string emptyNotice: ""
 
     /**
      * Emitted when the user dismisses the setup notice.
@@ -50,6 +102,26 @@ LiquidGlassCard {
      * the next readiness probe instead of reappearing on every drawer open.
      */
     signal dismissRequested()
+
+    /**
+     * Emitted when the user dismisses an empty-outcome notice.
+     *
+     * A separate signal rather than a shared one because the two notices have
+     * opposite lifetimes. A setup gap persists until it is genuinely fixed, so
+     * its dismissal is remembered. An empty outcome is a fact about one finished
+     * recording and is stale the moment the next one starts, so clearing it is
+     * trivial and remembering it would be wrong.
+     */
+    signal dismissEmptyRequested()
+
+    /**
+     * Emitted when the user asks to correct a doubtful language reading.
+     *
+     * Owned by the caller because only it knows how to open the picker. There is
+     * deliberately no inline list here: twenty locales in a 46 px strip would be
+     * a worse control than the settings page the user is already familiar with.
+     */
+    signal correctLanguageRequested()
 
     readonly property bool isRecording: state === "recording"
     readonly property bool isFinalizing: state === "finalizing"
@@ -70,8 +142,31 @@ LiquidGlassCard {
     /** A gap notice is showing, so the strip is an explanation, not a session. */
     readonly property bool hasSetupMessage: setupMessage.length > 0 && !isCapturing
 
+    /** A session ran and produced nothing, so the strip explains that outcome. */
+    readonly property bool hasEmptyNotice: emptyNotice.length > 0 && !isCapturing
+
+    /** A non-fatal warning fired mid-capture and the session is still live. */
+    readonly property bool hasWarning: warningMessage.length > 0 && isCapturing
+
+    /** Any explanation is showing, which collapses the capture readouts. */
+    readonly property bool hasNotice: hasSetupMessage || hasEmptyNotice
+
     /** The notice text is the visible text, i.e. there is no live partial to show. */
-    readonly property bool showingSetupMessage: setupMessage.length > 0 && partialText.length === 0
+    readonly property bool showingSetupMessage: hasNotice && partialText.length === 0
+
+    /** Whether the notice points somewhere. Only a setup gap has a destination. */
+    readonly property bool noticeNavigates: hasSetupMessage
+
+    /**
+     * The explanation to render, or "" when there is nothing to explain.
+     *
+     * Routed through the gated booleans rather than the raw properties: a
+     * notice from a finished session must not keep showing while a new one is
+     * live, or the strip reads as a stale error over live capture.
+     */
+    readonly property string noticeText: hasSetupMessage
+        ? setupMessage
+        : (hasEmptyNotice ? emptyNotice : "")
 
     /// Language shown to the user. "und" is reported honestly as undetermined.
     readonly property string languageLabel: {
@@ -83,11 +178,22 @@ LiquidGlassCard {
     /**
      * What the state readout says right now.
      *
-     * Transcription runs on the whole file after capture stops, so the wait is
-     * real work, not a hang: the readout names it instead of reporting a
-     * language that cannot have been detected yet.
+     * The reading wins over "transcribing" as soon as there is one. The old
+     * order -- always "transcribing" while finalizing -- meant the language
+     * could never be displayed during the only window in which the user could
+     * still act on it, so D8's promise was unimplementable as written. Showing
+     * the reading over the status word is the better trade: the elapsed clock
+     * and the level meter already say that work is happening.
      */
-    readonly property string stateLabelText: isFinalizing ? "transcribing" : languageLabel
+    readonly property string stateLabelText: {
+        if (root.pendingLanguage.length > 0) {
+            return root.languageIsUncertain
+                ? root.pendingLanguage + " (unsure)"
+                : root.pendingLanguage;
+        }
+        if (isFinalizing) return "transcribing";
+        return languageLabel;
+    }
 
     readonly property string elapsedLabel: {
         const total = Math.max(0, Math.floor(elapsedMs / 1000));
@@ -103,6 +209,7 @@ LiquidGlassCard {
     readonly property alias timerItem: timerText
     readonly property alias statusIconItem: statusIcon
     readonly property alias stateLabelItem: stateLabel
+    readonly property alias languageHitItem: languageHit
     readonly property alias noticeActionItem: noticeAction
     readonly property alias noticeActionTextItem: noticeActionText
 
@@ -139,7 +246,10 @@ LiquidGlassCard {
     MouseArea {
         id: noticeLink
         anchors.fill: parent
-        visible: root.showingSetupMessage
+        // Only a setup gap has a destination. A session that heard nothing is
+        // an outcome of this recording, and offering "Settings > AI > Voice
+        // input" for it would send the user somewhere that cannot fix it.
+        visible: root.showingSetupMessage && root.noticeNavigates
         enabled: visible
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
@@ -182,7 +292,7 @@ LiquidGlassCard {
                 // A setup gap is an error, not a muted microphone: showing the
                 // mic here implied dictation was one click away, when in fact
                 // the click produced this explanation instead.
-                visible: !root.isRecording && !root.hasSetupMessage
+                visible: !root.isRecording && !root.hasNotice
                 color: Colors.primary
 
                 Behavior on color {
@@ -197,7 +307,7 @@ LiquidGlassCard {
                 width: 18
                 height: 18
                 size: 18
-                visible: root.hasSetupMessage && !root.isRecording
+                visible: root.hasNotice && !root.isRecording
                 iconName: "warning"
                 color: Colors.m3error
             }
@@ -219,11 +329,18 @@ LiquidGlassCard {
 
         // Live level meter driven by measured RMS. Fixed height so it never
         // clips when the composer is under height pressure.
+        //
+        // Gated on `isRecording`, not `isCapturing`: during finalizing the
+        // microphone has already been released, so any level on screen is a
+        // frozen reading of audio that has stopped. A meter that stops moving
+        // while the strip still claims to be working is the "dead microphone"
+        // misread pointed the other way -- the language reading and the clock
+        // are what legitimately stay up through the decode.
         Item {
             id: meter
-            Layout.preferredWidth: root.isCapturing ? 34 : 0
+            Layout.preferredWidth: root.isRecording ? 34 : 0
             Layout.minimumWidth: 0
-            visible: root.isCapturing
+            visible: root.isRecording
             Layout.preferredHeight: 18
             Layout.alignment: Qt.AlignVCenter
 
@@ -274,15 +391,21 @@ LiquidGlassCard {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.partialText.length > 0 ? root.partialText : root.setupMessage
+                text: root.partialText.length > 0
+                    ? root.partialText
+                    : (root.hasWarning ? root.warningMessage : root.noticeText)
                 visible: text.length > 0
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontLabelSmall
                 // A calm fact, not a link: the destination chip beside it is the
                 // affordance, and the warning mark beside it is the severity.
                 // Painting and underlining the whole sentence made a setup gap
-                // read as one raw hyperlink.
-                color: Colors.m3onSurface
+                // read as one raw hyperlink. A live warning is the exception:
+                // it borrows the error tone so it cannot be mistaken for a
+                // transcript, and it never collapses the meter beside it.
+                color: (root.hasWarning && root.partialText.length === 0)
+                    ? Colors.m3error
+                    : Colors.m3onSurface
                 elide: Text.ElideRight
                 maximumLineCount: 1
             }
@@ -329,7 +452,7 @@ LiquidGlassCard {
         // is why `describeVoiceGap` messages carry the reason alone.
         Rectangle {
             id: noticeAction
-            visible: root.showingSetupMessage
+            visible: root.showingSetupMessage && root.noticeNavigates
             Layout.preferredHeight: 20
             Layout.alignment: Qt.AlignVCenter
             implicitWidth: noticeActionRow.implicitWidth + 16
@@ -377,11 +500,29 @@ LiquidGlassCard {
             font.family: Theme.fontMonospace
             font.pixelSize: 10
             font.weight: Font.Medium
-            color: root.detectedLanguage === "und" || root.detectedLanguage === ""
-                ? Colors.m3onSurfaceVariant
-                : Colors.secondary
+            // An uncertain reading is tinted with the error tone, because it is
+            // the one case where the label is a warning rather than a fact.
+            color: root.languageIsUncertain
+                ? Colors.m3error
+                : (root.detectedLanguage === "und" || root.detectedLanguage === "")
+                    ? Colors.m3onSurfaceVariant
+                    : Colors.secondary
             elide: Text.ElideRight
             horizontalAlignment: Text.AlignRight
+
+            // A doubtful reading is the one label worth clicking: it is the only
+            // moment where the user has a correction to make and the audio to
+            // re-record. Declared last so it sits above the row.
+            MouseArea {
+                id: languageHit
+                anchors.fill: parent
+                anchors.margins: -6
+                visible: root.isCapturing && root.pendingLanguage.length > 0
+                enabled: visible
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.correctLanguageRequested()
+            }
         }
 
         // Real elapsed time. Fixed width so the layout does not jitter.
@@ -407,7 +548,10 @@ LiquidGlassCard {
             Layout.preferredHeight: 18
             Layout.alignment: Qt.AlignVCenter
             radius: 9
-            visible: root.setupMessage.length > 0
+            // Offered for either notice. An empty outcome pins the strip open
+            // until something clears it, so without an exit it becomes the very
+            // wall this was added to avoid.
+            visible: root.hasNotice
             color: dismissMouse.containsMouse ? Colors.glassCardHover : "transparent"
 
             Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
@@ -424,7 +568,10 @@ LiquidGlassCard {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.dismissRequested()
+                onClicked: {
+                    if (root.hasSetupMessage) root.dismissRequested();
+                    else root.dismissEmptyRequested();
+                }
             }
         }
     }

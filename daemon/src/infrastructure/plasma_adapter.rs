@@ -2,14 +2,65 @@ use crate::domain::branding;
 use crate::domain::plasma::{PlasmaPanelInfo, PlasmaStatus};
 use crate::domain::ports::{DynResult, PlasmaControlPort};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
+/// Removes a watchdog pid file only when it still names `owner_pid`.
+///
+/// A restart runs two watchdogs for a moment: the outgoing one is handing the
+/// desktop back while the incoming one is already monitoring the new shell.
+/// The outgoing cleanup must not delete the incoming process's record - that is
+/// how a session ended up with a live watchdog and `watchdog_pid: null`.
+pub fn remove_pid_file_owned_by(path: &Path, owner_pid: u32) -> bool {
+    let Ok(content) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(pid) = content.trim().parse::<u32>() else {
+        return false;
+    };
+    if pid != owner_pid {
+        return false;
+    }
+    fs::remove_file(path).is_ok()
+}
+
 /// PID file of the detached Plasma watchdog process.
 pub fn watchdog_pid_file() -> PathBuf {
     branding::tmp_file("watchdog.pid")
+}
+
+/// Whether `pid` is one of our Plasma watchdog processes.
+///
+/// The pid file is a plain file in `/tmp`: it can outlive its watchdog (a
+/// `SIGKILL`ed watchdog leaves it behind) and the recorded pid can then be
+/// recycled by an unrelated process. Signalling a pid from that file without
+/// checking what it is has already killed the wrong process, so every signal
+/// path verifies the target first - the watchdog's argv is
+/// `<exe> plasma watchdog <pid>`, which nothing else in the session has.
+pub fn is_watchdog_process(pid: i32) -> bool {
+    if pid <= 0 {
+        return false;
+    }
+    let Ok(cmdline) = fs::read(format!("/proc/{pid}/cmdline")) else {
+        return false;
+    };
+    let args: Vec<String> = cmdline
+        .split(|byte| *byte == 0)
+        .filter(|arg| !arg.is_empty())
+        .map(|arg| String::from_utf8_lossy(arg).to_string())
+        .collect();
+    is_watchdog_argv(&args)
+}
+
+/// Whether a process's argv is `<exe> plasma watchdog <pid>`.
+///
+/// Matching the argv *shape* rather than the text is deliberate: a path such as
+/// `.../test_watchdog_handover` contains both words and would otherwise be
+/// mistaken for a watchdog - and then signalled.
+pub fn is_watchdog_argv(args: &[String]) -> bool {
+    args.len() >= 3 && args[1] == "plasma" && args[2] == "watchdog"
 }
 
 #[derive(Clone, Default)]
@@ -36,22 +87,16 @@ impl PlasmaAdapter {
         let pid_file = pid_file.as_path();
         let my_pid = std::process::id() as i32;
         if pid_file.exists() {
-            if let Ok(content) = fs::read_to_string(pid_file) {
-                if let Ok(pid) = content.trim().parse::<i32>() {
-                    if pid != my_pid {
-                        unsafe {
-                            libc::kill(pid, libc::SIGTERM);
-                        }
-                    }
+            let target = fs::read_to_string(pid_file)
+                .ok()
+                .and_then(|content| content.trim().parse::<i32>().ok())
+                .filter(|pid| *pid != my_pid && is_watchdog_process(*pid));
+            if let Some(pid) = target {
+                unsafe {
+                    libc::kill(pid, libc::SIGTERM);
                 }
-            }
-            if let Ok(content) = fs::read_to_string(pid_file) {
-                if let Ok(pid) = content.trim().parse::<i32>() {
-                    if pid != my_pid {
-                        unsafe {
-                            libc::kill(pid, libc::SIGKILL);
-                        }
-                    }
+                unsafe {
+                    libc::kill(pid, libc::SIGKILL);
                 }
             }
             if let Ok(content) = fs::read_to_string(pid_file) {

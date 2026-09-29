@@ -939,7 +939,14 @@ Singleton {
         ? !!root.voiceSettings.enabled : true
     readonly property string voiceEngine: (root.voiceSettings.engine) ? root.voiceSettings.engine : "whisper-cpp"
     readonly property string voiceModel: (root.voiceSettings.model) ? root.voiceSettings.model : "ggml-small"
-    readonly property string voiceLanguage: (root.voiceSettings.language) ? root.voiceSettings.language : "auto"
+    /**
+     * The transcription language. Empty means "follow the system locale", which
+     * is the shipped default: an absent key is a user who has not chosen, and
+     * resolving that to auto-detect is what handed the output alphabet to
+     * whisper's ungated language argmax. "auto" remains available in the
+     * picker for people who switch languages while dictating.
+     */
+    readonly property string voiceLanguage: (root.voiceSettings.language) ? root.voiceSettings.language : ""
     readonly property int voiceMaxUtteranceSeconds: (root.voiceSettings.maxUtteranceSeconds !== undefined)
         ? root.voiceSettings.maxUtteranceSeconds : 30
     readonly property int voiceSilenceHangoverMs: (root.voiceSettings.silenceHangoverMs !== undefined)
@@ -948,6 +955,10 @@ Singleton {
         ? !!root.voiceSettings.autoFinalize : true
     readonly property bool voiceInstallModelOnDemand: (root.voiceSettings.installModelOnDemand !== undefined)
         ? !!root.voiceSettings.installModelOnDemand : true
+    readonly property bool voiceEchoCancel: (root.voiceSettings.echoCancel !== undefined)
+        ? !!root.voiceSettings.echoCancel : false
+    readonly property bool voiceNoiseSuppress: (root.voiceSettings.noiseSuppress !== undefined)
+        ? !!root.voiceSettings.noiseSuppress : false
 
     function _ensureVoiceBlock() {
         if (!root.settings) root.settings = {};
@@ -1000,6 +1011,20 @@ Singleton {
     function setVoiceInstallModelOnDemand(enabled) {
         const block = root._ensureVoiceBlock();
         block.installModelOnDemand = !!enabled;
+        root.voiceSettings = block;
+        root.saveSettings();
+    }
+
+    function setVoiceEchoCancel(enabled) {
+        const block = root._ensureVoiceBlock();
+        block.echoCancel = !!enabled;
+        root.voiceSettings = block;
+        root.saveSettings();
+    }
+
+    function setVoiceNoiseSuppress(enabled) {
+        const block = root._ensureVoiceBlock();
+        block.noiseSuppress = !!enabled;
         root.voiceSettings = block;
         root.saveSettings();
     }

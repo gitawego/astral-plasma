@@ -67,6 +67,22 @@ impl AdapterRegistry {
         self.adapters.iter().find(|ad| ad.can_handle_file(path)).map(|b| b.as_ref())
     }
 
+    /// Queries the external store of the adapter that owns `path`.
+    ///
+    /// Adapters shell out (`sqlite3`), so async callers must run this on the
+    /// blocking pool (via `spawn_blocking` with a cloned `Arc<AdapterRegistry>`)
+    /// rather than inline: a runtime worker parked in a child-process wait stops
+    /// polling the tokio I/O and timer drivers, which hangs every D-Bus reply in
+    /// the process.
+    pub fn query_external_store_for_path(
+        &self,
+        path: &Path,
+        home: &Path,
+    ) -> Option<crate::domain::ports::SessionParseResult> {
+        self.find_adapter_for_path(path)
+            .and_then(|adapter| adapter.query_external_store(home))
+    }
+
     /// Collects watch directories across all registered adapters.
     pub fn all_watch_directories(&self, home: &Path) -> Vec<PathBuf> {
         let mut dirs = Vec::new();

@@ -5,10 +5,11 @@
 //! what makes the adapter testable on a machine that has never downloaded a
 //! model. See `docs/VOICE-INPUT-SPEC.md` §8.3.
 
-use astral_plasma::domain::voice::EngineCapabilities;
+use astral_plasma::domain::voice::{EngineCapabilities, LANGUAGE_AUTO};
 use astral_plasma::infrastructure::whisper_stt_adapter::{
-    audio_context_for, build_args, extract_transcript, parse_version, probe_capabilities,
-    EngineInvocation,
+    audio_context_for, build_args, build_detect_args, extract_transcript, parse_detected_language,
+    parse_version, probe_capabilities, resolve_transcription_language, EngineInvocation,
+    LanguageSource,
 };
 use std::path::{Path, PathBuf};
 
@@ -16,11 +17,8 @@ fn invocation(caps: EngineCapabilities) -> EngineInvocation {
     EngineInvocation {
         binary: PathBuf::from("/usr/bin/whisper-cli"),
         model: PathBuf::from("/models/ggml-large-v3-turbo.bin"),
-        // v1 provisions no VAD asset: the upstream file 404s
-        // (docs/VOICE-INPUT-SPEC.md D4), so the daemon's own silence detector
-        // is the endpointing mechanism.
-        vad_model: None,
         language: "auto".to_string(),
+        fallback_language: "en".to_string(),
         threads: 8,
         capabilities: caps,
     }
@@ -40,6 +38,7 @@ fn full_caps() -> EngineCapabilities {
         no_prints: true,
         threads: true,
         translate: true,
+        detect_language: true,
     }
 }
 
@@ -188,29 +187,21 @@ fn audio_context_is_sized_to_the_utterance_and_bounded() {
 }
 
 #[test]
-fn vad_preprocessing_is_never_enabled_without_its_model_asset() {
-    // The live failure this pins: whisper-cli 1.9.4 exits 10 with
-    // "failed to process audio" when `--vad` is passed without `--vad-model`,
-    // which failed *every* utterance. The daemon's own SilenceDetector does the
-    // endpointing (docs/VOICE-INPUT-SPEC.md D4), so a bare `--vad` must never
-    // be emitted, however loudly the build advertises the flag.
+fn vad_preprocessing_is_never_requested_from_the_engine() {
+    // whisper.cpp applies `--vad` *before* language detection: `whisper_full`
+    // replaces the samples with the VAD-filtered audio and then
+    // `whisper_full_with_state` auto-detects the language from that filtered
+    // audio (src/whisper.cpp). Measured on music+speech mixes, that costs about
+    // 3 dB of detection headroom and can clip the utterance: at -12 dB
+    // music-to-voice the unfiltered run detects `fr` with the exact transcript
+    // while the VAD run detects `en` and returns "Quoi ?". The daemon's own
+    // SilenceDetector does endpointing and no-speech gating, so the engine is
+    // never asked to VAD - however loudly the build advertises the flags.
     let args = build_args(&invocation(full_caps()), Path::new("/tmp/u.wav"), UTTERANCE_MS);
     assert!(!args.iter().any(|a| a == "--vad"),
-        "a bare --vad makes whisper-cli fail the whole transcription: it needs --vad-model");
+        "engine VAD rewrites the audio before language detection and must not be requested");
     assert!(!args.iter().any(|a| a == "--vad-model"),
-        "no VAD model may be named when none is provisioned");
-}
-
-#[test]
-fn vad_preprocessing_is_enabled_with_its_model_asset() {
-    // If the asset exists on disk, engine-side VAD becomes usable again - the
-    // flag and its model travel together or not at all.
-    let mut inv = invocation(full_caps());
-    inv.vad_model = Some(PathBuf::from("/models/ggml-silero-v5.1.2.bin"));
-    let args = build_args(&inv, Path::new("/tmp/u.wav"), UTTERANCE_MS);
-    assert!(args.iter().any(|a| a == "--vad"));
-    assert_eq!(flag_value(&args, "--vad-model"),
-        Some("/models/ggml-silero-v5.1.2.bin".to_string()));
+        "no VAD model may be named: the flags are not used");
 }
 
 #[test]
@@ -354,4 +345,120 @@ fn version_parsing_survives_odd_shapes() {
     for junk in ["...", "1.", ".1", "v", "999999999999999.0", "1.2.3.4.5"] {
         let _ = parse_version(junk);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Language detection
+// ---------------------------------------------------------------------------
+
+/// The reported failure, in one assertion.
+///
+/// "Can you help me" came back as "会議のも学び". The engine auto-detects by
+/// taking a bare `argmax` over 100 language logits
+/// (`whisper_lang_auto_detect_internal`, `return logits_id[0].second`), with
+/// no confidence gate and no fallback: the winner is committed to
+/// `state->lang_id` and becomes a hard decoder constraint. The probability of
+/// that winner is printed to stderr and was being discarded, so the shell never
+/// learned that the answer was a coin toss.
+#[test]
+fn the_detection_confidence_whisper_prints_is_recovered_and_gated() {
+    let stderr = "\
+load_backend: loaded CPU backend from /usr/lib/ggml/libggml-cpu.so
+whisper_init_from_file_with_params_no_state: loading model from 'ggml-small.bin'
+whisper_full_with_state: auto-detected language: ja (p = 0.084213)
+";
+    let (language, confidence) =
+        parse_detected_language(stderr).expect("the engine reports its own detection");
+    assert_eq!(language, "ja");
+    assert!(
+        (confidence - 0.084213).abs() < 1e-6,
+        "the probability must survive the parse, got {confidence}"
+    );
+
+    // The user asked for auto-detect and the locale is English, and 0.08 is a
+    // coin toss between 100 languages. Trusting it is what produced Japanese
+    // output from English speech, so an unconfident detection must not be used.
+    let resolved = resolve_transcription_language(LANGUAGE_AUTO, "en", Some((language, confidence)));
+    assert_eq!(
+        resolved.transcription_language, "en",
+        "an unconfident detection must fall back to the configured language"
+    );
+    assert_eq!(
+        resolved.detected_language, "ja",
+        "the detection is still reported, so the UI can show what happened"
+    );
+    assert_eq!(
+        resolved.source, LanguageSource::DetectedOverridden,
+        "the reason it was overridden must be recorded, not hidden"
+    );
+    assert!(
+        resolved.confidence.is_some(),
+        "the engine's own reading must reach the UI, not just the decision"
+    );
+}
+
+#[test]
+fn a_confident_detection_is_used_as_asked() {
+    let resolved = resolve_transcription_language(LANGUAGE_AUTO, "en", Some(("ja".into(), 0.91)));
+    assert_eq!(resolved.transcription_language, "ja");
+    assert_eq!(resolved.detected_language, "ja");
+    assert_eq!(resolved.source, LanguageSource::Detected);
+}
+
+#[test]
+fn a_configured_language_is_never_overridden_by_a_detection() {
+    // The user pinned a language. Detection is advisory, never authoritative --
+    // however confident it is. A bilingual speaker dictating in Japanese with
+    // English set as the default must not have the setting overruled.
+    let resolved = resolve_transcription_language("zh", "en", Some(("ja".into(), 0.99)));
+    assert_eq!(resolved.transcription_language, "zh");
+    assert_eq!(resolved.detected_language, "ja", "the disagreement is still shown");
+    assert_eq!(resolved.source, LanguageSource::Configured);
+    // And with no detection at all, the pinned language stands.
+    let plain = resolve_transcription_language("zh", "en", None);
+    assert_eq!(plain.transcription_language, "zh");
+    assert_eq!(plain.source, LanguageSource::Configured);
+    // Auto-detect with no detection available falls back to the locale.
+    let fallback = resolve_transcription_language(LANGUAGE_AUTO, "de", None);
+    assert_eq!(fallback.transcription_language, "de");
+    assert_eq!(fallback.source, LanguageSource::Configured);
+}
+
+/// Detection is isolated from transcription so the answer can be judged, shown
+/// and overridden *before* the expensive decode is committed to it.
+#[test]
+fn the_detection_pass_asks_the_engine_to_stop_after_identifying() {
+    let inv = invocation(full_caps());
+    let args = build_detect_args(&inv, Path::new("/tmp/utterance.wav"));
+    let joined = args.join(" ");
+
+    assert!(
+        args.contains(&"-dl".to_string()),
+        "the detection pass must ask the engine to exit after detecting: {joined}"
+    );
+    assert!(flag_value(&args, "-f").is_some(), "it still needs the audio");
+    assert!(flag_value(&args, "-m").is_some(), "it still needs the model");
+    assert!(
+        !args.contains(&"-tr".to_string()),
+        "a detection pass must not translate: {joined}"
+    );
+    // A build that cannot detect separately must get nothing rather than a
+    // guessed flag list, and the caller falls back to a single `-l auto` pass.
+    let mut caps = full_caps();
+    caps.detect_language = false;
+    assert!(
+        build_detect_args(&invocation(caps), Path::new("/tmp/u.wav")).is_empty(),
+        "an unsupported flag must not be emitted at all"
+    );
+}
+
+#[test]
+fn the_detection_flag_is_discovered_from_the_installed_build() {
+    let caps = probe_capabilities(
+        "usage: whisper-cli [options]\n  -dl, --detect-language [false] exit after detecting\n",
+    );
+    assert!(
+        caps.detect_language,
+        "whisper-cli advertises -dl; the probe must find it"
+    );
 }

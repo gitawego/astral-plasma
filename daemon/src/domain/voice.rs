@@ -29,6 +29,31 @@ pub enum CaptureTarget {
     Source,
 }
 
+/// How PCM reaches the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureBackend {
+    /// `pw-record` subprocess (default): tested, stub-injectable, works
+    /// wherever PipeWire's CLI tools exist.
+    PwRecord,
+    /// In-process capture via the system audio API (`cpal`): zero subprocess
+    /// overhead and the prerequisite for true streaming partials. Explicit
+    /// opt-in until it matches the subprocess path's field record.
+    Native,
+}
+
+/// Selects the capture backend from an explicit request string.
+///
+/// `"native"` opts into in-process capture; anything else (including empty)
+/// keeps the `pw-record` subprocess path. Unknown values never enable an
+/// experimental path by accident.
+pub fn select_capture_backend(requested: &str) -> CaptureBackend {
+    if requested.trim().eq_ignore_ascii_case("native") {
+        CaptureBackend::Native
+    } else {
+        CaptureBackend::PwRecord
+    }
+}
+
 impl CaptureTarget {
     /// The `pw-record --target` value for this target.
     pub fn target_token(self) -> &'static str {
@@ -64,17 +89,49 @@ pub fn pw_record_args(
     channels: u16,
     latency_ms: u32,
 ) -> Vec<String> {
+    pw_record_args_for_target(
+        target.target_token(),
+        target.stream_properties(),
+        sample_rate,
+        channels,
+        latency_ms,
+    )
+}
+
+/// Same contract as [`pw_record_args`], but for an explicit PipeWire node.
+///
+/// Used for the echo-cancelled source, whose node name is not one of the
+/// `@DEFAULT_...@` tokens. No `stream.capture.sink` property is emitted: the
+/// AEC source is already a capture node, and forcing sink semantics on it would
+/// make `pw-record` fail.
+pub fn pw_record_args_for_node(
+    node: &str,
+    sample_rate: u32,
+    channels: u16,
+    latency_ms: u32,
+) -> Vec<String> {
+    pw_record_args_for_target(node, None, sample_rate, channels, latency_ms)
+}
+
+/// The single `pw-record` argument builder both entry points share.
+fn pw_record_args_for_target(
+    target: &str,
+    properties: Option<&str>,
+    sample_rate: u32,
+    channels: u16,
+    latency_ms: u32,
+) -> Vec<String> {
     let mut args: Vec<String> = Vec::with_capacity(15);
     // --raw: disables the AU container so stdout carries pure PCM frames.
     args.push("--raw".to_string());
 
-    if let Some(props) = target.stream_properties() {
+    if let Some(props) = properties {
         args.push("-P".to_string());
         args.push(props.to_string());
     }
 
     args.push("--target".to_string());
-    args.push(target.target_token().to_string());
+    args.push(target.to_string());
 
     args.push("--latency".to_string());
     args.push(format!("{}ms", latency_ms));
@@ -236,20 +293,250 @@ pub fn frame_rms(samples: &[f32]) -> f32 {
 }
 
 // ---------------------------------------------------------------------------
+// Input health & gain staging (audit §1.1)
+// ---------------------------------------------------------------------------
+
+/// Sample magnitude at or above which a sample counts as hard-clipped.
+///
+/// Normalized `[-1.0, 1.0]` floats: `32767 / 32768 ≈ 0.99997`. Using 0.99 keeps
+/// the detector robust to float rounding while still catching ADC saturation.
+pub const CLIPPING_THRESHOLD: f32 = 0.99;
+/// Clipping ratio above which the session warns the user.
+///
+/// Per `docs/VOICE-INPUT-AUDIT.md` §4.1: if more than 2% of samples in the
+/// opening window sit at the rails, the ALSA analog gain is saturating the ADC
+/// (e.g. +60 dB on ALC256) and formants are destroyed before any model runs.
+pub const CLIPPING_WARN_RATIO: f32 = 0.02;
+/// Opening window inspected for clipping, in milliseconds.
+pub const CLIPPING_WINDOW_MS: u64 = 500;
+
+/// Fraction of finite samples at or above [`CLIPPING_THRESHOLD`].
+///
+/// Pure: operates on normalized floats so both the capture loop (live PCM) and
+/// unit tests (synthetic signals) share one definition. Non-finite samples are
+/// ignored, never counted as clipped.
+pub fn clipping_ratio(samples: &[f32]) -> f32 {
+    let mut clipped = 0usize;
+    let mut n = 0usize;
+    for s in samples {
+        if !s.is_finite() {
+            continue;
+        }
+        n += 1;
+        if s.abs() >= CLIPPING_THRESHOLD {
+            clipped += 1;
+        }
+    }
+    if n == 0 {
+        return 0.0;
+    }
+    clipped as f32 / n as f32
+}
+
+/// Human-readable remediation for a saturated input.
+///
+/// Warn-only by design (D7): the daemon never rewrites ALSA controls silently.
+/// The doctor check and the session warning both render this text.
+pub fn clipping_advice(ratio: f32) -> String {
+    format!(
+        "Microphone input is clipping ({:.0}% of samples at the rails). Lower the mic boost in alsamixer / system settings (e.g. `amixer -c 1 sset 'Internal Mic Boost' 1`), then try again.",
+        (ratio * 100.0).clamp(0.0, 100.0)
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Neural VAD gate (audit §1.2 / §4.2)
+// ---------------------------------------------------------------------------
+
+/// Speech probability above which a frame counts as speech.
+///
+/// Audit §4.2: energy thresholds cannot separate unvoiced consonants from fan
+/// noise (30 dB speech dynamic range). The neural VAD reports a phoneme
+/// probability per frame; `p > 0.5` is the speech gate. This is the single
+/// decision point both the sidecar VAD and a future in-process VAD share.
+pub const VAD_SPEECH_PROB_THRESHOLD: f32 = 0.5;
+/// Silero VAD model provisioned alongside the STT weights.
+pub const VAD_MODEL_ID: &str = "silero-v5.1.2";
+/// Upstream location of the VAD model asset.
+pub const VAD_MODEL_URL: &str =
+    "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin";
+/// Size of the VAD asset on disk, verified 2026-09-29.
+pub const VAD_MODEL_SIZE_BYTES: u64 = 885_098;
+
+/// Whether a VAD speech probability counts as speech.
+///
+/// Non-finite probabilities are never speech: one bad score must not open the
+/// gate for a whole utterance.
+pub fn vad_is_speech(prob: f32) -> bool {
+    prob.is_finite() && prob > VAD_SPEECH_PROB_THRESHOLD
+}
+
+/// File name of the VAD model inside the models directory.
+pub fn vad_model_file_name() -> String {
+    format!("ggml-{}.bin", VAD_MODEL_ID)
+}
+
+/// Resolves the VAD model file, treating a zero-length file as absent.
+pub fn resolve_vad_model_file() -> Option<PathBuf> {
+    let path = models_dir().join(vad_model_file_name());
+    match std::fs::metadata(&path) {
+        Ok(meta) if meta.len() > 0 => Some(path),
+        _ => None,
+    }
+}
+
+/// One neural speech segment, in seconds.
+///
+/// `whisper-vad-speech-segments` prints timestamps in centiseconds
+/// (`Speech segment 0: start = 7.00, end = 54.00`); this is the parsed,
+/// seconds-denominated form the trim logic consumes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VadSegment {
+    pub start_s: f32,
+    pub end_s: f32,
+}
+
+/// Parses `whisper-vad-speech-segments` stdout into speech segments.
+///
+/// Lines that do not match the `Speech segment N: start = X, end = Y` shape
+/// (log banners, `Detected N speech segments:` summaries) are skipped, and an
+/// end before its start is clamped rather than admitted. Empty output — the
+/// honest answer for silence — yields no segments.
+pub fn parse_vad_segments(output: &str) -> Vec<VadSegment> {
+    let mut segments = Vec::new();
+    for line in output.lines() {
+        let t = line.trim();
+        // Shape: `Speech segment 0: start = 7.00, end = 54.00`. Anything else
+        // (log banners, `Detected N speech segments:` summaries) is skipped.
+        let Some((_, rest)) = t.split_once("start") else {
+            continue;
+        };
+        let Some((start_raw, end_raw)) = rest.split_once("end") else {
+            continue;
+        };
+        let start_cs: Option<f32> = start_raw
+            .split('=')
+            .nth(1)
+            .and_then(|v| v.trim().trim_end_matches(',').parse::<f32>().ok());
+        let end_cs: Option<f32> = end_raw
+            .split('=')
+            .nth(1)
+            .and_then(|v| v.trim().parse::<f32>().ok());
+        match (start_cs, end_cs) {
+            (Some(s), Some(e)) if s.is_finite() && e.is_finite() && e >= 0.0 && s >= 0.0 => {
+                let (start_s, end_s) = (s / 100.0, e.max(s) / 100.0);
+                if end_s > start_s {
+                    segments.push(VadSegment { start_s, end_s });
+                }
+            }
+            _ => continue,
+        }
+    }
+    segments
+}
+
+/// Converts neural segments to frame bounds over a capture of `total_frames`.
+///
+/// Returns the unpadded union span as `(first_frame, last_frame_inclusive)`,
+/// ready to hand to `trim_to_speech`, which applies the single standard
+/// padding margin. `None` means no usable segment — the caller reports
+/// no-speech rather than transcribing.
+pub fn vad_segments_to_frames(
+    segments: &[VadSegment],
+    sample_rate: u32,
+    frame_len: usize,
+    total_frames: usize,
+) -> Option<(usize, usize)> {
+    if segments.is_empty() || frame_len == 0 || sample_rate == 0 || total_frames == 0 {
+        return None;
+    }
+    let frame_ms = (frame_len as u64 * 1000) / sample_rate as u64;
+    if frame_ms == 0 {
+        return None;
+    }
+    let mut first = usize::MAX;
+    let mut last = 0usize;
+    let mut any = false;
+    for seg in segments {
+        if !seg.start_s.is_finite() || !seg.end_s.is_finite() || seg.end_s <= seg.start_s {
+            continue;
+        }
+        let s = ((seg.start_s * 1000.0) as u64 / frame_ms) as usize;
+        let e = (((seg.end_s * 1000.0) as u64) / frame_ms) as usize;
+        first = first.min(s);
+        last = last.max(e);
+        any = true;
+    }
+    if !any || last < first {
+        return None;
+    }
+    Some((first.min(total_frames.saturating_sub(1)), last.min(total_frames.saturating_sub(1))))
+}
+
+// ---------------------------------------------------------------------------
 // Adaptive silence detection (endpointing)
 // ---------------------------------------------------------------------------
 
-/// Number of frames averaged into the noise-floor estimate.
-const FLOOR_WINDOW: usize = 48;
-/// A frame counts as speech when its level rises this far above the floor.
+/// Highest level a *constant* signal may have and still be read as the room.
+///
+/// This is not a speech threshold. It is the dividing line the previous
+/// implementation already drew at 0.05 and drew correctly: a steady signal at
+/// or below it is a room, a steady signal above it is speech or an event. What
+/// was wrong was not this constant but that admitted frames were *averaged*,
+/// which let ordinary dictation drag the estimate up with them.
+const FLOOR_ADMIT_CEILING: f32 = 0.05;
+/// Samples needed before the room estimate stops being bootstrapped.
+///
+/// While starved, a frame at or below [`FLOOR_ADMIT_CEILING`] is admitted even
+/// if it looks like speech, because there is no measurement yet and refusing to
+/// take one leaves the detector with nothing to judge against.
+const MIN_FLOOR_SAMPLES: usize = 5;
+/// Frames retained for the room estimate (2 s at 20 ms frames).
+const FLOOR_WINDOW: usize = 100;
+/// Quantile of those frames used as the floor.
+///
+/// A *low quantile*, not a mean. That single change is the fix for the
+/// truncation users were seeing: the old estimator averaged every frame below
+/// the admission ceiling, and normal dictation sits just under it, so the floor
+/// climbed to the speech level and `level > floor * 3` could never be satisfied
+/// again. A low quantile is robust to that, because speech is a minority of any
+/// window shorter than a continuous utterance, and it still rises in a quiet
+/// room, because there every frame *is* background.
+const FLOOR_QUANTILE: f32 = 0.20;
+/// A frame counts as speech when its level rises this far above the room.
 /// Expressed as a ratio rather than an absolute threshold so the detector
 /// tracks the room instead of assuming a fixed noise level.
 pub const SILENCE_HEADROOM: f32 = 3.0;
-/// Frames required before silence is judged at all. Without warm-up, the
-/// leading quiet frames of an utterance would immediately look like its end.
+/// The looser ratio used to decide whether a session contained speech at all.
+///
+/// This is a recall test, not a precision one. `has_speech` gates whether the
+/// engine runs; a false negative costs the user their whole utterance, while a
+/// false positive costs one inference that returns nothing. The bar is
+/// therefore deliberately low: whisper transcribes speech sitting at 1.5x the
+/// noise floor perfectly well, so refusing to even try it is the wrong call.
+pub const SPEECH_ACTIVITY_HEADROOM: f32 = 1.5;
+/// Absolute floor for the activity test, in RMS.
+///
+/// The room ratio alone is not enough there: before anything is measured the
+/// floor is zero, which would make any signal at all count as speech. A truly
+/// quiet room sits far below this, so it never does.
+const SPEECH_ACTIVITY_ANCHOR: f32 = 0.005;
+/// Speech activity, at the loose ratio above, required before a session counts
+/// as having contained speech. 120 ms is long enough to exclude a click and
+/// short enough that a single word still registers.
+pub const MIN_SPEECH_MS: u64 = 120;
+/// How long the loudest recent level takes to fall by ~63%, in milliseconds.
+///
+/// A decaying peak, not an all-time maximum. It is the half of the threshold
+/// that follows the *utterance*, which is what keeps a long stretch of speech
+/// tracked and a single transient from dominating for the rest of the session.
+const PEAK_DECAY_MS: u64 = 1500;
+/// Frames required before *trailing silence* is judged at all.
+///
+/// This gates only the silence accumulator, never speech classification.
+/// Gating classification here is what previously discarded the first 500 ms of
+/// any utterance that began the moment the microphone opened.
 pub const SILENCE_WARMUP_FRAMES: u32 = 25;
-/// Floor must stay under this to be treated as a genuine quiet room.
-const MAX_TRACKABLE_FLOOR: f32 = 0.05;
 
 /// Outcome of feeding one frame to the detector.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -258,8 +545,13 @@ pub struct SilenceDecision {
     pub level: f32,
     /// Current estimate of the room's quiet floor.
     pub floor: f32,
-    /// Whether the frame was classified as speech.
+    /// Whether the frame was classified as speech. Drives endpointing.
     pub speaking: bool,
+    /// Whether the frame carried speech energy worth transcribing, judged at
+    /// the looser [`SPEECH_ACTIVITY_HEADROOM`]. Drives the has-speech verdict
+    /// and the trim bounds, so a frame that is real speech but fell short of
+    /// the endpointing bar is still handed to the engine.
+    pub active: bool,
     /// Consecutive milliseconds of trailing silence.
     pub silent_for_ms: u64,
 }
@@ -272,15 +564,28 @@ pub struct SilenceDecision {
 /// a live "has the user stopped talking" oracle. See `docs/VOICE-INPUT-SPEC.md`
 /// D4 for the full reasoning.
 ///
-/// This detector therefore tracks a rolling quiet floor and judges each frame
-/// relative to it. It is a pure function of its input, so it is unit-tested
-/// against synthetic speech, noise and DC-latch signals.
+/// This detector estimates the room as a low quantile of the frames that were
+/// not themselves speech, and keeps a decaying peak for the current utterance.
+/// A frame is speech when it clears either estimate, so both a quiet room with
+/// a loud speaker and a loud room with a loud speaker are handled by the same
+/// two numbers rather than by a single adaptive average that either tracks the
+/// room too slowly or absorbs the speech.
+///
+/// It is a pure function of its input, so it is unit-tested against synthetic
+/// speech, noise and DC-latch signals at the levels real microphones produce.
 #[derive(Debug, Clone)]
 pub struct SilenceDetector {
+    /// Recent frames admitted as room measurements.
     floor_samples: Vec<f32>,
-    floor_sum: f32,
     frames_seen: u32,
+    /// Loudest level seen recently, decaying. Seeded from the level in hand
+    /// when no room has been measured yet, so an utterance that begins before
+    /// the lead-in ends is still tracked.
+    peak: f32,
+    /// Milliseconds of trailing silence.
     silent_for_ms: u64,
+    /// Milliseconds of [`SPEECH_ACTIVITY_HEADROOM`] activity so far.
+    active_ms: u64,
     frame_ms: u64,
 }
 
@@ -294,9 +599,10 @@ impl SilenceDetector {
         };
         Self {
             floor_samples: Vec::with_capacity(FLOOR_WINDOW),
-            floor_sum: 0.0,
             frames_seen: 0,
+            peak: 0.0,
             silent_for_ms: 0,
+            active_ms: 0,
             frame_ms,
         }
     }
@@ -306,13 +612,25 @@ impl SilenceDetector {
         self.frame_ms
     }
 
-    /// Current rolling quiet-floor estimate.
+    /// Current estimate of the room's quiet floor.
+    ///
+    /// A low quantile of the frames that were admitted as room measurements.
+    /// Before anything is admitted this is `0.0`, meaning "unmeasured" rather
+    /// than "silent"; the thresholds do not rely on it alone for that reason.
     pub fn floor(&self) -> f32 {
         if self.floor_samples.is_empty() {
-            0.0
-        } else {
-            self.floor_sum / self.floor_samples.len() as f32
+            return 0.0;
         }
+        let mut sorted = self.floor_samples.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let idx = (((sorted.len() - 1) as f32) * FLOOR_QUANTILE).round() as usize;
+        sorted[idx.min(sorted.len() - 1)]
+    }
+
+    /// Loudest recent level, decayed. Drives the peak-relative half of the
+    /// threshold, so a single transient cannot pin the detector.
+    pub fn peak(&self) -> f32 {
+        self.peak
     }
 
     /// Trailing silence accumulated so far.
@@ -320,34 +638,64 @@ impl SilenceDetector {
         self.silent_for_ms
     }
 
+    /// Whether this session has contained enough speech to be worth sending to
+    /// the engine.
+    ///
+    /// Deliberately a *cumulative* verdict rather than "some frame was loud":
+    /// a single-frame test made a whole utterance depend on one 20 ms window,
+    /// and a fragment of speech at a modest level is still worth transcribing.
+    pub fn has_speech(&self) -> bool {
+        self.active_ms >= MIN_SPEECH_MS
+    }
+
     /// Feeds one frame and reports what the detector concluded.
     pub fn push(&mut self, level: f32) -> SilenceDecision {
         let level = if level.is_finite() && level > 0.0 { level } else { 0.0 };
         self.frames_seen += 1;
 
-        // Only near-quiet frames inform the floor. A loud room (floor at or above
-        // MAX_TRACKABLE_FLOOR) is left alone rather than dragging the estimate up
-        // until real speech is mistaken for the background. The boundary is
-        // inclusive so a room sitting exactly on the limit is still trackable.
-        if level <= MAX_TRACKABLE_FLOOR {
+        // Follow the utterance with a decaying peak and the room with a low
+        // quantile; a frame is speech if it clears either. Requiring both would
+        // mean an unmeasured room could veto real speech, and a measured one
+        // could veto a quiet word.
+        if level > self.peak {
+            self.peak = level;
+        } else {
+            self.peak -= self.peak * (self.frame_ms as f32) / (PEAK_DECAY_MS as f32);
+        }
+
+        let floor = self.floor();
+        let speaking_threshold = (self.peak / SILENCE_HEADROOM).max(floor * SILENCE_HEADROOM);
+        let activity_threshold = (self.peak / SPEECH_ACTIVITY_HEADROOM)
+            .max(floor * SPEECH_ACTIVITY_HEADROOM)
+            .max(SPEECH_ACTIVITY_ANCHOR);
+
+        let speaking = level > speaking_threshold;
+        let active = level > activity_threshold;
+
+        // Only non-speech frames may inform the room estimate. This is the
+        // property that keeps a long utterance from dragging the floor up until
+        // the detector latches off mid-sentence. While the estimate is still
+        // starved there is nothing to protect it with, so a frame low enough to
+        // plausibly be the room is admitted anyway.
+        let starved = self.floor_samples.len() < MIN_FLOOR_SAMPLES;
+        if !speaking || (starved && level <= FLOOR_ADMIT_CEILING) {
             self.floor_samples.push(level);
-            self.floor_sum += level;
             if self.floor_samples.len() > FLOOR_WINDOW {
-                let evicted = self.floor_samples.remove(0);
-                self.floor_sum -= evicted;
+                self.floor_samples.remove(0);
             }
         }
 
-        // During the first SILENCE_WARMUP_FRAMES the detector only learns the
-        // room; it neither declares speech nor starts counting silence. This
-        // keeps the constant's meaning exact and prevents the quiet opening of
-        // an utterance from burning part of the hangover budget.
-        let warmed_up = self.frames_seen > SILENCE_WARMUP_FRAMES;
-        let speaking = warmed_up && level > self.floor() * SILENCE_HEADROOM;
+        if active {
+            self.active_ms = self.active_ms.saturating_add(self.frame_ms);
+        }
 
+        // Warm-up gates only the silence accumulator, so the leading quiet
+        // frames of a session cannot be mistaken for its end. It deliberately
+        // does not gate `speaking`: doing so discarded the first 500 ms of any
+        // utterance that began the moment the microphone opened.
         if speaking {
             self.silent_for_ms = 0;
-        } else if warmed_up {
+        } else if self.frames_seen > SILENCE_WARMUP_FRAMES {
             self.silent_for_ms = self.silent_for_ms.saturating_add(self.frame_ms);
         } else {
             self.silent_for_ms = 0;
@@ -355,8 +703,9 @@ impl SilenceDetector {
 
         SilenceDecision {
             level,
-            floor: self.floor(),
+            floor,
             speaking,
+            active,
             silent_for_ms: self.silent_for_ms,
         }
     }
@@ -474,31 +823,71 @@ pub fn is_supported_language(base: &str) -> bool {
     SUPPORTED_LANGUAGES.iter().any(|(code, _)| *code == b)
 }
 
+/// Resolves a locale string such as `de_DE.UTF-8@euro` to `de`.
+///
+/// Unknown or unsupported tags yield `None` rather than a guess, so the caller
+/// can decide what an unresolvable locale means instead of inheriting one.
+pub fn locale_language_from(primary: Option<&str>, secondary: Option<&str>) -> Option<String> {
+    for raw in [primary, secondary].into_iter().flatten() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // `de_DE.UTF-8@euro` -> `de`
+        let locale = trimmed.split(['.', '@']).next().unwrap_or(trimmed);
+        let base = locale
+            .split(['-', '_'])
+            .next()
+            .unwrap_or(locale)
+            .trim()
+            .to_ascii_lowercase();
+        if base.is_empty() {
+            continue;
+        }
+        if is_supported_language(&base) {
+            return Some(base);
+        }
+    }
+    None
+}
+
+/// The language the running system is configured for.
+///
+/// Read from the environment rather than from a shipped constant, because the
+/// right default is a fact about the machine, and hardcoding one would be
+/// wrong for everyone who does not speak it. `LC_ALL` wins, then
+/// `LC_MESSAGES`, then `LANG`, which is the POSIX precedence order.
+///
+/// Returns [`LANGUAGE_AUTO`] when nothing resolves. That is a last resort, not
+/// a preference: with no locale to go on there is genuinely nothing better than
+/// asking the engine, and the confidence gate in the adapter is what keeps that
+/// honest.
+pub fn system_language() -> String {
+    for key in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+        if let Ok(value) = std::env::var(key) {
+            if let Some(lang) = locale_language_from(Some(&value), None) {
+                return lang;
+            }
+        }
+    }
+    LANGUAGE_AUTO.to_string()
+}
+
+/// The language a fresh install transcribes in.
+///
+/// The user's locale, falling back to auto-detect only when the environment
+/// says nothing usable. See [`VoiceSettings::effective_language`] for why this
+/// is not `auto`.
+pub fn default_voice_language() -> String {
+    system_language()
+}
+
 // ---------------------------------------------------------------------------
 // Model catalog
 // ---------------------------------------------------------------------------
 
 /// Base URL the models are served from.
 pub const MODEL_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
-
-/// The Silero VAD asset whisper.cpp uses to drop non-speech before decoding.
-///
-/// It lives in its own public repository, not in the ASR model repo: upstream's
-/// `models/download-vad-model.sh` downloads from `ggml-org/whisper-vad`. An
-/// earlier attempt to fetch it from `ggml-org/whisper.cpp` saw HTTP 401 and
-/// concluded "unreachable" - but Hugging Face answers 401 (not 404) for paths
-/// an anonymous client may not see, and that path is not a public repo at all.
-/// The asset is public, 885 KiB, and needs no credentials.
-pub const VAD_MODEL_FILE: &str = "ggml-silero-v5.1.2.bin";
-/// Verified by HTTP `HEAD`/download against [`VAD_MODEL_BASE_URL`].
-pub const VAD_MODEL_SIZE_BYTES: u64 = 885_098;
-/// Upstream's own source for the VAD asset.
-pub const VAD_MODEL_BASE_URL: &str = "https://huggingface.co/ggml-org/whisper-vad/resolve/main";
-
-/// Direct download URL for the VAD asset.
-pub fn vad_model_url() -> String {
-    format!("{VAD_MODEL_BASE_URL}/{VAD_MODEL_FILE}")
-}
 
 /// A downloadable speech model, as declared in the catalog.
 ///
@@ -673,11 +1062,32 @@ pub struct VoiceSettings {
     pub enabled: bool,
     pub engine: String,
     pub model: String,
+    /// The transcription language. Empty means "the user never chose", which
+    /// resolves to the system locale; `"auto"` is a deliberate choice to detect
+    /// it per utterance, and is a different thing.
     pub language: String,
     pub max_utterance_seconds: u32,
     pub silence_hangover_ms: u64,
     pub auto_finalize: bool,
     pub install_model_on_demand: bool,
+    /// Capture through a PipeWire echo-cancelled source.
+    ///
+    /// Audit §3.3: loading `module-echo-cancel` without routing desktop playback
+    /// through its sink gives the canceller zero reference samples, so it cannot
+    /// cancel echo and instead distorts the mic with blind AGC. Defaults to off
+    /// until sink routing (or an `rnnoise` capture-only filter) is implemented.
+    /// Opt-in per session via `ASTRAL_VOICE_AEC_SOURCE`; never breaks dictation
+    /// when the filter is unavailable.
+    pub echo_cancel: bool,
+    /// Capture through an operator-provisioned noise-suppression source.
+    ///
+    /// The evaluated `module-echo-cancel` replacement (audit §3.3): a
+    /// capture-only `rnnoise` filter needs no playback reference, so it cannot
+    /// fail the way blind AEC did. The node itself is operator-provisioned —
+    /// the daemon never writes audio-graph config — and absence falls back to
+    /// the default source. Opt-in per session via
+    /// `ASTRAL_VOICE_NOISE_SUPPRESS_SOURCE`.
+    pub noise_suppress: bool,
 }
 
 impl Default for VoiceSettings {
@@ -686,11 +1096,13 @@ impl Default for VoiceSettings {
             enabled: true,
             engine: DEFAULT_ENGINE.to_string(),
             model: DEFAULT_MODEL_ID.to_string(),
-            language: LANGUAGE_AUTO.to_string(),
+            language: default_voice_language(),
             max_utterance_seconds: DEFAULT_MAX_UTTERANCE_SECS,
             silence_hangover_ms: DEFAULT_SILENCE_HANGOVER_MS,
             auto_finalize: true,
             install_model_on_demand: true,
+            echo_cancel: false,
+            noise_suppress: false,
         }
     }
 }
@@ -704,7 +1116,15 @@ impl VoiceSettings {
         if self.engine.trim().is_empty() {
             self.engine = DEFAULT_ENGINE.to_string();
         }
-        self.language = normalize_language(&self.language);
+        // An absent key is "the user never chose", not "choose auto". Collapsing
+        // the two is what shipped the ungated argmax as the default, so they
+        // are kept apart: only a value the user actually typed may become
+        // `auto`.
+        self.language = if self.language.trim().is_empty() {
+            default_voice_language()
+        } else {
+            normalize_language(&self.language)
+        };
         self.max_utterance_seconds = self
             .max_utterance_seconds
             .clamp(MIN_MAX_UTTERANCE_SECS, MAX_MAX_UTTERANCE_SECS);
@@ -754,6 +1174,48 @@ pub struct Transcript {
     pub duration_ms: u64,
     pub engine: String,
     pub model: String,
+    /// Whether the capture contained speech the detector recognised.
+    ///
+    /// This is the difference between "the microphone heard nothing" and "the
+    /// engine heard something and had no words for it", which send the user to
+    /// completely different places. It is reported so the UI can say which one
+    /// happened instead of leaving an empty result unexplained: an empty
+    /// transcript that arrives with no explanation is indistinguishable from a
+    /// broken feature, and the user is left with a composer that silently
+    /// refused to change.
+    #[serde(default = "default_true")]
+    pub speech_detected: bool,
+    /// The engine's own probability for the reported language, when it gave one.
+    #[serde(default)]
+    pub language_confidence: Option<f32>,
+    /// Why this language was used, so a wrong reading is explicable rather than
+    /// merely wrong. See the adapter's `LanguageSource`.
+    #[serde(default = "default_language_source")]
+    pub language_source: LanguageSource,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_language_source() -> LanguageSource {
+    LanguageSource::Configured
+}
+
+/// Why a transcription used the language it did.
+///
+/// Serialized so the UI can tell "you set this" from "the engine guessed and we
+/// did not believe it", which are different problems with different fixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LanguageSource {
+    /// The user's setting, used verbatim.
+    Configured,
+    /// The engine detected it and was confident enough to be believed.
+    Detected,
+    /// The engine detected something, but not confidently enough, so the
+    /// configured language was used instead. The detection is still reported.
+    DetectedOverridden,
 }
 
 impl Transcript {
@@ -768,8 +1230,18 @@ impl Transcript {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VoiceSessionConfig {
     pub capture: CaptureTarget,
+    /// Capture through the echo-cancelled source when one can be provided.
+    pub echo_cancel: bool,
+    /// Capture through an operator-provisioned noise-suppression source.
+    pub noise_suppress: bool,
     pub model: String,
     pub language: String,
+    /// A session-scoped language override, or "" for none.
+    ///
+    /// Never persisted (D9). `voice.language` in `settings.json` is the
+    /// *default*; a user dictating in a second language for one prompt must not
+    /// silently reconfigure their shell.
+    pub language_override: String,
     pub silence_hangover_ms: u64,
     pub max_utterance_ms: u64,
     pub auto_finalize: bool,
@@ -784,8 +1256,11 @@ impl VoiceSessionConfig {
         let frame_len = (SPEECH_SAMPLE_RATE as usize / 50).max(1); // 20 ms frames
         let mut cfg = Self {
             capture: CaptureTarget::Source,
+            echo_cancel: settings.echo_cancel,
+            noise_suppress: settings.noise_suppress,
             model: settings.model.clone(),
             language: normalize_language(&settings.language),
+            language_override: String::new(),
             silence_hangover_ms: if settings.auto_finalize {
                 settings.silence_hangover_ms
             } else {
@@ -800,6 +1275,29 @@ impl VoiceSessionConfig {
             cfg.model = DEFAULT_MODEL_ID.to_string();
         }
         cfg
+    }
+
+    /// Applies a session-scoped language override (D9).
+    ///
+    /// Normalized like any other tag, so a bad value from a shortcut or an IPC
+    /// caller degrades to auto-detect rather than reaching the engine and failing
+    /// opaquely. Never touches `VoiceSettings`: the override lives for this
+    /// session and is gone with it.
+    pub fn with_language_override(mut self, override_tag: &str) -> Self {
+        let tag = override_tag.trim();
+        if !tag.is_empty() {
+            self.language = normalize_language(tag);
+            self.language_override = self.language.clone();
+        }
+        self
+    }
+
+    /// The language a session should *fall back on*: the system locale.
+    ///
+    /// Kept separate from `language` so that "the user asked for auto-detect"
+    /// and "we have nothing better than the locale" are two facts, not one.
+    pub fn fallback_language(&self) -> String {
+        default_voice_language()
     }
 }
 
@@ -821,9 +1319,30 @@ pub enum VoiceEvent {
     /// 1.5 GiB download sat at 0% and then jumped to "downloaded".
     Progress(f32),
     Partial { text: String },
+    /// The language the session settled on, with the engine's own confidence.
+    ///
+    /// Emitted *before* the transcription pass, and only when the user asked for
+    /// automatic detection. This is what makes D8 true: the reading is on screen
+    /// while the decode is still running, so a wrong one is visible and
+    /// correctable instead of arriving already baked into the text.
+    ///
+    /// With a fused `-l auto` pass there was nothing to show here -- the language
+    /// only existed inside the decode, and by the time it could be read the
+    /// transcript was already written and the strip had closed.
+    Detected {
+        language: String,
+        confidence: Option<f32>,
+    },
     /// Newtype rather than a struct variant so `payload` *is* the transcript
     /// object, letting the QML side read `payload.text` directly.
     Final(Transcript),
+    /// Non-fatal session warning (audit §4.1 gain guard).
+    ///
+    /// Unlike `Error`, a warning never ends the session or changes
+    /// `VoiceState`: the utterance continues and still produces a `Final`.
+    /// Unknown variants are ignored by older QML event switches, so this is
+    /// forward-compatible. Carries a human-readable remediation.
+    Warning { message: String },
     Error { message: String, recoverable: bool },
 }
 
@@ -859,7 +1378,9 @@ impl VoiceEvent {
             VoiceEvent::Level { .. } => "Level",
             VoiceEvent::Progress(_) => "Progress",
             VoiceEvent::Partial { .. } => "Partial",
+            VoiceEvent::Detected { .. } => "Detected",
             VoiceEvent::Final(_) => "Final",
+            VoiceEvent::Warning { .. } => "Warning",
             VoiceEvent::Error { .. } => "Error",
         }
     }
@@ -926,6 +1447,15 @@ pub struct EngineCapabilities {
     /// `-nf` / `--no-fallback`: disables temperature-fallback retries.
     pub no_fallback: bool,
     pub language_auto: bool,
+    /// `-dl` / `--detect-language`: identify the language and exit without
+    /// transcribing.
+    ///
+    /// This is what makes a trustworthy `auto` possible. Detection and
+    /// transcription are otherwise fused into one pass whose language decision
+    /// cannot be inspected, shown or overridden before the decoder commits to
+    /// it. `whisper-cli` has advertised this since 1.5, so a build without it
+    /// is very old; the adapter still copes, falling back to a single pass.
+    pub detect_language: bool,
     pub output_json: bool,
     pub no_prints: bool,
     pub threads: bool,
@@ -968,8 +1498,23 @@ pub struct VoiceStatus {
     pub model_present: bool,
     pub model_path: Option<String>,
     pub model_size_bytes: u64,
-    /// Whether the Silero VAD asset is installed. Optional, but it is what
-    /// filters non-speech out of the audio before decoding.
+    /// Configured: capture through a PipeWire echo-cancelled source.
+    #[serde(default)]
+    pub echo_cancel: bool,
+    /// Whether the echo-cancelled source is present right now.
+    #[serde(default)]
+    pub echo_cancel_active: bool,
+    /// Capture through an operator-provisioned noise-suppression source.
+    #[serde(default)]
+    pub noise_suppress: bool,
+    /// Whether a suppression source is present right now.
+    #[serde(default)]
+    pub noise_suppress_active: bool,
+    /// Whether the rnnoise LADSPA plugin is installed (suppression hostable).
+    #[serde(default)]
+    pub rnnoise_available: bool,
+    /// Whether the Silero VAD asset is downloaded (neural endpointing active).
+    /// Accuracy upgrade only: absence falls back to energy detection, never a gap.
     #[serde(default)]
     pub vad_model_present: bool,
     pub language: String,
@@ -1271,13 +1816,18 @@ mod tests {
 
     #[test]
     fn silence_detector_does_not_drift_in_a_loud_room() {
-        // Constant moderate noise: the floor must not creep up until the signal
-        // starts looking like silence.
+        // Constant moderate noise must not be absorbed into the room estimate.
+        // Above the admission ceiling it is not admitted at all, which is what
+        // keeps a loud event from redefining the room it was measured in.
         let mut d = SilenceDetector::new(320, 16_000);
         for _ in 0..400 {
             d.push(0.08);
         }
-        assert!(d.floor() <= MAX_TRACKABLE_FLOOR, "floor must not absorb loud-room noise");
+        assert!(
+            d.floor() <= FLOOR_ADMIT_CEILING,
+            "floor absorbed loud-room noise to {}",
+            d.floor()
+        );
     }
 
     #[test]
@@ -1313,6 +1863,74 @@ mod tests {
         assert_eq!(normalize_language("fr"), "fr");
         // Unknown tags fall back rather than reaching the engine and failing opaquely.
         assert_eq!(normalize_language("klingon"), "auto");
+    }
+
+    #[test]
+    fn locale_resolution_reads_the_posix_precedence_order() {
+        // `LC_ALL` wins over `LC_MESSAGES`; an unresolvable value falls through
+        // rather than poisoning the lookup; each is lowercased and stripped of
+        // its region, codeset and modifier.
+        for (primary, secondary, expected) in [
+            (Some("de_DE.UTF-8"), Some("fr_FR"), Some("de")),
+            (Some("fr_FR.UTF-8"), Some("de_DE"), Some("fr")),
+            (Some(""), Some("de_DE"), Some("de")),
+            // An unsupported primary must not stop the secondary being read.
+            (Some("klingon"), Some("fr_FR.UTF-8"), Some("fr")),
+            (None, Some("de_AT.UTF-8@euro"), Some("de")),
+            (None, Some("ZH_Hant_TW"), Some("zh")),
+            (Some("pt-BR"), None, Some("pt")),
+            (Some("   "), None, None),
+            (None, None, None),
+        ] {
+            assert_eq!(
+                locale_language_from(primary, secondary),
+                expected.map(str::to_string),
+                "locale {primary:?} / {secondary:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_default_language_is_the_user_s_locale_not_a_guess() {
+        // The reported failure: "can you help me" came back as Japanese, because
+        // the default was `auto` and whisper's auto-detect is a bare argmax
+        // over 100 language logits with no confidence gate. A dictation UI is a
+        // committed-language interaction -- the user knows what they are
+        // speaking -- so the default must be a real locale, and `auto` has to be
+        // something the user chooses.
+        let s = VoiceSettings::default();
+        assert_ne!(
+            s.language,
+            LANGUAGE_AUTO,
+            "shipping `auto` as the default hands the output alphabet to an ungated argmax"
+        );
+        assert!(
+            is_supported_language(&s.language),
+            "the default language {} is not one the engine can be asked for",
+            s.language
+        );
+    }
+
+    #[test]
+    fn an_absent_language_resolves_to_the_locale_while_auto_stays_auto() {
+        // The distinction has to survive deserialization: an absent key means
+        // "the user never chose", which is not the same as a deliberate `auto`.
+        let absent: VoiceSettings =
+            serde_json::from_str(r#"{"enabled": true, "model": "ggml-small"}"#).unwrap();
+        assert_ne!(
+            absent.clone().sanitized().language,
+            LANGUAGE_AUTO,
+            "an absent language must not silently become auto-detect"
+        );
+
+        let chosen: VoiceSettings =
+            serde_json::from_str(r#"{"enabled": true, "model": "ggml-small", "language": "auto"}"#)
+                .unwrap();
+        assert_eq!(
+            chosen.sanitized().language,
+            LANGUAGE_AUTO,
+            "an explicit `auto` is a real choice and must be honoured"
+        );
     }
 
     #[test]
@@ -1378,6 +1996,9 @@ mod tests {
             duration_ms: 1200,
             engine: "whisper-cpp".to_string(),
             model: DEFAULT_MODEL_ID.to_string(),
+            speech_detected: true,
+            language_confidence: None,
+            language_source: LanguageSource::Configured,
         };
         let f = VoiceEvent::Final(t.clone());
         let back: VoiceEvent = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();

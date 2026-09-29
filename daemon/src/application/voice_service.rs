@@ -10,6 +10,7 @@
 use crate::domain::ports::{DynError, DynResult, SpeechToTextPort};
 use crate::infrastructure::whisper_stt_adapter::{models_dir, CancelHandle};
 use crate::domain::voice::{
+    LanguageSource,
     model_descriptors, setup_gap_for, staged_download_paths, EngineProbe, LanguageOption,
     ModelDescriptor, SetupGap, Transcript, VoiceEvent, VoiceSessionConfig, VoiceSettings,
     VoiceState, VoiceStatus, MODEL_CATALOG,
@@ -113,7 +114,12 @@ impl VoiceService {
             model_path: crate::infrastructure::whisper_stt_adapter::resolve_model_file(&self.settings.model)
                 .map(|p| p.to_string_lossy().into_owned()),
             model_size_bytes: descriptor.size_bytes,
-            vad_model_present: crate::infrastructure::whisper_stt_adapter::resolve_vad_model().is_some(),
+            echo_cancel: self.settings.echo_cancel,
+            echo_cancel_active: crate::infrastructure::echo_cancel::source_available(),
+            noise_suppress: self.settings.noise_suppress,
+            noise_suppress_active: crate::infrastructure::noise_suppress::source_available(),
+            rnnoise_available: crate::infrastructure::noise_suppress::rnnoise_available(),
+            vad_model_present: crate::domain::voice::resolve_vad_model_file().is_some(),
             language: self.settings.language.clone(),
             setup_complete: gap == SetupGap::Ready,
             gap,
@@ -147,44 +153,31 @@ impl VoiceService {
         })?;
 
         progress(1.0);
-
-        // The VAD asset is optional but tiny, and it is what keeps non-speech
-        // audio from becoming hallucinated text. Best-effort: a failure here
-        // must never fail the model install the user actually asked for.
-        if crate::infrastructure::whisper_stt_adapter::resolve_vad_model().is_none() {
-            if let Err(e) = self.install_vad_model(|_| {}) {
-                eprintln!("[voice] speech detection model not installed (optional): {e}");
-            }
-        }
-
         Ok(final_path)
     }
 
-    /// Downloads the Silero VAD asset.
+    /// Downloads the Silero VAD asset, reporting progress as `0.0 ..= 1.0`.
     ///
-    /// Optional for a session, but it is what filters music and room noise out
-    /// of the audio before decoding, so it is fetched alongside every model
-    /// install and available directly as `voice install-vad`.
+    /// Same staging discipline as STT models (`.part` + rename). A missing VAD
+    /// model is never fatal: sessions fall back to energy endpointing, so this
+    /// is an accuracy upgrade, not a readiness gate.
     pub fn install_vad_model<F: FnMut(f32)>(&self, mut progress: F) -> DynResult<PathBuf> {
-        use crate::domain::voice::{vad_model_url, VAD_MODEL_FILE, VAD_MODEL_SIZE_BYTES};
-
+        use crate::domain::voice::{VAD_MODEL_SIZE_BYTES, VAD_MODEL_URL, vad_model_file_name};
         let dir = models_dir();
         std::fs::create_dir_all(&dir)
             .map_err(|e| -> DynError { format!("Cannot create {}: {e}", dir.display()).into() })?;
-        let final_path = dir.join(VAD_MODEL_FILE);
-        let mut part_name = final_path.as_os_str().to_os_string();
-        part_name.push(".part");
-        let part_path = PathBuf::from(part_name);
-
+        let file_name = vad_model_file_name();
+        let part_path = dir.join(format!("{}.part", file_name));
+        let final_path = dir.join(&file_name);
         Self::download_asset(
-            "the speech detection model",
-            &vad_model_url(),
+            "Silero VAD",
+            VAD_MODEL_URL,
             VAD_MODEL_SIZE_BYTES,
             &part_path,
             &mut progress,
         )?;
         std::fs::rename(&part_path, &final_path).map_err(|e| -> DynError {
-            format!("Downloaded the speech detection model but could not install it: {e}").into()
+            format!("Downloaded the VAD model but could not install it: {e}").into()
         })?;
         progress(1.0);
         Ok(final_path)
@@ -192,8 +185,8 @@ impl VoiceService {
 
     /// Streams a curl download into `part_path`, reporting progress in 0..=1.
     ///
-    /// Shared by the ASR model and VAD asset installers so staging, progress
-    /// parsing and empty-file rejection behave identically.
+    /// Used by the ASR model installer so staging, progress parsing and
+    /// empty-file rejection live in one place.
     fn download_asset(
         label: &str,
         url: &str,
@@ -298,6 +291,22 @@ impl VoiceService {
         self.engine.run_session_cancellable(&cfg, handle, &mut sink)
     }
 
+    /// [`run_control_loop`] with a session-scoped language override (D9).
+    ///
+    /// The override reaches the engine for this session only. Persisting it
+    /// would mean a user dictating in a second language for one prompt had
+    /// silently reconfigured their shell, which is why `voiceLanguageOverride`
+    /// in `AssistantService` is runtime state and nothing else.
+    pub fn run_control_loop_with_language<R: Read + Send + 'static, W: Write>(
+        &self,
+        input: R,
+        out: W,
+        language_override: &str,
+        emit: impl FnMut(&mut W, &VoiceEvent) -> std::io::Result<()> + Send,
+    ) -> DynResult<()> {
+        self.control_loop(input, out, Some(language_override), emit)
+    }
+
     /// Drives a session from a line-oriented control channel until stdin closes.
     ///
     /// The control channel is read on a **separate thread** once recording has
@@ -312,7 +321,17 @@ impl VoiceService {
     pub fn run_control_loop<R: Read + Send + 'static, W: Write>(
         &self,
         input: R,
+        out: W,
+        emit: impl FnMut(&mut W, &VoiceEvent) -> std::io::Result<()> + Send,
+    ) -> DynResult<()> {
+        self.control_loop(input, out, None, emit)
+    }
+
+    fn control_loop<R: Read + Send + 'static, W: Write>(
+        &self,
+        input: R,
         mut out: W,
+        language_override: Option<&str>,
         mut emit: impl FnMut(&mut W, &VoiceEvent) -> std::io::Result<()> + Send,
     ) -> DynResult<()> {
         // Wrapped here rather than by the caller: `StdinLock` is not `Send`, so
@@ -364,7 +383,10 @@ impl VoiceService {
             reader_handle.request_stop();
         });
 
-        let cfg = VoiceSessionConfig::from_settings(&self.settings);
+        let mut cfg = VoiceSessionConfig::from_settings(&self.settings);
+        if let Some(tag) = language_override {
+            cfg = cfg.with_language_override(tag);
+        }
         let result = self.engine.run_session_cancellable(&cfg, &handle, &mut |event| {
             let _ = emit(&mut out, &event);
         });
@@ -571,6 +593,9 @@ mod tests {
                 duration_ms: 1500,
                 engine: "fake".to_string(),
                 model: cfg.model.clone(),
+                speech_detected: !handle.is_discarded(),
+                language_confidence: None,
+                language_source: LanguageSource::Configured,
             };
             let e = VoiceEvent::Final(t.clone());
             self.events.lock().unwrap().push(e.clone());
