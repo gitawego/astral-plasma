@@ -40,6 +40,14 @@ Item {
         }
     }
 
+    // Mirror of UnifiedShell.qml: toggling debug off resumes auto-close for a
+    // drawer a debug-frozen timer left behind.
+    onDebugModeChanged: {
+        if (!debugMode && dropdownContainer.isOpen && !isDashboardHovered) {
+            closeTimer.restart();
+        }
+    }
+
     // 3b. Hover intent, mirroring UnifiedShell's openIntentTimer: the drawer must
     // not open on the first hover frame - crossing the top edge is what reaching
     // for a browser tab looks like.
@@ -219,6 +227,28 @@ Item {
         assert(testRoot.debugMode === false, "debugMode is now off");
         closeTimer.triggered();
         assert(dropdownContainer.isOpen === false, "When debugMode is OFF, dropdown MUST auto-close immediately");
+
+        // Test 12: A drawer a debug-frozen timer left behind resumes on toggle-off.
+        // The one-shot fired once under debug and died (modelled by stopping:
+        // Test 11's own resume legitimately armed it); without a watcher the
+        // drawer would stay stuck until the next hover transition.
+        testRoot.debugMode = true;
+        dropdownContainer.isOpen = true;
+        dropdownContainer.hoverOverride = false;
+        topEdgeArea.hovered = false;
+        closeTimer.stop();
+        assert(dropdownContainer.isOpen === true, "a debug-frozen timer must leave the drawer open");
+        assert(closeTimer.running === false, "nothing pending after the frozen fire died");
+        testRoot.debugMode = false;
+        assert(closeTimer.running === true, "toggling debug off must resume the close timer without any hover change");
+        closeTimer.triggered();
+        assert(dropdownContainer.isOpen === false, "the resumed timer must close the drawer");
+
+        // The resume watcher must exist in the real shell, not just this mock.
+        assert(/function onDebugModeChanged\(\)/.test(shellSrc),
+            "UnifiedShell must watch debugMode to resume auto-close");
+        assert(/!Config\.debugMode && Config\.dashboardVisible && !root\.isDashboardHovered/.test(shellSrc),
+            "the resume must only fire for an open, unhovered drawer with debug off");
 
         console.log("PASS: Top Drawer Auto-Close Non-Regression Tests");
         Qt.exit(0);

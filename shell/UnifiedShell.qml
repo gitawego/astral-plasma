@@ -1147,6 +1147,15 @@ PanelWindow {
                 closeTimer.stop();
             }
         }
+        function onDebugModeChanged() {
+            // A one-shot timer that early-returned under debug will never fire
+            // again on its own: toggling debug off must resume auto-close now,
+            // not on the next hover transition (or the drawer stays stuck open
+            // after the very toggle that was supposed to fix it).
+            if (!Config.debugMode && Config.dashboardVisible && !root.isDashboardHovered) {
+                closeTimer.restart();
+            }
+        }
     }
 
     // Hover intent: the drawer opens only once the pointer has *stayed* on the
