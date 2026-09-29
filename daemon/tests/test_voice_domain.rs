@@ -959,3 +959,18 @@ fn capture_backend_selection_defaults_to_the_subprocess() {
     assert_eq!(select_capture_backend("native"), CaptureBackend::Native);
     assert_eq!(select_capture_backend(" Native "), CaptureBackend::Native);
 }
+
+#[test]
+fn mic_verdict_names_the_fix() {
+    use astral_plasma::domain::voice::{mic_verdict, MicVerdict};
+    let (v, advice) = mic_verdict(0.25, 0.0);
+    assert_eq!(v, MicVerdict::Ok);
+    assert!(advice.contains("OK"), "{advice}");
+    let (v, advice) = mic_verdict(0.0001, 0.0);
+    assert_eq!(v, MicVerdict::Silent);
+    assert!(advice.contains("Unmute") || advice.contains("nothing"), "{advice}");
+    let (v, advice) = mic_verdict(0.9, 0.68);
+    assert_eq!(v, MicVerdict::Clipping, "saturation outranks loudness");
+    assert!(advice.contains("alsamixer") || advice.contains("Mic Boost"), "{advice}");
+    assert_eq!(mic_verdict(f32::NAN, 0.0).0, MicVerdict::Silent);
+}

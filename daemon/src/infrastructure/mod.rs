@@ -27,7 +27,9 @@ pub mod assistant_harness;
 pub mod crash_monitor;
 pub mod whisper_stt_adapter;
 pub mod sherpa_stt_adapter;
+pub mod deepgram_stt_adapter;
 pub mod voice_server;
 pub mod echo_cancel;
 pub mod noise_suppress;
+pub mod mic_check;
 

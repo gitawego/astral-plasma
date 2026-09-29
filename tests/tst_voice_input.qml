@@ -488,6 +488,21 @@ Item {
         assert(Math.abs(strip.meterItem.normalized) < 1e-6, "level must be clamped to 0.0");
         strip.level = 0.0;
 
+        // Onset pulse: attacks move the meter, loudness brightens it, pauses
+        // rest it. Synchronous on level jumps; the decay timer releases it.
+        // (Reset first: the clamping probes above end on a falling edge that
+        // legitimately flashed the pulse.)
+        strip.onsetPulse = 0.0;
+        strip.level = 0.0;
+        assert(strip.onsetPulse === 0.0, "silence must leave the pulse at rest");
+        strip.level = 0.02;
+        assert(strip.onsetPulse === 0.0, "noise jitter below 0.08 must not pulse");
+        strip.level = 0.5;
+        assert(strip.onsetPulse === 1.0, "a syllable attack must flash the pulse");
+        strip.level = 0.52;
+        assert(strip.onsetPulse === 1.0, "sustain holds the flash until the timer releases it");
+        strip.level = 0.0;
+
         // ------------------------------------------------------------------
         // 6. Honest language reporting (D8: never guess)
         // ------------------------------------------------------------------

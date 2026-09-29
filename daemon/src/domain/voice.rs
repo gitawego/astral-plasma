@@ -344,6 +344,64 @@ pub fn clipping_advice(ratio: f32) -> String {
     )
 }
 
+/// Outcome of a device-only microphone check (`voice mic-check`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MicVerdict {
+    /// Usable signal observed.
+    Ok,
+    /// Nothing above the room anchor: muted, wrong device, or dead mic.
+    Silent,
+    /// ADC saturation: gain staging must be fixed before dictation can work.
+    Clipping,
+}
+
+/// A device-only microphone check report.
+///
+/// Stays on the device by construction: it carries statistics, never audio.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MicCheck {
+    pub backend: String,
+    pub device: String,
+    pub secs_requested: u64,
+    pub secs_captured: f32,
+    pub frames: u64,
+    pub peak_rms: f32,
+    pub clipping_ratio: f32,
+    pub verdict: MicVerdict,
+    pub advice: String,
+}
+
+/// Judges a mic-check recording from its peak level and clipping ratio.
+///
+/// Pure so the thresholds are unit-tested, not discoverable only through a
+/// microphone. Silence is judged against the same anchor the activity gate
+/// uses; clipping against the session guardrail.
+pub fn mic_verdict(peak_rms: f32, clipping_ratio: f32) -> (MicVerdict, String) {
+    if !peak_rms.is_finite() || !clipping_ratio.is_finite() {
+        return (
+            MicVerdict::Silent,
+            "Microphone check produced no measurable signal. Check the input device and permissions.".to_string(),
+        );
+    }
+    if clipping_ratio >= CLIPPING_WARN_RATIO {
+        return (MicVerdict::Clipping, clipping_advice(clipping_ratio));
+    }
+    if peak_rms < SPEECH_ACTIVITY_ANCHOR {
+        return (
+            MicVerdict::Silent,
+            "Microphone heard nothing above the room floor. Unmute it, raise the capture level, or pick another input.".to_string(),
+        );
+    }
+    (
+        MicVerdict::Ok,
+        format!(
+            "Microphone OK: peak {:.0}% of full scale, no clipping.",
+            (peak_rms * 100.0).clamp(0.0, 100.0)
+        ),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Neural VAD gate (audit §1.2 / §4.2)
 // ---------------------------------------------------------------------------

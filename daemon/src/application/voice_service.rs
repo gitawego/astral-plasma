@@ -66,6 +66,26 @@ impl VoiceService {
         )
     }
 
+    /// Builds a service around the engine the settings name.
+    ///
+    /// `"deepgram"` selects the opt-in cloud adapter (key required at session
+    /// time — selecting it IS the consent); `"sherpa-onnx"` the prototype;
+    /// anything else, including unknown ids, falls back to local whisper
+    /// (SPEC §11 edge contract).
+    pub fn for_settings() -> Self {
+        let settings = load_settings();
+        Self::new(Self::adapter_for_engine(&settings.engine), settings)
+    }
+
+    /// Resolves an engine id to its adapter (pure dispatch, unit-tested).
+    pub fn adapter_for_engine(engine_id: &str) -> Arc<dyn SpeechToTextPort> {
+        match engine_id.trim() {
+            "deepgram" => Arc::new(crate::infrastructure::deepgram_stt_adapter::DeepgramAdapter::new()),
+            "sherpa-onnx" => Arc::new(crate::infrastructure::sherpa_stt_adapter::SherpaOnnxAdapter::new()),
+            _ => Arc::new(crate::infrastructure::whisper_stt_adapter::WhisperCppAdapter::new()),
+        }
+    }
+
     /// The sanitized configuration in force.
     pub fn settings(&self) -> &VoiceSettings {
         &self.settings
@@ -97,7 +117,12 @@ impl VoiceService {
 
     pub fn status(&self) -> VoiceStatus {
         let probe = self.engine.probe().unwrap_or_else(|_| EngineProbe::missing(&self.settings.engine));
-        let engine_available = probe.binary_path.is_some();
+        // Cloud engines have no binary: availability is key presence.
+        let engine_available = if self.settings.engine.trim() == crate::infrastructure::deepgram_stt_adapter::DEEPGRAM_ENGINE_ID {
+            crate::infrastructure::deepgram_stt_adapter::read_key().is_some()
+        } else {
+            probe.binary_path.is_some()
+        };
         let model_present = crate::infrastructure::whisper_stt_adapter::resolve_model_file(&self.settings.model).is_some();
         let has_source = crate::infrastructure::whisper_stt_adapter::has_audio_source();
         let gap = setup_gap_for(engine_available, model_present, has_source);
@@ -156,8 +181,7 @@ impl VoiceService {
         Ok(final_path)
     }
 
-    /// Downloads the Silero VAD asset, reporting progress as `0.0 ..= 1.0`.
-    ///
+    /// Downloads the Silero VAD asset, reporting progress as `0.0 ..= 1.0`.    ///
     /// Same staging discipline as STT models (`.part` + rename). A missing VAD
     /// model is never fatal: sessions fall back to energy endpointing, so this
     /// is an accuracy upgrade, not a readiness gate.
@@ -181,6 +205,11 @@ impl VoiceService {
         })?;
         progress(1.0);
         Ok(final_path)
+    }
+
+    /// Runs a device-only microphone check (no audio leaves the device).
+    pub fn mic_check(&self, secs: u64) -> DynResult<crate::domain::voice::MicCheck> {
+        crate::infrastructure::mic_check::probe_microphone(secs)
     }
 
     /// Streams a curl download into `part_path`, reporting progress in 0..=1.
@@ -832,5 +861,20 @@ mod tests {
         assert!(models.iter().any(|m| m.id == crate::domain::voice::DEFAULT_MODEL_ID));
         assert!(langs.iter().any(|l| l.code == "zh"));
         assert!(langs.iter().any(|l| l.code == "en"));
+    }
+
+    #[test]
+    fn engine_dispatch_honours_names_and_falls_back() {
+        use crate::domain::ports::SpeechToTextPort;
+        // Selecting cloud IS the consent; the probe names the engine honestly.
+        let cloud = VoiceService::adapter_for_engine("deepgram");
+        assert_eq!(cloud.probe().unwrap().engine_id, "deepgram");
+        let sherpa = VoiceService::adapter_for_engine("sherpa-onnx");
+        assert_eq!(sherpa.probe().unwrap().engine_id, "sherpa-onnx");
+        // Unknown ids and blanks fall back to local whisper (SPEC §11).
+        for id in ["whisper-cpp", "", "klingon-stt", " whisper-cpp "] {
+            let engine = VoiceService::adapter_for_engine(id);
+            assert_eq!(engine.probe().unwrap().engine_id, "whisper-cpp", "engine {id:?}");
+        }
     }
 }

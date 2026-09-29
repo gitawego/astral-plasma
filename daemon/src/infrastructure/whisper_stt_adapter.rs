@@ -822,7 +822,7 @@ impl WhisperCppAdapter {
         });
 
         let (full_pcm, energy_first, energy_last, energy_speech) =
-            match capture_utterance(cfg, cancel, sink) {
+            match capture_utterance_shared(cfg, cancel, sink) {
                 Ok(captured) => captured,
                 Err(e) => {
                     sink(VoiceEvent::fatal_error(e.to_string()));
@@ -1308,7 +1308,7 @@ fn apply_neural_vad(
 ///
 /// `cancel` is polled between frames so a `stop` from the control channel is
 /// honoured promptly and the capture device is always released.
-fn capture_utterance(
+pub(crate) fn capture_utterance_shared(
     cfg: &VoiceSessionConfig,
     cancel: &CancelHandle,
     sink: &mut dyn FnMut(VoiceEvent),
@@ -1470,11 +1470,41 @@ fn capture_utterance_native(
     cancel: &CancelHandle,
     sink: &mut dyn FnMut(VoiceEvent),
 ) -> DynResult<(Vec<u8>, Option<usize>, Option<usize>, bool)> {
-    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-
     if cfg.sample_rate != crate::domain::voice::SPEECH_SAMPLE_RATE {
         return Err("native capture supports 16 kHz sessions only".into());
     }
+    let (stream, rx, _device) = open_native_input(cfg.sample_rate)?;
+
+    let frame_bytes = (cfg.frame_len * 2).max(2); // s16 mono
+    let mut pcm: Vec<u8> = Vec::with_capacity(cfg.sample_rate as usize * 2);
+    let mut detector = SilenceDetector::new(cfg.frame_len, cfg.sample_rate);
+    let started = Instant::now();
+    let mut speech = SpeechBounds::default();
+    let mut source = ChannelFrameRead::new(rx);
+    let mut noop = || {};
+    let result = capture_loop(
+        &mut source, &mut noop, &mut pcm, &mut detector, started, &mut speech, cancel, sink,
+        cfg, frame_bytes,
+    );
+    drop(stream);
+    result.map(|pcm| (pcm, speech.first, speech.last, detector.has_speech()))
+}
+
+/// Opens the native 16 kHz mono input device and starts its stream.
+///
+/// Shared by utterance capture and the mic check: exact rate/mono in s16
+/// (preferred) or f32 (converted); anything else fails honestly rather than
+/// resampling blindly. Returns the live stream (drop to release the mic), its
+/// sample channel, and the device name for diagnostics.
+pub(crate) fn open_native_input(
+    sample_rate: u32,
+) -> DynResult<(
+    cpal::Stream,
+    std::sync::mpsc::Receiver<Vec<i16>>,
+    String,
+)> {
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
     let host = cpal::default_host();
     // Device selection: `$ASTRAL_VOICE_INPUT_DEVICE` matches a substring of the
     // input device name (case-insensitive); empty means the system default. A
@@ -1527,8 +1557,8 @@ fn capture_utterance_native(
         .map_err(|e| -> DynError { format!("Cannot query {device_name}: {e}").into() })?
     {
         if range.channels() != 1
-            || range.min_sample_rate() > cfg.sample_rate
-            || range.max_sample_rate() < cfg.sample_rate
+            || range.min_sample_rate() > sample_rate
+            || range.max_sample_rate() < sample_rate
         {
             continue;
         }
@@ -1547,7 +1577,7 @@ fn capture_utterance_native(
         format!("{device_name} offers no 16 kHz mono input; unset ASTRAL_VOICE_CAPTURE_BACKEND").into()
     })?;
     let stream_config: cpal::StreamConfig = range
-        .try_with_sample_rate(cfg.sample_rate)
+        .try_with_sample_rate(sample_rate)
         .map(|s| s.config())
         .ok_or_else(|| -> DynError {
             format!("{device_name} rejects 16 kHz mono; unset ASTRAL_VOICE_CAPTURE_BACKEND").into()
@@ -1581,20 +1611,7 @@ fn capture_utterance_native(
     stream
         .play()
         .map_err(|e| -> DynError { format!("Cannot start {device_name}: {e}").into() })?;
-
-    let frame_bytes = (cfg.frame_len * 2).max(2); // s16 mono
-    let mut pcm: Vec<u8> = Vec::with_capacity(cfg.sample_rate as usize * 2);
-    let mut detector = SilenceDetector::new(cfg.frame_len, cfg.sample_rate);
-    let started = Instant::now();
-    let mut speech = SpeechBounds::default();
-    let mut source = ChannelFrameRead::new(rx);
-    let mut noop = || {};
-    let result = capture_loop(
-        &mut source, &mut noop, &mut pcm, &mut detector, started, &mut speech, cancel, sink,
-        cfg, frame_bytes,
-    );
-    drop(stream);
-    result.map(|pcm| (pcm, speech.first, speech.last, detector.has_speech()))
+    Ok((stream, rx, device_name))
 }
 
 /// PCM byte source for the frame loop: a capture pipe or an in-process device.
@@ -1603,13 +1620,13 @@ fn capture_utterance_native(
 /// raw s16 mono bytes, and both honour the same endpointing, watchdog and
 /// trim contract. A timeout/deadline miss surfaces as `Interrupted` (the loop
 /// continues and re-checks stop/cap) rather than EOF (which ends the session).
-trait FrameRead {
+pub(crate) trait FrameRead {
     fn read_chunk(&mut self, buf: &mut [u8]) -> std::io::Result<usize>;
 }
 
 /// `FrameRead` over a spawned capture process's stdout pipe.
-struct PipeFrameRead<'a> {
-    inner: &'a mut std::process::ChildStdout,
+pub(crate) struct PipeFrameRead<'a> {
+    pub(crate) inner: &'a mut std::process::ChildStdout,
 }
 
 impl FrameRead for PipeFrameRead<'_> {
@@ -1624,13 +1641,13 @@ impl FrameRead for PipeFrameRead<'_> {
 /// the level meter shows as a gap rather than deadlocking the callback).
 /// An empty channel beyond the deadline is `Interrupted`, so a quiet device
 /// never ends the session the way a closed pipe does.
-struct ChannelFrameRead {
+pub(crate) struct ChannelFrameRead {
     rx: std::sync::mpsc::Receiver<Vec<i16>>,
     carry: Vec<u8>,
 }
 
 impl ChannelFrameRead {
-    fn new(rx: std::sync::mpsc::Receiver<Vec<i16>>) -> Self {
+    pub(crate) fn new(rx: std::sync::mpsc::Receiver<Vec<i16>>) -> Self {
         Self { rx, carry: Vec::new() }
     }
 }
@@ -1839,7 +1856,7 @@ pub fn trim_to_speech(
 }
 
 /// Spawns `pw-record` with unbuffered stdout, reusing the visualizer's approach.
-fn spawn_capture(args: &[String]) -> std::io::Result<std::process::Child> {
+pub(crate) fn spawn_capture(args: &[String]) -> std::io::Result<std::process::Child> {
     // Test/override seam: honour an explicit capture binary before falling back
     // to pw-record, so the session protocol is verifiable without a microphone.
     if let Ok(explicit) = std::env::var(CAPTURE_BIN_ENV) {

@@ -196,3 +196,54 @@ fn the_status_names_the_install_command_for_this_machine() {
 
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn cloud_key_set_status_and_clear_round_trip_without_leaking() {
+    // Hermetic config home: set reads the key from stdin (never argv), stores
+    // it owner-only, status reports presence without the value, clear removes.
+    let root = temp_root("cloud-key");
+    let bin = env!("CARGO_BIN_EXE_astral-plasma");
+    let run = |args: &[&str], stdin: &str| -> String {
+        let mut child = Command::new(bin)
+            .arg("voice")
+            .args(args)
+            .env("XDG_CONFIG_HOME", &root)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn");
+        use std::io::Write;
+        child
+            .stdin
+            .take()
+            .expect("stdin")
+            .write_all(stdin.as_bytes())
+            .expect("write");
+        let out = child.wait_with_output().expect("wait");
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+
+    let key_file = root.join("astral-plasma").join("deepgram_api_key");
+    assert!(!key_file.is_file(), "no key may pre-exist");
+
+    let set_out = run(&["cloud-key", "set"], "dg-secret-xyz\n");
+    assert!(set_out.contains("\"success\":true"), "set must succeed, got: {set_out}");
+    assert!(!set_out.contains("dg-secret-xyz"), "the key must never be echoed, got: {set_out}");
+    assert_eq!(fs::read_to_string(&key_file).expect("key file"), "dg-secret-xyz");
+    #[cfg(unix)]
+    {
+        let mode = fs::metadata(&key_file).expect("stat").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "key file must be owner-only, got {mode:o}");
+    }
+
+    let status_out = run(&["cloud-key"], "");
+    assert!(status_out.contains("\"present\":true"), "status must report presence, got: {status_out}");
+    assert!(!status_out.contains("dg-secret-xyz"), "status must not leak the key, got: {status_out}");
+
+    let clear_out = run(&["cloud-key", "clear"], "");
+    assert!(clear_out.contains("\"success\":true"), "clear must succeed, got: {clear_out}");
+    assert!(!key_file.is_file(), "clear must remove the file");
+
+    let _ = fs::remove_dir_all(&root);
+}

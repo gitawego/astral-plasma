@@ -352,6 +352,8 @@ astral-plasma voice status                  -> VoiceStatus JSON
 astral-plasma voice engines                 -> engine + model catalog JSON
 astral-plasma voice install-model <id>      -> progress JSONL, then final status
 astral-plasma voice install-vad-model       -> Silero VAD asset, progress JSONL
+astral-plasma voice mic-check [--secs N]    -> device-only report JSON (§15)
+astral-plasma voice cloud-key <set|clear|test|status> -> opt-in cloud credentials (§15)
 astral-plasma voice session                 -> control on stdin, VoiceEvent JSONL on stdout
 astral-plasma voice serve [socket] [idle-s] -> resident STT server (§14)
 ```
@@ -594,6 +596,28 @@ One decode with `-l <pinned|locale>`; the sidecar `result.language` is display-o
 The legacy `module-echo-cancel` path loads nothing without sink routing (zero reference samples + blind AGC distortion, audit §3.3). `echoCancel` defaults `false`; `ensure_source()` requires `ASTRAL_VOICE_AEC_ALLOW_LEGACY=1`; `rnnoise` filter-chain is the evaluated replacement.
 
 Implemented as `voice.noiseSuppress` (default `false`, Settings toggle): capture-side only, operator-provisioned node (`ASTRAL_VOICE_NOISE_SUPPRESS_SOURCE` override wins), presence-probed with default-source fallback. `voice status` reports `noise_suppress{,_active}` + `rnnoise_available` (LADSPA scan). Verdict on this host: plugin absent, no sudo — path code-complete with stubs, suppression effect unevaluated-live; VAD gating already covers noise-induced hallucinations.
+
+---
+
+## 15. Doubao Lessons (2026-09-29)
+
+Borrowed from `doubao-say` (standalone GTK4 voice input): its capture stack is the same primitives (`pw-record` → native 16 kHz int16 + RMS callbacks), so the wins are engine and ritual, not plumbing. What transferred, and what pointedly did not:
+
+### A6 — Mic-check ritual (new)
+
+`voice mic-check [--secs N]` (default 3, clamped 1–10) opens the session's own capture path and reports `{backend, device, secs, frames, peak_rms, clipping_ratio, verdict, advice}` — statistics, never audio. Verdicts: `ok` / `silent` (below the activity anchor) / `clipping` (session guardrail); no-device is an honest error. The first frame is shown but never judged (startup transients). Settings has a "Test (3 s)" button with the same summary line. A dead or saturated mic is now caught in setup, not behind a frozen meter mid-dictation. Verified live on both backends (2% room peak, no clipping).
+
+### A7 — Opt-in cloud engine with genuine partials (extends D1, D6)
+
+`voice.engine: "deepgram"` selects Deepgram Nova-3 live behind the same port — no UI, capture, provisioning or doctor rewrite. Selecting it IS the consent; the key lives owner-only beside settings (`voice cloud-key set` reads stdin, never argv; `test`/`clear`/`status` included) and never appears in diagnostics. Interim `Results` become real `Partial` events (engine-streamed, verbatim, all preceding `Final`); control traffic is never rendered as words. Proven against a fake `ws://` endpoint: auth header placement, PCM upload, CloseStream, interim→Partial, final→Final, missing key as setup gap. Live Deepgram transcription is unverified (no key on file) — stated, not claimed. Web-credential scraping, system-wide paste and auto-update were deliberately not borrowed.
+
+### A8 — Onset meter pulse (extends §9)
+
+Volume already drove bar brightness; syllable attacks (level jump ≥ 0.08) now flash lit bars brighter for 180 ms, so cadence reads as motion and pauses as rest. No audio invented: the pulse derives from measured RMS deltas only.
+
+### Pre-roll (no change — verified, not added)
+
+Doubao primes capture on trigger and commits on gesture-confirm. Ours already opens the mic on `start`, never gates classification on warmup (`speech_is_classified_before_the_lead_in_has_ended`), and cancel discards without transcribing. The discipline holds; the tests pin it.
 
 ### A5 — Native capture backend (extends §4.1/§6)
 

@@ -142,6 +142,26 @@ LiquidGlassCard {
     /** A gap notice is showing, so the strip is an explanation, not a session. */
     readonly property bool hasSetupMessage: setupMessage.length > 0 && !isCapturing
 
+    /**
+     * Speech-cadence onset pulse in [0, 1], decaying after each attack.
+     *
+     * Volume already drives bar brightness through `normalized`; this tracks
+     * *attacks* — a jump of 0.08 or more between frames, i.e. a syllable onset
+     * rather than noise jitter — so the meter reads as listening (motion on
+     * cadence) instead of merely metering (motion on loudness). Pauses leave
+     * it at rest. Set synchronously on `level` changes; a short timer releases
+     * it, so no frame of audio is ever invented.
+     */
+    property real onsetPulse: 0.0
+    property real _lastMeterLevel: 0.0
+    onLevelChanged: {
+        if (level - _lastMeterLevel >= 0.08) {
+            onsetPulse = 1.0;
+            onsetDecayTimer.restart();
+        }
+        _lastMeterLevel = level;
+    }
+
     /** A session ran and produced nothing, so the strip explains that outcome. */
     readonly property bool hasEmptyNotice: emptyNotice.length > 0 && !isCapturing
 
@@ -212,6 +232,16 @@ LiquidGlassCard {
     readonly property alias languageHitItem: languageHit
     readonly property alias noticeActionItem: noticeAction
     readonly property alias noticeActionTextItem: noticeActionText
+
+    // Releases the onset pulse shortly after each attack. A single short
+    // timer rather than a per-frame decay: attacks arrive at syllable rate,
+    // so 180 ms holds the flash just long enough to read as rhythm.
+    Timer {
+        id: onsetDecayTimer
+        interval: 180
+        repeat: false
+        onTriggered: root.onsetPulse = 0.0
+    }
 
     accentGlint: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
     // A resting container inside the composer keeps the specular hairlines and
@@ -362,8 +392,12 @@ LiquidGlassCard {
                         // The "off" state is a dim version of the "on" state
                         // rather than a neutral grey. Using a neutral made the
                         // meter read inverted on light backgrounds, where the
-                        // unlit bars appeared darker than the lit ones.
-                        color: lit ? Colors.primary : Qt.alpha(Colors.primary, 0.22)
+                        // unlit bars appeared darker than the lit ones. An
+                        // attack brightens lit bars briefly: cadence reads as
+                        // motion, loudness as brightness, pauses as rest.
+                        color: lit
+                            ? (root.onsetPulse > 0 ? Qt.lighter(Colors.primary, 1.35) : Colors.primary)
+                            : Qt.alpha(Colors.primary, 0.22)
 
                         // Growth tracks real audio with an expressive decay so
                         // the meter feels physical without lying about the level.

@@ -232,6 +232,28 @@ Item {
         page.testVoiceVadModelPresent = false;
 
         // ------------------------------------------------------------------
+        // 4c. Device-only mic check: statistics, never audio
+        // ------------------------------------------------------------------
+        page.testVoiceMicCheckResult = null;
+        page.testVoiceMicChecking = false;
+        assert(page.voiceMicCheckSummary === "Not tested yet",
+            "an unrun check must say so, not invent a result");
+        page.testVoiceMicChecking = true;
+        assert(page.voiceMicCheckSummary === "Listening… speak normally",
+            "the check must ask for speech while listening");
+        page.testVoiceMicChecking = false;
+        page.testVoiceMicCheckResult = { "verdict": "ok", "peak_rms": 0.25 };
+        assert(page.voiceMicCheckSummary === "OK · peak 25%",
+            "an ok check must report the peak: " + page.voiceMicCheckSummary);
+        page.testVoiceMicCheckResult = { "verdict": "clipping", "peak_rms": 0.99 };
+        assert(page.voiceMicCheckSummary.indexOf("Clipping") === 0,
+            "saturation must be named: " + page.voiceMicCheckSummary);
+        page.testVoiceMicCheckResult = { "verdict": "silent", "peak_rms": 0.0 };
+        assert(page.voiceMicCheckSummary.indexOf("Silent") === 0,
+            "silence must be named: " + page.voiceMicCheckSummary);
+        page.testVoiceMicCheckResult = null;
+
+        // ------------------------------------------------------------------
         // 5. Dropdowns are mutually exclusive
         // ------------------------------------------------------------------
         assert(page.modelMenuOpen === false, "no dropdown starts open");
@@ -254,6 +276,10 @@ Item {
             "AiPage must offer the explicit VAD asset download beside the model row");
         assert(/installVoiceVadModel\(\)/.test(pageSrc),
             "AiPage must trigger the VAD download through AssistantService");
+        assert(/voiceMicCheckButton/.test(pageSrc),
+            "AiPage must offer the device-only microphone check");
+        assert(/runMicCheck\(\)/.test(pageSrc),
+            "AiPage must trigger the mic check through AssistantService");
         assert(/voiceEchoCancelToggle/.test(pageSrc),
             "the voice section must render the echo-cancellation toggle");
         assert(/voiceNoiseSuppressToggle/.test(pageSrc),
@@ -296,6 +322,7 @@ Item {
         assert(/voiceModelInstallProgress/.test(serviceSrc), "AssistantService must track install progress");
         assert(/installVoiceModel/.test(serviceSrc), "AssistantService must expose installVoiceModel");
         assert(/installVoiceVadModel/.test(serviceSrc), "AssistantService must expose installVoiceVadModel");
+        assert(/runMicCheck/.test(serviceSrc), "AssistantService must expose runMicCheck");
         assert(/voice", "install-vad-model"/.test(serviceSrc),
             "the VAD installer must drive the daemon's install-vad-model subcommand");
 

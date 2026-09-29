@@ -141,6 +141,9 @@ Singleton {
     /** Silero VAD asset download progress in [0.0, 1.0], and whether it runs. */
     property real voiceVadInstallProgress: 0.0
     property bool voiceVadInstalling: false
+    /** Latest device-only mic-check report, or null when never run. */
+    property var voiceMicCheckResult: null
+    property bool voiceMicChecking: false
     /** A setup gap the user can fix, shown inline beside the mic button. */
     property string voiceSetupMessage: ""
     /**
@@ -466,6 +469,13 @@ Singleton {
         voiceVadInstallProgress = 0.0;
         voiceVadInstalling = true;
         runProc(voiceVadInstallProc, [daemonBin, "voice", "install-vad-model"]);
+    }
+
+    /** Runs the 3-second device-only microphone check; audio never leaves the device. */
+    function runMicCheck() {
+        cancelProc(voiceMicCheckProc);
+        voiceMicChecking = true;
+        runProc(voiceMicCheckProc, [daemonBin, "voice", "mic-check", "--secs", "3"]);
     }
 
     /** Starts capture. No-op unless the engine and model are both present. */
@@ -1194,6 +1204,39 @@ Singleton {
 
         onExited: (exitCode, exitStatus) => {
             root.voiceVadInstalling = false;
+            root.refreshVoiceStatus();
+        }
+    }
+
+    // Device-only mic check: one JSON report line, never audio.
+    Process {
+        id: voiceMicCheckProc
+        property bool discardOutput: false
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => {
+                if (voiceMicCheckProc.discardOutput) return;
+                const line = chunk.trim();
+                if (!line) return;
+                try {
+                    const report = JSON.parse(line);
+                    if (report && report.verdict) {
+                        root.voiceMicCheckResult = report;
+                    }
+                } catch (e) {
+                    console.warn("[AssistantService] mic check parse failed:", e);
+                }
+            }
+        }
+
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: chunk => console.warn("[AssistantService mic check stderr]:", chunk.trim())
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            root.voiceMicChecking = false;
             root.refreshVoiceStatus();
         }
     }

@@ -146,6 +146,8 @@ ColumnLayout {
     property bool testVoiceVadModelPresent: false
     property bool testVoiceVadInstalling: false
     property real testVoiceVadInstallProgress: 0.0
+    property var testVoiceMicCheckResult: null
+    property bool testVoiceMicChecking: false
 
     /** Which voice dropdown is open. Mutually exclusive by construction. */
     property bool modelMenuOpen: false
@@ -196,6 +198,22 @@ ColumnLayout {
     readonly property real voiceVadInstallProgress: testMode ? testVoiceVadInstallProgress
         : ((typeof AssistantService !== "undefined") ? (AssistantService.voiceVadInstallProgress || 0) : 0)
 
+    /** Latest device-only mic-check report, or null when never run. */
+    readonly property var voiceMicCheckResult: testMode ? testVoiceMicCheckResult
+        : ((typeof AssistantService !== "undefined") ? AssistantService.voiceMicCheckResult : null)
+    readonly property bool voiceMicChecking: testMode ? testVoiceMicChecking
+        : ((typeof AssistantService !== "undefined") ? (AssistantService.voiceMicChecking === true) : false)
+    readonly property string voiceMicCheckSummary: {
+        if (voiceMicChecking) return "Listening… speak normally";
+        if (voiceMicCheckResult === null) return "Not tested yet";
+        const verdict = voiceMicCheckResult.verdict || "silent";
+        const peak = typeof voiceMicCheckResult.peak_rms === "number"
+            ? Math.round(voiceMicCheckResult.peak_rms * 100) + "%" : "?";
+        if (verdict === "ok") return "OK · peak " + peak;
+        if (verdict === "clipping") return "Clipping · peak " + peak;
+        return "Silent · peak " + peak;
+    }
+
     readonly property string voiceModelSizeLabel: {
         const models = (voiceStatus && voiceStatus.models_available) ? voiceStatus.models_available : [];
         for (let i = 0; i < models.length; i++) {
@@ -242,6 +260,10 @@ ColumnLayout {
     readonly property string voiceStatusSummary: {
         if (!voiceEnabled) return "Voice dictation is disabled";
         if (voiceStatus === null) return "Checking speech engine\u2026";
+        // Cloud engines have no binary or model: readiness is the key.
+        if (voiceStatus.engine === "deepgram") {
+            return voiceEngineAvailable ? "Ready · Deepgram live" : "Deepgram API key missing";
+        }
         if (!voiceEngineAvailable) return "whisper.cpp engine not installed";
         if (!voiceModelPresent) return "Model " + voiceModel + " is not downloaded yet";
         if (!voiceReady) return "No microphone available";
@@ -258,7 +280,7 @@ ColumnLayout {
     /** What to tell someone whose engine is missing: a command they can run, or
      *  the upstream build if we do not know their package manager. */
     readonly property string voiceEngineNotice: voiceInstallCommand.length > 0
-        ? "whisper.cpp engine not installed. Run: " + voiceInstallCommand
+                                                  ? "whisper.cpp engine not installed. Run: " + voiceInstallCommand
         : "whisper.cpp engine not installed. Build it from https://github.com/ggml-org/whisper.cpp"
 
     function setVoiceModel(id) {
@@ -1732,6 +1754,60 @@ ColumnLayout {
                             onClicked: {
                                 if (typeof AssistantService !== "undefined") {
                                     AssistantService.installVoiceVadModel();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Device-only microphone check: three seconds, on-device, with
+                // actionable feedback. Catches a dead or saturated mic in setup
+                // instead of behind a frozen meter mid-dictation.
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+
+                    MaterialIcon {
+                        text: "graphic_eq"
+                        size: 14
+                        color: Colors.secondary
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Microphone: " + root.voiceMicCheckSummary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.m3onSurface
+                        elide: Text.ElideRight
+                    }
+
+                    Rectangle {
+                        objectName: "voiceMicCheckButton"
+                        Layout.preferredWidth: 132
+                        Layout.preferredHeight: 32
+                        radius: Theme.radiusSmall
+                        color: Qt.alpha(Colors.primary, 0.20)
+                        border.color: Qt.alpha(Colors.primary, 0.40)
+                        border.width: 1
+                        enabled: root.voiceEnabled && !root.voiceMicChecking
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: root.voiceMicChecking ? "Listening…" : "Test (3 s)"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                            color: Colors.m3onSurface
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: parent.enabled
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                                if (typeof AssistantService !== "undefined") {
+                                    AssistantService.runMicCheck();
                                 }
                             }
                         }

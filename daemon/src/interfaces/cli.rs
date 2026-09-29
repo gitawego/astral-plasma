@@ -1048,7 +1048,7 @@ pub async fn run_cli() -> DynResult<()> {
             use crate::application::voice_service::{write_event, VoiceService};
             use crate::domain::voice::VoiceEvent;
 
-            let svc = VoiceService::local();
+            let svc = VoiceService::for_settings();
             let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
             match sub {
                 "status" => {
@@ -1193,8 +1193,63 @@ pub async fn run_cli() -> DynResult<()> {
                     let idle_secs = args.get(4).and_then(|s| s.parse::<u64>().ok()).unwrap_or(60);
                     crate::infrastructure::voice_server::serve(socket, idle_secs)?;
                 }
+                "mic-check" => {
+                    // Device-only check: statistics, never audio. `--secs N`
+                    // clamps to 1–10; three seconds is the onboarding ritual.
+                    let secs = args
+                        .windows(2)
+                        .find(|w| w[0] == "--secs")
+                        .and_then(|w| w[1].parse::<u64>().ok())
+                        .unwrap_or(3);
+                    match svc.mic_check(secs) {
+                        Ok(report) => println!("{}", serde_json::to_string(&report)?),
+                        Err(e) => {
+                            println!(
+                                "{}",
+                                serde_json::to_string(&serde_json::json!({
+                                    "success": false,
+                                    "error": e.to_string(),
+                                }))?
+                            );
+                        }
+                    }
+                }
+                "cloud-key" => {
+                    // Opt-in cloud STT credentials. The key is read from stdin
+                    // (never argv: argv leaks to history and `ps`), stored
+                    // owner-only beside settings, and never printed or logged.
+                    use crate::infrastructure::deepgram_stt_adapter as cloud;
+                    let op = args.get(3).map(|s| s.as_str()).unwrap_or("status");
+                    match op {
+                        "set" => {
+                            let mut key = String::new();
+                            use std::io::Read;
+                            std::io::stdin().read_to_string(&mut key).unwrap_or_default();
+                            match cloud::store_key(&key) {
+                                Ok(()) => println!("{}", serde_json::json!({"success": true})),
+                                Err(e) => println!("{}", serde_json::json!({"success": false, "error": e.to_string()})),
+                            }
+                        }
+                        "clear" => match cloud::clear_key() {
+                            Ok(removed) => println!("{}", serde_json::json!({"success": true, "removed": removed})),
+                            Err(e) => println!("{}", serde_json::json!({"success": false, "error": e.to_string()})),
+                        },
+                        "test" => match cloud::test_key() {
+                            Ok(true) => println!("{}", serde_json::json!({"success": true})),
+                            Ok(false) => println!("{}", serde_json::json!({"success": false, "error": "no response"})),
+                            Err(e) => println!("{}", serde_json::json!({"success": false, "error": e.to_string()})),
+                        },
+                        _ => println!(
+                            "{}",
+                            serde_json::json!({
+                                "present": cloud::read_key().is_some(),
+                                "engine": "deepgram",
+                            })
+                        ),
+                    }
+                }
                 _ => {
-                    eprintln!("Usage: astral-plasma voice <status|engines|install-model [id]|install-vad-model|session [--lang <tag>]|serve [socket] [idle-secs]>");
+                    eprintln!("Usage: astral-plasma voice <status|engines|install-model [id]|install-vad-model|mic-check [--secs N]|cloud-key <set|clear|test|status>|session [--lang <tag>]|serve [socket] [idle-secs]>");
                 }
             }
         }
