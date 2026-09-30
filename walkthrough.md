@@ -1298,6 +1298,14 @@ Applied with `kscreen-doctor output.eDP-1.mode.38`; reverting is
 `kscreen-doctor output.eDP-1.mode.37`. The DP-3 output (currently disabled) does
 have a 120 Hz mode if it is ever re-enabled.
 
+**Caveat on the 60 Hz columns.** Changing an output mode locks the session, and
+these runs happened with the lock screen up, so the shell's windows were not being
+composited - the *CPU* columns are unaffected by that (bindings, timers and timer
+driven work keep running) and carry the proof, while the GPU column at 60 Hz
+understates what an unlocked session will show. The structural claim is unaffected:
+every client's per-frame work scales with the refresh rate, and the shell's own
+motion budget is 30 fps, so 240 Hz scanout bought it nothing.
+
 ### Tests
 
 - `tests/tst_performance_tab_motion.qml` - behavioural: a tween advances only on
