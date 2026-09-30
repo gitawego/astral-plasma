@@ -1,10 +1,8 @@
 use crate::domain::app_identity::{shared_index, should_skip_taskbar};
-use crate::domain::meta_resolver::resolve_window_meta_with;
 use crate::domain::model::{
     ActionResult, ActionStatus, Capability, Desktop, DesktopSessionSnapshot, Output,
     OutputGeometry, SessionConnectionState, UserIntent, Window, Workspace,
 };
-use crate::infrastructure::window_icons;
 use crate::domain::ports::{
     CompositorEffectsPort, DesktopSessionPort, DynResult, FocusPort, OutputPort,
     WindowManagerPort, WorkspacePort,
@@ -168,10 +166,13 @@ impl WindowManagerPort for HyprlandAdapter {
             let is_fullscreen = fullscreen_num == 1;
             let is_maximized = fullscreen_num == 2;
 
-            let mut meta = resolve_window_meta_with(Some(&index), title, class, desktop_file, "");
-            if let Some(icon) = window_icons::resolve_window_icon(class, &meta.icon_name) {
-                meta.icon_name = icon.to_string_lossy().to_string();
-            }
+            let meta = crate::application::window_identity::resolve_window_identity(
+                Some(&index),
+                title,
+                class,
+                desktop_file,
+                "",
+            );
 
             let win = Window {
                 id: addr.to_string(),

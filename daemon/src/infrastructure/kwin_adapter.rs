@@ -1,6 +1,5 @@
 use crate::domain::app_identity::shared_index;
 use crate::domain::branding;
-use crate::domain::meta_resolver::resolve_window_meta_with;
 use crate::domain::model::{Desktop, Window};
 use crate::domain::ports::{
     CompositorEffectsPort, DesktopSessionPort, DynResult, FocusPort, WindowManagerPort,
@@ -207,7 +206,13 @@ impl WindowManagerPort for KWinAdapter {
                 let is_fullscreen = item["fullScreen"].as_bool().unwrap_or(false);
 
                 let k_icon = krunner_icons.get(title).map(|s| s.as_str()).unwrap_or("");
-                let meta = resolve_window_meta_with(Some(&index), title, cls, app, k_icon);
+                let meta = crate::application::window_identity::resolve_window_identity(
+                    Some(&index),
+                    title,
+                    cls,
+                    app,
+                    k_icon,
+                );
 
                 let win_obj = Window {
                     id: wid,

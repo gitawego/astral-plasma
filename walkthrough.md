@@ -1084,6 +1084,29 @@ indefinitely. Fixed with a cheap registration poll (3 s) that re-queries and
 pushes only when the registration *set* actually changed
 ([LESSONS §29](docs/LESSONS.md)).
 
+### The fix was two-sided: the initial query resolved identity differently
+
+The window-icon gate above lives in the *pushed* window list. The compositor's
+initial query resolved identity on its own and never attached the app's own icon,
+so right after a shell/daemon restart the game fell back to the generic glyph
+until some window event arrived - half a fix.
+
+All four window sources (initial KWin query, pushed KWin list, focus change,
+Hyprland query) now call one composition point,
+`application::window_identity::resolve_window_identity`, verified live by running
+the port in a fresh process:
+
+```
+PROBE com.mitchellh.ghostty | icon=com.mitchellh.ghostty | mat=terminal
+PROBE microsoft-edge        | icon=microsoft-edge        | mat=language
+PROBE steam_app_default     | icon=/mnt/data/cache/astral-plasma/window-icons/steam_app_default.png | mat=window
+PROBE cloudmusic            | icon=/mnt/data/cache/astral-plasma/window-icons/cloudmusic.exe.png       | mat=window
+```
+
+Contracts keep the sources from drifting again: a Rust test fails if any of them
+resolves identity directly or attaches icons on its own, and the dock suite pins
+the same rule for the QML side.
+
 ### Live proof
 
 `diag`-dumped dock state (shell IPC) while a probe SNI was registered and killed:

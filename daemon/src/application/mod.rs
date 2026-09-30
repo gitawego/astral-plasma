@@ -1,6 +1,7 @@
 pub mod retry;
 pub mod shell_lifecycle;
 pub mod watch_events;
+pub mod window_identity;
 pub mod window_control;
 pub mod workspace_control;
 pub mod launch_app;

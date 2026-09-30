@@ -479,8 +479,14 @@ Item {
         const hyprlandSrc = readLocalFile("../daemon/src/infrastructure/hyprland_adapter.rs");
         assert(hyprlandSrc.indexOf("should_skip_taskbar") !== -1,
             "HyprlandAdapter must invoke should_skip_taskbar");
-        assert(hyprlandSrc.indexOf("window_icons::resolve_window_icon") !== -1,
-            "HyprlandAdapter must resolve window icons");
+        // Window identity (including an app's own `_NET_WM_ICON`) is resolved in one
+        // place for every window source: the adapters must not attach icons
+        // themselves, or the initial query and the pushed list drift apart.
+        const identitySrc = readLocalFile("../daemon/src/application/window_identity.rs");
+        assert(hyprlandSrc.indexOf("window_identity::resolve_window_identity") !== -1,
+            "HyprlandAdapter must resolve identity through the shared resolver");
+        assert(identitySrc.indexOf("window_icons::resolve_window_icon") !== -1,
+            "the shared window identity resolver must resolve window icons");
 
         const modelSrc = readLocalFile("../daemon/src/domain/model.rs");
         assert(modelSrc.indexOf("#[serde(rename = \"activeId\", default)]") !== -1,

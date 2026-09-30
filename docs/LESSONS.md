@@ -2790,3 +2790,26 @@ glyph appeared in the tray next to the others (`docs/proof/tray/`).
 **Lesson.** For any list that mirrors another process's state, ask what its
 *cheap change signal* is before choosing a refresh interval. Poll the signal;
 query the data.
+
+**One resolver, or the fix is only half a fix.** The icon gate above was fixed in
+the *pushed* window list - and the initial compositor query kept resolving
+identity on its own, so the app started the session with a generic glyph and only
+picked up its real icon after an unrelated window event. Four call sites
+(initial KWin query, pushed KWin list, focus change, Hyprland query) each
+repeated "resolve meta, then attach the window's own icon", and three of them did
+it differently.
+
+The repair is not another copy in the missing spot, but a single composition
+point - `application::window_identity::resolve_window_identity` - that every
+source calls, plus contracts that fail if a source resolves identity directly
+("must call the shared resolver", "must not attach icons on its own"). Verified
+live by querying the port in a fresh process:
+
+```
+PROBE steam_app_default | icon=/mnt/data/cache/astral-plasma/window-icons/steam_app_default.png
+PROBE cloudmusic       | icon=/mnt/data/cache/astral-plasma/window-icons/cloudmusic.exe.png
+```
+
+**Lesson.** When the same domain decision is reachable from several entry points,
+read the *other* entry points before declaring a fix done - and then make each of
+them impossible to diverge.
