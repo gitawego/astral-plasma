@@ -44,18 +44,28 @@ pub fn icon_cache_path(class: &str) -> PathBuf {
 
 /// Should the window's own icon be extracted for this identity?
 ///
-/// Only when the application is an X11/Wine client (`*.exe` class) AND identity
-/// resolution produced no icon of its own - i.e. it fell back to the generic
-/// `wine` glyph (or nothing). A desktop-entry icon always wins: it is the
-/// application's own declared identity, and re-reading the window would be
-/// redundant work.
-pub fn should_extract_window_icon(class: &str, icon_name: &str) -> bool {
-    let is_wine = class.trim().to_lowercase().ends_with(".exe");
-    if !is_wine {
+/// The gate is the *truthfulness of the resolved icon*, never the shape of the
+/// window class: any identity that resolved to no drawable icon (an empty name,
+/// the generic `wine` glyph, or the class name the resolver falls back to when
+/// it knows nothing better - `steam_app_default` for Proton/Steam games)
+/// publishes its only real icon on the window itself. A class-suffix heuristic
+/// (`*.exe`) looks like a Wine test but silently drops every other X11 client.
+///
+/// A desktop-entry icon always wins: it is the application's own declared
+/// identity, and re-reading the window would be redundant work.
+pub fn should_extract_window_icon(icon_name: &str) -> bool {
+    let icon = icon_name.trim();
+    if icon.is_empty() || icon.eq_ignore_ascii_case("wine") {
+        return true;
+    }
+    // Already a file (an extracted icon, or a path the resolver produced).
+    if icon.starts_with('/') || icon.starts_with("file:") {
         return false;
     }
-    let icon = icon_name.trim();
-    icon.is_empty() || icon.eq_ignore_ascii_case("wine")
+    // A name the icon theme cannot draw is not an icon. The resolver hands back
+    // the window class when it knows nothing better, and the shell would render
+    // its generic material glyph for it.
+    !theme_icon_exists(icon)
 }
 
 /// Decode a `_NET_WM_ICON` property into RGBA.
@@ -131,10 +141,122 @@ pub fn ensure_window_icon(class: &str) -> Option<PathBuf> {
 /// Icon path for a window identity, extracting the window's own icon when the
 /// resolver could not supply a real one.
 pub fn resolve_window_icon(class: &str, resolved_icon: &str) -> Option<PathBuf> {
-    if !should_extract_window_icon(class, resolved_icon) {
+    if !should_extract_window_icon(resolved_icon) {
         return None;
     }
     ensure_window_icon(class)
+}
+
+/// Roots an icon-theme lookup searches, in load order.
+pub fn default_icon_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(home) = std::env::var("HOME") {
+        roots.push(PathBuf::from(&home).join(".local/share/icons"));
+        roots.push(PathBuf::from(&home).join(".icons"));
+    }
+    let data_dirs =
+        std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
+    for dir in data_dirs.split(':').filter(|d| !d.trim().is_empty()) {
+        roots.push(PathBuf::from(dir).join("icons"));
+    }
+    roots.push(PathBuf::from("/usr/share/pixmaps"));
+    roots
+}
+
+/// Can the icon theme draw `name`?
+///
+/// Memoized per name and per root: the answer only changes when a package is
+/// installed, and the caller asks once per window identity.
+pub fn theme_icon_exists(name: &str) -> bool {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, bool>>> =
+        std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let key = name.trim().to_ascii_lowercase();
+    if let Ok(guard) = cache.lock() {
+        if let Some(hit) = guard.get(&key) {
+            return *hit;
+        }
+    }
+    let found = theme_icon_exists_in(&default_icon_roots(), &key);
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(key, found);
+    }
+    found
+}
+
+/// `theme_icon_exists` against an explicit set of roots (pure, testable).
+pub fn theme_icon_exists_in(roots: &[PathBuf], name: &str) -> bool {
+    let name = name.trim().to_ascii_lowercase();
+    if name.is_empty() || name.contains('/') || name.starts_with("file:") {
+        return false;
+    }
+    roots.iter().any(|root| icon_names_under(root).contains(&name))
+}
+
+/// Image extensions an icon may carry. A name that only exists as some other
+/// kind of file is not an icon the theme can draw.
+const ICON_EXTENSIONS: [&str; 4] = ["png", "svg", "svgz", "xpm"];
+
+/// Every icon name a theme root provides, indexed once per process.
+///
+/// The walk is the expensive part (a full icon theme is tens of thousands of
+/// files) and its answer cannot change while the daemon runs, so it happens once
+/// per root instead of once per window identity.
+fn icon_names_under(root: &Path) -> std::sync::Arc<std::collections::HashSet<String>> {
+    static INDEX: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<PathBuf, std::sync::Arc<std::collections::HashSet<String>>>>,
+    > = std::sync::OnceLock::new();
+    let index = INDEX.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(guard) = index.lock() {
+        if let Some(hit) = guard.get(root) {
+            return std::sync::Arc::clone(hit);
+        }
+    }
+    let mut names = std::collections::HashSet::new();
+    collect_icon_names(root, 4, &mut names);
+    let names = std::sync::Arc::new(names);
+    if let Ok(mut guard) = index.lock() {
+        guard.insert(root.to_path_buf(), std::sync::Arc::clone(&names));
+    }
+    names
+}
+
+fn collect_icon_names(
+    dir: &Path,
+    depth: usize,
+    names: &mut std::collections::HashSet<String>,
+) {
+    if depth == 0 {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_icon_names(&path, depth - 1, names);
+            continue;
+        }
+        let extension = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        if !ICON_EXTENSIONS.contains(&extension.as_str()) {
+            continue;
+        }
+        let Some(stem) = path.file_stem() else { continue };
+        let stem = stem.to_string_lossy().to_ascii_lowercase();
+        if let Some(base) = stem
+            .strip_suffix("-symbolic")
+            .or_else(|| stem.strip_suffix(".symbolic"))
+        {
+            // `foo-symbolic.svg` is the symbolic form of the icon `foo`.
+            names.insert(base.to_string());
+        }
+        names.insert(stem);
+    }
 }
 
 /// True when the path looks like an icon file we produced.

@@ -74,10 +74,12 @@ else:
             if d_grp and d_key and d_val:
                 subprocess.run(["kwriteconfig6", "--file", "kglobalshortcutsrc", "--group", d_grp, "--key", d_key, d_val], check=False)
 
-        # 3. Restore kwin plugin state
-        prev_plugin = data.get("previous_kwin_plugin_enabled", False)
-        plugin_val = "true" if prev_plugin else "false"
-        subprocess.run(["kwriteconfig6", "--file", "kwinrc", "--group", "Plugins", "--key", "astral-plasma-shortcutsEnabled", plugin_val], check=False)
+        # 3. Deactivate the Astral KWin script.
+        # This flag tells KWin to load the Astral shortcut script at login.
+        # Restoring a previously-enabled value keeps KWin registering Astral
+        # shortcuts (the bare Meta overview key included) with the theme not
+        # running, which costs the user Alt+Tab. Always leave it off.
+        subprocess.run(["kwriteconfig6", "--file", "kwinrc", "--group", "Plugins", "--key", "astral-plasma-shortcutsEnabled", "false"], check=False)
 
         os.remove(backup_file)
     except Exception as e:
@@ -106,6 +108,31 @@ try:
     accel.setForeignShortcut(['astral-assistant.desktop', '_launch', 'default', 'Astral Plasma AI Copilot'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-dashboard.desktop', '_launch', 'default', 'Astral Dashboard'], [dbus.Int32(0)])
     accel.setForeignShortcut(['astral-settings.desktop', '_launch', 'default', 'Astral Settings'], [dbus.Int32(0)])
+
+    # 5. Hand the user's own keys back to KGlobalAccel.
+    # A config rewrite does not move the running registration, so a restored
+    # file alone leaves the shortcuts dead until the next login - that is how
+    # the launcher's bare Meta and Meta+W (Overview) were silently lost. The
+    # journal records the key codes each action held before the session claimed
+    # it; replay them exactly.
+    def action_label(value):
+        fields = str(value or '').split(',')
+        return fields[2].strip() if len(fields) > 2 and fields[2].strip() else None
+
+    def rearm(entries, value_of):
+        for entry in entries:
+            group, key = entry.get('group'), entry.get('key')
+            codes = entry.get('keys') or []
+            label = action_label(value_of(entry))
+            if not (group and key and codes and label):
+                continue
+            accel.setForeignShortcut([group, key, group, label], [dbus.Int32(int(code)) for code in codes])
+
+    rearm(data.get('affected_entries', []), lambda e: e.get('previous_value'))
+    displaced = list(data.get('displaced_actions', []))
+    if data.get('displaced_action'):
+        displaced.append(data['displaced_action'])
+    rearm(displaced, lambda d: d.get('full_value'))
 except Exception:
     pass
 

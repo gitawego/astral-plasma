@@ -12,6 +12,41 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::process::Command;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// Window list most recently pushed by the resident KWin watcher script.
+///
+/// The watcher script calls `UpdateWindowList` on every window event (and on
+/// load), so a query that follows such a push needs no KWin scripting at all.
+/// Compiling a throwaway script on KWin's main thread per refresh is what
+/// produced "The main thread was hanging temporarily!" in the compositor log,
+/// and a stalled compositor main thread stops delivering global shortcuts
+/// (Alt+Tab stops responding).
+static PUSHED_WINDOW_LIST: Mutex<Option<(Instant, String)>> = Mutex::new(None);
+
+/// How long a pushed window list may answer a query. Windows appear, close and
+/// change maximized state quickly, so an old push is not ground truth.
+const PUSH_MAX_AGE: Duration = Duration::from_millis(2000);
+
+/// Caches the window list pushed by the resident watcher script.
+pub fn store_pushed_window_list(json: &str) {
+    if let Ok(mut slot) = PUSHED_WINDOW_LIST.lock() {
+        *slot = Some((Instant::now(), json.to_string()));
+    }
+}
+
+/// Age and payload of the most recently pushed window list, if any.
+pub fn pushed_window_list() -> Option<(Duration, String)> {
+    let slot = PUSHED_WINDOW_LIST.lock().ok()?;
+    let (at, json) = slot.as_ref()?;
+    Some((at.elapsed(), json.clone()))
+}
+
+/// Whether a push of this age is recent enough to answer a query.
+pub fn push_is_fresh(age: Duration) -> bool {
+    age <= PUSH_MAX_AGE
+}
 
 pub struct KWinAdapter;
 
@@ -70,16 +105,12 @@ impl KWinAdapter {
         }
         icons
     }
-}
-
-impl Default for KWinAdapter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl WindowManagerPort for KWinAdapter {
-    fn query_windows(&self) -> DynResult<(Vec<Window>, Option<Window>)> {
+    /// Cold-start fallback: ask KWin to compile and run a one-shot query script
+    /// and read its `console.warn` payload back from the user journal.
+    ///
+    /// Only used when no fresh push is available (the very first query of a
+    /// daemon start, or a compositor without the resident watcher script).
+    fn query_windows_via_script(&self) -> DynResult<Option<Value>> {
         let script = r#"
 var cur = workspace.currentDesktop;
 var activeId = workspace.activeWindow ? ('' + workspace.activeWindow.internalId).replace('{','').replace('}','') : '';
@@ -132,6 +163,27 @@ console.warn('ASTRAL_PLASMA_WINS:' + JSON.stringify(res));
                 }
             }
         }
+
+        Ok(raw_wins_opt)
+    }
+}
+
+
+impl Default for KWinAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WindowManagerPort for KWinAdapter {
+    fn query_windows(&self) -> DynResult<(Vec<Window>, Option<Window>)> {
+        // Fast path: the resident watcher script already pushed the window list
+        // (see `store_pushed_window_list`). Only a cold or stale cache falls
+        // back to scripting KWin.
+        let raw_wins_opt = match pushed_window_list() {
+            Some((age, json)) if push_is_fresh(age) => serde_json::from_str::<Value>(&json).ok(),
+            _ => self.query_windows_via_script()?,
+        };
 
         let krunner_icons = self.query_krunner_icons();
         let index = shared_index();

@@ -301,6 +301,11 @@ pub async fn run_watchdog_loop_with_ports(
     if crate::domain::desktop_integration::restore_on_exit(shell_auto_restore_setting()) {
         let _ = plasma_port.restore_config();
         let _ = shortcut_port.restore_relevant_shortcuts();
+        // The shell tunes KWin's blur for its glass; hand it back with the rest
+        // of the desktop state instead of leaving the override behind.
+        if !branding::test_mode() {
+            let _ = crate::infrastructure::kwin_blur::KWinBlurAdapter::new().restore();
+        }
     } else {
         eprintln!(
             "[astral-plasma watchdog] plasma.autoRestoreOnExit is off; keeping the shell's desktop state."

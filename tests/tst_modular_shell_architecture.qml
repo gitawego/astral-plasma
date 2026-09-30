@@ -63,11 +63,13 @@ Item {
         // 2. CentralDropdown verification
         assert(dropdown.dropW === 980, "Dropdown width matches");
         assert(dropdown.dropH === 520, "Dropdown height matches");
-        assert(dropdown.tabs.length === 4, "Dropdown contains 4 tabs");
+        assert(dropdown.tabs.length === 6, "Dropdown contains 6 tabs");
         assert(dropdown.tabs[0].id === "dashboard", "Tab 0 is dashboard");
         assert(dropdown.tabs[1].id === "media", "Tab 1 is media");
         assert(dropdown.tabs[2].id === "performance", "Tab 2 is performance");
         assert(dropdown.tabs[3].id === "workspaces", "Tab 3 is workspaces");
+        assert(dropdown.tabs[4].id === "downloads", "Tab 4 is downloads");
+        assert(dropdown.tabs[5].id === "ai", "Tab 5 is ai");
 
         console.log("PASS: Modular Shell Architecture Unit Tests");
         Qt.exit(0);

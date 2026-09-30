@@ -17,6 +17,35 @@ struct CachedTrayItem {
 
 static TRAY_CACHE: Mutex<Option<HashMap<String, CachedTrayItem>>> = Mutex::new(None);
 
+/// Split a watcher registration entry (`:1.36/StatusNotifierItem`) into its
+/// service name and object path.
+///
+/// Shared by the full query and the cheap registration poll so both agree on
+/// identity: if they disagreed, every poll would look like a change.
+pub fn split_registration(entry: &str) -> (String, String) {
+    let entry = entry.trim();
+    if entry.is_empty() {
+        return (String::new(), String::new());
+    }
+    match entry.find('/') {
+        Some(idx) => (entry[..idx].to_string(), entry[idx..].to_string()),
+        None => (entry.to_string(), "/".to_string()),
+    }
+}
+
+/// Read the watcher's registration list exactly as the bus reports it.
+fn read_registrations_raw() -> Option<String> {
+    Command::new("qdbus6")
+        .args([
+            "org.kde.StatusNotifierWatcher",
+            "/StatusNotifierWatcher",
+            "org.kde.StatusNotifierWatcher.RegisteredStatusNotifierItems",
+        ])
+        .output()
+        .ok()
+        .map(|out| String::from_utf8_lossy(&out.stdout).to_string())
+}
+
 fn qdbus_get(svc: &str, path: &str, method: &str) -> String {
     if let Ok(out) = Command::new("qdbus6").args([svc, path, method]).output() {
         if out.status.success() {
@@ -528,15 +557,27 @@ impl Default for TrayAdapter {
 }
 
 impl TrayPort for TrayAdapter {
+    fn registered_item_keys(&self) -> DynResult<Vec<String>> {
+        let Some(output) = read_registrations_raw() else {
+            return Ok(Vec::new());
+        };
+        Ok(output
+            .lines()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .map(|line| {
+                let (svc, path) = split_registration(line);
+                format!("{svc}{path}")
+            })
+            .collect())
+    }
+
     fn query_tray(&self) -> DynResult<Vec<TrayItem>> {
         let mut tray_items = Vec::new();
 
-        let output = match Command::new("qdbus6")
-            .args(["org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher.RegisteredStatusNotifierItems"])
-            .output()
-        {
-            Ok(out) => String::from_utf8_lossy(&out.stdout).to_string(),
-            Err(_) => return Ok(tray_items),
+        let output = match read_registrations_raw() {
+            Some(out) => out,
+            None => return Ok(tray_items),
         };
 
         let now = Instant::now();
@@ -552,11 +593,9 @@ impl TrayPort for TrayAdapter {
                 continue;
             }
 
-            let (svc, path) = if let Some(idx) = trimmed.find('/') {
-                (&trimmed[..idx], &trimmed[idx..])
-            } else {
-                (trimmed, "/")
-            };
+            let (svc, path) = split_registration(trimmed);
+            let svc = svc.as_str();
+            let path = path.as_str();
 
             let key = format!("{}:{}", svc, path);
             active_keys.insert(key.clone());

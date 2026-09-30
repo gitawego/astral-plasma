@@ -1,4 +1,5 @@
 import QtQuick
+import "../../components/motion"
 import "../../theme"
 import "../../components"
 import "../../services"
@@ -199,11 +200,14 @@ LiquidGlassCard {
                             : (aiHover.hovered ? Theme.borderSubtle : "transparent")))
                 border.width: (warn !== "normal") ? 1.5 : 0
 
-                SequentialAnimation on opacity {
+                // Critical-quota heartbeat. Capped by MotionPacer: the dock is always
+                // on screen, so an uncapped pulse would force full-window renders at
+                // display refresh (165–240 Hz) for as long as the quota stays critical.
+                opacity: 1.0 - 0.4 * warnPacer.breath
+                MotionPacer {
+                    id: warnPacer
                     running: aiBg.warn === "critical" && !aiBg.isPopActive
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.6; duration: 650; easing.type: Easing.InOutQuad }
-                    NumberAnimation { to: 1.0; duration: 650; easing.type: Easing.InOutQuad }
+                    period: 1300
                 }
 
                 MaterialIcon {

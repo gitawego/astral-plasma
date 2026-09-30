@@ -194,3 +194,35 @@ async fn test_watchdog_loop_on_target_exit() {
     assert!(!backup_dir.join("session_active").exists(), "Watchdog must restore and clear session_active flag");
 }
 
+
+#[test]
+fn test_plasma_restore_layout_replay_policy() {
+    use astral_plasma::infrastructure::plasma_adapter::should_replay_layout;
+
+    // A perfect file restore can still leave plasmashell with no panels: it
+    // restarts from its in-memory layout. Whenever the backup carries a dumped
+    // layout and the running shell shows nothing, the layout must be replayed.
+    assert!(should_replay_layout(0, true),
+        "0 panels + layout backup must replay the dumped layout");
+    assert!(!should_replay_layout(0, false),
+        "0 panels without a layout backup: nothing to replay");
+    assert!(!should_replay_layout(2, true),
+        "panels present: replaying would duplicate them");
+    assert!(!should_replay_layout(1, false));
+}
+
+#[test]
+fn test_plasmashell_stop_never_uses_kquitapp() {
+    // Plasma 6 does not expose the KApplication interface kquitapp6 looks for
+    // (`Application plasmashell could not be found using service
+    // org.kde.plasmashell and path /MainApplication`), so a restore that relies
+    // on it silently leaves plasmashell running with its stale in-memory layout.
+    let source = std::fs::read_to_string(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/src/infrastructure/plasma_adapter.rs"),
+    )
+    .expect("plasma_adapter.rs must be readable");
+    assert!(!source.contains("Command::new(\"kquitapp"),
+        "plasma_adapter must not invoke kquitapp6 (broken for plasmashell on Plasma 6)");
+    assert!(source.contains("systemctl"),
+        "plasma_adapter must stop/start plasmashell through its systemd user unit");
+}

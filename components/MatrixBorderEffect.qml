@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
+import "motion"
 import Qt5Compat.GraphicalEffects
 import "../theme"
 import "../config"
@@ -71,32 +72,25 @@ Item {
         }
     }
 
-    // Breathing pulse
-    property real pulse: 0.0
-    SequentialAnimation on pulse {
+    // Breathing pulse. Driven by MotionPacer (Theme.decorativeMaxFps) instead of a
+    // SequentialAnimation: the border effect is active for as long as an AI agent is
+    // running, so a vsync-rate animation here would keep the whole full-screen shell
+    // surface rendering at display refresh (165–240 Hz) indefinitely.
+    readonly property int pulseDuration: Math.max(750, Math.min(2600, Math.round(2400.0 / (1.0 + 0.08 * root.throughputLoad))))
+    MotionPacer {
+        id: pulsePacer
         running: root.active
-        loops: Animation.Infinite
-        NumberAnimation {
-            to: 1.0
-            duration: Math.max(750, Math.min(2600, Math.round(2400.0 / (1.0 + 0.08 * root.throughputLoad))))
-            easing.type: Easing.InOutSine
-        }
-        NumberAnimation {
-            to: 0.0
-            duration: Math.max(750, Math.min(2600, Math.round(2400.0 / (1.0 + 0.08 * root.throughputLoad))))
-            easing.type: Easing.InOutSine
-        }
+        period: root.pulseDuration * 2
     }
+    readonly property real pulse: pulsePacer.breath
 
-    // Synchronized electric current travel progress across both borders
-    property real currentTravelProgress: 0.0
-    NumberAnimation on currentTravelProgress {
+    // Synchronized electric current travel progress across both borders.
+    MotionPacer {
+        id: travelPacer
         running: root.active && root.growthProgress > 0.01
-        loops: Animation.Infinite
-        from: 0.0
-        to: 1.0
-        duration: root.currentTravelDuration
+        period: root.currentTravelDuration
     }
+    readonly property real currentTravelProgress: travelPacer.phase
 
     // Smooth entry / exit fade
     property real growthProgress: active ? 1.0 : 0.0
@@ -122,6 +116,11 @@ Item {
         height: Math.min(160, Math.max(90, 100 + root.rpm * 3))
         z: 0
 
+        // Breathing is a cheap node-opacity update. The gradient itself stays
+        // static on purpose: Qt5Compat's RadialGradient regenerates its offscreen
+        // source on every gradient-stop change, which cost a second full frame per
+        // pulse tick (measured 60 fps for a 30 Hz pulse).
+        opacity: root.growthProgress * (0.6 + 0.4 * root.pulse)
         RadialGradient {
             anchors.fill: parent
             horizontalOffset: width * 0.5
@@ -130,9 +129,9 @@ Item {
             verticalRadius: height
 
             gradient: Gradient {
-                GradientStop { position: 0.0; color: root.safeAlpha(root.brandColor, 0.10 * (0.6 + 0.4 * root.pulse) * root.growthProgress) }
-                GradientStop { position: 0.35; color: root.safeAlpha(root.brandColor, 0.04 * root.intensity * root.growthProgress) }
-                GradientStop { position: 0.70; color: root.safeAlpha(root.brandColor, 0.01 * root.intensity * root.growthProgress) }
+                GradientStop { position: 0.0; color: root.safeAlpha(root.brandColor, 0.10) }
+                GradientStop { position: 0.35; color: root.safeAlpha(root.brandColor, 0.04 * root.intensity) }
+                GradientStop { position: 0.70; color: root.safeAlpha(root.brandColor, 0.01 * root.intensity) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
         }
@@ -727,12 +726,20 @@ Item {
         "\uFF66", "\uFF71", "\uFF76", "\uFF7E", "\uFF82", "\uFF84", "\uFF89", "\uFF8D", "\uFF90", "\uFF97"
     ]
 
-    Timer {
-        id: matrixStreamTimer
-        interval: Math.max(50, 110 - Math.round(root.rpm * 6))
-        repeat: true
-        running: root.active && root.growthProgress > 0.01
-        onTriggered: {
+    // Digital rain advances from the shared motion clock so its glyph changes land
+    // on the same frame as the pulses (one clock, one frame) and no private timer
+    // keeps the event loop busy while the effect is idle.
+    property double lastRainMs: 0
+    Connections {
+        target: MotionClock
+        function onTickChanged() {
+            if (!root.active || root.growthProgress <= 0.01) {
+                root.lastRainMs = MotionClock.elapsedMs;
+                return;
+            }
+            const interval = Math.max(50, 110 - Math.round(root.rpm * 6));
+            if (MotionClock.elapsedMs - root.lastRainMs < interval) return;
+            root.lastRainMs = MotionClock.elapsedMs;
             root.matrixTick = (root.matrixTick + 1) % 10000;
         }
     }

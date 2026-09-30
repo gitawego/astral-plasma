@@ -41,6 +41,13 @@ impl<T: ?Sized + WindowManagerPort> WindowManagerPort for std::sync::Arc<T> {
 
 pub trait TrayPort: Send + Sync {
     fn query_tray(&self) -> DynResult<Vec<TrayItem>>;
+    /// The tray source's current registration identity, read as cheaply as the
+    /// transport allows (one bus read, no per-item work).
+    ///
+    /// The tray is a live list: comparing this against what was last pushed tells
+    /// the watcher when a full [`TrayPort::query_tray`] is worth its cost, so an
+    /// icon that appears after the shell started is rendered without a restart.
+    fn registered_item_keys(&self) -> DynResult<Vec<String>>;
     fn fetch_menu(&self, service: &str, menu_path: &str) -> DynResult<Vec<crate::domain::model::TrayMenuItem>>;
     fn click_item(&self, service: &str, menu_path: &str, item_id: i32) -> DynResult<()>;
 }
@@ -48,6 +55,9 @@ pub trait TrayPort: Send + Sync {
 impl<T: ?Sized + TrayPort> TrayPort for std::sync::Arc<T> {
     fn query_tray(&self) -> DynResult<Vec<TrayItem>> {
         (**self).query_tray()
+    }
+    fn registered_item_keys(&self) -> DynResult<Vec<String>> {
+        (**self).registered_item_keys()
     }
     fn fetch_menu(&self, service: &str, menu_path: &str) -> DynResult<Vec<crate::domain::model::TrayMenuItem>> {
         (**self).fetch_menu(service, menu_path)

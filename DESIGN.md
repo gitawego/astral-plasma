@@ -88,6 +88,42 @@ onTargetIndexChanged: {
 
 ---
 
+### 2.4. Decorative Motion Frame Budget
+
+Spatial/interactive transitions above are **never** throttled — they are short,
+user-driven, and must stay on the display clock. Continuously running
+*decoration* is a different class of motion and must obey a frame budget:
+
+| Rule | Value |
+| :--- | :--- |
+| Decorative update rate | **`Theme.decorativeMaxFps` = 30 fps** |
+| Driven by | `MotionClock` (one shared tick) + `MotionPacer` (phase generators) |
+| Forbidden | `NumberAnimation` / `SequentialAnimation` / `RotationAnimation` with `loops: Animation.Infinite` in always-on effects |
+
+Qt Quick repaints the entire window on every property change, and QML animations
+advance at display refresh rate (165–240 Hz on modern panels). An uncapped
+decorative animation therefore pins the full-screen shell surface to the panel
+refresh rate for as long as the effect is active. Decorative pulses, travelling
+light packets, ambient glows, slow cover rotations and the AI/download border
+effects all run at ≤ 30 fps instead.
+
+Guidelines:
+
+- Declare a `MotionPacer { running: <visibility gate>; period: <ms> }` and bind
+  `pulse: pacer.breath` / `travel: pacer.phase`. Never animate the property with
+  a looping `NumberAnimation`.
+- All decorative effects share one `MotionClock`; never give an effect its own
+  pacing `Timer` (N independent 30 Hz timers interleave into N frames per tick —
+  measured: two pacers = 60 fps on a 60 Hz output).
+- Animate **node opacity / transforms**, not gradient stops, for breathing
+glows: legacy `Qt5Compat.GraphicalEffects` regenerate their offscreen source on
+  every stop change and cost a second frame per tick.
+- Deliver periodic decorative *content* (e.g. the matrix glyph rain) from
+  `MotionClock.elapsedMs` instead of a private `Timer`.
+- A stopped pacer releases the clock: an idle shell runs zero decorative work.
+
+---
+
 ## 3. Component & Layout Architecture
 
 ### 3.1. Left Dock Anatomy

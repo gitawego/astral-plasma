@@ -1234,6 +1234,12 @@ fn a_stalled_capture_still_hits_the_hard_cap() {
 
     // Generous slack for CI, but far below the 600s the stub would otherwise sleep.
     let done = wait_for_exit(&mut child, std::time::Duration::from_secs(30));
+    if !done {
+        // Never block on a child that ignored the cap: `wait_with_output` would
+        // sit here until the stub's own 600s sleep ends, turning one late
+        // watchdog into a ten-minute test-suite hang.
+        let _ = child.kill();
+    }
     let out = child.wait_with_output().expect("wait");
 
     assert!(done, "a stalled capture must not hold the microphone past the hard cap");

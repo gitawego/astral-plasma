@@ -1,4 +1,5 @@
 import QtQuick
+import "motion"
 import "../theme"
 import "../services"
 
@@ -28,15 +29,13 @@ Item {
     readonly property real audioTreble: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.treble : 0.0
     readonly property real audioBeat: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.beat : 0.0
 
-    // Gentle orbital phase animation
-    property real animPhase: 0.0
-    NumberAnimation on animPhase {
-        from: 0.0
-        to: Math.PI * 2
-        duration: 8000
-        loops: Animation.Infinite
+    // Gentle orbital phase animation (capped at Theme.decorativeMaxFps).
+    MotionPacer {
+        id: orbitPacer
         running: root.isPlaying && root.isTargetVisible && root.isVisualizerActive && root.audioEnergy > 0.005
+        period: 8000
     }
+    readonly property real animPhase: orbitPacer.phase * Math.PI * 2
 
 
     // ==========================================

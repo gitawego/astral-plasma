@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
+import "../../components/motion"
 import "../../theme"
 import "../../components"
 import "../../services"
@@ -672,12 +673,12 @@ Item {
                                 width: parent.width * 1.45
                                 height: width
 
-                                NumberAnimation on rotation {
-                                    from: 0
-                                    to: 360
-                                    duration: 22000
-                                    loops: Animation.Infinite
+                                rotation: coverPacer.phase * 360
+
+                                MotionPacer {
+                                    id: coverPacer
                                     running: root.isTargetVisible && MprisMedia.isPlaying
+                                    period: 22000
                                 }
 
                                 Image {

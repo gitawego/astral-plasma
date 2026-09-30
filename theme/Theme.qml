@@ -48,6 +48,14 @@ Singleton {
     readonly property int animDurationSlow: 400
     readonly property var animEasing: Easing.OutCubic
 
+    // Upper bound on the update rate (fps) of decorative, continuously running
+    // motion — pulses, travelling light packets, ambient glows, slow cover
+    // rotations. Qt Quick repaints the whole window on every property change, so
+    // uncapped decorative animations force one full-window render per display
+    // refresh (165–240 Hz on modern panels) and saturate the iGPU. Interactive
+    // and spatial transitions are never throttled; only idle-time decoration is.
+    readonly property int decorativeMaxFps: 30
+
     // Expressive Motion Durations (ms) matching the upstream design language
     readonly property int animExpressiveFastSpatial: 350
     readonly property int animExpressiveDefaultSpatial: 500

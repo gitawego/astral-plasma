@@ -54,6 +54,16 @@ impl BlurSettings {
     }
 }
 
+/// KWin's `[Effect-blur]` values as they were before the shell touched them.
+///
+/// `None` means the key did not exist: restoring must remove the shell's
+/// override so KWin's own default applies again.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+struct BlurSnapshot {
+    strength: Option<u32>,
+    noise_strength: Option<u32>,
+}
+
 pub struct KWinBlurAdapter {
     shortcuts: KWinShortcutsAdapter,
 }
@@ -76,10 +86,85 @@ impl KWinBlurAdapter {
         ini.serialize()
     }
 
+    /// Where the pre-shell `[Effect-blur]` values are kept.
+    ///
+    /// The shell must not leave the desktop wearing its own glass tuning: this
+    /// snapshot is what lets `restore()` hand KWin's blur back.
+    fn blur_backup_path(&self) -> std::path::PathBuf {
+        crate::domain::branding::data_dir()
+            .join("blur-backup")
+            .join("blur_backup.json")
+    }
+
+    /// Record the values KWin had before the first apply. Idempotent: a later
+    /// apply must not overwrite the true original with the shell's own value.
+    fn snapshot_original(&self, existing: &str) -> DynResult<()> {
+        let path = self.blur_backup_path();
+        if path.exists() {
+            return Ok(());
+        }
+        let ini = KdeIniFile::parse(existing);
+        let snapshot = BlurSnapshot {
+            strength: ini
+                .get("Effect-blur", "BlurStrength")
+                .and_then(|v| v.trim().parse::<u32>().ok()),
+            noise_strength: ini
+                .get("Effect-blur", "NoiseStrength")
+                .and_then(|v| v.trim().parse::<u32>().ok()),
+        };
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, serde_json::to_string(&snapshot)?)?;
+        Ok(())
+    }
+
+    /// Hand KWin's blur back to the user and drop the snapshot.
+    ///
+    /// Values that existed before the shell are restored; values the shell
+    /// introduced are removed, so KWin's own defaults apply again.
+    pub fn restore(&self) -> DynResult<bool> {
+        let path = self.kwinrc_path();
+        if !path.exists() {
+            return Ok(false);
+        }
+        let existing = fs::read_to_string(&path)?;
+        let mut ini = KdeIniFile::parse(&existing);
+
+        let snapshot: Option<BlurSnapshot> = fs::read_to_string(self.blur_backup_path())
+            .ok()
+            .and_then(|content| serde_json::from_str(&content).ok());
+
+        let (strength, noise) = match &snapshot {
+            Some(s) => (s.strength, s.noise_strength),
+            None => (None, None),
+        };
+        match strength {
+            Some(value) => ini.set("Effect-blur", "BlurStrength", &value.to_string()),
+            None => {
+                ini.remove("Effect-blur", "BlurStrength");
+            }
+        }
+        match noise {
+            Some(value) => ini.set("Effect-blur", "NoiseStrength", &value.to_string()),
+            None => {
+                ini.remove("Effect-blur", "NoiseStrength");
+            }
+        }
+
+        fs::write(&path, ini.serialize())?;
+        let _ = fs::remove_file(self.blur_backup_path());
+        self.reconfigure();
+        Ok(true)
+    }
+
     /// Apply the settings to kwinrc and ask KWin to reload the blur effect.
     pub fn apply(&self, settings: &BlurSettings) -> DynResult<bool> {
         let path = self.kwinrc_path();
         let existing = fs::read_to_string(&path).unwrap_or_default();
+        // Snapshot before the first write: the desktop must be able to get its
+        // own blur back when the shell exits.
+        self.snapshot_original(&existing)?;
         let rendered = Self::render_kwinrc(&existing, settings);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;

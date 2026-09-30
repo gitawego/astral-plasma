@@ -306,3 +306,57 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
         }
     }
 }
+
+#[test]
+fn restore_script_never_reenables_the_astral_kwin_plugin() {
+    // The kwinrc plugin flag decides whether KWin loads the Astral shortcut
+    // script at login. Restoring a previously-enabled value keeps KWin
+    // registering Astral shortcuts (bare Meta included) with the theme not
+    // running - which is how a session loses Alt+Tab without the theme. The
+    // fallback restore must always leave the plugin off.
+    let script = std::fs::read_to_string(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/restore_shortcuts.sh"),
+    )
+    .expect("scripts/restore_shortcuts.sh must be readable");
+    assert!(
+        !script.contains("plugin_val = \"true\""),
+        "the fallback restore must not restore an enabled Astral KWin plugin"
+    );
+    assert!(
+        script.contains("\"astral-plasma-shortcutsEnabled\", \"false\""),
+        "the fallback restore must write the plugin flag as false"
+    );
+}
+
+#[test]
+fn the_shell_teardown_hands_kwins_blur_back() {
+    // The shell retunes KWin's BlurStrength for its glass. Leaving that in
+    // kwinrc means the desktop keeps the shell's blur (and its flattened
+    // backdrop) after the shell is gone, so the exit path must restore it.
+    let run = read("run.sh");
+    assert!(
+        run.contains("blur restore"),
+        "run.sh must hand KWin's blur back when the shell exits"
+    );
+}
+
+#[test]
+fn the_fallback_restore_rearms_the_recorded_live_keys() {
+    // The Python fallback must do what the Rust restore does: a config rewrite
+    // does not move KGlobalAccel's live registration, so the recorded key codes
+    // have to be replayed or the user's shortcuts stay dead until the next login
+    // (the launcher's bare Meta and Meta+W were lost exactly that way).
+    let script = read("scripts/restore_shortcuts.sh");
+    assert!(
+        script.contains("setForeignShortcut([group, key, group, label]"),
+        "the fallback restore must re-arm the recorded actions"
+    );
+    assert!(
+        script.contains("entry.get('keys')"),
+        "the fallback restore must replay the journal's recorded key codes"
+    );
+    assert!(
+        script.contains("data.get('displaced_actions'"),
+        "displaced actions must be re-armed too"
+    );
+}

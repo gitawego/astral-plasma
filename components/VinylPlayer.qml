@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Effects
+import "motion"
 import "../theme"
 import "../services"
 import "../config"
@@ -30,14 +31,14 @@ Item {
         width: root.discSize
         height: root.discSize
 
-        // Continuous slow rotation (16s per revolution = relaxed turntable pace)
-        NumberAnimation on rotation {
-            id: spinAnim
-            from: 0
-            to: 360
-            duration: 16000
-            loops: Animation.Infinite
+        // Continuous slow rotation (16s per revolution = relaxed turntable pace),
+        // capped at Theme.decorativeMaxFps so a playing track cannot pin the
+        // full-screen shell surface to display refresh rate.
+        rotation: spinPacer.phase * 360
+        MotionPacer {
+            id: spinPacer
             running: root.isPlaying && root.visible
+            period: 16000
         }
 
         // Dark outer vinyl plate

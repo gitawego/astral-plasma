@@ -180,6 +180,11 @@
   "media": {
     "visualizerStyle": "radial"
   },
+  "downloads": {
+    "dir": "",
+    "split": 4,
+    "borderEffect": true
+  },
   "voice": {
     "enabled": true,
     "engine": "whisper-cpp",

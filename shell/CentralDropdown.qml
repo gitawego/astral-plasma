@@ -56,6 +56,15 @@ Item {
     readonly property alias settingsBtnItem: settingsBtn
     readonly property alias tabRepeaterItem: tabRepeater
     readonly property alias tabSlidingIndicatorItem: tabSlidingIndicator
+    readonly property alias tabsRowItem: tabsRow
+    readonly property alias tabContentContainerItem: tabContentContainer
+    readonly property alias tabSliderItem: tabSlider
+    readonly property alias downloadsTabItem: dlTab
+
+    // Keyboard contract for the shell's layer surface: while a tab captures
+    // text (the Downloads add sheet), UnifiedShell requests compositor
+    // keyboard focus. A new text-capturing tab must OR its state in here.
+    readonly property bool textInputActive: dlTab.addDialogOpen
 
     x: dropX
     y: 0
@@ -90,6 +99,7 @@ Item {
         { id: "media", label: "Media", icon: "queue_music" },
         { id: "performance", label: "Performance", icon: "speed" },
         { id: "workspaces", label: "Workspaces", icon: "workspaces" },
+        { id: "downloads", label: "Downloads", icon: "download" },
         { id: "ai", label: "AI Quotas", icon: "auto_awesome" }
     ]
 
@@ -152,11 +162,16 @@ Item {
                 }
             }
 
+            // Justified row: fills the header width LEFT of the settings
+            // button by construction, so a 6th tab can never slide under the
+            // gear (fixed 145px centered cells overflowed by ~40px).
             Row {
                 id: tabsRow
                 anchors.top: parent.top
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 12
+                anchors.left: parent.left
+                anchors.right: settingsBtn.left
+                anchors.rightMargin: 8
+                spacing: 8
 
                 Repeater {
                     id: tabRepeater
@@ -168,7 +183,10 @@ Item {
                         required property int index
                         readonly property bool isSelected: root.activeTab === modelData.id
 
-                        width: 145
+                        // Even split of the available row width: total is
+                        // exactly row width, so the last cell ends where the
+                        // settings button begins. No centering overflow.
+                        width: Math.max(80, Math.floor((tabsRow.width - (root.tabs.length - 1) * tabsRow.spacing) / Math.max(1, root.tabs.length)))
                         height: 50
                         radius: Theme.radiusSmall
                         color: tabHover.containsMouse ? Qt.alpha(Colors.textMain, 0.08) : "transparent"
@@ -189,11 +207,14 @@ Item {
 
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                width: Math.min(implicitWidth, tabItem.width - 12)
+                                horizontalAlignment: Text.AlignHCenter
                                 text: modelData.label
                                 font.pixelSize: 12
                                 font.weight: isSelected ? Font.Bold : Font.DemiBold
                                 font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                 color: isSelected ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb") : (tabHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb") : ((typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#e3e3e3"))
+                                elide: Text.ElideRight
                                 Behavior on color {
                                     ColorAnimation { duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastEffects) ? Theme.animExpressiveFastEffects : 150 }
                                 }
@@ -230,7 +251,8 @@ Item {
                         case "media": return 1;
                         case "performance": return 2;
                         case "workspaces": return 3;
-                        case "ai": return 4;
+                        case "downloads": return 4;
+                        case "ai": return 5;
                         default: return 0;
                     }
                 }
@@ -272,7 +294,8 @@ Item {
                     case "media": return tabPane1.implicitHeight;
                     case "performance": return tabPane2.implicitHeight;
                     case "workspaces": return tabPane3.implicitHeight;
-                    case "ai": return tabPane4.implicitHeight;
+                    case "downloads": return tabPane4.implicitHeight;
+                    case "ai": return tabPane5.implicitHeight;
                     default: return tabPane0.implicitHeight;
                 }
             }
@@ -291,14 +314,15 @@ Item {
                     case "media": return 1;
                     case "performance": return 2;
                     case "workspaces": return 3;
-                    case "ai": return 4;
+                    case "downloads": return 4;
+                    case "ai": return 5;
                     default: return 0;
                 }
             }
 
             Item {
                 id: tabSlider
-                width: tabContentContainer.width * 5
+                width: tabContentContainer.width * 6
                 height: parent.height
                 x: -tabContentContainer.activeTabIndex * tabContentContainer.width
 
@@ -381,9 +405,25 @@ Item {
                     x: tabContentContainer.width * 4
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: aiTab.implicitHeight
+                    implicitHeight: dlTab.implicitHeight
                     clip: true
                     visible: tabContentContainer.activeTabIndex === 4 || tabSlider.isAnimating
+
+                    DownloadsTab {
+                        id: dlTab
+                        width: parent.width
+                        height: parent.height
+                    }
+                }
+
+                Item {
+                    id: tabPane5
+                    x: tabContentContainer.width * 5
+                    width: tabContentContainer.width
+                    height: implicitHeight
+                    implicitHeight: aiTab.implicitHeight
+                    clip: true
+                    visible: tabContentContainer.activeTabIndex === 5 || tabSlider.isAnimating
 
                     AiTab {
                         id: aiTab

@@ -274,8 +274,8 @@ Item {
         assert(matrixSrc.length > 1000, "MatrixBorderEffect.qml must be readable");
         assert(!/if\s*\(!agentInfo\)\s*return\s*"Gemini Flash 3\.8"/.test(matrixSrc),
             "MatrixBorderEffect must not hardcode Gemini Flash 3.8 fallback for missing agentInfo");
-        assert(/matrixStreamTimer/.test(matrixSrc),
-            "MatrixBorderEffect must declare matrixStreamTimer for digital rain animation");
+        assert(/onTickChanged\(\)/.test(matrixSrc) && /matrixTick/.test(matrixSrc),
+            "MatrixBorderEffect digital rain must advance from the shared MotionClock (no private timer)");
         assert(/running:\s*root\.active\s*&&/.test(matrixSrc),
             "MatrixBorderEffect timers must strictly run only when active for 0% idle CPU");
         assert(/bottomAmbientGlow/.test(matrixSrc),
@@ -284,8 +284,10 @@ Item {
             "MatrixBorderEffect ambient glow width must be restrained (clamped to max 220px to avoid invading running apps)");
         assert(/height:\s*Math\.min\(160/.test(matrixSrc),
             "MatrixBorderEffect ambient glow height must be restrained (clamped to max 160px)");
-        assert(/color:\s*root\.safeAlpha\(root\.brandColor,\s*0\.10\s*\*/.test(matrixSrc),
+        assert(/color:\s*root\.safeAlpha\(root\.brandColor,\s*0\.10\b/.test(matrixSrc),
             "MatrixBorderEffect ambient glow max alpha must be restrained to <= 0.10 using brandColor");
+        assert(/opacity:\s*root\.growthProgress\s*\*\s*\(0\.6\s*\+\s*0\.4\s*\*\s*root\.pulse\)/.test(matrixSrc),
+            "MatrixBorderEffect ambient glow must breathe via node opacity, not per-frame gradient-stop churn");
         assert(/id:\s*dataPacket\b/.test(matrixSrc) && /id:\s*dataPacketSecondary\b/.test(matrixSrc),
             "MatrixBorderEffect must preserve horizontal lead and secondary electric pulse data packets");
         assert(/id:\s*dataPacketVertical\b/.test(matrixSrc) && /id:\s*dataPacketVerticalSecondary\b/.test(matrixSrc),

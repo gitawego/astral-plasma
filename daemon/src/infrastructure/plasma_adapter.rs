@@ -63,6 +63,17 @@ pub fn is_watchdog_argv(args: &[String]) -> bool {
     args.len() >= 3 && args[1] == "plasma" && args[2] == "watchdog"
 }
 
+/// Whether the dumped layout must be replayed after a restore.
+///
+/// A file-perfect restore can still leave plasmashell with no panels: it comes
+/// back from its in-memory layout and then saves that empty layout over the
+/// restored file. Replaying the dumped layout is the only repair that does not
+/// need another restart, so it is worth attempting whenever the backup carries
+/// one and the running shell reports nothing.
+pub fn should_replay_layout(panel_count: usize, has_layout_backup: bool) -> bool {
+    panel_count == 0 && has_layout_backup
+}
+
 #[derive(Clone, Default)]
 pub struct PlasmaAdapter;
 
@@ -131,7 +142,102 @@ impl PlasmaAdapter {
             }
         }
     }
+    /// Stops the running plasmashell so it cannot re-save its in-memory layout.
+    ///
+    /// Plasma 6 provides plasmashell through the `plasma-plasmashell` user unit.
+    /// `kquitapp6 plasmashell` is not an option: it resolves the application
+    /// through the legacy KApplication interface and fails with "Application
+    /// plasmashell could not be found using service org.kde.plasmashell and path
+    /// /MainApplication", leaving plasmashell running with the very layout we
+    /// are about to replace.
+    fn stop_plasmashell() {
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "plasma-plasmashell"])
+            .status();
+
+        for _ in 0..40 {
+            if !Self::plasmashell_alive() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        let _ = Command::new("pkill").args(["-9", "-x", "plasmashell"]).status();
+        thread::sleep(Duration::from_millis(150));
+    }
+
+    fn plasmashell_alive() -> bool {
+        Command::new("pgrep")
+            .args(["-x", "plasmashell"])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
+    /// Starts plasmashell again and waits for its D-Bus interface.
+    fn start_plasmashell() -> bool {
+        let started = Command::new("systemctl")
+            .args(["--user", "start", "plasma-plasmashell"])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+
+        if !started {
+            let _ = Command::new("nohup")
+                .args(["plasmashell", "--no-respawn"])
+                .spawn();
+        }
+
+        for _ in 0..25 {
+            if Self::plasmashell_dbus_ready() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+        false
+    }
+
+    fn plasmashell_dbus_ready() -> bool {
+        Command::new("qdbus6")
+            .args(["org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.color"])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    /// Restores the panels and proves it.
+    ///
+    /// Copying the config back is not enough: a plasmashell that restarts from a
+    /// stale in-memory layout comes back with no panels and then saves that
+    /// empty layout over the restored file. When the running shell reports no
+    /// panels and the backup carries a dumped layout, that layout is replayed
+    /// (bounded retries) and the result is verified instead of assumed.
+    fn restore_panels(&self, layout_path: &Path) -> usize {
+        let has_layout = layout_path.exists();
+        let mut panels = self.query_panels().unwrap_or_default().len();
+
+        for attempt in 0..3 {
+            if !should_replay_layout(panels, has_layout) {
+                break;
+            }
+            if let Ok(layout_script) = fs::read_to_string(layout_path) {
+                let _ = Command::new("qdbus6")
+                    .args([
+                        "org.kde.plasmashell",
+                        "/PlasmaShell",
+                        "org.kde.PlasmaShell.evaluateScript",
+                        &layout_script,
+                    ])
+                    .output();
+            }
+            thread::sleep(Duration::from_millis(if attempt == 0 { 400 } else { 800 }));
+            panels = self.query_panels().unwrap_or_default().len();
+        }
+
+        panels
+    }
 }
+
 
 impl PlasmaControlPort for PlasmaAdapter {
     fn query_panels(&self) -> DynResult<Vec<PlasmaPanelInfo>> {
@@ -322,27 +428,7 @@ impl PlasmaControlPort for PlasmaAdapter {
         let is_test = branding::test_mode();
 
         if !is_test {
-            // Stop plasmashell cleanly so it cannot overwrite config upon exit
-            let _ = Command::new("systemctl")
-                .args(["--user", "stop", "plasma-plasmashell"])
-                .status();
-            let _ = Command::new("kquitapp6").arg("plasmashell").status();
-
-            // Wait until any plasmashell process is completely gone from process table
-            for _ in 0..40 {
-                let any_alive = Command::new("pgrep")
-                    .args(["-x", "plasmashell"])
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false);
-                if !any_alive {
-                    break;
-                }
-                thread::sleep(Duration::from_millis(100));
-            }
-
-            let _ = Command::new("pkill").args(["-9", "-x", "plasmashell"]).status();
-            thread::sleep(Duration::from_millis(150));
+            Self::stop_plasmashell();
         }
 
         // Restore files
@@ -362,45 +448,23 @@ impl PlasmaControlPort for PlasmaAdapter {
         }
 
         if !is_test {
-            // Restart plasmashell cleanly via systemctl or direct spawn
-            let started = Command::new("systemctl")
-                .args(["--user", "start", "plasma-plasmashell"])
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
+            // Keep the lock fresh: stopping, starting and verifying plasmashell
+            // can outlive the staleness window a concurrent restore uses to
+            // decide the previous one died.
+            let _ = fs::write(&restoring_lock, std::process::id().to_string());
 
-            if !started {
-                let _ = Command::new("nohup")
-                    .args(["plasmashell", "--no-respawn"])
-                    .spawn();
-            }
-
-            // Wait up to 5 seconds for plasmashell to appear on DBus
-            let mut dbus_ready = false;
-            for _ in 0..25 {
-                if Command::new("qdbus6")
-                    .args(["org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.color"])
-                    .output()
-                    .map(|o| o.status.success())
-                    .unwrap_or(false)
-                {
-                    dbus_ready = true;
-                    break;
+            if Self::start_plasmashell() {
+                let panels = self.restore_panels(&backed_layout);
+                if panels == 0 {
+                    eprintln!(
+                        "[astral-plasma] plasma restore: plasmashell is running with 0 panels and the dumped layout could not be replayed; backup kept at {}",
+                        backup_dir.display()
+                    );
                 }
-                thread::sleep(Duration::from_millis(200));
-            }
-
-            // Verification & Fallback: If DBus is ready, check if panels were restored
-            if dbus_ready {
-                let current_panels = self.query_panels().unwrap_or_default();
-                // If panels are still 0 and we have a layout.js backup, execute it!
-                if current_panels.is_empty() && backed_layout.exists() {
-                    if let Ok(layout_script) = fs::read_to_string(&backed_layout) {
-                        let _ = Command::new("qdbus6")
-                            .args(["org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", &layout_script])
-                            .output();
-                    }
-                }
+            } else {
+                eprintln!(
+                    "[astral-plasma] plasma restore: plasmashell did not answer on D-Bus after the restart"
+                );
             }
         }
 

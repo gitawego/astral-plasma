@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import "motion"
 import "../theme"
 import "../services"
 import "../config"
@@ -29,15 +30,15 @@ Item {
     readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.energy : 0.0
     readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.beat : 0.0
 
-    // Gentle idle wave phase when playing without audio stream
-    property real idlePhase: 0.0
-    NumberAnimation on idlePhase {
-        from: 0.0
-        to: Math.PI * 2
-        duration: 3500
-        loops: Animation.Infinite
+    // Gentle idle wave phase when playing without audio stream. Capped at
+    // Theme.decorativeMaxFps: a playing track would otherwise keep the whole
+    // shell rendering at display refresh (165–240 Hz) while the media UI is up.
+    MotionPacer {
+        id: idlePacer
         running: root.isPlaying && root.isTargetVisible
+        period: 3500
     }
+    readonly property real idlePhase: idlePacer.phase * Math.PI * 2
 
     function getBarValue(idx) {
         if (!root.isPlaying) return 0.0;

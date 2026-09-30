@@ -39,9 +39,34 @@ PanelWindow {
     // Escape are essential and a brief activation shift is what a user expects
     // from a modal. Drawers and popouts instead close on mouse-leave and on
     // scrim click, and cost nothing in activation terms.
+    //
+    // The request is named so its END can be observed: whenever it stops, the
+    // compositor activation is handed back explicitly (see below), because KWin
+    // does not reassign activation when a layer surface stops asking for focus.
+    readonly property bool requestsKeyboardFocus: (typeof PowerService !== "undefined" && PowerService.confirmDialogVisible)
+        || (dropdownContainer.isOpen && dropdownContainer.textInputActive)
+
     WlrLayershell.keyboardFocus: (typeof PowerService !== "undefined" && PowerService.confirmDialogVisible)
         ? WlrKeyboardFocus.OnDemand
-        : WlrKeyboardFocus.None
+        : (root.requestsKeyboardFocus ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None)
+
+    // Hand activation back when the request ends.
+    //
+    // Without this, the invisible full-screen surface stays the compositor's
+    // active window after the add sheet or the power modal closes: KWin's tabbox
+    // then has no window to switch away from (Alt+Tab appears dead) and the
+    // window watcher stops receiving windowActivated, freezing the dock's
+    // active-app display. The overview already does the same hand-back on
+    // dismiss; this covers the shell's own focus requests.
+    onRequestsKeyboardFocusChanged: {
+        if (!root.requestsKeyboardFocus) root.restoreCompositorFocus();
+    }
+
+    function restoreCompositorFocus() {
+        if (typeof Config === "undefined" || !Config.daemonBin) return;
+        focusRestoreProc.command = [Config.daemonBin, "focus", "restore"];
+        if (!focusRestoreProc.running) focusRestoreProc.running = true;
+    }
     WlrLayershell.exclusionMode: ExclusionMode.Ignore
 
     // Wayland Native Compositor Backdrop Blur for Liquid Glass
@@ -1133,7 +1158,7 @@ PanelWindow {
     readonly property bool isDashboardHovered: (dropdownContainer ? dropdownContainer.isHovered : false) || (typeof topEdgeMouseArea !== "undefined" && topEdgeMouseArea.containsMouse)
 
     onIsDashboardHoveredChanged: {
-        if (isDashboardHovered) {
+        if (isDashboardHovered || (dropdownContainer && dropdownContainer.textInputActive)) {
             closeTimer.stop();
         } else if (Config.dashboardVisible) {
             closeTimer.restart();
@@ -1180,7 +1205,9 @@ PanelWindow {
         repeat: false
         onTriggered: {
             if (Config.debugMode) return;
-            if (!root.isDashboardHovered) {
+            // A text-capturing sheet is a modal interaction: never yank it
+            // away because the pointer wandered off while typing.
+            if (!root.isDashboardHovered && !(dropdownContainer && dropdownContainer.textInputActive)) {
                 Config.dashboardVisible = false;
             }
         }
@@ -1430,6 +1457,44 @@ PanelWindow {
         onMenuCardVisibleChanged: root.flushCommitPump(400)
     }
 
+    // Download event bridge: completion edge → toast (D8) + border flash
+    // (D13). Connections on the singleton: no timers, no polling. The
+    // complete flash also fires when the shell re-attaches mid-download and
+    // the first post-boot line already shows finished rows.
+    QtObject {
+        id: downloadFlashState
+        property bool showFlash: false
+    }
+
+    Connections {
+        target: (typeof DownloadService !== "undefined") ? DownloadService : null
+        function onDownloadFinished(gid, name) {
+            // Toggle off→on so back-to-back finishes re-trigger the flash.
+            downloadFlashState.showFlash = false;
+            downloadFlashState.showFlash = true;
+            if (typeof NotificationService !== "undefined") {
+                NotificationService.show(
+                    "Download finished",
+                    name || gid,
+                    "download",
+                    "Downloads",
+                    ""
+                );
+            }
+        }
+        function onDownloadFailed(gid, name) {
+            if (typeof NotificationService !== "undefined") {
+                NotificationService.show(
+                    "Download failed",
+                    (name || gid) + " — retry from the Downloads tab",
+                    "error",
+                    "Downloads",
+                    ""
+                );
+            }
+        }
+    }
+
     // 5. SYSTEM NOTIFICATIONS POPUP (TOP-RIGHT FUSED)
     NotificationPopup {
         id: notifPopup
@@ -1474,6 +1539,35 @@ PanelWindow {
         intensity: (typeof AiActivityService !== "undefined") ? AiActivityService.intensity : 0.0
         modelDisplayName: (typeof AiActivityService !== "undefined") ? AiActivityService.displayName : ""
         activeAgents: (typeof AiActivityService !== "undefined" && AiActivityService.activeAgents) ? AiActivityService.activeAgents : []
+    }
+
+    // 5c. TOP-RIGHT AGGREGATE DOWNLOAD PROGRESS BORDER EFFECT (D10–D15)
+    // Mirror of the AI effect: top segment + right-top leg + fused top-right
+    // nexus, strictly inside borderT. Fill = totalProgress (Σ done / Σ total),
+    // packet motion = totalSpeed. Hides while the notification popup owns the
+    // corner (popup z:1000 wins by design). Zero timers when idle.
+    DownloadBorderEffect {
+        id: downloadBorderEffect
+        anchors.fill: parent
+        z: 949
+        borderT: root.borderT
+        cornerFilletR: root.cornerFilletR
+        effectEnabled: (typeof Config !== "undefined" && Config.downloadsBorderEffect !== undefined)
+            ? Config.downloadsBorderEffect : true
+        cornerBusy: (typeof NotificationService !== "undefined" && NotificationService.hasNotification) ? true : false
+        totalProgress: (typeof DownloadService !== "undefined") ? DownloadService.totalProgress : 0.0
+        totalSpeed: (typeof DownloadService !== "undefined") ? DownloadService.totalSpeed : 0
+        activeCount: (typeof DownloadService !== "undefined") ? DownloadService.activeCount : 0
+        indeterminate: (typeof DownloadService !== "undefined") ? DownloadService.indeterminate : false
+        hasError: {
+            if (typeof DownloadService === "undefined" || !DownloadService.stoppedTasks) return false;
+            const stopped = DownloadService.stoppedTasks;
+            for (let i = 0; i < stopped.length; i++) {
+                if (stopped[i] && (stopped[i].status === "error" || stopped[i].status === "Error")) return true;
+            }
+            return false;
+        }
+        showCompleteFlash: downloadFlashState.showFlash
     }
 
     // 6. LEFT DOCK CONTENT
@@ -1861,26 +1955,18 @@ PanelWindow {
         }
     }
 
-    // Focus restoration after the power-confirmation modal.
+    // Activation hand-back for every keyboard-focus request on this surface.
     //
     // Requesting keyboard focus on this full-screen layer surface makes KWin
-    // activate it (necessary for the modal's Enter/Escape handling), but KWin
-    // does not hand activation back when the request is withdrawn. Left alone,
-    // the compositor keeps the invisible shell surface as its active window, so
-    // the dock's active-app display freezes on a stale application. Handing
-    // activation back explicitly, once the modal is gone, closes that loop.
+    // activate it (needed for the power modal's Enter/Escape and the Downloads
+    // add-sheet text field), but KWin does not hand activation back when the
+    // request is withdrawn. Left alone, the compositor keeps the invisible shell
+    // surface as its active window: the tabbox then has nothing to switch away
+    // from (Alt+Tab goes dead) and the dock's active-app display freezes on a
+    // stale application. `restoreCompositorFocus()` (next to the focus policy)
+    // runs this on every release of `requestsKeyboardFocus`.
     Process {
         id: focusRestoreProc
-    }
-
-    Connections {
-        target: (typeof PowerService !== "undefined") ? PowerService : null
-        function onConfirmDialogVisibleChanged() {
-            if (!PowerService.confirmDialogVisible) {
-                focusRestoreProc.command = [Config.daemonBin, "focus", "restore"];
-                focusRestoreProc.running = true;
-            }
-        }
     }
 
     // 9. CENTRAL TRANSLUCENT VOLUME OSD (~0.6 transparency, macOS style)

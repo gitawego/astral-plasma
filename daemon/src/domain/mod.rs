@@ -19,4 +19,5 @@ pub mod ai_quota;
 pub mod tool_scanner;
 pub mod ai_activity;
 pub mod assistant;
+pub mod downloads;
 pub mod voice;

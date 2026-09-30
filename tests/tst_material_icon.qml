@@ -49,6 +49,42 @@ Item {
         size: 16
     }
 
+    MaterialIcon {
+        id: iconDownload
+        iconName: "download"
+        size: 16
+    }
+
+    MaterialIcon {
+        id: iconCloudDownload
+        iconName: "cloud_download"
+        size: 16
+    }
+
+    MaterialIcon {
+        id: iconFileDownload
+        iconName: "file_download"
+        size: 16
+    }
+
+    MaterialIcon {
+        id: iconDownloadForOffline
+        iconName: "download_for_offline"
+        size: 16
+    }
+
+    MaterialIcon {
+        id: iconLink
+        iconName: "link"
+        size: 16
+    }
+
+    MaterialIcon {
+        id: iconTaskAlt
+        iconName: "task_alt"
+        size: 16
+    }
+
     Timer {
         interval: 50
         running: true
@@ -94,6 +130,16 @@ Item {
         // 7. send resolution
         assert(iconSend.hasIcon === true, "iconSend must have hasIcon === true");
         assert(iconSend.displaySymbol === "󰒭", "send iconName must resolve to send paper plane glyph");
+
+        // 8. download-family resolution (Downloads tab + tab-bar icon).
+        //    These names silently rendered nothing before the map carried them,
+        //    which left the tab's header badge and empty state blank.
+        assert(iconDownload.displaySymbol === "󰇚", "download must resolve to the download glyph");
+        assert(iconCloudDownload.displaySymbol === "󰅢", "cloud_download must resolve to the cloud download glyph");
+        assert(iconFileDownload.displaySymbol === "󰥥", "file_download must resolve through the download heuristic");
+        assert(iconDownloadForOffline.displaySymbol === "󰇚", "unmapped download_* names must resolve through the heuristic");
+        assert(iconLink.displaySymbol === "󰌷", "link must resolve to the link glyph");
+        assert(iconTaskAlt.displaySymbol === "󰗠", "task_alt must resolve to the check-in-circle glyph");
 
         console.log("PASS: MaterialIcon Resolution Tests");
         Qt.exit(0);

@@ -24,7 +24,7 @@ fn test_runtime_provisioning_status() {
     let status = RuntimeProvisioner::get_status();
     // On the development host, pi is present and packages were installed
     assert!(status.pi_executable.is_some(), "Pi should be detected on host");
-    assert!(status.has_mcp_adapter, "pi-mcp-adapter should be installed");
+    assert!(status.has_mcp_support, "pi built-in MCP should be available");
     assert!(status.has_subagents, "pi-subagents should be installed");
 }
 

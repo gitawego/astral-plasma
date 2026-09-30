@@ -152,3 +152,50 @@ fn high_strength_is_recognised_as_glass_hostile() {
         "the default must stay below the diffuse range"
     );
 }
+
+// ============================================================================
+// Snapshot / restore: the shell must not leave its blur override behind
+// ============================================================================
+
+/// One test owns both phases: `XDG_CONFIG_HOME`/`XDG_DATA_HOME` are
+/// process-global, so two tests setting them would race (see the Deepgram
+/// suite for the same trap).
+#[test]
+fn the_shell_hands_kwins_blur_back() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::env::set_var("XDG_CONFIG_HOME", tmp.path());
+    std::env::set_var("XDG_DATA_HOME", tmp.path().join("data"));
+    let kwinrc = tmp.path().join("kwinrc");
+    let adapter = KWinBlurAdapter::new();
+
+    // Phase 1 - the user had tuned blur before the shell touched it.
+    std::fs::write(&kwinrc, "[Effect-blur]\nBlurStrength=9\nNoiseStrength=2\n").unwrap();
+    adapter
+        .apply(&BlurSettings { strength: 3, noise_strength: 0 })
+        .expect("apply");
+    adapter
+        .apply(&BlurSettings { strength: 4, noise_strength: 0 })
+        .expect("the second apply must not overwrite the first snapshot");
+    assert!(adapter.restore().expect("restore"));
+    let after = std::fs::read_to_string(&kwinrc).unwrap();
+    assert!(after.contains("BlurStrength=9"),
+        "the user's original strength must come back, got:\n{after}");
+    assert!(after.contains("NoiseStrength=2"),
+        "the user's original noise must come back, got:\n{after}");
+
+    // Phase 2 - the shell introduced the override on a clean config.
+    let tmp2 = tempfile::tempdir().expect("tempdir");
+    std::env::set_var("XDG_CONFIG_HOME", tmp2.path());
+    std::env::set_var("XDG_DATA_HOME", tmp2.path().join("data"));
+    let kwinrc2 = tmp2.path().join("kwinrc");
+    std::fs::write(&kwinrc2, "[General]\nfoo=bar\n").unwrap();
+    adapter
+        .apply(&BlurSettings { strength: 3, noise_strength: 0 })
+        .expect("apply");
+    adapter.restore().expect("restore");
+    let after2 = std::fs::read_to_string(&kwinrc2).unwrap();
+    assert!(!after2.contains("BlurStrength"),
+        "a shell-introduced override must be removed, got:\n{after2}");
+    assert!(after2.contains("foo=bar"),
+        "unrelated config must survive, got:\n{after2}");
+}

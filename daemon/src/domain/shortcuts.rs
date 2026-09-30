@@ -7,6 +7,12 @@ pub struct GranularShortcutSnapshot {
     pub key: String,
     /// None if the key was previously absent/unset in the configuration
     pub previous_value: Option<String>,
+    /// The key codes KGlobalAccel was holding before the session touched the
+    /// action. A config rewrite does not move the live registration, so the
+    /// restore replays these (absent in journals written before they were
+    /// captured).
+    #[serde(default)]
+    pub keys: Vec<i32>,
 }
 
 /// Represents an external shortcut that originally claimed the key combination (e.g. Meta+Space)
@@ -15,6 +21,9 @@ pub struct DisplacedShortcut {
     pub group: String,
     pub key: String,
     pub full_value: String,
+    /// Pre-session key codes of the displaced action, replayed on release.
+    #[serde(default)]
+    pub keys: Vec<i32>,
 }
 
 /// An atomic session backup tracking ONLY keys modified by this shell

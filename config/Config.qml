@@ -111,6 +111,12 @@ Singleton {
             "criticalThresholdPercent": 95,
             "dockPillMode": "dynamic"
         },
+        // Download manager: "" dir = ~/Downloads; split clamped 1..16.
+        "downloads": {
+            "dir": "",
+            "split": 4,
+            "borderEffect": true
+        },
         "debugMode": false
     })
 
@@ -197,9 +203,17 @@ Singleton {
     readonly property real aiWarningThreshold: (root.settings && root.settings.ai && root.settings.ai.warningThresholdPercent !== undefined) ? root.settings.ai.warningThresholdPercent : 80.0
     readonly property real aiCriticalThreshold: (root.settings && root.settings.ai && root.settings.ai.criticalThresholdPercent !== undefined) ? root.settings.ai.criticalThresholdPercent : 95.0
     readonly property string aiDockPillMode: (root.settings && root.settings.ai && root.settings.ai.dockPillMode) ? root.settings.ai.dockPillMode : "dynamic"
-    readonly property bool aiGeminiMonthlyEnabled: (root.settings && root.settings.ai && root.settings.ai.geminiMonthlyEnabled !== undefined) ? root.settings.ai.geminiMonthlyEnabled : true
-    readonly property real aiGeminiMonthlyRemainingPercent: (root.settings && root.settings.ai && root.settings.ai.geminiMonthlyRemainingPercent !== undefined) ? root.settings.ai.geminiMonthlyRemainingPercent : 85.0
-    readonly property int aiGeminiMonthlyResetDay: (root.settings && root.settings.ai && root.settings.ai.geminiMonthlyResetDay !== undefined) ? root.settings.ai.geminiMonthlyResetDay : 1
+    // Download manager defaults (D6/D7): global split parts + destination.
+    readonly property string downloadsDir: (root.settings && root.settings.downloads && typeof root.settings.downloads.dir === "string" && root.settings.downloads.dir.length > 0)
+        ? root.settings.downloads.dir : ""
+    readonly property int downloadsSplit: {
+        const v = (root.settings && root.settings.downloads && root.settings.downloads.split !== undefined)
+            ? Number(root.settings.downloads.split) : NaN;
+        if (isNaN(v)) return 4;
+        return Math.max(1, Math.min(16, Math.round(v)));
+    }
+    readonly property bool downloadsBorderEffect: (root.settings && root.settings.downloads && root.settings.downloads.borderEffect !== undefined)
+        ? Boolean(root.settings.downloads.borderEffect) : true
 
     // Theme getters
     readonly property bool isDarkMode: root.settings.theme ? (root.settings.theme.darkMode ?? (root.settings.theme.mode !== "light")) : true
@@ -430,6 +444,29 @@ Singleton {
         updateSettings(cfg => {
             if (!cfg.ai) cfg.ai = {};
             cfg.ai.geminiMonthlyResetDay = day;
+        });
+    }
+
+    // Download manager defaults (persisted to the user settings file).
+    function setDownloadsDir(dir) {
+        updateSettings(cfg => {
+            if (!cfg.downloads) cfg.downloads = {};
+            cfg.downloads.dir = dir || "";
+        });
+    }
+
+    function setDownloadsSplit(split) {
+        const v = Math.max(1, Math.min(16, Math.round(Number(split) || 4)));
+        updateSettings(cfg => {
+            if (!cfg.downloads) cfg.downloads = {};
+            cfg.downloads.split = v;
+        });
+    }
+
+    function setDownloadsBorderEffect(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.downloads) cfg.downloads = {};
+            cfg.downloads.borderEffect = Boolean(enabled);
         });
     }
 

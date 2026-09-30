@@ -1,7 +1,7 @@
 use crate::domain::branding;
 use crate::domain::ports::{DynResult, ShortcutControlPort};
 use crate::domain::shortcuts::{AstralShortcutSessionBackup, DisplacedShortcut, GranularShortcutSnapshot};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -143,12 +143,141 @@ impl KWinShortcutsAdapter {
         )
     }
 
+    /// Live key codes of the given actions, keyed by `(group, key)`.
+    ///
+    /// Best effort: a session without a global-shortcut daemon (or without
+    /// python-dbus) simply records no codes, and the release then restores the
+    /// configuration text alone.
+    fn capture_live_keys(
+        &self,
+        actions: &[(String, String, String)],
+    ) -> HashMap<(String, String), Vec<i32>> {
+        if actions.is_empty() {
+            return HashMap::new();
+        }
+        let Ok(payload) = serde_json::to_string(actions) else {
+            return HashMap::new();
+        };
+        let Ok(output) = Command::new("python3")
+            .args(["-c", CAPTURE_LIVE_KEYS_PY, &payload])
+            .output()
+        else {
+            return HashMap::new();
+        };
+        if !output.status.success() {
+            return HashMap::new();
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let Ok(parsed) = serde_json::from_str::<HashMap<String, Vec<i32>>>(text.trim()) else {
+            return HashMap::new();
+        };
+        parsed
+            .into_iter()
+            .filter_map(|(path, codes)| {
+                let (group, key) = path.split_once('\n')?;
+                Some(((group.to_string(), key.to_string()), codes))
+            })
+            .collect()
+    }
 }
 
 impl Default for KWinShortcutsAdapter {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Python that reads the live key codes of the given actions.
+///
+/// Prints `{"<group>\n<key>": [code, ...]}`. `KGlobalAccel` keeps its
+/// registrations in memory, so these codes are the only faithful record of what
+/// the user had; the journal stores them and `rearm_snippet` replays them.
+const CAPTURE_LIVE_KEYS_PY: &str = r#"
+import dbus, json, sys
+try:
+    ids = json.loads(sys.argv[1])
+    accel = dbus.Interface(dbus.SessionBus().get_object('org.kde.kglobalaccel', '/kglobalaccel'), 'org.kde.KGlobalAccel')
+    out = {}
+    for group, key, friendly in ids:
+        try:
+            keys = accel.shortcutKeys([group, key, group, friendly])
+            # Each entry is a struct wrapping the sequence's int array; the first
+            # int is the Qt key code KGlobalAccel is holding.
+            codes = [int(seq[0][0]) for seq in keys if len(seq) > 0 and len(seq[0]) > 0]
+            if codes:
+                out[group + "\n" + key] = codes
+        except Exception:
+            pass
+    print(json.dumps(out))
+except Exception:
+    print("{}")
+"#;
+
+/// The label `kglobalshortcutsrc` shows for an action: the third field of its
+/// value (`default,active,label`).
+pub fn action_label(value: &str) -> Option<String> {
+    let mut parts = value.split(',');
+    let _default = parts.next()?;
+    let _active = parts.next()?;
+    let label = parts.next()?.trim();
+    if label.is_empty() {
+        None
+    } else {
+        Some(label.to_string())
+    }
+}
+
+fn python_single_quote(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+/// Python that hands the recorded pre-session keys back to KGlobalAccel.
+///
+/// Rewriting `kglobalshortcutsrc` is not enough: the running daemon keeps the
+/// keys it already holds, so a restored file leaves the user's shortcuts dead
+/// until the next login. That is how `Meta+W` (Overview) and the launcher's bare
+/// `Meta` were lost - the journal had the config text, but nothing re-registered
+/// the keys. This replays exactly what was captured before the session claimed
+/// them.
+pub fn rearm_snippet(backup: &AstralShortcutSessionBackup) -> String {
+    let mut calls = String::new();
+    let mut push = |group: &str, key: &str, value: Option<&str>, keys: &[i32]| {
+        if keys.is_empty() {
+            return;
+        }
+        let label = value
+            .and_then(action_label)
+            .unwrap_or_else(|| key.to_string());
+        let codes = keys
+            .iter()
+            .map(|code| format!("dbus.Int32({code})"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        calls.push_str(&format!(
+            "    accel.setForeignShortcut(['{group}', '{key}', '{group}', '{label}'], [{codes}])\n",
+            group = python_single_quote(group),
+            key = python_single_quote(key),
+            label = python_single_quote(&label),
+            codes = codes,
+        ));
+    };
+
+    for entry in &backup.affected_entries {
+        push(&entry.group, &entry.key, entry.previous_value.as_deref(), &entry.keys);
+    }
+    for displaced in &backup.displaced_actions {
+        push(&displaced.group, &displaced.key, Some(&displaced.full_value), &displaced.keys);
+    }
+    if let Some(displaced) = &backup.displaced_action {
+        push(&displaced.group, &displaced.key, Some(&displaced.full_value), &displaced.keys);
+    }
+
+    if calls.is_empty() {
+        return String::new();
+    }
+    format!(
+        "import dbus\ntry:\n    bus = dbus.SessionBus()\n    accel = dbus.Interface(bus.get_object('org.kde.kglobalaccel', '/kglobalaccel'), 'org.kde.KGlobalAccel')\n{calls}except Exception:\n    pass\n"
+    )
 }
 
 /// Lightweight parser for KDE INI files preserving existing groups and other keys
@@ -299,6 +428,7 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
                 group: group.to_string(),
                 key: key.to_string(),
                 previous_value: prev,
+                keys: Vec::new(),
             });
         }
 
@@ -334,10 +464,39 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
                         group: grp_name.clone(),
                         key: k.clone(),
                         full_value: v.clone(),
+                        keys: Vec::new(),
                     });
                 }
             }
         }
+        // Capture the key codes KGlobalAccel is holding *now*: a config rewrite
+        // does not move the live registration, so these are what the release
+        // replays (see `rearm_snippet`). Test sessions have no session bus.
+        if !branding::test_mode() {
+            let mut requests: Vec<(String, String, String)> = Vec::new();
+            for entry in &affected {
+                if let Some(label) = entry.previous_value.as_deref().and_then(action_label) {
+                    requests.push((entry.group.clone(), entry.key.clone(), label));
+                }
+            }
+            for displaced in &displaced_actions {
+                if let Some(label) = action_label(&displaced.full_value) {
+                    requests.push((displaced.group.clone(), displaced.key.clone(), label));
+                }
+            }
+            let captured = self.capture_live_keys(&requests);
+            for entry in affected.iter_mut() {
+                if let Some(codes) = captured.get(&(entry.group.clone(), entry.key.clone())) {
+                    entry.keys = codes.clone();
+                }
+            }
+            for displaced in displaced_actions.iter_mut() {
+                if let Some(codes) = captured.get(&(displaced.group.clone(), displaced.key.clone())) {
+                    displaced.keys = codes.clone();
+                }
+            }
+        }
+
         let displaced = displaced_actions.first().cloned();
 
         // Check kwinrc plugin state
@@ -431,15 +590,20 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
             fs::write(&kglobal_path, ini.serialize())?;
         }
 
-        // 2. Revert kwinrc plugin state
+        // 2. Deactivate the Astral KWin script.
+        //
+        // This flag decides whether KWin loads the Astral shortcut script at
+        // login. It is Astral's own plugin, so releasing the session must always
+        // leave it off: restoring a previously-enabled value turns the flag into
+        // a ratchet (one session leaves it on, every later session restores it to
+        // "on"), and KWin then keeps registering the Astral shortcuts - the bare
+        // Meta overview key included - with the theme not even running. That is
+        // what silently eats the user's Alt+Tab after the theme is gone.
+        let _ = &backup.previous_kwin_plugin_enabled;
         if kwinrc_path.exists() {
             let kwinrc_content = fs::read_to_string(&kwinrc_path).unwrap_or_default();
             let mut ini = KdeIniFile::parse(&kwinrc_content);
-            if backup.previous_kwin_plugin_enabled {
-                ini.set("Plugins", branding::KWIN_SHORTCUTS_ENABLED_KEY, "true");
-            } else {
-                ini.remove("Plugins", branding::KWIN_SHORTCUTS_ENABLED_KEY);
-            }
+            ini.remove("Plugins", branding::KWIN_SHORTCUTS_ENABLED_KEY);
             fs::write(&kwinrc_path, ini.serialize())?;
         }
 
@@ -487,6 +651,16 @@ except Exception:
                 settings_label = branding::SHORTCUT_SETTINGS_LABEL,
             );
             let _ = Command::new("python3").args(["-c", &clear_py]).status();
+
+            // Hand the user's own keys back to KGlobalAccel. Without this the
+            // live registration keeps whatever the session's displacement left
+            // (often nothing), so the restored config only takes effect at the
+            // next login - which is how the launcher's bare Meta and Meta+W were
+            // silently lost.
+            let rearm_py = rearm_snippet(&backup);
+            if !rearm_py.is_empty() {
+                let _ = Command::new("python3").args(["-c", &rearm_py]).status();
+            }
         }
 
         let _ = fs::remove_file(&backup_path);

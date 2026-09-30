@@ -786,3 +786,338 @@ live capture readings.
 Seven states, all reachable: idle, recording (honestly "language not
 determined" — detection has not happened yet), finalizing, a confident reading,
 a doubtful reading, an empty outcome, and a setup gap.
+
+---
+
+## 20. The Downloads Surface: Tab-Switch Freeze, Design Round, And Keyboard Paste
+
+Three reported defects, all root-caused, plus the design revision they surfaced.
+
+### 20.1 "When I switch tab, it stays in the dashboard tab"
+
+**Root cause.** The Downloads-tab commit deleted two lines from `shell/CentralDropdown.qml`'s
+`tabSlider`:
+
+```qml
+height: parent.height
+x: -tabContentContainer.activeTabIndex * tabContentContainer.width
+```
+
+Without the `x` binding the six-pane content strip never moved, so every tab showed
+pane 0 (Dashboard) while the header indicator and `Config.activeDashboardTab`
+happily changed. The same commit also unwired the standalone
+`dashboard/CentralDashboard.qml` TabBar from `Config`.
+
+**Fix.** Restored the binding and the height, re-bound the standalone TabBar
+(`activeTab: Config.activeDashboardTab` + `onTabSelected`), and added
+`tests/tst_dropdown_tab_switching.qml`: it clicks the real header MouseArea of
+every tab, waits for the spatial slide to settle, and asserts the strip position,
+pane visibility, pane layout, indicator index, and Config persistence. The suite
+was written first and failed on the deleted lines before the fix.
+
+![Downloads tab](docs/proof/tab-switching/dropdown-downloads-tab.png)
+![Media tab](docs/proof/tab-switching/dropdown-media-tab.png)
+
+### 20.2 The "totally broken and ugly" Downloads design
+
+**What was wrong.**
+1. The tab was a fixed 320px void: a title row, then ~200px of empty glass.
+2. The Active/Queued/Finished control sat on its own line, wasting vertical space.
+3. Two buttons ("Add" and "Add download") did exactly the same thing.
+4. `MaterialIcon` had no `download`, `cloud_download`, `link` or `task_alt`
+   mappings, so the header badge, the empty-state icon and the dropdown tab-bar
+   icon rendered as blank glyphs (the map/heuristics now carry them, pinned by
+   `tst_material_icon.qml` and the tab-icon resolution loop in
+   `tst_dropdown_tab_switching.qml`).
+
+**What it is now.**
+- One header line: badge + title/subtitle | Active/Queued/Finished | single Add
+  action. The segmented control is a single glass track with a sliding selection
+  pill (Theme spatial tokens).
+- A composed empty state per segment (icon, headline, hint) instead of a void.
+- A content-driven, bounded task list (4 rows max, then it scrolls) with per-row
+  status badge, name, `done / total · speed · ETA`, percent, actions and a
+  progress track.
+- The add sheet replaces the list while open: URL field with a Paste button,
+  a 1..16 connections stepper, the destination, and Cancel/Download.
+
+![Empty state](docs/proof/downloads/empty-state.png)
+![Active download](docs/proof/downloads/active-download.png)
+
+### 20.3 "I can't paste with Ctrl+V — it pastes into another app"
+
+**Root cause.** `UnifiedShell` is a full-screen layer surface that deliberately
+runs with `WlrKeyboardFocus.None` (pointer-only drawers, see the focus-policy
+comment in that file). The add sheet's `TextEdit` therefore never received
+keyboard events: Ctrl+V went to whichever window the compositor still had
+focused — the user's editor.
+
+**Fix.**
+- `DownloadsTab.wantsKeyboard` → `CentralDropdown.textInputActive` →
+  `UnifiedShell` requests `WlrKeyboardFocus.Exclusive` while the sheet is open
+  (the same mode the Command Launcher and Overview already use), and returns to
+  `None` when it closes.
+- The URL field takes focus when the sheet opens; Escape closes the sheet
+  (a second Escape closes the drawer).
+- Hover auto-close is suppressed while a text sheet is open, and closing the
+  dashboard releases the capture.
+- Added a Paste button and a right-click context menu (Paste / Select all /
+  Clear) backed by `TextEdit.paste()`, so pasting does not depend on input
+  method quirks.
+
+**Verified live** (introspection IPC, removed afterwards): with the sheet open the
+field reported `inputFocus: true`, and a real `wl-copy` URL pasted through
+`TextEdit.paste()` landed in the field byte-for-byte.
+
+![Add sheet with pasted URL](docs/proof/downloads/add-sheet-paste.png)
+
+### 20.4 Live end-to-end proof (real aria2, throttled local source)
+
+A 300 MiB file served from a throttled local HTTP server, added with
+`--split 4`, then a second 3 MiB file to trigger the completion edge:
+
+- aggregate header (`58% · 1.6 MiB/s · ETA 1m`), segment counts, per-row
+  progress and actions all tracked live events (see 20.2 image);
+- the top-right border HUD filled with aggregate progress (idle vs active,
+  pixel-verified);
+- the completion notification fired exactly once.
+
+![Border HUD idle vs active](docs/proof/downloads/border-hud-idle-vs-active.png)
+![Completion toast](docs/proof/downloads/completion-toast.png)
+
+`make test` is green: full Rust suite + all QML suites, including the new
+`tst_dropdown_tab_switching.qml` and the extended Downloads/material-icon
+contracts. Proof artifacts (aria2 tasks, server, temp files) were removed
+afterwards; `~/Downloads` was never touched.
+
+**Integration note.** The top-right HUD and the dropdown header share the screen
+band occupied by the KDE Plasma panel on this machine (`plasma status` reports
+no panels disabled even though `disablePanels` is `"all"`), so the panel is
+visible through the glass and partially covers the HUD. That is a
+session-provisioning question (Plasma panel hand-over), not a Downloads-tab
+defect; it is recorded here because it is visible in the screenshots.
+
+---
+
+## 21. "The GPU Is Always At 100%": Decorative Motion Was On The Display Clock
+
+### 21.1 The report
+
+> *"there is critical performance issue of the theme, the GPU is always around
+> 100% usage. do a general performance audit of the whole theme app"*
+> *"I can feel the extrem lag when I started the theme, sometimes my whole
+> system is stuck"*
+
+This machine drives a 3440×1440@165 Hz ultrawide and a 2560×1600@240 Hz panel.
+At what should be idle (no drawer open, no media playing) the shell was burning
+about **1.2 CPU cores** and the Intel iGPU was pinned:
+
+- `quickshell`: `QSGRenderThread` ≈ 49%, main thread ≈ 41% of a core;
+- iGPU `rc6_residency` grew only ~130 ms per 5 s (it almost never idled), actual
+  frequency held at/near max;
+- KWin was pushed to ~25% of a core compositing the result.
+
+### 21.2 The decisive experiment
+
+Instead of reading code first, the suspect was switched off and the machine
+re-measured. The only thing that ever runs continuously on this desktop is the
+**AI agent activity border** (`components/MatrixBorderEffect.qml`) — it is active
+whenever any AI agent is running (live proof: the daemon reported a DeepSeek
+agent with token events seconds old). Patching its `active` binding to `false`
+(one temporary edit, automatically hot-reloaded by Quickshell) changed:
+
+| | shell CPU | iGPU |
+| :--- | ---: | :--- |
+| AI border active | **~47%** of a core | busy/never idling |
+| AI border inactive | **0.3%** | idle |
+
+The "performance problem of the whole theme" was one decorative effect.
+
+### 21.3 The general audit
+
+Every infinite animation in the repository was inventoried with its `running:`
+gate. The dangerous class is not "is it infinite" but **"does it stay visible
+for hours"**:
+
+| Component | Gate | Persistence |
+| :--- | :--- | :--- |
+| `MatrixBorderEffect` (AI border) | any AI agent active | hours |
+| `DownloadBorderEffect` | any active download | hours |
+| `DockStatusIcons` AI quota pulse | quota critical | hours |
+| `VinylPlayer`, `RadialCoverVisualiser`, `RadialCoverRing`, `HeatmapCoverRing`, `HeatmapSpeakerPlayer`, `DashboardTab` cover | media playing + visible | hours |
+| launch/refresh spinners (`UnifiedDock`, `AiTokensSection`, `AiPage`) | user-initiated loading | seconds |
+
+Only the last row is allowed to keep a vsync-rate animation; everything else
+must run on a **decorative frame budget**.
+
+### 21.4 The mechanism (and three traps)
+
+Qt Quick repaints the **entire window** on every property change, and a QML
+animation advances at **display refresh rate**. A full-screen decorative
+animation therefore forces *refresh-rate* full-window renders for as long as the
+feature is on — 165–240 per second per screen on this desk. Three traps showed up
+while fixing it, each caught by counting actual swapped frames in a controlled
+compositor (`kwin_wayland --virtual`, 2560×1600@60 Hz, `Window.onFrameSwapped`):
+
+1. **N timers = N frames.** Two independent 30 Hz pacers interleave, so the
+   "30 fps" effect measured **60 fps**. All decorative updates must land on the
+   *same* tick.
+2. **Gradient churn costs an extra frame.** A `Qt5Compat.GraphicalEffects`
+   `RadialGradient` regenerates its offscreen source on every gradient-stop
+   change — each pulse tick produced two frames (60 fps for a 30 Hz pulse).
+3. **Periodic content is a frame source too.** The matrix glyph rain had its own
+   10 Hz timer, adding 10 frames/s on top of the motion.
+
+### 21.5 The fix
+
+A single shared clock for all decoration, in a new proper QML module
+`components/motion/`:
+
+- **`Theme.decorativeMaxFps: 30`** — the budget. Interactive/spatial transitions
+  are never throttled (see `DESIGN.md` §2.4).
+- **`MotionClock`** — one reference-counted ticker for the whole shell; it stops
+  when the last consumer releases it, so an idle shell does zero decorative work.
+- **`MotionPacer`** — derives `phase`/`breath` from `MotionClock.elapsedMs` with
+  wall-clock math (a late tick samples the phase; it never slows the cycle). It
+  owns no timer and no animation.
+
+Applied to every persistent decorative host: AI and download border effects, the
+dock quota pulse, all six media visualizers/rotations. The AI border's ambient
+glow now breathes via **node opacity** (static gradient), and the digital rain
+samples `MotionClock.elapsedMs` instead of running a private timer.
+
+### 21.6 Benchmark proof
+
+Nested KWin virtual output, 2560×1600@60 Hz, full-screen AI border, 12 s windows:
+
+| Variant | Rendered frames/s | Client CPU per 12 s |
+| :--- | ---: | ---: |
+| Effect inactive (idle) | 0 | 0.00 s |
+| Original animation | 60 (= refresh) | 1.40 s |
+| `MotionClock` @ 30 fps | 30 | 0.85 s |
+
+On this 60 Hz output the fix halves both frames and client CPU; on a 240 Hz panel
+the uncapped row scales to 240 fps while the capped row **stays at 30** — the
+decoration is no longer a function of the panel at all. Pixel comparison of the
+client-rendered frames confirms the effect is unchanged: capped frames differ
+from the uncapped baseline by mean 0.067/255 (0.12 % of pixels, animation phase
+only), while consecutive capped frames differ by 0.18 % of pixels — i.e. it still
+animates.
+
+![AI border, capped — frame 1](docs/proof/performance/ai-border-capped-frame-1.png)
+![AI border, capped — frame 2 (packets advanced)](docs/proof/performance/ai-border-capped-frame-2.png)
+![AI border, original animation (fidelity baseline)](docs/proof/performance/ai-border-uncapped-baseline.png)
+
+### 21.7 Regression guards
+
+- `tests/tst_motion_pacer.qml` — idle rest state, wall-clock accuracy, “two
+  consumers never exceed the budget”, refcount balance, envelope math,
+  degenerate periods.
+- `tests/tst_decorative_animation_budget.qml` — repo-wide source contract: no
+  `loops: Animation.Infinite` in any decorative host, every host drives motion
+  through `MotionPacer`, the clock is reference-counted and token-driven, and
+  neither primitive owns a vsync animation.
+- `make test` is green (full Rust suite + all QML suites).
+
+**Measurement note.** The machine's displays powered off mid-audit (DPMS), so the
+live numbers above were taken while they were on; the frame counts and CPU
+comparison come from the controlled nested compositor so they remain
+reproducible. The high-refresh claim is a direct consequence of the mechanism
+(uncapped decoration follows the output refresh rate) and is pinned by the
+contract tests rather than by a single breadcrumb.
+
+---
+
+## 22. "The Game Is Closed But The GPU Is Still Pegged" -> Two Invisible-App Bugs
+
+While chasing the iGPU load after Firefox was stopped, the user's report was:
+*"I already closed that game - it means there is a system tray not rendered on the
+theme task bar, we should fix it."* The instinct was right, and there were two
+independent failures behind it.
+
+### What the instrument said first
+
+Per-process engine counters (`/proc/*/fdinfo`, Intel `drm-pdev: 0000:00:02.0`,
+5 s windows) showed the load was not the theme:
+
+| Consumer | Render-engine share |
+| :--- | ---: |
+| Xwayland | 239-296 % |
+| `CrGpuMain` (Edge) | 154-183 % |
+| ghostty | 74-88 % |
+| msedge | 33-43 % |
+| quickshell (dashboard open) | 17-33 % |
+| quickshell (dashboard closed) | 3-5 % |
+
+Xwayland that high means X11 clients rendering through it. `xprop -root
+_NET_CLIENT_LIST` named them: `0x3600008 pid=21677 "steam_app_default"` - the
+Neverness-to-Everness launcher, **still alive 51 minutes with an iconified
+window** (`_NET_WM_STATE_HIDDEN`, 110 % CPU). "Closed" was true of the window and
+false of the process.
+
+### Bug 1 - the app was in the taskbar, drawn as an anonymous box
+
+The dock's taskbar *did* list the window (the daemon's KWin script enumerates
+`normalWindow && caption`, and it had both). It was drawn with the generic
+material `window` glyph, because the daemon never extracted the app's own icon:
+
+```rust
+let is_wine = class.trim().to_lowercase().ends_with(".exe");   // `steam_app_default` is not
+if !is_wine { return false; }
+```
+
+The window publishes a real 32x32 `_NET_WM_ICON`; the gate keyed off the shape of
+the class name instead. See [LESSONS §28](docs/LESSONS.md) for the full
+inversion (`theme_icon_exists` + a memoized icon index).
+
+Result: `steam_app_default` now resolves to
+`~/.cache/astral-plasma/window-icons/steam_app_default.png`, and the taskbar shows
+the game's own icon — `docs/proof/tray/before-generic-window-glyph.png` vs
+`after-window-icon-and-live-tray.png`.
+
+### Bug 2 - the tray was a snapshot, so late icons never rendered
+
+The dock's tray is fed by the daemon's pushed list, and that list was only built
+at daemon start and on the shell's `RefreshTray` call (which only a tray *click*
+triggered). An application registering its icon later was invisible in the dock
+indefinitely. Fixed with a cheap registration poll (3 s) that re-queries and
+pushes only when the registration *set* actually changed
+([LESSONS §29](docs/LESSONS.md)).
+
+### Live proof
+
+`diag`-dumped dock state (shell IPC) while a probe SNI was registered and killed:
+
+```
+probe up,   t+1.4s: 6 items -> [Fcitx, Cachy-Update, dropbox-client-5113, Sunshine, cloudmusic, tray-probe]
+probe down, t+1.4s: 5 items -> [Fcitx, Cachy-Update, dropbox-client-5113, Sunshine, cloudmusic]
+```
+
+No clicks, no reload. Screenshot with the probe glyph in the tray:
+`docs/proof/tray/after-window-icon-and-live-tray.png` (bottom of the tray column,
+Firefox glyph; the game's own icon one capsule above).
+
+### Tests
+
+- `daemon/tests/test_window_icons.rs` — the gate: `steam_app_default` with a
+  non-drawable "icon" name must extract; a real icon file must not; the
+  icon-theme lookup is testable against explicit roots (tmpdir fixture) and
+  ignores non-image files and traversal.
+- `daemon/tests/test_tray_registrations.rs` — registration identity is a set
+  (order/duplicates/padding), an icon appearing or leaving is a change, and the
+  pushed items are the baseline the live list is compared against.
+- `daemon/src/domain/ports.rs` — `TrayPort::registered_item_keys`, the cheap read
+  that makes the poll affordable.
+- `tests/tst_dock_tray_liveness.qml` — repo-wide source contract: the `.exe`
+  class gate is gone, the icon-theme index is the gate, the poll + baseline exist
+  in the watcher, and the dock renders every pushed tray item with the
+  raw-icon -> URL -> material-glyph chain.
+- `make test` is green (714 Rust tests + all QML suites).
+
+### Note on the numbers
+
+The GPU figures above were measured with the displays on; the panel is
+2560x1600@240 Hz, so every compositing client scales with that refresh rate. The
+two fixes remove *hidden* apps from the picture (a wrong glyph and a frozen tray
+list), they do not make X11 clients cheap: Xwayland remains the largest single
+iGPU consumer whenever a Wine/Proton app is alive.

@@ -88,6 +88,8 @@ cleanup() {
     bash "$DIR/scripts/restore_shortcuts.sh" || true
     if [ -x "$DIR/bin/astral-plasma" ]; then
         "$DIR/bin/astral-plasma" plasma restore || true
+        # Blur is tuned for the shell's glass; the desktop must not keep it.
+        "$DIR/bin/astral-plasma" blur restore || true
     fi
 }
 trap cleanup EXIT INT TERM

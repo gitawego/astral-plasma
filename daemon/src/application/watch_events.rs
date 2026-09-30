@@ -44,6 +44,10 @@ fn render_kwin_script(template: &str) -> String {
 pub struct DaemonState {
     pub cached_windows: Vec<Window>,
     pub cached_tray: Vec<TrayItem>,
+    /// Registration identity of [`DaemonState::cached_tray`]: what the watcher's
+    /// list looked like when the tray was last pushed. The live list is compared
+    /// against it to decide whether a re-query is worth its cost.
+    pub tray_registered_keys: Vec<String>,
     pub active_title: String,
     pub active_material_icon: String,
     pub active_icon_name: String,
@@ -58,6 +62,7 @@ impl Default for DaemonState {
         Self {
             cached_windows: Vec::new(),
             cached_tray: Vec::new(),
+            tray_registered_keys: Vec::new(),
             active_title: "Desktop".to_string(),
             active_material_icon: "desktop_windows".to_string(),
             active_icon_name: String::new(),
@@ -295,6 +300,11 @@ impl WatcherService {
 
     #[zbus(name = "UpdateWindowList")]
     async fn update_window_list(&self, json_str: &str) {
+        // Cache the raw push: `query_windows()` consumes it instead of asking
+        // KWin to compile and run a throwaway script per query, which is what
+        // stalls the compositor's main thread (and its global shortcuts).
+        crate::infrastructure::kwin_adapter::store_pushed_window_list(json_str);
+
         let Ok(raw) = serde_json::from_str::<Value>(json_str) else {
             return;
         };
@@ -454,6 +464,9 @@ impl WatcherService {
         let tray_port = Arc::clone(&self.tray);
         if let Ok(new_tray) = blocking(move || tray_port.query_tray()).await {
             let mut st = self.state.lock().await;
+            // Re-baseline the registrations this push reflects, so the periodic
+            // check compares against what the shell actually has.
+            st.tray_registered_keys = tray_item_keys(&new_tray);
             st.cached_tray = new_tray.clone();
             let payload = TrayPayload {
                 msg_type: "tray".to_string(),
@@ -464,6 +477,62 @@ impl WatcherService {
             }
         }
     }
+
+    /// Push the tray again, but only when an icon actually appeared or left.
+    ///
+    /// The registration list is one bus read; the per-item query behind
+    /// [`WatcherService::refresh_tray`] spawns a process per item and decodes
+    /// icons, so it only runs when the set changed.
+    pub async fn refresh_tray_if_registrations_changed(&self) {
+        let tray_port = Arc::clone(&self.tray);
+        let Ok(live) = blocking(move || tray_port.registered_item_keys()).await else {
+            return;
+        };
+        {
+            let st = self.state.lock().await;
+            if !tray_registrations_changed(&st.tray_registered_keys, &live) {
+                return;
+            }
+        }
+        self.refresh_tray().await;
+    }
+}
+
+/// How often the watcher checks whether the tray registrations changed.
+///
+/// The shell renders what this daemon pushed, so a new icon has to show up
+/// without the user clicking anything; one cheap bus read every few seconds is
+/// the cost of never showing a stale tray.
+const TRAY_REGISTRATION_POLL: Duration = Duration::from_secs(3);
+
+/// Sorted, de-duplicated identity of a set of tray registrations.
+///
+/// Order and duplicates are not identity: the watcher can report the same
+/// registration twice and in any order, and treating that as a change would
+/// re-query every item on every tick forever.
+pub fn tray_registration_keys(raw: &[String]) -> Vec<String> {
+    let mut keys: Vec<String> = raw
+        .iter()
+        .map(|key| key.trim().to_string())
+        .filter(|key| !key.is_empty())
+        .collect();
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+/// Registration identity of the tray items the daemon last pushed.
+pub fn tray_item_keys(items: &[TrayItem]) -> Vec<String> {
+    let raw: Vec<String> = items
+        .iter()
+        .map(|item| format!("{}{}", item.service, item.path))
+        .collect();
+    tray_registration_keys(&raw)
+}
+
+/// Did the live registrations change since the tray was last pushed?
+pub fn tray_registrations_changed(pushed: &[String], live: &[String]) -> bool {
+    tray_registration_keys(live) != tray_registration_keys(pushed)
 }
 
 pub fn get_kwin_watcher_script() -> String {
@@ -743,6 +812,7 @@ pub async fn run_event_daemon() -> DynResult<()> {
         let mut st = state.lock().await;
         st.cached_windows = initial_wins.clone();
         st.cached_tray = initial_tray.clone();
+        st.tray_registered_keys = tray_item_keys(&initial_tray);
 
         if let Some(act) = &initial_active {
             st.active_title = act.app_name.clone();
@@ -855,6 +925,25 @@ pub async fn run_event_daemon() -> DynResult<()> {
             }
         })
         .await?;
+
+    // The tray is a live list. The shell renders whatever was last pushed, so an
+    // application that registers its icon after this daemon started (Steam, a
+    // download manager, a game) stayed invisible in the dock until the user
+    // happened to click another tray item. Registrations are the cheap signal:
+    // poll them and re-query the items only when the set actually changed.
+    {
+        let service = watcher_service.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(TRAY_REGISTRATION_POLL);
+            // The first tick is immediate; the startup push above already queried
+            // the tray and baselined its registrations.
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                service.refresh_tray_if_registrations_changed().await;
+            }
+        });
+    }
 
     // D-Bus name health monitor: if this daemon process ever loses ownership of
     // the WindowWatcher bus name (e.g. during a session reset or restart race),

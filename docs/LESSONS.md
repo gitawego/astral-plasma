@@ -2595,3 +2595,198 @@ decorative. Reach for numbers you have *measured on the real device*, and assert
 on observable classifications ("background reads as silence", "the whole
 utterance is tracked") rather than on internal numbers that change with the
 estimator.
+
+---
+
+## 27. Decorative Motion Must Not Borrow The Display's Clock
+
+### 27.1 The Symptom
+
+"The GPU is always around 100% usage." At idle, with no drawer open and no media
+playing, `quickshell` burned ~1.2 CPU cores (`QSGRenderThread` ≈ 49%, main thread
+≈ 41%), the Intel iGPU sat at max frequency with RC6 residency almost flat
+(130 ms out of 5 s, then ~50% busy), and KWin was pushed to ~25% of a core on
+top. The whole desktop stuttered; starting the theme made it worse.
+
+### 27.2 The Measurement That Found It
+
+Two numbers settled it:
+
+- **Force the suspect off and re-measure.** Patching the AI activity border's
+  `active` binding to `false` (a three-line temporary edit, hot-reloaded by
+  Quickshell) dropped the shell from ~47% to **0.3%** CPU and the iGPU to idle.
+  The culprit was a *decorative border effect*.
+- **Count frames, not CPU.** In a nested KWin (`kwin_wayland --virtual`, a
+  2560×1600@60 Hz virtual output) a full-screen `Window.onFrameSwapped` counter
+  showed the active effect rendering at **60 fps** — exactly the output refresh —
+  and 0 fps with the effect off. The effect followed the display clock, so the
+  user's real 165 Hz + 240 Hz panels were driving 165–240 full-window renders
+  per second, per screen.
+
+### 27.3 The Root Cause
+
+`NumberAnimation` / `SequentialAnimation` with `loops: Animation.Infinite`
+advance at **display refresh rate**, and Qt Quick repaints the *entire* window on
+every property change. Every long-lived decorative animation therefore pins the
+whole full-screen shell surface to the panel's refresh rate for as long as the
+feature is active. AI agents run for hours; media plays for hours; downloads run
+for hours — so the "animation" was effectively permanent.
+
+The bug class, not the specific effect, was the problem: the same pattern existed
+in seven components (AI matrix border, download border, dock AI quota pulse,
+five media visualizers, the dashboard cover rotation).
+
+### 27.4 The Shape Of The Fix
+
+A frame budget for decoration, enforced by a single shared clock:
+
+- `Theme.decorativeMaxFps: 30` — decorative motion advances at ≤ 30 fps;
+  interactive/spatial transitions are never throttled.
+- `MotionClock` (`components/motion/`) — one reference-counted ticker for the
+  whole shell. `acquire()`/`release()`; it stops when the last consumer stops, so
+  an idle shell does zero decorative work.
+- `MotionPacer` — derives `phase`/`breath` from `MotionClock.elapsedMs` with
+  wall-clock math. No timer, no animation, no drift: a late tick samples the
+  phase; it never slows the cycle down.
+
+### 27.5 Four Traps Found While Fixing It
+
+1. **N timers = N frames.** Two independent 30 Hz pacers interleave, and the
+   compositor renders per update: measured **60 fps for a "30 fps" effect**. All
+   decorative updates must land on the same tick — hence the shared clock.
+2. **Gradient churn costs an extra frame.** A `Qt5Compat.GraphicalEffects`
+   `RadialGradient` regenerates its offscreen source on every gradient-stop
+   change: each pulse tick produced two frames. Keep the gradient static and
+   breathe with node **opacity** instead.
+3. **Periodic content is also a frame source.** The matrix glyph rain had its own
+   10 Hz timer, adding 10 frames/s on top of the motion. Sample
+   `MotionClock.elapsedMs` instead of running a private timer.
+4. **The fix must be measured, not assumed.** After the first ("obviously
+   correct") version, the nested benchmark still said 60 fps. Only counting
+   swapped frames found the interleaving and gradient traps.
+
+### 27.6 The Contract Now Held By Tests
+
+- `tests/tst_motion_pacer.qml` — idle rest state, wall-clock accuracy, the shared
+  tick never exceeding the budget with two consumers, refcount balance, envelope
+  math, degenerate periods.
+- `tests/tst_decorative_animation_budget.qml` — a repo-wide source contract: no
+  `loops: Animation.Infinite` in any decorative host, every host drives motion
+  through `MotionPacer`, `MotionClock` is reference-counted and token-driven, and
+  neither primitive owns a vsync animation.
+
+Benchmark (2560×1600@60 Hz virtual output, full-screen AI border):
+
+| Variant | Rendered frames/s | Client CPU / 12 s |
+| :--- | ---: | ---: |
+| Effect inactive | 0 | 0.00 s |
+| Original animation | 60 (= refresh) | 1.40 s |
+| `MotionClock` (30 fps) | 30 | 0.85 s |
+
+On a 240 Hz panel the uncapped row scales to 240 fps while the capped row stays
+at 30 — the decoration stops being a function of the panel at all.
+
+---
+
+## 28. An Identity Gate Must Test Truth, Not The Shape Of An Identifier
+
+The dock showed a **generic window box** for a running game while the system tray
+and the taskbar both had the app. The data was there; the gate that decided
+whether to use it was wrong:
+
+```rust
+// window_icons.rs - before
+let is_wine = class.trim().to_lowercase().ends_with(".exe");
+if !is_wine { return false; }          // never extract `_NET_WM_ICON`
+let icon = icon_name.trim();
+icon.is_empty() || icon.eq_ignore_ascii_case("wine")
+```
+
+The rule reads like "only Wine apps publish their own icon", and it is wrong on
+both halves:
+
+1. **The class shape is not the platform.** Proton/Steam games are X11 clients
+   that run as `steam_app_default` - no `.exe`, no desktop entry, and a real
+   `_NET_WM_ICON` on the window. The gate skipped them, so the taskbar drew the
+   generic glyph. Anything that classifies a client by how its class is spelled
+   will miss the next interop layer too.
+2. **A non-empty icon name is not an icon.** Identity resolution falls back to
+   the *window class* as the "icon" when it knows nothing better, and that string
+   is what `icon_name` carried. `icon.is_empty()` was false, so the extraction
+   never ran even for the classes the gate did allow.
+
+The truthful question is the one the renderer will ask: **can the icon theme draw
+this name?** That inverts the gate -
+
+```rust
+// window_icons.rs - after
+if icon.is_empty() || icon.eq_ignore_ascii_case("wine") { return true; }
+if icon.starts_with('/') || icon.starts_with("file:") { return false; }
+!theme_icon_exists(icon)               // memoized icon-theme index
+```
+
+- The lookup is an **index built once per root** (a full theme is tens of
+  thousands of files; asking per window identity turned a 3 s walk into a 3 s
+  walk per app). Building it lazily, and memoizing per name, keeps the first
+  iconless window at ~0.7 s and every later one at zero.
+- `should_extract_window_icon` lost its `class` parameter entirely. A parameter
+  that only exists to be pattern-matched against is how the bug got in.
+
+Result on the live session: `steam_app_default` resolved from the generic glyph
+to `~/.cache/astral-plasma/window-icons/steam_app_default.png`, decoded from the
+window's own 32x32 `_NET_WM_ICON` (`docs/proof/tray/`).
+
+**Lesson.** When a fallback path is gated by a heuristic about an identifier
+(`.exe`, a prefix, a vendor string), the gate is the bug. Gate on the property
+you actually need - here, "is this drawable?" - and let the data decide.
+
+---
+
+## 29. A Cached List Of Live Things Is A Stale List
+
+The tray is a live list, but the daemon treated it as a snapshot:
+
+```rust
+// watch_events.rs - before: refresh_tray() ran at startup and on the
+// `RefreshTray` D-Bus method, which only the shell's tray-click handler called.
+```
+
+Consequence: an icon that appeared **after** the shell started (Steam, a
+download manager, a game) stayed invisible in the dock until the user happened
+to click another tray item - and if they never did, the dock's tray simply never
+showed it. From the user's side this is indistinguishable from "the system tray
+is not rendered".
+
+The obvious fix - poll `query_tray()` on a timer - is the expensive one: it
+spawns a process per item and decodes pixmaps, every few seconds, forever. The
+cheap signal was already on the bus: the watcher's **registration list**.
+
+```rust
+// refresh_tray() re-baselines what it pushed...
+st.tray_registered_keys = tray_item_keys(&new_tray);
+
+// ...so the poll only has to compare sets:
+if !tray_registrations_changed(&st.tray_registered_keys, &live) { return; }
+self.refresh_tray().await;
+```
+
+Three details decide whether this works:
+
+1. **Compare sets, not order.** The watcher can report the same registration
+   twice, in any order. Comparing vectors would look like a change on every tick
+   and re-query the whole tray forever.
+2. **Both readers must agree on identity.** The cheap poll and the full query
+   now share `split_registration`; if they disagreed about what `:1.36/StatusNotifierItem`
+   means, the poll would see a change (or miss one) permanently.
+3. **The baseline is the pushed list, not the raw bus reply.** Re-baselining in
+   `refresh_tray()` means "the shell has exactly these registrations", so a
+   partial query self-heals on the next tick instead of freezing.
+
+**Proof (live, while the shell was running).** A probe `StatusNotifierItem` was
+registered on the session bus; the dock's tray went **5 -> 6 items in ≤1.4 s**
+with no interaction, and back to 5 in ≤1.4 s when the probe exited. The probe's
+glyph appeared in the tray next to the others (`docs/proof/tray/`).
+
+**Lesson.** For any list that mirrors another process's state, ask what its
+*cheap change signal* is before choosing a refresh interval. Poll the signal;
+query the data.

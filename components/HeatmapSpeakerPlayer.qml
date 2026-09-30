@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import "motion"
 import "../theme"
 import "../services"
 import "../config"
@@ -31,15 +32,13 @@ Item {
     readonly property real audioTreble: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.treble : 0.0
     readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.beat : 0.0
 
-    // Animation timer for gentle orbital float
-    property real animPhase: 0.0
-    NumberAnimation on animPhase {
-        from: 0.0
-        to: Math.PI * 2
-        duration: 8000
-        loops: Animation.Infinite
+    // Animation timer for gentle orbital float (capped at Theme.decorativeMaxFps).
+    MotionPacer {
+        id: orbitPacer
         running: root.isPlaying && root.isTargetVisible && root.audioEnergy > 0.005
+        period: 8000
     }
+    readonly property real animPhase: orbitPacer.phase * Math.PI * 2
 
     // ==========================================
     // 1. DYNAMIC JUMPING MUSIC DOTS & RAINBOW NOTES
@@ -352,12 +351,12 @@ Item {
                 width: parent.width * 1.45
                 height: width
 
-                NumberAnimation on rotation {
-                    from: 0
-                    to: 360
-                    duration: 22000
-                    loops: Animation.Infinite
+                rotation: spinPacer.phase * 360
+
+                MotionPacer {
+                    id: spinPacer
                     running: root.isPlaying && root.isTargetVisible
+                    period: 22000
                 }
 
                 Image {

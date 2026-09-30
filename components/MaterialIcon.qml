@@ -215,6 +215,14 @@ Item {
         "key": "󰌆",
         "check_circle": "󰄳",
         "check_circle_outline": "󰄳",
+        "content_paste": "󰆒",
+        "select_all": "󰒆",
+        "delete_sweep": "󰗩",
+        "download": "󰇚",
+        "cloud_download": "󰅢",
+        "file_download": "󰥥",
+        "link": "󰌷",
+        "task_alt": "󰗠",
         "account_circle": "󰀉",
         "person": "󰀄",
         "user": "󰀄",
@@ -230,6 +238,9 @@ Item {
         if (key && key.length <= 2) return key;
         if (key && (key.startsWith("wifi") || key.startsWith("network_wifi"))) return "󰤨";
         if (key && (key.includes("refresh") || key.includes("sync"))) return "󰑓";
+        if (key && key.includes("download")) return "󰇚";
+        if (key && key.includes("link")) return "󰌷";
+        if (key && (key === "task_alt" || key.includes("task_done"))) return "󰗠";
         if (key && key.includes("drag")) return "󰇙";
         if (key && (key.includes("psychology") || key.includes("brain") || key === "ai")) return "󰧑";
         if (key && (key.includes("spark") || key.includes("auto_awesome"))) return "󰄧";

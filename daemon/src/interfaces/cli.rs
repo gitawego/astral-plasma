@@ -631,6 +631,115 @@ pub async fn run_cli() -> DynResult<()> {
             let json = metrics_ctrl.execute_json()?;
             println!("{}", json);
         }
+        "downloads" => {
+            use crate::application::download_service::{Aria2DownloadsPort, DownloadsUseCase};
+            use crate::domain::downloads::{clamp_split, NewDownloadOptions};
+            use std::sync::Arc;
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("snapshot");
+            // Settings-supplied defaults (QML passes --dir/--split); the
+            // use case fills the rest (~/Downloads, split 4).
+            let mut opt_dir: Option<String> = None;
+            let mut opt_split: Option<u32> = None;
+            let mut positional: Vec<String> = Vec::new();
+            let mut i = 3;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--dir" => {
+                        if let Some(v) = args.get(i + 1) {
+                            opt_dir = Some(v.clone());
+                            i += 1;
+                        }
+                    }
+                    "--split" => {
+                        if let Some(v) = args.get(i + 1).and_then(|s| s.parse::<i64>().ok()) {
+                            opt_split = Some(clamp_split(v));
+                            i += 1;
+                        }
+                    }
+                    other => positional.push(other.to_string()),
+                }
+                i += 1;
+            }
+            let use_case = match (opt_dir.clone(), opt_split) {
+                (None, None) => DownloadsUseCase::new(Arc::new(Aria2DownloadsPort)),
+                _ => DownloadsUseCase::with_defaults(
+                    Arc::new(Aria2DownloadsPort),
+                    opt_dir.clone().unwrap_or_else(|| {
+                        crate::domain::branding::home_dir().join("Downloads").to_string_lossy().to_string()
+                    }),
+                    opt_split.unwrap_or(crate::domain::downloads::DEFAULT_SPLIT),
+                ),
+            };
+            match sub {
+                // One-shot state query: the `watch` stream tells QML *when*
+                // to re-run this, so QML never polls on a timer.
+                "snapshot" => {
+                    let _ = use_case.ensure_running();
+                    let snap = use_case.snapshot()?;
+                    println!("{}", serde_json::to_string(&snap)?);
+                }
+                "ensure" => {
+                    let started = use_case.ensure_running()?;
+                    println!(r#"{{"success":true,"started":{}}}"#, started);
+                }
+                "add" => {
+                    let _ = use_case.ensure_running();
+                    let input = positional.join("\n");
+                    let opts = NewDownloadOptions {
+                        dir: opt_dir,
+                        split: opt_split,
+                        ..Default::default()
+                    };
+                    let gids = use_case.add_urls(&input, opts)?;
+                    println!("{}", serde_json::to_string(&serde_json::json!({"gids": gids}))?);
+                }
+                "pause" | "resume" | "cancel" | "remove" | "retry" => {
+                    let gid = positional.first().map(|s| s.as_str()).unwrap_or("");
+                    if gid.is_empty() {
+                        eprintln!("Usage: astral-plasma downloads {} <gid>", sub);
+                        std::process::exit(2);
+                    }
+                    match sub {
+                        "pause" => use_case.pause(gid)?,
+                        "resume" => use_case.resume(gid)?,
+                        "cancel" => use_case.cancel(gid, false)?,
+                        "remove" => { use_case.remove_result(gid)?; }
+                        _ => {
+                            let new_gid = use_case.retry(gid)?;
+                            println!(r#"{{"success":true,"gid":"{}"}}"#, new_gid);
+                            return Ok(());
+                        }
+                    }
+                    println!(r#"{{"success":true}}"#);
+                }
+                "cancel-delete" => {
+                    let gid = positional.first().map(|s| s.as_str()).unwrap_or("");
+                    if gid.is_empty() {
+                        eprintln!("Usage: astral-plasma downloads cancel-delete <gid>");
+                        std::process::exit(2);
+                    }
+                    use_case.cancel(gid, true)?;
+                    println!(r#"{{"success":true}}"#);
+                }
+                "purge" => {
+                    use_case.purge_results()?;
+                    println!(r#"{{"success":true}}"#);
+                }
+                // Event stream: `downloads watch [--dir ..] [--split ..]`.
+                // Emits a full snapshot line on start, then re-emits ONLY on
+                // change: new/removed gid, status flip, completion, error, or
+                // progress crossing a 0.5% quantum. Cadence is 1s while any
+                // task is active, 5s idle. Change-only + coarse quantum =
+                // ~2 lines/s worst case: the UI never repaints at 60fps.
+                "watch" => {
+                    crate::application::download_service::run_downloads_watch(use_case).await?;
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma downloads <snapshot|ensure|add|pause|resume|cancel|cancel-delete|remove|retry|purge|watch> [args...]");
+                    std::process::exit(2);
+                }
+            }
+        }
         "ai" => {
             use crate::application::ai_quota_service::AiQuotaUseCase;
             let ai_service = AiQuotaUseCase::default();
@@ -959,6 +1068,14 @@ pub async fn run_cli() -> DynResult<()> {
                     });
                     println!("{}", serde_json::to_string(&res)?);
                 }
+                "restore" => {
+                    // Hand KWin's blur back: the shell tunes BlurStrength for
+                    // its glass, and leaving that override in kwinrc means the
+                    // desktop keeps the shell's blur after the shell is gone.
+                    let restored = adapter.restore()?;
+                    let res = serde_json::json!({ "success": true, "restored": restored });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
                 "fidelity" => {
                     // Map the shell's 0.0..1.0 blurStrength preference (glass
                     // fidelity) onto KWin's inverted 1..10 scale.
@@ -973,7 +1090,7 @@ pub async fn run_cli() -> DynResult<()> {
                     println!("{}", serde_json::to_string(&res)?);
                 }
                 _ => {
-                    eprintln!("Usage: astral-plasma blur <get|set <1-10> [noise]|fidelity <0.0-1.0>>");
+                    eprintln!("Usage: astral-plasma blur <get|set <1-10> [noise]|fidelity <0.0-1.0>|restore>");
                 }
             }
         }
@@ -1367,7 +1484,7 @@ pub async fn run_cli() -> DynResult<()> {
                     let payload = serde_json::json!({
                         "pi_executable": st.pi_executable.map(|p| p.to_string_lossy().to_string()),
                         "hermes_executable": st.hermes_executable.map(|p| p.to_string_lossy().to_string()),
-                        "has_mcp_adapter": st.has_mcp_adapter,
+                        "has_mcp_support": st.has_mcp_support,
                         "has_subagents": st.has_subagents,
                         "status": "ok"
                     });

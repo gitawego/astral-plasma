@@ -138,6 +138,24 @@ Item {
         assert(/overviewThumbnails/.test(ws),
             "WindowService must publish the per-window thumbnail map");
 
+        // ---- 11. UnifiedShell keyboard-focus hand-back -------------------------------
+        // The shell's own surfaces request keyboard focus too (the Downloads add
+        // sheet's text field, the power modal). KWin does not reassign activation
+        // when a layer surface stops requesting keyboard focus, so every release
+        // must call `focus restore`: a full-screen layer surface left as the
+        // active window leaves the tabbox with nothing to switch away from
+        // (Alt+Tab goes dead) and starves the watcher of windowActivated events.
+        const unified = readLocalFile("../shell/UnifiedShell.qml");
+        assert(unified.length > 1000, "shell/UnifiedShell.qml must be readable");
+        assert(/WlrKeyboardFocus\.Exclusive/.test(unified),
+            "UnifiedShell requests exclusive keyboard focus for text input");
+        assert(/keyboardFocus:[\s\S]{0,600}requestsKeyboardFocus/.test(unified),
+            "the keyboard-focus policy must be driven by one named request property");
+        assert(/onRequestsKeyboardFocusChanged/.test(unified),
+            "UnifiedShell must react to its keyboard-focus request ending");
+        assert(/"focus",\s*"restore"/.test(unified),
+            "releasing keyboard focus must hand compositor activation back (focus restore)");
+
         console.log("PASS: Active apps overview Meta wiring tests passed");
         Qt.exit(0);
     }

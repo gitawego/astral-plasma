@@ -7,6 +7,7 @@ fn snap(group: &str, key: &str, previous_value: Option<&str>) -> GranularShortcu
         group: group.to_string(),
         key: key.to_string(),
         previous_value: previous_value.map(str::to_string),
+        keys: Vec::new(),
     }
 }
 
@@ -29,6 +30,7 @@ fn displaced_action(group: &str, key: &str) -> DisplacedShortcut {
         group: group.to_string(),
         key: key.to_string(),
         full_value: "Meta,none,Other Action".to_string(),
+        keys: Vec::new(),
     }
 }
 
@@ -173,4 +175,105 @@ fn snapshot_reaches_the_adapter_even_with_an_active_backup() {
         1,
         "an active backup must still reach snapshot_relevant_shortcuts so newly-managed keys get merged in"
     );
+}
+
+// ============================================================================
+// Live key codes: the config text alone is not enough
+// ============================================================================
+
+/// A file-level restore does not move KGlobalAccel's *live* registration: the
+/// running daemon keeps the keys it has, so a restored `kglobalshortcutsrc`
+/// leaves the user's shortcuts dead until the next login. That is exactly how
+/// Meta+W (Overview) and the launcher's bare Meta were lost: the session's
+/// journal recorded the config text but not the key codes KGlobalAccel was
+/// holding. The journal therefore records the codes, and the restore replays
+/// them.
+#[test]
+fn backup_round_trips_the_live_key_codes() {
+    let entry = GranularShortcutSnapshot {
+        group: "kwin".to_string(),
+        key: "Overview".to_string(),
+        previous_value: Some("none,Meta+W,Toggle Overview".to_string()),
+        keys: vec![268435543],
+    };
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let parsed: GranularShortcutSnapshot = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(parsed.keys, vec![268435543]);
+}
+
+/// Journals written before the codes were captured must still load.
+#[test]
+fn journals_without_key_codes_still_load() {
+    let legacy = r#"{"timestamp":1,"affected_entries":[{"group":"kwin","key":"AstralLauncher","previous_value":"none,none,Launcher"}],"previous_kwin_plugin_enabled":false,"displaced_action":null,"displaced_actions":[{"group":"kwin","key":"Overview","full_value":"none,Meta+W,Toggle Overview"}],"mode":"meta-space"}"#;
+    let parsed: AstralShortcutSessionBackup =
+        serde_json::from_str(legacy).expect("legacy journal must load");
+    assert!(parsed.affected_entries[0].keys.is_empty());
+    assert!(parsed.displaced_actions[0].keys.is_empty());
+}
+
+/// The replay must name the action it re-arms and pass the recorded codes.
+#[test]
+fn the_rearm_step_hands_the_recorded_codes_back() {
+    use astral_plasma::infrastructure::kwin_shortcuts::rearm_snippet;
+
+    let mut confirmed = GranularShortcutSnapshot {
+        group: "kwin".to_string(),
+        key: "Overview".to_string(),
+        previous_value: Some("none,Meta+W,Toggle Overview".to_string()),
+        keys: vec![268435543],
+    };
+    let displaced = DisplacedShortcut {
+        group: "kwin".to_string(),
+        key: "Show Desktop".to_string(),
+        full_value: "none,Meta+D,Peek at Desktop".to_string(),
+        keys: vec![268435524],
+    };
+    let partial_journal = AstralShortcutSessionBackup {
+        timestamp: 1,
+        affected_entries: vec![confirmed.clone()],
+        previous_kwin_plugin_enabled: false,
+        displaced_action: None,
+        displaced_actions: vec![displaced],
+        mode: Some("meta-space".to_string()),
+    };
+
+    let snippet = rearm_snippet(&partial_journal);
+    assert!(snippet.contains("setForeignShortcut"), "the replay must use setForeignShortcut:\n{snippet}");
+    assert!(snippet.contains("'Overview'"), "the overview action must be re-armed:\n{snippet}");
+    assert!(snippet.contains("268435543"), "the recorded code must be replayed:\n{snippet}");
+    assert!(snippet.contains("'Show Desktop'") && snippet.contains("268435524"),
+        "every displaced action must be re-armed:\n{snippet}");
+    assert!(snippet.contains("Toggle Overview"),
+        "the replay must use the action's own label, not a placeholder:\n{snippet}");
+
+    // An entry without codes must not be replayed (old journals must not make
+    // the restore emit a bogus zero-key reset)...
+    confirmed.keys.clear();
+    let bare = AstralShortcutSessionBackup { affected_entries: vec![confirmed], ..partial_journal.clone() };
+    let partial = rearm_snippet(&bare);
+    assert!(!partial.contains("'Overview'"),
+        "an entry without recorded codes must not be replayed:\n{partial}");
+
+    // ...and a journal with no codes at all produces no replay script.
+    let nothing = AstralShortcutSessionBackup {
+        affected_entries: Vec::new(),
+        displaced_action: None,
+        displaced_actions: Vec::new(),
+        ..partial_journal
+    };
+    assert!(rearm_snippet(&nothing).is_empty(),
+        "a journal with no recorded codes must produce no replay script");
+}
+
+/// The restore path must call the replay (a config rewrite alone is not enough).
+#[test]
+fn restore_replays_the_live_keys() {
+    let source = std::fs::read_to_string(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/src/infrastructure/kwin_shortcuts.rs"),
+    )
+    .expect("kwin_shortcuts.rs must be readable");
+    assert!(source.contains("rearm_snippet"),
+        "restore_relevant_shortcuts must replay the recorded live keys");
+    assert!(source.contains("shortcutKeys"),
+        "the snapshot must capture the live keys before the session claims them");
 }

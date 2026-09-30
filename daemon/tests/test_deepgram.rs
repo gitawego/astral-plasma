@@ -8,6 +8,15 @@ use astral_plasma::domain::ports::SpeechToTextPort;
 use astral_plasma::domain::voice::{VoiceEvent, VoiceSessionConfig, VoiceSettings};
 use futures_util::{SinkExt, StreamExt};
 
+/// The API key lives in the *process* environment and both tests here mutate it
+/// (one points the adapter at its stub endpoint, the other asserts that a
+/// missing key is reported as a setup gap). Cargo runs the tests of a binary in
+/// parallel threads, so without this lock one test's key makes the other take
+/// the "key present" path - and with a current-thread runtime that panics in
+/// `block_in_place` instead of asserting. One writer at a time, as in
+/// `test_plasma_rust.rs`.
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn write_script(path: &std::path::Path, body: &str) {
     std::fs::write(path, body).expect("write script");
     #[cfg(unix)]
@@ -21,6 +30,7 @@ fn write_script(path: &std::path::Path, body: &str) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn streams_interim_partials_then_final() {
+    let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = tempfile::tempdir().expect("tempdir");
 
     // Capture stub: speech-like tone (energy sees speech) then quiet.
@@ -132,6 +142,7 @@ async fn streams_interim_partials_then_final() {
 
 #[tokio::test]
 async fn missing_key_is_a_setup_gap() {
+    let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::remove_var("ASTRAL_DEEPGRAM_KEY");
     let cfg = VoiceSessionConfig::from_settings(&VoiceSettings::default());
     let adapter = astral_plasma::infrastructure::deepgram_stt_adapter::DeepgramAdapter::new();

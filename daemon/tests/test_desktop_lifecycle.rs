@@ -254,3 +254,24 @@ fn a_legacy_journal_learns_its_mode() {
     session.run(&["shortcuts", "bind", "meta-space"]);
     assert_eq!(claimed, session.read(&session.kglobal()));
 }
+
+#[test]
+fn releasing_deactivates_the_astral_kwin_script() {
+    // The kwinrc plugin flag decides whether KWin loads the Astral shortcut
+    // script at login. A previous session can leave it enabled; "restoring" that
+    // value then keeps KWin registering Astral shortcuts (the bare Meta overview
+    // key included) even with the theme not running - which is how a session
+    // loses Alt+Tab *without* the theme. Releasing must always deactivate it.
+    let session = Session::new("plugin-release");
+    session.write(&session.kglobal(), PLASMA_OWNED);
+    session.write(&session.kwinrc(), "[Plugins]\nastral-plasma-shortcutsEnabled=true\n");
+
+    session.run(&["shortcuts", "bind", "meta-space"]);
+    session.run(&["shortcuts", "restore"]);
+
+    let kwinrc = session.read(&session.kwinrc());
+    assert!(
+        !kwinrc.contains("astral-plasma-shortcutsEnabled=true"),
+        "releasing the session must deactivate the Astral KWin script, got:\n{kwinrc}"
+    );
+}
