@@ -2813,3 +2813,83 @@ PROBE cloudmusic       | icon=/mnt/data/cache/astral-plasma/window-icons/cloudmu
 **Lesson.** When the same domain decision is reachable from several entry points,
 read the *other* entry points before declaring a fix done - and then make each of
 them impossible to diverge.
+
+---
+
+## 30. Data-Driven Decoration Is Still Decoration
+
+The performance tab was fine when it opened and settled into a permanent 43.8 %
+of the iGPU and 45 % of a CPU core (dashboard closed: 0.3 % / 1.9 %). Nothing was
+leaking. The tab simply *never stopped animating*:
+
+```qml
+NumberAnimation on slideProgress { duration: 450 }      // telemetry trace slide
+Behavior on width { NumberAnimation { duration: 450 } } // usage bar
+Behavior on animatedMainUsage { NumberAnimation { duration: 450 } }
+
+onActiveHistoryChanged: { slideAnim.stop(); root.slideProgress = 0; slideAnim.restart(); }
+```
+
+CPU metrics arrive every **400 ms**; the animation lasts **450 ms**. It was
+restarted before it could ever finish, so the tab was animating 100 % of the time
+at *display refresh* - 240 Hz on this panel - and every frame repainted a Canvas
+(full grid, axis labels and a 61-point path) and re-rendered the tab. Six of these
+existed; three were effectively continuous.
+
+**The fix is not a smaller duration.** `MotionTween` and `MotionValue` (this
+repository's motion primitives, both on the shared `MotionClock`) advance a value
+in at most `Theme.decorativeMaxFps` steps per second, are wall-clock accurate, land
+exactly on their endpoint, and **release the clock when they finish**, so a hidden
+or settled surface costs nothing. A Qt animation cannot be rate-limited like that,
+and `Behavior` cannot be told to stop after one run.
+
+| Performance tab | Shell iGPU render engine | Shell CPU |
+| :--- | ---: | ---: |
+| Before (open) | 43.8 % | 45.1 % |
+| After (open) | 3.6-7.8 % | 19-28 % |
+| Dashboard closed (both) | 0.3-1.1 % | 1.9 % |
+
+The user-visible percentage is a different thing: on Intel it is derived from the
+GT *frequency*, which any wake-up ramps and which decays slowly - measured at
+78-84 % **with the dashboard closed**. Reducing the shell's own work by 8x is
+invisible in that number while other applications keep waking the GPU.
+
+The remaining 20 % CPU is the tab's own honest work: five Canvas repaints at
+metric rate, ~40 live bindings, and the audio visualiser's data fan-out.
+
+**Lesson.** "Decorative" is about *who drives* the motion, not about whether the
+value is data. A metric-driven tween is decoration and belongs on the decorative
+budget; only interactive (user-driven) spatial transitions may run at display
+refresh. And check the duty cycle: an animation whose duration exceeds its update
+interval is a permanent animation, whatever its duration looks like.
+
+---
+
+## 31. A Measurement Tool That Can Print -4703 % Is Not A Measurement
+
+The GPU numbers above come from `/proc/<pid>/fdinfo` DRM engine counters, and the
+first version of that reader summed "all rows now minus all rows then". Two ways
+that lies:
+
+1. **Duplicated fds.** A process that opened the DRM node twice - or `dup()`ed it -
+   lists the *same* counters in several fds. Summing multiplies the estimate.
+   Quickshell had four fds for one DRM file, so every earlier number in this
+   project's audits was inflated by that factor.
+2. **Fd churn.** Render targets and dma-buf imports open and close while a process
+   runs, so "sum now minus sum then" counts the fds that appeared and goes
+   *negative* when one disappears. A bisect run reported `-4703.5 %` and
+   `7248.0 %` for the same process minutes apart.
+
+The fix is to pair samples: collapse rows that agree on every engine counter (one
+DRM file, several fds), then only count fds that exist in **both** samples with the
+same device. `scripts/measure_render.py` does that and reports all three numbers
+worth having - per-process GPU time, CPU time, and the i915 RC6 busy share that a
+user actually sees as "GPU usage".
+
+**Lesson.** An instrument that can produce an impossible value has no error bar to
+show for it. When a reading surprises you, first prove the instrument: check it
+against a known case, and prefer counters that are monotonic by construction.
+
+**Caveat for these numbers.** They were taken while the session was composited,
+with the media drawer open (audio playing, so the visualiser stream was live) -
+that drawer is part of the baseline in both rows of the table.

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import "../../components/motion"
 import "../../theme"
 import "../../components"
 import "../../services"
@@ -85,8 +86,7 @@ Item {
             Config.perfSelectedDevice = selectedDevice;
         }
         // Immediate clean reset when switching hardware device tabs
-        slideAnim.stop();
-        root.slideProgress = 1.0;
+        slideTween.complete();
         const currentData = root.activeHistory;
         let b = (currentData && currentData.length) ? currentData.slice() : [];
         if (b.length > 0) b.push(b[b.length - 1] || 0.0);
@@ -155,26 +155,64 @@ Item {
         return hist;
     }
 
-    // Smooth horizontal slide telemetry properties (preserves shape, zero deformation)
+    // Smooth horizontal slide telemetry properties (preserves shape, zero deformation).
+    // The slide is *data-driven* decoration: it runs on the shared decorative clock
+    // (≤ `decorativeMaxFps`), so the trace is repainted at most that often per
+    // second instead of once per display frame. A Qt animation here was restarted by
+    // every 400 ms sample while lasting 450 ms, so it never finished and the whole
+    // tab rendered at the panel's refresh rate.
     property var slideBuffer: []
-    property real slideProgress: 1.0
+    readonly property real slideProgress: slideTween.value
 
     readonly property real waveMorph: slideProgress // alias for test backward compatibility
 
-    NumberAnimation on slideProgress {
-        id: slideAnim
-        duration: 450
-        easing.type: Easing.BezierSpline
-        easing.bezierCurve: [0.25, 0.1, 0.25, 1.0]
+    MotionTween {
+        id: slideTween
+        duration: Theme.animExpressiveFastEffects
+        bezier: Theme.curveExpressiveFastEffects
         from: 0.0
         to: 1.0
-        running: false
+        onAdvanced: {
+            if (root.isTargetVisible) {
+                telemetryCanvas.requestPaint();
+            }
+        }
     }
 
-    onSlideProgressChanged: {
-        if (root.isTargetVisible) {
-            telemetryCanvas.requestPaint();
-        }
+    // Usage meters follow their metric on the same clock. See MotionValue: a
+    // `Behavior on width` would animate at display refresh and, with a 400 ms CPU
+    // sample interval, never come to rest.
+    MotionValue {
+        id: cpuBar
+        animated: root.isTargetVisible
+        duration: Theme.animExpressiveFastSpatial
+        bezier: Theme.curveExpressiveFastSpatial
+        target: Math.min(1.0, Math.max(0.0, (typeof SystemService !== "undefined" && SystemService.cpuUsage !== undefined) ? SystemService.cpuUsage : 0.0))
+    }
+
+    MotionValue {
+        id: ramBar
+        animated: root.isTargetVisible
+        duration: Theme.animExpressiveFastSpatial
+        bezier: Theme.curveExpressiveFastSpatial
+        target: Math.min(1.0, Math.max(0.0, (typeof SystemService !== "undefined" && SystemService.ramUsage !== undefined) ? SystemService.ramUsage : 0.0))
+    }
+
+    MotionValue {
+        id: batteryBar
+        animated: root.isTargetVisible
+        duration: Theme.animExpressiveFastSpatial
+        bezier: Theme.curveExpressiveFastSpatial
+        target: Math.min(1.0, Math.max(0.0, (typeof SystemService !== "undefined" && SystemService.batteryPercentage !== undefined) ? (SystemService.batteryPercentage / 100.0) : 1.0))
+    }
+
+    // The selected device's big readout follows the same policy.
+    MotionValue {
+        id: mainUsage
+        animated: root.isTargetVisible
+        duration: Theme.animExpressiveFastSpatial
+        bezier: Theme.curveExpressiveFastSpatial
+        target: detailContainer.targetMainUsage
     }
 
     onActiveHistoryChanged: {
@@ -205,11 +243,9 @@ Item {
         }
 
         if (root.isTargetVisible) {
-            slideAnim.stop();
-            root.slideProgress = 0.0;
-            slideAnim.restart();
+            slideTween.restart();
         } else {
-            root.slideProgress = 1.0;
+            slideTween.complete();
             telemetryCanvas.requestPaint();
         }
     }
@@ -340,17 +376,9 @@ Item {
 
                         Rectangle {
                             anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
-                            width: Math.max(parent.radius * 2, parent.width * Math.min(1.0, Math.max(0.0, ((typeof SystemService !== "undefined" && SystemService.cpuUsage !== undefined) ? SystemService.cpuUsage : 0.0))))
+                            width: Math.max(parent.radius * 2, parent.width * cpuBar.value)
                             radius: parent.radius
                             color: root.cpuColor
-
-                            Behavior on width {
-                                NumberAnimation {
-                                    duration: 450
-                                    easing.type: Easing.BezierSpline
-                                    easing.bezierCurve: [0.25, 0.1, 0.25, 1.0]
-                                }
-                            }
                         }
                     }
                 }
@@ -468,17 +496,9 @@ Item {
 
                         Rectangle {
                             anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
-                            width: Math.max(parent.radius * 2, parent.width * Math.min(1.0, Math.max(0.0, ((typeof SystemService !== "undefined" && SystemService.ramUsage !== undefined) ? SystemService.ramUsage : 0.0))))
+                            width: Math.max(parent.radius * 2, parent.width * ramBar.value)
                             radius: parent.radius
                             color: root.memoryColor
-
-                            Behavior on width {
-                                NumberAnimation {
-                                    duration: 450
-                                    easing.type: Easing.BezierSpline
-                                    easing.bezierCurve: [0.25, 0.1, 0.25, 1.0]
-                                }
-                            }
                         }
                     }
                 }
@@ -494,6 +514,15 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     interactive: true
+
+                    // 0×0 motion item: a direct child of the card, never a layout slot.
+                    MotionValue {
+                        id: gpuBar
+                        animated: root.isTargetVisible
+                        duration: Theme.animExpressiveFastSpatial
+                        bezier: Theme.curveExpressiveFastSpatial
+                        target: Math.min(1.0, Math.max(0.0, (gpuCardDelegate.gpuData && gpuCardDelegate.gpuData.usage !== undefined) ? gpuCardDelegate.gpuData.usage : 0.0))
+                    }
 
                     readonly property var gpuData: {
                         if (typeof SystemService !== "undefined" && SystemService.gpus && SystemService.gpus[index]) {
@@ -639,17 +668,9 @@ Item {
 
                             Rectangle {
                                 anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
-                                width: Math.max(parent.radius * 2, parent.width * Math.min(1.0, Math.max(0.0, ((gpuCardDelegate.gpuData && gpuCardDelegate.gpuData.usage !== undefined) ? gpuCardDelegate.gpuData.usage : 0.0))))
+                                width: Math.max(parent.radius * 2, parent.width * gpuBar.value)
                                 radius: parent.radius
                                 color: root.gpuColor
-
-                                Behavior on width {
-                                    NumberAnimation {
-                                        duration: 450
-                                        easing.type: Easing.BezierSpline
-                                        easing.bezierCurve: [0.25, 0.1, 0.25, 1.0]
-                                    }
-                                }
                             }
                         }
                     }
@@ -767,17 +788,9 @@ Item {
 
                         Rectangle {
                             anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
-                            width: Math.max(parent.radius * 2, parent.width * Math.min(1.0, Math.max(0.0, ((typeof SystemService !== "undefined" && SystemService.batteryPercentage !== undefined) ? (SystemService.batteryPercentage / 100.0) : 1.0))))
+                            width: Math.max(parent.radius * 2, parent.width * batteryBar.value)
                             radius: parent.radius
                             color: root.batteryColor
-
-                            Behavior on width {
-                                NumberAnimation {
-                                    duration: 450
-                                    easing.type: Easing.BezierSpline
-                                    easing.bezierCurve: [0.25, 0.1, 0.25, 1.0]
-                                }
-                            }
                         }
                     }
                 }
@@ -813,13 +826,9 @@ Item {
                 }
             }
 
-            property real animatedMainUsage: targetMainUsage
-            Behavior on animatedMainUsage {
-                NumberAnimation {
-                    duration: 450
-                    easing.type: Easing.OutCubic
-                }
-            }
+            // Follows the metric on the shared decorative clock (see `mainUsage`
+            // above): a `Behavior` here animated at display refresh forever.
+            readonly property real animatedMainUsage: mainUsage.value
 
             ColumnLayout {
                 anchors.fill: parent

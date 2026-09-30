@@ -1144,3 +1144,126 @@ The GPU figures above were measured with the displays on; the panel is
 two fixes remove *hidden* apps from the picture (a wrong glyph and a frozen tray
 list), they do not make X11 clients cheap: Xwayland remains the largest single
 iGPU consumer whenever a Wine/Proton app is alive.
+
+---
+
+## 23. "The GPU Jumps To 38 % And Stays There While The Performance Tab Is Open"
+
+Reported right after the taskbar/tray work: with the Performance tab left open, the
+iGPU settled at ~38 % and stayed; closed, it was ~8 %.
+
+### Reproduction
+
+`scripts/measure_render.py` (written for this audit) reports per-process GPU time
+from the i915 DRM engine counters, CPU time, and the RC6 busy share:
+
+| State | quickshell iGPU | quickshell CPU |
+| :--- | ---: | ---: |
+| Dashboard closed | 0.3 % | 1.9 % |
+| Performance tab open | **43.8 %** | **45.1 %** |
+
+Steady state, not a transient: measured after the tab had been open for seconds and
+maintained over an 8 s window.
+
+### Root cause
+
+Six `NumberAnimation`/`Behavior` tweens of **450 ms** in
+`dashboard/tabs/PerformanceTab.qml`, three of which are driven by metrics that
+arrive every **400 ms** (CPU 400 ms, RAM/GPU 1000 ms). Each sample called
+`slideAnim.stop(); slideProgress = 0; slideAnim.restart()`, so the animation was
+restarted before it ever finished: the tab animated 100 % of the time at *display
+refresh* (240 Hz here). Every one of those frames repainted a Canvas that draws a
+full grid, axis labels and a 61-point area path, and re-rendered the whole tab.
+
+### Fix
+
+Two new motion primitives, both on the shared `MotionClock`
+(`components/motion/`), so data-driven decoration obeys the same frame budget as
+every other decorative effect (`Theme.decorativeMaxFps = 30`):
+
+- **`MotionTween`** - one-shot transition: `from` → `to` over `duration`, advanced
+  on clock ticks, wall-clock accurate (a coalesced tick never slows it), lands
+  exactly on `to`, emits `advanced()` for Canvas hosts, and releases the clock when
+  it finishes. `restart()` while running never takes a second clock reference.
+- **`MotionValue`** - the companion for meters: eases towards `target`, takes over
+  from wherever it is when the target moves mid-flight, and tracks the target
+  exactly (holding no clock reference at all) while `animated` is false - which is
+  what a hidden surface wants.
+
+The tab now uses `slideTween` for the telemetry slide, one `MotionValue` per usage
+meter (CPU/RAM/GPU/battery + the big device readout), with durations and bezier
+curves from the design tokens (`animExpressiveFastEffects`, `animExpressiveFastSpatial`).
+
+| Performance tab | quickshell iGPU | quickshell CPU |
+| :--- | ---: | ---: |
+| Before, open | 43.8 % | 45.1 % |
+| After, open | **3.6-7.8 %** (settled runs: 1.6-17 % ambient noise) | **19-28 %** |
+| After, closed | 0.3-1.1 % | 1.9 % |
+
+Visual check: the tab still draws its trace, grid, labels, per-card meters and
+metric values correctly - `docs/proof/perf-tab/performance-tab-on-the-motion-budget.png`.
+
+### Why the reading can still look high
+
+For Intel, the shell's GPU percentage is a **frequency proxy**: the daemon derives
+it from `gt_act_freq_mhz` between `gt_min_freq_mhz` and `gt_max_freq_mhz`
+(`proc_metrics.rs`, `parse_intel_gpu_freq`). Anything that wakes the GPU - other
+applications, the compositor re-blending and blurring two high-refresh outputs -
+keeps that frequency ramped, and the governor decays slowly, so the number jumps
+back up as soon as any load returns.
+
+Measured here over 8 s windows with the dashboard **closed**:
+
+| | GT frequency |
+| :--- | ---: |
+| Dashboard closed (settled) | mean 1248-1350 MHz of 300-1550 (78-84 %) |
+| Performance tab open (settled) | mean 1209-1399 MHz |
+
+So the frequency proxy is dominated by ambient GPU activity, not by this tab:
+the tab's own share is the 43.8 % -> ~5 % column above. To read the tab's real
+cost, compare it while nothing else is running (this session had Edge, Xwayland
+with Wine apps, a system monitor and a terminal continuously rendering).
+
+### Measurement honesty
+
+Per-process A/B comparisons in this session were also noisy (the same
+configuration measured 5.5 % and 17.1 % in consecutive runs): writing measurement
+output to the terminal makes the terminal re-render, which is itself GPU work.
+Runs that differ by less than a factor of two here are not evidence.
+
+The first version of the measuring script summed fdinfo rows without collapsing
+duplicated fds (quickshell holds four fds for one DRM file) and without pairing
+samples (fds for render targets come and go, which produced a `-4703 %` reading
+during bisection). Both are fixed in `scripts/measure_render.py`, and the earlier
+inflated numbers in this document were re-measured where it mattered. See
+[LESSONS §31](docs/LESSONS.md).
+
+### Follow-up found by the same sweep
+
+Sweeping every dashboard tab with the fixed instrument shows the *other* tabs have
+their own cost, unrelated to this fix:
+
+| Tab | quickshell iGPU | quickshell CPU |
+| :--- | ---: | ---: |
+| Dashboard (default) | 16.6 % | ~85 % |
+| Media | 14.1 % | ~81 % |
+| Performance (fixed) | 5.4-7.8 % | 20-28 % |
+| Workspaces / Downloads | ~1 % | ~2.2 % |
+
+A bisect shows most of it is not the media card's ring, mask, rotation or album
+bounce (disabling each changed nothing), and not the calendar; hiding the tab's
+whole content row still left ~38 % CPU. The likely driver is the audio visualiser's
+per-frame binding fan-out (stream at display order, 40+ bound bars, 16 bands times
+every consumer), which is the same "data-driven decoration off the budget" shape as
+this fix - but it needs its own change (a clock-paced band snapshot shared by the
+visualiser components) rather than a note in this one.
+
+### Tests
+
+- `tests/tst_performance_tab_motion.qml` - behavioural: a tween advances only on
+  clock ticks (never more often than the clock), stays inside the frame budget for
+  its duration, lands exactly on `to`, releases the clock, and restarts cleanly
+  with new endpoints; source contracts: no free-running `NumberAnimation` for the
+  slide, no `Behavior on width` meters, every metric-driven duration from `Theme`,
+  visibility gating intact.
+- `make test` is green (717 Rust tests + every QML suite, now 99).

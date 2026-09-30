@@ -1,2 +1,4 @@
 singleton MotionClock 1.0 MotionClock.qml
 MotionPacer 1.0 MotionPacer.qml
+MotionTween 1.0 MotionTween.qml
+MotionValue 1.0 MotionValue.qml

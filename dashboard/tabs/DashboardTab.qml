@@ -625,18 +625,28 @@ Item {
                         }
                     }
 
-                    // Circular album artwork container in center with audio beat bounce
+                    // Circular album artwork container in center with audio beat bounce.
+                    // The bounce follows the beat on the shared decorative clock: a
+                    // `Behavior on scale` was re-triggered by every audio frame (the
+                    // visualiser stream runs at display order), so its 60 ms animation
+                    // never ended and the masked cover below re-rendered at every
+                    // display frame.
                     Item {
                         id: albumCenterCircle
                         anchors.centerIn: parent
                         width: 86
                         height: 86
-                        scale: (AudioVisualizer.active && Config.dashboardVisible && Config.activeDashboardTab === "dashboard")
-                               ? (1.0 + Math.min(0.12, AudioVisualizer.beat * 0.08 + AudioVisualizer.bass * 0.06))
-                               : 1.0
+                        scale: beatBounce.value
 
-                        Behavior on scale {
-                            NumberAnimation { duration: 60; easing.type: Easing.OutQuad }
+                        MotionValue {
+                            id: beatBounce
+                            animated: root.isTargetVisible && (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active)
+                            duration: Theme.animExpressiveFastEffects
+                            bezier: Theme.curveExpressiveFastEffects
+                            target: (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active
+                                     && Config.dashboardVisible && Config.activeDashboardTab === "dashboard")
+                                    ? (1.0 + Math.min(0.12, AudioVisualizer.beat * 0.08 + AudioVisualizer.bass * 0.06))
+                                    : 1.0
                         }
 
                         // Round mask geometry (always a perfect circle)
@@ -663,17 +673,21 @@ Item {
                             }
                         }
 
-                        // Rotating Cover Image masked strictly to the circular boundary (1.45x size prevents corner clipping)
+                        // Rotating Cover Image masked strictly to the circular boundary
+                        // (1.45x size prevents corner clipping). The mask is applied to
+                        // the *static* artwork and the masked result is rotated: masking
+                        // the rotating image instead re-rasterized the MultiEffect layer
+                        // on every rotation frame, and a circle mask is rotation
+                        // invariant anyway.
                         Item {
                             anchors.fill: parent
                             visible: MprisMedia.artUrl.length > 0 && dashCoverImg.status === Image.Ready
+                            rotation: coverPacer.phase * 360
 
                             Item {
                                 anchors.centerIn: parent
                                 width: parent.width * 1.45
                                 height: width
-
-                                rotation: coverPacer.phase * 360
 
                                 MotionPacer {
                                     id: coverPacer
