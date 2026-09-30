@@ -2893,3 +2893,70 @@ against a known case, and prefer counters that are monotonic by construction.
 **Caveat for these numbers.** They were taken while the session was composited,
 with the media drawer open (audio playing, so the visualiser stream was live) -
 that drawer is part of the baseline in both rows of the table.
+
+---
+
+## 32. A Fast Counter Used As A Poll Tick Is A Dependency Bomb
+
+Two bindings in the MPRIS service wanted to re-evaluate periodically:
+
+```qml
+readonly property bool isAnyPlayerPlaying: {
+    let fc = AudioVisualizer.frameCount;   // never used - a *dependency* on purpose
+    ...
+}
+```
+
+The intent was "look again when audio data arrives". The effect was that every
+binding reaching those properties re-evaluated once per stream frame - ~90 times a
+second - and cascaded through `isPlaying`, `isPlayerPlaying()` and everything
+downstream of them. With the dashboard open on a visualiser tab that measured
+~85-100 % of a CPU core, and it vanished (96.5 % -> 11.5 %) the moment the writes
+stopped.
+
+Three rules came out of it:
+
+1. **Never depend on a per-frame value unless you use it.** A "dependency read"
+   looks harmless in a diff and costs a full core in production. If a binding
+   needs a periodic re-check, take it from a deliberate, slow tick
+   (`AudioVisualizer.arbitrationTick`, 4 Hz) and say so in a comment.
+2. **A predicate that is recomputed per frame is a predicate that is read per
+   frame.** `energy > 0.005 || beat > 0.005` appeared in four places; the same
+   question is answered for free by the service's `active` flag, which changes
+   only when the answer changes.
+3. **Assert the dependency shape, not just the value.** The QML suite now pins
+   that no component outside the service reads the raw stream properties, so the
+   next person to add a fast counter as a tick finds out from CI.
+
+**Lesson.** In a reactive language, *reading* a value is a subscription. Fast
+values must be read only where the fast rate is genuinely wanted - and wrapped in
+a component whose whole job is to slow them down (`MotionTick` + mirrors).
+
+---
+
+## 33. The Display Refresh Rate Is A Multiplier On Everything
+
+The performance tab's own cost was reduced 8x by moving its motion onto the
+decorative clock, yet the user's GPU reading barely moved. The panel was
+2560x1600 at **240 Hz**, and every client's per-frame work - the shell's render
+thread, the compositor's blend and blur of the shell's glass, every other
+application - scales with it:
+
+| | 240 Hz | 60 Hz |
+| :--- | ---: | ---: |
+| Dashboard tab, shell CPU | 96.5 % | 25 % |
+| Performance tab, shell CPU | 23 % | 7.3 % |
+| GT frequency mean (the shell's own "GPU %") | 1100-1400 MHz | 565 MHz |
+
+Two lessons, one technical and one about measurement:
+
+- **Cap the output before optimising the client.** Nothing in the shell's code
+  could buy the 4x that `kscreen-doctor output.eDP-1.mode.38` bought, and the cap
+  also pays for every other process on the machine. A shell whose motion budget is
+  30 fps has no use for 240 Hz scanout.
+- **The number a user reads may not be the number you are optimising.** On Intel
+  the shell derives "GPU %" from the GT frequency, which any wake-up ramps and
+  which decays slowly - it read 78-100 % with the dashboard *closed*. Optimising
+  the shell's engine counters was correct and invisible; halving the refresh rate
+  was visible immediately. Both were necessary, and only one of them was in the
+  code being blamed.

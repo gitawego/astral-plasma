@@ -27,8 +27,8 @@ Item {
 
     // Audio reactivity
     readonly property bool isVisualizerActive: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true)
-    readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.energy : 0.0
-    readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.beat : 0.0
+    readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayEnergy : 0.0
+    readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayBeat : 0.0
 
     // Gentle idle wave phase when playing without audio stream. Capped at
     // Theme.decorativeMaxFps: a playing track would otherwise keep the whole
@@ -43,10 +43,10 @@ Item {
     function getBarValue(idx) {
         if (!root.isPlaying) return 0.0;
 
-        if (root.isVisualizerActive && AudioVisualizer.bands && AudioVisualizer.bands.length > 0) {
+        if (root.isVisualizerActive && AudioVisualizer.displayBands && AudioVisualizer.displayBands.length > 0) {
             // Map 48 bars into 16 bands symmetrically (bass at sides/bottom, highs across)
             let bandIdx = Math.floor((idx / root.barsCount) * 16);
-            let raw = AudioVisualizer.bands[bandIdx] || 0.0;
+            let raw = AudioVisualizer.displayBands[bandIdx] || 0.0;
             let boosted = raw * (0.8 + root.audioEnergy * 0.5 + root.audioBeat * 0.3);
             return Math.max(0.0, Math.min(1.0, boosted));
         }

@@ -203,12 +203,16 @@ Singleton {
             if (hasOtherNativePlayingPlayer(p)) {
                 return false;
             }
-            // 2. If visualizer is streaming audio from PipeWire, real physical audio energy is the ground truth
+            // 2. If visualizer is streaming audio from PipeWire, real physical audio energy is the ground truth.
+            //    `active` is the same predicate (`energy > 0.005 || beat > 0.005`) but changes only when sound
+            //    starts or stops. Reading the per-frame `energy`/`beat` values here registered a 90 Hz dependency
+            //    on every binding that reached this function, which cost ~80 % of a CPU core whenever a
+            //    visualiser tab (dashboard/media) was open.
             if (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.isStreaming) {
-                return (AudioVisualizer.energy > 0.005 || AudioVisualizer.beat > 0.005);
+                return AudioVisualizer.active === true;
             }
             // 3. If visualizer is active or has energy:
-            if (typeof AudioVisualizer !== "undefined" && AudioVisualizer && (AudioVisualizer.active === true || AudioVisualizer.energy > 0.005 || AudioVisualizer.beat > 0.005)) {
+            if (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true) {
                 return true;
             }
             // 4. Fallback when visualizer is offline or not streaming yet: check DBus state
@@ -243,7 +247,11 @@ Singleton {
     }
 
     readonly property bool isAnyPlayerPlaying: {
-        let fc = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.frameCount : 0;
+        // Re-checked on the audio service's *arbitration* tick (4 Hz), never on its
+        // stream frame counter (90 Hz): reading the frame counter here made every
+        // dependent binding re-evaluate 90 times per second.
+        let tick = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.arbitrationTick : 0;
+        if (tick < 0) return false;
         if (!players || players.length === 0) return false;
         for (let i = 0; i < players.length; i++) {
             if (isPlayerPlaying(players[i])) return true;
@@ -541,11 +549,16 @@ Singleton {
     readonly property string artist: hasMedia ? cleanArtist(rawTrackTitle, rawTrackArtist, identity) : "Unknown Artist"
     readonly property string artUrl: activePlayer ? (activePlayer.trackArtUrl || activePlayer.artUrl || "") : ""
     readonly property bool isPlaying: {
-        let e = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.energy : 0;
-        let a = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.active : false;
-        let b = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.beat : 0;
-        let fc = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.frameCount : 0;
-        let s = (typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.isStreaming : false;
+        // The audio-flow read below is deliberate: it is the *dependency* that
+        // re-runs this binding when ground truth changes (a browser player can keep
+        // claiming Playing while it sends silence). It reads the service's flow
+        // flag, which flips only when audio starts or stops - not the per-frame
+        // stream values this used to touch, which change ~90 times per second and
+        // dragged every dependent binding along with them.
+        const audioFlow = (typeof AudioVisualizer !== "undefined" && AudioVisualizer)
+            ? AudioVisualizer.active
+            : false;
+        void audioFlow;
         return root.isPlayerPlaying(activePlayer);
     }
 

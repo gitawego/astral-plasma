@@ -645,7 +645,7 @@ Item {
                             bezier: Theme.curveExpressiveFastEffects
                             target: (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active
                                      && Config.dashboardVisible && Config.activeDashboardTab === "dashboard")
-                                    ? (1.0 + Math.min(0.12, AudioVisualizer.beat * 0.08 + AudioVisualizer.bass * 0.06))
+                                    ? (1.0 + Math.min(0.12, AudioVisualizer.displayBeat * 0.08 + AudioVisualizer.displayBass * 0.06))
                                     : 1.0
                         }
 

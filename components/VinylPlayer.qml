@@ -125,7 +125,7 @@ Item {
                 width: parent.width * 0.50
                 height: width
                 scale: (AudioVisualizer.active && Config.dashboardVisible && Config.activeDashboardTab === "media")
-                       ? (1.0 + Math.min(0.05, AudioVisualizer.bass * 0.04))
+                       ? (1.0 + Math.min(0.05, AudioVisualizer.displayBass * 0.04))
                        : 1.0
 
                 Behavior on scale {

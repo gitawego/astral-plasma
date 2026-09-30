@@ -24,10 +24,10 @@ Item {
 
     readonly property bool isPlaying: (typeof MprisMedia !== "undefined" && MprisMedia) ? MprisMedia.isPlaying : false
     readonly property bool isVisualizerActive: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true)
-    readonly property real audioEnergy: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.energy : 0.0
-    readonly property real audioBass: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.bass : 0.0
-    readonly property real audioTreble: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.treble : 0.0
-    readonly property real audioBeat: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.beat : 0.0
+    readonly property real audioEnergy: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.displayEnergy : 0.0
+    readonly property real audioBass: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.displayBass : 0.0
+    readonly property real audioTreble: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.displayTreble : 0.0
+    readonly property real audioBeat: (root.isPlaying && isVisualizerActive && root.isTargetVisible) ? AudioVisualizer.displayBeat : 0.0
 
     // Gentle orbital phase animation (capped at Theme.decorativeMaxFps).
     MotionPacer {
@@ -71,8 +71,8 @@ Item {
                 required property int index
 
                 readonly property real rad: (modelData.angle * Math.PI / 180)
-                readonly property real bandAmp: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.bands && AudioVisualizer.bands[modelData.bandIdx] !== undefined)
-                    ? AudioVisualizer.bands[modelData.bandIdx]
+                readonly property real bandAmp: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.displayBands && AudioVisualizer.displayBands[modelData.bandIdx] !== undefined)
+                    ? AudioVisualizer.displayBands[modelData.bandIdx]
                     : 0.0
 
                 // DYNAMIC BEAT JUMP: energetic, visible 15 to 20 pixel hop on every beat transient

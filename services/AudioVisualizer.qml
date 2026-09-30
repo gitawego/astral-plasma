@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../components/motion"
 import "."
 import "../config"
 
@@ -23,6 +24,74 @@ Singleton {
     property int frameCount: 0
 
     signal frameUpdated()
+
+    // ==========================================
+    // Decorative presentation mirrors
+    // ==========================================
+    // The stream above is ground truth at audio rate (tens of frames per second).
+    // Handing that rate straight to the visualisers made every one of their 40+
+    // bound bars re-evaluate per stream frame and repainted the host surface at the
+    // same rate: the dashboard and media tabs measured ~80 % of a CPU core each,
+    // and a glass surface that keeps updating also costs the compositor a blur of
+    // the whole region every frame.
+    //
+    // Presentation is decoration, so it advances on the shared clock instead -
+    // at most `Theme.decorativeMaxFps` samples per second. The visualisers read
+    // these mirrors, which are samples of the real stream (never synthesised), and
+    // a stream that goes quiet settles once and then holds no clock at all.
+    property var displayBands: bands
+    property real displayEnergy: 0.0
+    property real displayBass: 0.0
+    property real displayMid: 0.0
+    property real displayTreble: 0.0
+    property real displayBeat: 0.0
+    property int _sampledFrame: -1
+    property bool _sampledSilent: true
+
+    function _sampleStream() {
+        if (!root.active && root._sampledSilent) {
+            return;
+        }
+        root._sampledFrame = root.frameCount;
+        root._sampledSilent = !root.active;
+        root.displayBands = root.bands;
+        root.displayEnergy = root.energy;
+        root.displayBass = root.bass;
+        root.displayMid = root.mid;
+        root.displayTreble = root.treble;
+        root.displayBeat = root.beat;
+    }
+
+    MotionTick {
+        running: root.procShouldRun && root.active
+        onTicked: {
+            if (root.frameCount !== root._sampledFrame) {
+                root._sampleStream();
+            }
+        }
+    }
+
+    // Periodic re-check tick for *arbitration* consumers: while audio flows, a
+    // player can keep claiming playback with stale state, so the arbiter has to
+    // look again. Deliberately slow (4 Hz): the raw stream frame counter used to
+    // serve as this tick, and because it changes ~90 times per second, every
+    // binding that read it re-evaluated 90 times per second - worth ~80 % of a CPU
+    // core for as long as a visualiser tab was open.
+    property int arbitrationTick: 0
+
+    Timer {
+        interval: 250
+        repeat: true
+        running: root.procShouldRun
+        onTriggered: root.arbitrationTick++
+    }
+
+    // Silence settles immediately, so nothing is left oscillating on a frozen frame.
+    onActiveChanged: {
+        if (!root.active) {
+            root._sampleStream();
+        }
+    }
 
     // ==========================================
     // Lifecycle & Visibility State

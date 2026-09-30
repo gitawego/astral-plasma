@@ -1250,13 +1250,53 @@ their own cost, unrelated to this fix:
 | Performance (fixed) | 5.4-7.8 % | 20-28 % |
 | Workspaces / Downloads | ~1 % | ~2.2 % |
 
-A bisect shows most of it is not the media card's ring, mask, rotation or album
-bounce (disabling each changed nothing), and not the calendar; hiding the tab's
-whole content row still left ~38 % CPU. The likely driver is the audio visualiser's
-per-frame binding fan-out (stream at display order, 40+ bound bars, 16 bands times
-every consumer), which is the same "data-driven decoration off the budget" shape as
-this fix - but it needs its own change (a clock-paced band snapshot shared by the
-visualiser components) rather than a note in this one.
+The follow-up turned out to be the audio visualiser, and it is now fixed:
+
+- **Disabling the visualiser path entirely** (`isEffectVisible = false`) drops the
+  dashboard tab from 96.5 % to **13 %** CPU, with the tab's own content unchanged.
+- **Suppressing the stream's property writes** (parsing kept) drops it to
+  **11.5 %** - so the cost is the reactive dependents of those writes, not the
+  stream's plumbing (the daemon sends only ~4.5 KB/s at ~31 fps).
+
+What was reacting:
+
+1. `MprisMedia.isPlayerPlaying()` read `AudioVisualizer.energy`/`beat` directly in
+   its Wine-player branch. It is called from bindings, so every binding that
+   reached it registered a dependency on values that change with every stream
+   frame. The predicate is identical to `AudioVisualizer.active`, which flips only
+   when sound starts or stops.
+2. The stream frame counter (`frameCount`, ~90 changes/s) was used as a
+   re-evaluation *tick* in two MprisMedia bindings. The audio-arbitration re-check
+   now runs on a deliberate 4 Hz `arbitrationTick` in the audio service.
+3. The visualisers bound to the raw `bands`/`energy`/`beat`, so 40+ bars
+   re-evaluated per stream frame. They now read clock-paced mirrors
+   (`displayBands`/`displayEnergy`/`displayBass`/`displayTreble`/`displayBeat`)
+   produced by a `MotionTick` on the shared clock - real samples of the real
+   stream, at `Theme.decorativeMaxFps`, and a silent stream settles once and then
+   holds no clock at all.
+
+Residual: with the mirrors in place the dashboard tab still costs ~25 % CPU with
+audio playing (it was ~85-100 %), because the ring components update 40 bars per
+frame - the class of cost LESSONS §27 describes (per-frame regenerated gradient
+sources). Redrawing the ring as one Canvas, or freezing its gradients and animating
+opacity, is the next step there.
+
+### The display refresh was the other half
+
+The panel ran at 240 Hz. Every client's per-frame work scales with it, so capping
+it (there is no 120 Hz mode at 2560x1600 on this panel - the choices are 240 and
+60) changed the numbers more than any code change in this document:
+
+| | 240 Hz | 60 Hz |
+| :--- | ---: | ---: |
+| Performance tab, shell CPU | 23 % | **7.3 %** |
+| Performance tab, shell iGPU | 8.9 % | **5.4 %** |
+| Dashboard tab, shell CPU | 96.5 % | **25 %** |
+| GT frequency mean (the user-facing number) | 1100-1400 MHz (78-100 %) | **565 MHz (21 %)** |
+
+Applied with `kscreen-doctor output.eDP-1.mode.38`; reverting is
+`kscreen-doctor output.eDP-1.mode.37`. The DP-3 output (currently disabled) does
+have a 120 Hz mode if it is ever re-enabled.
 
 ### Tests
 
