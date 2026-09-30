@@ -87,7 +87,10 @@ Item {
         anchors.fill: parent
         visible: root.isPlaying && root.isVisualizerActive && (root.audioEnergy > 0.005 || root.audioBeat > 0.005)
         opacity: visible ? 1.0 : 0.0
-        Behavior on opacity { NumberAnimation { duration: 150 } }
+        // presentation smoothing removed: these values already arrive at
+        // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
+        // here re-animated them at display refresh and never finished
+
 
         Repeater {
             model: root.dynamicElements
@@ -107,9 +110,10 @@ Item {
                 readonly property real floatBob: Math.sin(root.animPhase + index * 0.4) * 2.0
                 readonly property real currentR: (root.speakerRadius * modelData.rBase) + floatBob + beatJump
 
-                Behavior on beatJump {
-                    NumberAnimation { duration: 45; easing.type: Easing.OutQuad }
-                }
+                // presentation smoothing removed: these values already arrive at
+                // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
+                // here re-animated them at display refresh and never finished
+
 
                 x: root.centerX + Math.cos(rad) * currentR - width / 2
                 y: root.centerY + Math.sin(rad) * currentR - height / 2
@@ -117,9 +121,10 @@ Item {
                 height: width
 
                 scale: 1.0 + (root.audioBeat * 0.40) + (bandAmp * 0.20)
-                Behavior on scale {
-                    NumberAnimation { duration: 45; easing.type: Easing.OutQuad }
-                }
+                // presentation smoothing removed: these values already arrive at
+                // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
+                // here re-animated them at display refresh and never finished
+
 
                 opacity: 0.75 + root.audioEnergy * 0.25
 
@@ -299,9 +304,10 @@ Item {
 
         // Dynamic audio-reactive bass & beat bounce
         scale: 1.0 + Math.min(0.12, (root.audioBeat * 0.08) + (root.audioBass * 0.05))
-        Behavior on scale {
-            NumberAnimation { duration: 60; easing.type: Easing.OutQuad }
-        }
+        // presentation smoothing removed: these values already arrive at
+        // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
+        // here re-animated them at display refresh and never finished
+
 
         // Circular mask geometry (strictly masks album art to circle)
         Rectangle {

@@ -80,9 +80,10 @@ Item {
                 readonly property real floatBob: Math.sin(root.animPhase + index * 0.5) * 1.5
                 readonly property real currentR: (root.outerRadius * modelData.rBase) + floatBob + beatJump
 
-                Behavior on beatJump {
-                    NumberAnimation { duration: 45; easing.type: Easing.OutQuad }
-                }
+                // presentation smoothing removed: these values already arrive at
+                // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
+                // here re-animated them at display refresh and never finished
+
 
                 x: root.centerX + Math.cos(rad) * currentR - width / 2
                 y: root.centerY + Math.sin(rad) * currentR - height / 2
@@ -90,9 +91,10 @@ Item {
                 height: width
 
                 scale: 1.0 + (root.audioBeat * 0.40) + (bandAmp * 0.18)
-                Behavior on scale {
-                    NumberAnimation { duration: 45; easing.type: Easing.OutQuad }
-                }
+                // presentation smoothing removed: these values already arrive at
+                // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
+                // here re-animated them at display refresh and never finished
+
 
                 opacity: 0.80 + root.audioEnergy * 0.20
 

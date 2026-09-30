@@ -139,6 +139,19 @@ Item {
                         " instead of the raw stream value"
                 );
             }
+            // A Qt animation on a value that changes every frame is a permanent
+            // animation: it is re-triggered before it can finish, and it runs at
+            // display refresh. The stream already arrives at the decorative budget.
+            // (Anchored to a declaration line so prose about the removed pattern
+            // cannot trip it.) VinylPlayer is exempt: its remaining animations are
+            // user-driven (tonearm on play/pause, cover scale when the media
+            // surface appears) and keep their M3 transitions.
+            if (name !== "VinylPlayer") {
+                testRoot.assert(
+                    !/^\s*Behavior on \w+ \{/m.test(src),
+                    name + " must not re-animate data-driven values; the mirror already updates them per clock frame"
+                );
+            }
             if (src.indexOf("AudioVisualizer.display") !== -1) {
                 mirrored++;
             }
@@ -147,6 +160,20 @@ Item {
             mirrored === components.length,
             "every visualiser must draw from the clock-paced mirror (found " + mirrored + ")"
         );
+
+        // The two spectrum rings draw in one Canvas each: a delegate per bar means
+        // one item, one geometry update and one animation per bar per frame.
+        for (const name of ["RadialCoverRing", "RadialCoverVisualiser"]) {
+            const src = readLocalFile("../components/" + name + ".qml");
+            testRoot.assert(
+                src.indexOf("Canvas {") !== -1 && src.indexOf("MotionTick") !== -1,
+                name + " must draw its spectrum bars in one Canvas driven by the shared clock"
+            );
+            testRoot.assert(
+                !/^\s*Repeater\s*\{/m.test(src),
+                name + " must not build one item per bar"
+            );
+        }
 
         // The playback-detection logic in MprisMedia legitimately needs the truth,
         // and is the one place allowed to read it.

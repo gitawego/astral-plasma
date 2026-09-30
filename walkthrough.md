@@ -1275,11 +1275,36 @@ What was reacting:
    stream, at `Theme.decorativeMaxFps`, and a silent stream settles once and then
    holds no clock at all.
 
-Residual: with the mirrors in place the dashboard tab still costs ~25 % CPU with
-audio playing (it was ~85-100 %), because the ring components update 40 bars per
-frame - the class of cost LESSONS §27 describes (per-frame regenerated gradient
-sources). Redrawing the ring as one Canvas, or freezing its gradients and animating
-opacity, is the next step there.
+Residual after the mirrors: the dashboard tab still cost ~25 % CPU with audio
+playing. The audit (LESSONS §34) found why - every spectrum bar was its own `Item`
+with a 75 ms `Behavior on height` and a 200 ms `Behavior on opacity` that the 33 ms
+data stream re-triggered before they could finish. 40 bars × 2 permanent animations
+is 80 animations running at display refresh to draw forty 2.5×13 px bars, forever.
+
+Fixed across every visualiser:
+
+- `RadialCoverRing` and `RadialCoverVisualiser` now draw their spectrum in **one
+  Canvas** repainted on the shared clock. Measured: the ring's repaints cost ~2 %
+  CPU (A/B with the repaint stopped), where the animation churn they replaced
+  dominated the tab.
+- The data-driven `Behavior`s in `HeatmapCoverRing`/`HeatmapSpeakerPlayer` were
+  deleted (the mirror already delivers 30 fps updates). `VinylPlayer`'s two
+  remaining animations are user-driven (tonearm, surface visibility) and keep their
+  M3 transitions.
+
+Per-tab shell cost with music playing, after all of the above (60 Hz panel):
+
+| Tab | iGPU | CPU |
+| :--- | ---: | ---: |
+| Performance (the reported one) | 4.9 % | 7.2 % |
+| Dashboard | 9.1 % | 22.8 % |
+| Media | 8.0 % | 26.7 % |
+| Workspaces / Downloads | ~1.6 % | ~2.1 % |
+
+The remaining 20-26 % on the two audio tabs is the live visualiser's honest work -
+a 48-bar spectrum plus 40 live bindings redrawn 30 times a second, with the stream
+itself costing ~11.5 % before anything is drawn. The tabs that show no spectrum sit
+at ~2 %, i.e. the surfaces people are not looking at cost nothing.
 
 ### The display refresh was the other half
 

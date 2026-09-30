@@ -2960,3 +2960,59 @@ Two lessons, one technical and one about measurement:
   the shell's engine counters was correct and invisible; halving the refresh rate
   was visible immediately. Both were necessary, and only one of them was in the
   code being blamed.
+
+---
+
+## 34. A Behavior On A Value That Changes Every Frame Is A Permanent Animation
+
+The spectrum ring around the album cover was 40 `Item`s, each owning two Qt
+animations:
+
+```qml
+Item {                                  // × 40, one per bar
+    Rectangle {
+        height: root.baseBarHeight + barHolder.barVal * root.maxBarHeight
+        Behavior on height { NumberAnimation { duration: 75 } }
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+    }
+}
+```
+
+Band data arrives every 33 ms (the decorative-clock mirror). A 75 ms animation
+restarted every 33 ms never completes, so all 80 animations were *permanently*
+running, at display refresh, for as long as the dashboard was open. On a 240 Hz
+panel that is 19 200 animation frames per second to draw forty 2.5×13 px bars.
+
+The same audit found the pattern in four more components
+(`RadialCoverVisualiser`, `HeatmapCoverRing`, `HeatmapSpeakerPlayer`) and, in the
+performance tab, in six metric-driven tweens (LESSONS §30).
+
+**The test that catches it:** compare the animation's duration with the update
+interval of the value it animates. Duration >= interval means permanent. Nothing
+about the code looks wrong - the durations are ordinary (75, 150, 200, 450 ms) -
+which is exactly why it survives review.
+
+**The fix, in preference order:**
+
+1. **Delete the animation.** If the value already arrives at the decorative clock
+   rate (30 fps), a Qt animation adds nothing except display-refresh work.
+2. **Draw it in one Canvas on the shared clock.**
+   `RadialCoverRing`/`RadialCoverVisualiser` now paint their bars with one
+   `requestPaint()` per clock frame: measured **~2 % CPU** for 40 bars at 30 fps,
+   against ~19 200 display-refresh animation frames before. The smoothing the
+   `Behavior`s provided is kept - it is a presentation detail, computed per painted
+   frame (`level += (target - level) * 0.45`), and the values remain real stream
+   data.
+3. **Keep the animation only for user-driven changes** (tab visibility, play/pause,
+   hover) where it *does* finish, and say so in a comment; `VinylPlayer`'s tonearm
+   is the one exemption the contract test allows.
+
+**Audit checklist** (`scripts/`-level grep, run before declaring a surface
+idle-capable):
+
+- `Behavior on <prop>` where `<prop>` is bound to stream/metric data - delete.
+- `loops: Animation.Infinite` outside a genuinely transient loading state.
+- `layer.enabled` on an item that *also* carries the animated transform (rotate or
+  scale the layer's parent instead, so the texture is composited, not re-rendered).
+- A fast counter (`frameCount`) read by a binding - it is a 60-90 Hz dependency,
+  not a tick.

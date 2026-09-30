@@ -22,6 +22,7 @@ Item {
     readonly property int barsCount: 48
     readonly property real coverRadius: 58
     readonly property real barSpacing: 7
+    readonly property real barWidth: 3
     readonly property real baseBarHeight: 4
     readonly property real maxBarHeight: 32
 
@@ -40,6 +41,11 @@ Item {
     }
     readonly property real idlePhase: idlePacer.phase * Math.PI * 2
 
+    // Smoothed bar values (0..1), advanced once per painted frame - the
+    // presentation smoothing the removed per-bar Behaviors used to do.
+    property var barLevels: []
+    readonly property real levelEase: 0.45
+
     function getBarValue(idx) {
         if (!root.isPlaying) return 0.0;
 
@@ -57,33 +63,69 @@ Item {
     }
 
     // 1. Radial Audio Visualizer Bars
-    Item {
-        id: barsContainer
+    //
+    // One Canvas on the shared clock instead of 48 Items each owning a Qt
+    // animation that the 30 fps band stream re-triggered before it could finish
+    // (see RadialCoverRing and docs/LESSONS.md 34).
+    Canvas {
+        id: barsCanvas
         anchors.fill: parent
+        antialiasing: true
 
-        Repeater {
-            model: root.barsCount
-
-            Item {
-                id: barHolder
-                anchors.centerIn: parent
-                rotation: index * (360 / root.barsCount)
-
-                readonly property real barVal: root.getBarValue(index)
-
-                Rectangle {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.bottom: parent.top
-                    anchors.bottomMargin: root.coverRadius + root.barSpacing
-                    width: 3
-                    height: root.baseBarHeight + barHolder.barVal * root.maxBarHeight
-                    radius: 1.5
-                    color: Colors.primary
-                    opacity: root.isPlaying ? (0.65 + barHolder.barVal * 0.35) : 0.3
-                }
+        onPaint: {
+            const ctx = getContext("2d");
+            const w = width;
+            const h = height;
+            ctx.clearRect(0, 0, w, h);
+            if (w <= 0 || h <= 0) {
+                return;
             }
+
+            const count = root.barsCount;
+            const cx = w / 2;
+            const cy = h / 2;
+            const inner = root.coverRadius + root.barSpacing;
+            const col = (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#a8c7fa";
+            const levels = root.barLevels;
+            const next = [];
+
+            ctx.lineCap = "round";
+            ctx.lineWidth = root.barWidth;
+
+            for (let i = 0; i < count; ++i) {
+                const target = root.getBarValue(i);
+                const previous = (levels[i] !== undefined) ? levels[i] : target;
+                const level = (root.isPlaying && root.isTargetVisible)
+                    ? previous + (target - previous) * root.levelEase
+                    : target;
+                next.push(level);
+
+                const angle = (i * 2 * Math.PI) / count - Math.PI / 2;
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+                const length = root.baseBarHeight + level * root.maxBarHeight;
+
+                ctx.globalAlpha = root.isPlaying ? (0.65 + level * 0.35) : 0.3;
+                ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 1.0);
+                ctx.beginPath();
+                ctx.moveTo(cx + cosA * inner, cy + sinA * inner);
+                ctx.lineTo(cx + cosA * (inner + length), cy + sinA * (inner + length));
+                ctx.stroke();
+            }
+
+            ctx.globalAlpha = 1.0;
+            root.barLevels = next;
         }
     }
+
+    MotionTick {
+        running: root.isPlaying && root.isTargetVisible
+        onTicked: barsCanvas.requestPaint()
+    }
+
+    onIsPlayingChanged: barsCanvas.requestPaint()
+    onIsTargetVisibleChanged: barsCanvas.requestPaint()
+    Component.onCompleted: barsCanvas.requestPaint()
 
     // Circular Mask for MultiEffect
     Rectangle {
@@ -107,12 +149,10 @@ Item {
             ? (1.0 + Math.min(0.04, root.audioBeat * 0.06))
             : 1.0
 
-        Behavior on scale {
-            NumberAnimation {
-                duration: 90
-                easing.type: Easing.OutQuad
-            }
-        }
+        // presentation smoothing removed: these values already arrive at
+        // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
+        // here re-animated them at display refresh and never finished
+
 
         // Content layer masked to circle
         Item {
