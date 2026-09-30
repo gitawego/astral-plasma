@@ -50,11 +50,13 @@ Item {
     }
     readonly property real idlePhase: idlePacer.phase * Math.PI * 2
 
-    // Smoothed bar values (0..1), advanced once per painted frame.
+    // Smoothed bar values (0..1) and their brightness, advanced once per painted
+    // frame - the presentation smoothing the removed per-bar Behaviors provided
+    // (75 ms for height, 200 ms for opacity).
     property var barLevels: []
-    // Fraction of the remaining distance a bar covers per frame: the 75 ms
-    // OutQuad feel the removed `Behavior on height` had at the clock's 30 fps.
+    property var barAlphas: []
     readonly property real levelEase: 0.45
+    readonly property real alphaEase: 0.22
 
     function getBarValue(idx) {
         if (!root.isPlaying) return 0.0;
@@ -91,7 +93,9 @@ Item {
             const inner = root.innerRadius + root.barSpacing;
             const col = (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#a8c7fa";
             const levels = root.barLevels;
+            const alphas = root.barAlphas;
             const next = [];
+            const nextAlphas = [];
 
             ctx.lineCap = "round";
             ctx.lineWidth = root.barWidth;
@@ -104,12 +108,21 @@ Item {
                     : target;
                 next.push(level);
 
+                // Brightness eases slower than the bar grows, as the 200 ms
+                // opacity Behavior did against the 75 ms height Behavior.
+                const targetAlpha = root.isPlaying ? (0.7 + level * 0.3) : 0.25;
+                const previousAlpha = (alphas[i] !== undefined) ? alphas[i] : targetAlpha;
+                const alpha = (root.isPlaying && root.isTargetVisible)
+                    ? previousAlpha + (targetAlpha - previousAlpha) * root.alphaEase
+                    : targetAlpha;
+                nextAlphas.push(alpha);
+
                 const angle = (i * 2 * Math.PI) / count - Math.PI / 2;
                 const cosA = Math.cos(angle);
                 const sinA = Math.sin(angle);
                 const length = root.baseBarHeight + level * root.maxBarHeight;
 
-                ctx.globalAlpha = root.isPlaying ? (0.7 + level * 0.3) : 0.25;
+                ctx.globalAlpha = alpha;
                 ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 1.0);
                 ctx.beginPath();
                 ctx.moveTo(cx + cosA * inner, cy + sinA * inner);
@@ -119,6 +132,7 @@ Item {
 
             ctx.globalAlpha = 1.0;
             root.barLevels = next;
+            root.barAlphas = nextAlphas;
         }
     }
 

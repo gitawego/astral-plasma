@@ -41,10 +41,24 @@ Item {
     }
     readonly property real idlePhase: idlePacer.phase * Math.PI * 2
 
-    // Smoothed bar values (0..1), advanced once per painted frame - the
-    // presentation smoothing the removed per-bar Behaviors used to do.
+    // Smoothed bar values (0..1) and their brightness, advanced once per painted
+    // frame - the presentation smoothing the removed per-bar Behaviors provided.
     property var barLevels: []
+    property var barAlphas: []
     readonly property real levelEase: 0.45
+    readonly property real alphaEase: 0.22
+
+    // The cover's beat pulse: eased on the shared clock instead of the removed
+    // 90 ms `Behavior on scale`, so it swells rather than snapping between frames.
+    MotionValue {
+        id: coverPulse
+        animated: root.isPlaying && root.isTargetVisible
+        duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastEffects) ? Theme.animExpressiveFastEffects : 150
+        bezier: (typeof Theme !== "undefined" && Theme.curveExpressiveFastEffects) ? Theme.curveExpressiveFastEffects : null
+        target: (root.isPlaying && root.isTargetVisible && root.audioBeat > 0.08)
+            ? (1.0 + Math.min(0.04, root.audioBeat * 0.06))
+            : 1.0
+    }
 
     function getBarValue(idx) {
         if (!root.isPlaying) return 0.0;
@@ -87,7 +101,9 @@ Item {
             const inner = root.coverRadius + root.barSpacing;
             const col = (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#a8c7fa";
             const levels = root.barLevels;
+            const alphas = root.barAlphas;
             const next = [];
+            const nextAlphas = [];
 
             ctx.lineCap = "round";
             ctx.lineWidth = root.barWidth;
@@ -100,12 +116,19 @@ Item {
                     : target;
                 next.push(level);
 
+                const targetAlpha = root.isPlaying ? (0.65 + level * 0.35) : 0.3;
+                const previousAlpha = (alphas[i] !== undefined) ? alphas[i] : targetAlpha;
+                const alpha = (root.isPlaying && root.isTargetVisible)
+                    ? previousAlpha + (targetAlpha - previousAlpha) * root.alphaEase
+                    : targetAlpha;
+                nextAlphas.push(alpha);
+
                 const angle = (i * 2 * Math.PI) / count - Math.PI / 2;
                 const cosA = Math.cos(angle);
                 const sinA = Math.sin(angle);
                 const length = root.baseBarHeight + level * root.maxBarHeight;
 
-                ctx.globalAlpha = root.isPlaying ? (0.65 + level * 0.35) : 0.3;
+                ctx.globalAlpha = alpha;
                 ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 1.0);
                 ctx.beginPath();
                 ctx.moveTo(cx + cosA * inner, cy + sinA * inner);
@@ -115,6 +138,7 @@ Item {
 
             ctx.globalAlpha = 1.0;
             root.barLevels = next;
+            root.barAlphas = nextAlphas;
         }
     }
 
@@ -145,9 +169,7 @@ Item {
         height: root.coverRadius * 2
         anchors.centerIn: parent
 
-        scale: (root.isPlaying && root.isTargetVisible && root.audioBeat > 0.08)
-            ? (1.0 + Math.min(0.04, root.audioBeat * 0.06))
-            : 1.0
+        scale: coverPulse.value
 
         // presentation smoothing removed: these values already arrive at
         // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior

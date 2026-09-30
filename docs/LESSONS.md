@@ -2987,6 +2987,11 @@ The same audit found the pattern in four more components
 (`RadialCoverVisualiser`, `HeatmapCoverRing`, `HeatmapSpeakerPlayer`) and, in the
 performance tab, in six metric-driven tweens (LESSONS §30).
 
+**Fidelity check before deleting anything:** the source rate matters. This
+project's audio stream runs at 31.25 fps (`frame_duration = 32 ms`), so sampling it
+at the 30 fps decorative budget costs 4 % of update density - invisible. Sampling a
+31 fps source at 30 fps is free; sampling a 90 fps counter at 30 fps would not be.
+
 **The test that catches it:** compare the animation's duration with the update
 interval of the value it animates. Duration >= interval means permanent. Nothing
 about the code looks wrong - the durations are ordinary (75, 150, 200, 450 ms) -
@@ -3001,8 +3006,12 @@ which is exactly why it survives review.
    `requestPaint()` per clock frame: measured **~2 % CPU** for 40 bars at 30 fps,
    against ~19 200 display-refresh animation frames before. The smoothing the
    `Behavior`s provided is kept - it is a presentation detail, computed per painted
-   frame (`level += (target - level) * 0.45`), and the values remain real stream
-   data.
+   frame (`level += (target - level) * 0.45` for height, `* 0.22` for brightness,
+   matching the 75 ms and 200 ms Behaviors they replaced), and the values remain
+   real stream data. Where a component needed an eased reaction rather than a
+   hand-rolled ramp (`RadialCoverVisualiser`'s cover pulse, `HeatmapSpeakerPlayer`'s
+   speaker bounce), the animation became a `MotionValue` on the same clock with the
+   same design-token duration - the feel is preserved, the frame rate is not.
 3. **Keep the animation only for user-driven changes** (tab visibility, play/pause,
    hover) where it *does* finish, and say so in a comment; `VinylPlayer`'s tonearm
    is the one exemption the contract test allows.

@@ -141,15 +141,22 @@ Item {
             }
             // A Qt animation on a value that changes every frame is a permanent
             // animation: it is re-triggered before it can finish, and it runs at
-            // display refresh. The stream already arrives at the decorative budget.
-            // (Anchored to a declaration line so prose about the removed pattern
-            // cannot trip it.) VinylPlayer is exempt: its remaining animations are
-            // user-driven (tonearm on play/pause, cover scale when the media
-            // surface appears) and keep their M3 transitions.
-            if (name !== "VinylPlayer") {
+            // display refresh. The stream already arrives at the decorative budget,
+            // so data-driven values must not be re-animated. (Anchored to a
+            // declaration line so prose about the removed pattern cannot trip it.)
+            //
+            // Exceptions are transitions that always run to completion:
+            //   VinylPlayer        - tonearm on play/pause, cover scale on appear
+            //   HeatmapSpeakerPlayer - the element group's fade when audio starts/stops
+            const allowedBehaviors = { "VinylPlayer": ["scale", "angle"], "HeatmapSpeakerPlayer": ["opacity"] };
+            const allowed = allowedBehaviors[name] || [];
+            const declared = (src.match(/^\s*Behavior on (\w+) \{/gm) || []).map(function (line) {
+                return line.trim().replace("Behavior on ", "").replace(" {", "");
+            });
+            for (const prop of declared) {
                 testRoot.assert(
-                    !/^\s*Behavior on \w+ \{/m.test(src),
-                    name + " must not re-animate data-driven values; the mirror already updates them per clock frame"
+                    allowed.indexOf(prop) !== -1,
+                    name + " animates " + prop + " with a Qt animation; data-driven values must not be re-animated"
                 );
             }
             if (src.indexOf("AudioVisualizer.display") !== -1) {

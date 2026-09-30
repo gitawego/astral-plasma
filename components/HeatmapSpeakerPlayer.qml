@@ -86,11 +86,13 @@ Item {
         id: elementsLayer
         anchors.fill: parent
         visible: root.isPlaying && root.isVisualizerActive && (root.audioEnergy > 0.005 || root.audioBeat > 0.005)
+        // A group fade, not data animation: it changes only when audio starts or
+        // stops, so this transition always runs to completion (unlike the
+        // per-element ones this component used to carry).
         opacity: visible ? 1.0 : 0.0
-        // presentation smoothing removed: these values already arrive at
-        // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
-        // here re-animated them at display refresh and never finished
-
+        Behavior on opacity {
+            NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+        }
 
         Repeater {
             model: root.dynamicElements
@@ -302,12 +304,19 @@ Item {
         width: root.innerSpeakerRadius * 2
         height: width
 
-        // Dynamic audio-reactive bass & beat bounce
-        scale: 1.0 + Math.min(0.12, (root.audioBeat * 0.08) + (root.audioBass * 0.05))
-        // presentation smoothing removed: these values already arrive at
-        // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
-        // here re-animated them at display refresh and never finished
+        // Dynamic audio-reactive bass & beat bounce, eased on the shared clock
+        // (the removed 60 ms Behavior re-animated it at display refresh forever).
+        MotionValue {
+            id: speakerBounce
+            animated: root.isPlaying && root.isTargetVisible
+            duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastEffects)
+                ? Theme.animExpressiveFastEffects : 150
+            bezier: (typeof Theme !== "undefined" && Theme.curveExpressiveFastEffects)
+                ? Theme.curveExpressiveFastEffects : null
+            target: 1.0 + Math.min(0.12, (root.audioBeat * 0.08) + (root.audioBass * 0.05))
+        }
 
+        scale: speakerBounce.value
 
         // Circular mask geometry (strictly masks album art to circle)
         Rectangle {
