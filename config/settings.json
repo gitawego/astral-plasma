@@ -180,6 +180,9 @@
   "media": {
     "visualizerStyle": "radial"
   },
+  "display": {
+    "refreshRate": "60"
+  },
   "downloads": {
     "dir": "",
     "split": 4,

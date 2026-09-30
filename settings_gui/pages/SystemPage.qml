@@ -4,6 +4,7 @@ import "../controls"
 import "../../config"
 import "../../theme"
 import "../../components"
+import "../../services"
 
 ColumnLayout {
     id: root
@@ -208,6 +209,77 @@ ColumnLayout {
             } else if (typeof Config !== "undefined" && Config.setDebugMode) {
                 Config.setDebugMode(val);
             }
+        }
+    }
+
+    Item { height: root.spaceMediumVal }
+
+    // =========================================================================
+    // Display refresh
+    // =========================================================================
+    // The shell's motion is budgeted at 30 fps, so the panel's refresh rate is a
+    // power and heat choice: every client's per-frame work - including the
+    // compositor's blend and blur of this shell's glass - scales with it. 60 Hz
+    // is the shipped default; "Max" leaves the session exactly as it was found.
+    Text {
+        text: "Display Refresh"
+        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
+        font.weight: Font.Bold
+        color: root.onSurfaceColor
+    }
+
+    Text {
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        text: "The highest rate at your current resolution that does not exceed this choice. "
+            + "Lower is cooler and quieter; the shell looks the same because its motion is capped. "
+            + "The session's original mode is restored when the shell exits."
+        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+        font.pixelSize: 13
+        color: root.onSurfaceVariantColor
+        opacity: 0.85
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: root.spaceSmallVal
+
+        Repeater {
+            model: (typeof Config !== "undefined" && Config.displayRefreshOptions)
+                ? Config.displayRefreshOptions
+                : ["60", "120", "144", "165", "max"]
+
+            PillButton {
+                required property var modelData
+                label: (typeof Config !== "undefined" && Config.displayRefreshLabel)
+                    ? Config.displayRefreshLabel(modelData)
+                    : modelData
+                active: (typeof Config !== "undefined" && Config)
+                    ? ("" + Config.displayRefreshRate === "" + modelData)
+                    : false
+                onClicked: {
+                    if (typeof Config !== "undefined" && Config.setDisplayRefreshRate) {
+                        Config.setDisplayRefreshRate(modelData);
+                    }
+                }
+            }
+        }
+
+        Item { Layout.fillWidth: true }
+
+        Text {
+            text: {
+                if (typeof DisplayService === "undefined" || !DisplayService) return "";
+                if (DisplayService.applying) return "Applying...";
+                return DisplayService.lastApplySucceeded
+                    ? ("Active: " + DisplayService.lastApplied)
+                    : (DisplayService.lastApplied === "" ? "" : "Apply failed");
+            }
+            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+            font.pixelSize: 12
+            color: root.onSurfaceVariantColor
+            opacity: 0.8
         }
     }
 

@@ -13,6 +13,7 @@ pub mod window_icons;
 pub mod fs_wallpaper;
 pub mod sys_settings;
 pub mod kwin_shortcuts;
+pub mod kscreen_adapter;
 pub mod kwin_blur;
 pub mod kwin_window_rules;
 pub mod media;

@@ -3025,3 +3025,32 @@ idle-capable):
   scale the layer's parent instead, so the texture is composited, not re-rendered).
 - A fast counter (`frameCount`) read by a binding - it is a 60-90 Hz dependency,
   not a tick.
+
+---
+
+## 35. A Performance Trade-Off The User Can See Belongs In Settings
+
+Capping the panel to 60 Hz was the single largest win in this whole audit
+(§33) - and it is the one change a user *feels*, because it slows the cursor,
+scrolling and games rather than the shell. That makes it a preference, not a
+decision for the code to take:
+
+- `display.refreshRate` in `settings.json`, defaulting to `"60"`, offering any
+  target rate or `"max"`.
+- The daemon owns the switch (`astral-plasma display apply|restore|get`, pure
+  choice logic in `domain/display_modes.rs`), because it outlives the shell and
+  already owns every other session-level change.
+- **The resolution is never touched.** The chosen mode is the highest refresh at
+  the output's *current* size; reaching a rate by dropping to a smaller mode would
+  be a different, far more invasive change than the one asked for.
+- **The round trip is automatic.** The first switch journals the modes the session
+  was running, and `run.sh` puts them back when the shell exits - so `max` does not
+  have to mean "stop managing my display", and no "keep as-is" option is needed.
+- A no-op stays a no-op: an output already at the requested rate is never
+  re-switched, because a mode switch blanks the screen for a moment.
+
+**Lesson.** When a performance fix changes something the user perceives - colour,
+smoothness, resolution, latency - ship the default that is safe and give them the
+dial. The disciplined version of that is: the choice is data, the *journal* makes
+it reversible, and the switch is applied by the component that owns the session
+(not the one that happened to trigger it).

@@ -1034,6 +1034,54 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "display" => {
+            use crate::domain::display_modes::RefreshPreference;
+            use crate::infrastructure::kscreen_adapter::KscreenAdapter;
+
+            let adapter = KscreenAdapter::new();
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("get");
+            match sub {
+                "get" | "status" => {
+                    let current = adapter.current()?;
+                    let res = serde_json::json!({
+                        "outputs": current
+                            .iter()
+                            .map(|(name, hz, mode)| serde_json::json!({
+                                "name": name,
+                                "refreshRate": hz,
+                                "mode": mode,
+                            }))
+                            .collect::<Vec<_>>(),
+                        "preference": read_display_preference(),
+                        "default": RefreshPreference::default().as_setting(),
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "apply" | "refresh" | "set" => {
+                    let requested = match args.get(3).map(|s| s.as_str()) {
+                        None | Some("auto") => read_display_preference(),
+                        Some(value) => value.to_string(),
+                    };
+                    let preference = RefreshPreference::from_setting(&requested);
+                    let applied = adapter.apply(preference)?;
+                    let res = serde_json::json!({
+                        "preference": preference.as_setting(),
+                        "applied": applied
+                            .iter()
+                            .map(|(output, mode)| serde_json::json!({ "output": output, "mode": mode }))
+                            .collect::<Vec<_>>(),
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "restore" => {
+                    let restored = adapter.restore()?;
+                    println!("{{\"restored\":{restored}}}");
+                }
+                "help" | _ => {
+                    eprintln!("Usage: astral-plasma display <get|apply [max|60|120|144|165]|restore>");
+                }
+            }
+        }
         "blur" => {
             use crate::infrastructure::kwin_blur::{BlurSettings, KWinBlurAdapter};
 
@@ -1731,4 +1779,34 @@ async fn run_self_contained_app() -> DynResult<()> {
     }
 
     Ok(())
+}
+
+/// The configured display refresh preference, read straight from settings so the
+/// session can apply it before the shell exists.
+///
+/// Missing file, missing key and unreadable values all fall through to the default
+/// (60 Hz) - the same tolerance `Config.qml` gives an older settings.json.
+fn read_display_preference() -> String {
+    use crate::domain::branding;
+    let candidates = [
+        branding::config_home().join("astral-plasma").join("settings.json"),
+        std::path::PathBuf::from("config/settings.json"),
+    ];
+    for path in candidates {
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        let Some(value) = json.get("display").and_then(|display| display.get("refreshRate")) else {
+            continue;
+        };
+        return match value {
+            serde_json::Value::String(rate) => rate.clone(),
+            serde_json::Value::Number(rate) => rate.to_string(),
+            _ => continue,
+        };
+    }
+    crate::domain::display_modes::RefreshPreference::default().as_setting()
 }

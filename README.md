@@ -253,7 +253,7 @@ doctor [--json]              Diagnose all system dependencies
 Configuration lives in `config/` and `theme/`:
 
 - **`config/settings.json`** — shipped defaults. Top-level sections:
-  `dock` (width, entries, pinned apps, tray, status icons), `dashboard` (tabs, weather, avatars), `topBar`, `theme` (mode, preset, blur strength, corner radius, dynamic colors), `border`, `plasma` (panel/notification takeover), `debugMode`, `media` (visualizer style).
+  `dock` (width, entries, pinned apps, tray, status icons), `dashboard` (tabs, weather, avatars), `topBar`, `theme` (mode, preset, blur strength, corner radius, dynamic colors), `border`, `plasma` (panel/notification takeover), `debugMode`, `media` (visualizer style), `display` (refresh rate: 60 by default, or any target rate / `max`).
   Your live settings live in `~/.config/astral-plasma/settings.json` — the only file the shell writes (updated atomically via `astral-plasma config write`).
 - **`theme/Theme.qml`** — typography scale, corner radii, borders, shadows, and all motion tokens (M3 Expressive beziers/durations).
 - **`theme/Colors.qml`** — Material Design 3 color roles and dynamic palette mappings; plug in presets or wire new schemes here.

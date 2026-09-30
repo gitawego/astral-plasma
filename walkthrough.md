@@ -1340,3 +1340,39 @@ motion budget is 30 fps, so 240 Hz scanout bought it nothing.
   slide, no `Behavior on width` meters, every metric-driven duration from `Theme`,
   visibility gating intact.
 - `make test` is green (717 Rust tests + every QML suite, now 99).
+
+---
+
+## 24. Making The Refresh Cap A Setting (Default 60 Hz)
+
+The 60 Hz cap from §23 was the biggest single win of the audit and the only change
+a user *feels* - it slows the cursor, scrolling and games, not the shell, whose
+motion budget is 30 fps. So it became a preference:
+
+- **Setting**: `display.refreshRate` in `settings.json`, shipped default `"60"`,
+  with any target rate or `"max"` available; `SystemPage` renders the picker
+  ("60 / 120 / 144 / 165 / Max") and shows what was actually applied.
+- **Daemon owns the switch**: `astral-plasma display apply [rate|auto|max]`,
+  `display restore`, `display get`. The pure choice logic
+  (`domain/display_modes.rs`) picks, per enabled output, the highest refresh **at
+  the current resolution** that does not exceed the target - never a smaller mode
+  to reach a rate, never a no-op re-switch that would blank the screen.
+- **Reversible by construction**: the first switch journals the modes the session
+  was running (`display_backup.json`, next to the blur backup) and `run.sh` puts
+  them back on exit. `run.sh` also applies the preference before the shell starts,
+  so a session never renders a frame at a rate the user asked not to pay for.
+
+Verified live on this machine (240 Hz panel, preference 60):
+
+```
+$ astral-plasma display get          -> eDP-1 2560x1600@60
+$ astral-plasma display apply max    -> {"applied":[{"output":"eDP-1","mode":"37"}]}
+$ astral-plasma display get          -> eDP-1 2560x1600@240
+$ astral-plasma display restore      -> {"restored":true}
+$ astral-plasma display get          -> eDP-1 2560x1600@60
+```
+
+Tests: `daemon/tests/test_display_modes.rs` (parsing, the ≤-target choice, the
+resolution invariant, no-op suppression, snapshot resolution preferring mode names
+over ids), `tests/tst_display_refresh_setting.qml` (setting default, service
+apply-on-start/on-change, settings UI wiring, run.sh apply-then-restore ordering).

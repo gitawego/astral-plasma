@@ -962,6 +962,40 @@ Singleton {
     }
 
     // -----------------------------------------------------------------------
+    // Display refresh rate
+    //
+    // The shell budgets its own motion at 30 fps (`Theme.decorativeMaxFps`), so a
+    // 240 Hz panel buys its surfaces nothing while multiplying the per-frame work
+    // of every other client - and of the compositor, which blends and blurs the
+    // shell's glass on every one of those frames (docs/LESSONS.md 33). So the
+    // shipped default is 60 Hz, and `max` leaves the outputs exactly as the
+    // session configured them.
+    //
+    // The daemon owns the switch: it picks the highest refresh at the *current
+    // resolution* that does not exceed the choice, records what the session was
+    // running, and puts it back when the shell exits.
+    readonly property var displayRefreshOptions: ["60", "120", "144", "165", "max"]
+    readonly property string defaultDisplayRefreshRate: "60"
+
+    property string displayRefreshRate: (root.settings && root.settings.display
+            && root.settings.display.refreshRate !== undefined)
+        ? ("" + root.settings.display.refreshRate)
+        : root.defaultDisplayRefreshRate
+
+    function displayRefreshLabel(rate) {
+        return ("" + rate === "max") ? "Max" : ("" + rate + " Hz");
+    }
+
+    function setDisplayRefreshRate(rate) {
+        const value = "" + rate;
+        if (!root.settings) root.settings = {};
+        if (!root.settings.display) root.settings.display = {};
+        root.settings.display.refreshRate = value;
+        root.displayRefreshRate = value;
+        root.saveSettings();
+    }
+
+    // -----------------------------------------------------------------------
     // Voice input
     //
     // Every getter tolerates an absent `voice` block, so a settings.json written
