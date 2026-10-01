@@ -28,9 +28,28 @@ impl AgentSessionAdapter for AntigravityAdapter {
             dirs.push(brain.clone());
             if let Ok(entries) = std::fs::read_dir(&brain) {
                 for e in entries.flatten() {
-                    let logs = e.path().join(".system_generated/logs");
-                    if logs.exists() && logs.is_dir() {
-                        dirs.push(logs);
+                    let p = e.path();
+                    if p.is_dir() {
+                        let sys = p.join(".system_generated");
+                        if sys.is_dir() {
+                            dirs.push(sys.clone());
+                        }
+                        let logs = p.join(".system_generated/logs");
+                        if logs.exists() && logs.is_dir() {
+                            dirs.push(logs);
+                        }
+                        let tasks = p.join(".system_generated/tasks");
+                        if tasks.exists() && tasks.is_dir() {
+                            dirs.push(tasks);
+                        }
+                        let steps = p.join(".system_generated/steps");
+                        if steps.exists() && steps.is_dir() {
+                            dirs.push(steps);
+                        }
+                        let msgs = p.join(".system_generated/messages");
+                        if msgs.exists() && msgs.is_dir() {
+                            dirs.push(msgs);
+                        }
                     }
                 }
             }
@@ -40,7 +59,11 @@ impl AgentSessionAdapter for AntigravityAdapter {
 
     fn can_handle_file(&self, path: &Path) -> bool {
         let s = path.to_string_lossy();
-        s.contains("antigravity") && s.ends_with("transcript.jsonl")
+        s.contains("antigravity")
+            && (s.ends_with("transcript.jsonl")
+                || s.contains(".system_generated/tasks")
+                || s.contains(".system_generated/steps")
+                || s.contains(".system_generated/messages"))
     }
 
     fn parse_session_file(&self, path: &Path, tail: Option<&str>, _head: Option<&str>) -> Option<SessionParseResult> {
@@ -107,17 +130,45 @@ impl AgentSessionAdapter for AntigravityAdapter {
                 let p = d.path();
                 if p.is_dir() {
                     let log_p = p.join(".system_generated/logs/transcript.jsonl");
+                    if !log_p.exists() {
+                        continue;
+                    }
+
+                    let mut latest_mtime = 0u64;
+                    let mut latest_size = 0u64;
+
                     if let Ok(meta) = log_p.metadata() {
                         if let Ok(mtime) = meta.modified() {
                             let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-                            if now.saturating_sub(epoch) < max_age_ms {
-                                sink.push(ActiveSessionDescriptor {
-                                    path: log_p,
-                                    mtime: epoch,
-                                    size: meta.len(),
-                                });
+                            latest_mtime = epoch;
+                            latest_size = meta.len();
+                        }
+                    }
+
+                    // Check if tasks in .system_generated/tasks were modified more recently
+                    let tasks_dir = p.join(".system_generated/tasks");
+                    if let Ok(entries) = std::fs::read_dir(&tasks_dir) {
+                        for entry in entries.flatten() {
+                            let ep = entry.path();
+                            if ep.extension().map(|e| e == "log").unwrap_or(false) {
+                                if let Ok(meta) = ep.metadata() {
+                                    if let Ok(mtime) = meta.modified() {
+                                        let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                                        if epoch > latest_mtime {
+                                            latest_mtime = epoch;
+                                        }
+                                    }
+                                }
                             }
                         }
+                    }
+
+                    if latest_mtime > 0 && now.saturating_sub(latest_mtime) < max_age_ms {
+                        sink.push(ActiveSessionDescriptor {
+                            path: log_p,
+                            mtime: latest_mtime,
+                            size: latest_size,
+                        });
                     }
                 }
             }
@@ -144,7 +195,116 @@ impl AgentSessionAdapter for AntigravityAdapter {
         Some((model, "gemini".to_string()))
     }
 
-    fn check_turn_completed(&self, tail: &str, _path: &Path) -> bool {
+    fn check_turn_completed(&self, tail: &str, path: &Path) -> bool {
+        let mut completed_tasks: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut pending_tasks: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut completed_subagents: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut pending_subagents: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        // 1. Scan the tail forward to identify launched background tasks and subagents vs completions
+        for line in tail.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
+                let content = v.get("content").and_then(|c| c.as_str()).unwrap_or("");
+
+                // Task completion messages
+                if let Some(pos) = content.find("Task id \"") {
+                    let rem = &content[pos + 9..];
+                    if let Some(end_quote) = rem.find('"') {
+                        let task_id = &rem[..end_quote];
+                        if content[pos..].contains("finished")
+                            || content[pos..].contains("canceled")
+                            || content[pos..].contains("cancelled")
+                            || content[pos..].contains("failed")
+                        {
+                            completed_tasks.insert(task_id.to_string());
+                        }
+                    }
+                }
+
+                // Subagent completion messages (e.g. sender=<uuid>)
+                if let Some(sender_pos) = content.find("sender=") {
+                    let rem = &content[sender_pos + 7..];
+                    let sender_id = rem.split_whitespace().next().unwrap_or("").trim_matches('"');
+                    if !sender_id.contains("/task-") && !sender_id.is_empty() {
+                        completed_subagents.insert(sender_id.to_string());
+                    }
+                }
+
+                // Background task launched
+                if status == "RUNNING" || status == "IN_PROGRESS" || content.contains("Tool is running as a background task with task id: ") {
+                    if let Some(pos) = content.find("task id: ") {
+                        let rem = &content[pos + 9..];
+                        let task_id = rem.lines().next().unwrap_or("").trim();
+                        if !task_id.is_empty() {
+                            pending_tasks.insert(task_id.to_string());
+                        }
+                    }
+                }
+
+                // Subagent launched in PLANNER_RESPONSE tool_calls
+                if typ == "PLANNER_RESPONSE" {
+                    if let Some(tool_calls) = v.get("tool_calls").and_then(|tc| tc.as_array()) {
+                        for tc in tool_calls {
+                            if tc.get("name").and_then(|n| n.as_str()) == Some("invoke_subagent") {
+                                if let Some(args) = tc.get("args") {
+                                    if let Some(subs) = args.get("Subagents").and_then(|s| s.as_array()) {
+                                        for sub in subs {
+                                            if let Some(role) = sub.get("Role").and_then(|r| r.as_str()) {
+                                                pending_subagents.insert(role.to_string());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // If any launched background task has not completed, turn is in-flight!
+        for task in &pending_tasks {
+            if !completed_tasks.contains(task) {
+                return false;
+            }
+        }
+
+        // If subagents were invoked and no subagent response has arrived, turn is in-flight!
+        if !pending_subagents.is_empty() && completed_subagents.is_empty() {
+            return false;
+        }
+
+        // 2. Also check file system for recent task activity in .system_generated/tasks
+        if let Some(conv) = find_conversation_dir(path) {
+            let tasks_dir = conv.join(".system_generated/tasks");
+            if tasks_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&tasks_dir) {
+                    let now = current_epoch_ms();
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        if p.extension().map(|e| e == "log").unwrap_or(false) {
+                            if let Ok(meta) = p.metadata() {
+                                if let Ok(mtime) = meta.modified() {
+                                    let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                                    // If a task log was written to in the last 20 seconds, a background task is actively running!
+                                    if now.saturating_sub(epoch) < 20_000 {
+                                        return false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Scan the tail in reverse to evaluate the latest step
         for line in tail.lines().rev() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
@@ -160,8 +320,8 @@ impl AgentSessionAdapter for AntigravityAdapter {
                     return false;
                 }
 
-                // If user just input, or a tool produced output (GENERIC / TOOL_RESULT), turn is in-flight
-                if typ == "USER_INPUT" || typ == "GENERIC" || typ == "TOOL_RESULT" || src == "TOOL_CALL" {
+                // If user just input, or a tool produced output (GENERIC / TOOL_RESULT), or system notification arrived, turn is in-flight
+                if typ == "USER_INPUT" || typ == "GENERIC" || typ == "TOOL_RESULT" || typ == "SYSTEM_MESSAGE" || src == "TOOL_CALL" || src == "SYSTEM" {
                     return false;
                 }
 
@@ -173,13 +333,24 @@ impl AgentSessionAdapter for AntigravityAdapter {
                     if has_tools {
                         return false; // Tool call in progress
                     }
-                    // A PLANNER_RESPONSE with no tool calls indicates final completion of turn
+                    // A PLANNER_RESPONSE with no tool calls and no pending tasks indicates completion
                     return true;
                 }
             }
         }
         true
     }
+}
+
+pub fn find_conversation_dir(path: &Path) -> Option<PathBuf> {
+    let mut curr = path;
+    while let Some(parent) = curr.parent() {
+        if curr.file_name().map(|f| f == ".system_generated").unwrap_or(false) {
+            return parent.to_path_buf().into();
+        }
+        curr = parent;
+    }
+    None
 }
 
 pub fn read_antigravity_state_model() -> Option<String> {

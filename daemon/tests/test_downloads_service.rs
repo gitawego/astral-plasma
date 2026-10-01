@@ -170,7 +170,92 @@ fn test_task_progress_and_remaining_helpers() {
         download_speed: 0,
         dir: String::new(),
         error_code: None,
+        completed_at: None,
     };
     assert!((t.progress() - 1.0).abs() < 1e-9, "clamped at 1.0");
     assert_eq!(t.remaining(), 0);
 }
+
+#[test]
+fn test_reconcile_history_persists_stopped_and_purges() {
+    use astral_plasma::domain::downloads::DownloadHistory;
+
+    #[derive(Default)]
+    struct MockHistoryPort {
+        history: Mutex<DownloadHistory>,
+        raw: Mutex<Vec<serde_json::Value>>,
+    }
+
+    impl DownloadsPort for MockHistoryPort {
+        fn ensure_running(&self, _dir: &str) -> DynResult<bool> { Ok(false) }
+        fn fetch_raw(&self) -> DynResult<Vec<serde_json::Value>> {
+            Ok(self.raw.lock().unwrap().clone())
+        }
+        fn add_uri(&self, _url: &str, _opts: &NewDownloadOptions) -> DynResult<String> { Ok("g".into()) }
+        fn control(&self, _verb: &str, _gid: &str) -> DynResult<()> { Ok(()) }
+        fn retry(&self, _gid: &str, _opts: &NewDownloadOptions) -> DynResult<String> { Ok("g".into()) }
+        fn purge(&self) -> DynResult<()> { Ok(()) }
+        fn secret(&self) -> DynResult<String> { Ok("s".into()) }
+        fn load_history(&self) -> DynResult<DownloadHistory> {
+            Ok(self.history.lock().unwrap().clone())
+        }
+        fn save_history(&self, hist: &DownloadHistory) -> DynResult<()> {
+            *self.history.lock().unwrap() = hist.clone();
+            Ok(())
+        }
+        fn scan_directory(&self, _dir: &str) -> DynResult<Vec<DownloadTask>> {
+            Ok(vec![])
+        }
+    }
+
+    let port = Arc::new(MockHistoryPort::default());
+    // Aria2 reports completed download
+    *port.raw.lock().unwrap() = vec![serde_json::json!({
+        "gid": "aria-1",
+        "status": "complete",
+        "totalLength": "1000000",
+        "completedLength": "1000000",
+        "downloadSpeed": "0",
+        "dir": "/home/user/Downloads",
+        "files": [{"path": "/home/user/Downloads/omarchy-4.0.4.iso"}]
+    })];
+
+    let uc = DownloadsUseCase::with_defaults(port.clone(), "/home/user/Downloads".into(), 4);
+    let snap = uc.snapshot().expect("snapshot");
+
+    assert_eq!(snap.stopped.len(), 1, "Completed aria2 task appears in stopped tasks");
+    assert_eq!(snap.stopped[0].name, "omarchy-4.0.4.iso");
+    assert_eq!(snap.stopped[0].status, DownloadStatus::Complete);
+
+    // Verify it was persisted to history
+    let saved = port.history.lock().unwrap().clone();
+    assert_eq!(saved.items.len(), 1);
+    assert_eq!(saved.items[0].name, "omarchy-4.0.4.iso");
+
+    // Aria2 restarts, so raw is now empty, but history restores the finished download
+    *port.raw.lock().unwrap() = vec![];
+    let snap2 = uc.snapshot().expect("snapshot after aria2 restart");
+    assert_eq!(snap2.stopped.len(), 1, "Persistent history restores the finished download");
+    assert_eq!(snap2.stopped[0].name, "omarchy-4.0.4.iso");
+
+    // Dismiss via remove_result
+    uc.remove_result("aria-1").expect("remove");
+    let after_remove = uc.snapshot().expect("snapshot after remove");
+    assert_eq!(after_remove.stopped.len(), 0, "Dismissed task is no longer in stopped tasks");
+
+    // Re-add to history and test purge
+    *port.raw.lock().unwrap() = vec![serde_json::json!({
+        "gid": "aria-2",
+        "status": "complete",
+        "totalLength": "2000000",
+        "completedLength": "2000000",
+        "downloadSpeed": "0",
+        "dir": "/home/user/Downloads",
+        "files": [{"path": "/home/user/Downloads/file2.zip"}]
+    })];
+    let _ = uc.snapshot();
+    assert_eq!(port.history.lock().unwrap().items.len(), 1);
+    uc.purge_results().expect("purge");
+    assert_eq!(port.history.lock().unwrap().items.len(), 0, "purge clears history completely");
+}
+

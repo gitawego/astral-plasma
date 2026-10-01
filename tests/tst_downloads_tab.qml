@@ -113,8 +113,8 @@ Item {
             "paused → resume/cancel");
         assert(JSON.stringify(dlTab.actionsFor("error")) === JSON.stringify(["retry", "remove"]),
             "error → retry/remove");
-        assert(JSON.stringify(dlTab.actionsFor("complete")) === JSON.stringify(["remove"]),
-            "complete → remove");
+        assert(JSON.stringify(dlTab.actionsFor("complete")) === JSON.stringify(["open", "folder", "remove"]),
+            "complete → open/folder/remove");
         assert(JSON.stringify(dlTab.actionsFor("Active")) === JSON.stringify(["pause", "cancel"]),
             "status match must be case-insensitive");
 
@@ -123,6 +123,8 @@ Item {
         assert(dlTab.actionIcon("resume") === "play_arrow", "resume icon");
         assert(dlTab.actionIcon("cancel") === "close", "cancel icon");
         assert(dlTab.actionIcon("retry") === "refresh", "retry icon");
+        assert(dlTab.actionIcon("open") === "open_in_new", "open icon");
+        assert(dlTab.actionIcon("folder") === "folder", "folder icon");
         assert(dlTab.actionIcon("remove") === "delete", "remove icon");
         assert(dlTab.statusIcon("complete") === "check_circle", "complete status icon");
         assert(dlTab.statusIcon("error") === "error", "error status icon");
@@ -316,6 +318,22 @@ Item {
         assert(dlTab.urlInputItem.text === "", "Clear empties the field");
         dlTab.testClipboardText = null;
 
+        // ---- 9c. Missing aria2 handling & empty state guidance ----
+        assert(dlTab.isAriaAvailable === true, "default aria available");
+        dlTab.testAriaAvailable = false;
+        assert(dlTab.isAriaAvailable === false, "testAriaAvailable overrides availability");
+        assert(dlTab.submitButtonItem.text === "Install Aria2", "submit button prompts install when aria2 missing, got: " + dlTab.submitButtonItem.text);
+
+        dlTab.cancelButtonItem.clicked(); // close dialog
+        assert(dlTab.emptyStateTitleItem.text === "Aria2 not installed", "empty state shows aria2 missing title, got: " + dlTab.emptyStateTitleItem.text);
+        assert(dlTab.emptyStateHintItem.text.indexOf("Install aria2") !== -1, "empty state hint guides installation");
+
+        dlTab.segment = "finished";
+        assert(dlTab.emptyStateTitleItem.text.indexOf("finished") !== -1, "finished segment empty copy is retained even without aria2");
+        dlTab.segment = "active";
+        dlTab.testAriaAvailable = null;
+        assert(dlTab.isAriaAvailable === true, "clearing testAriaAvailable restores default");
+
         // An empty clipboard must not inject a blank line.
         dlTab.pasteFromClipboard();
         assert(dlTab.urlInputItem.text === "", "empty clipboard leaves the field untouched");
@@ -355,9 +373,12 @@ Item {
 
             dlTab.segment = "queued";
             assert(dlTab.taskRowRepeaterItem.count === 1, "queued segment shows 1 row, got " + dlTab.taskRowRepeaterItem.count);
+            assert(dlTab.showClearButton === false, "clear button hidden in queued segment");
             dlTab.segment = "finished";
             assert(dlTab.taskRowRepeaterItem.count === 1, "finished segment shows 1 row, got " + dlTab.taskRowRepeaterItem.count);
+            assert(dlTab.showClearButton === true, "clear button visible in finished segment with items");
             dlTab.segment = "active";
+            assert(dlTab.showClearButton === false, "clear button hidden in active segment");
 
             // Clamp: an unbounded row count scrolls inside maxListHeight.
             const many = [];
@@ -397,6 +418,8 @@ Item {
         assert(/downloadFinished/.test(svcSrc) && /downloadFailed/.test(svcSrc),
             "DownloadService emits finished/failed edge signals");
         assert(/hudText/.test(svcSrc), "DownloadService exposes hudText aggregate");
+        assert(/openFile/.test(svcSrc) && /openFolder/.test(svcSrc) && /xdg-open/.test(svcSrc),
+            "DownloadService exposes openFile and openFolder using xdg-open");
 
         const tabSrc = readLocalFile("../dashboard/tabs/DownloadsTab.qml");
         assert(/LiquidGlassButton/.test(tabSrc), "DownloadsTab uses LiquidGlassButton");
@@ -404,6 +427,9 @@ Item {
         assert(/Flickable/.test(tabSrc), "task list is Flickable-bounded");
         assert(/maxListHeight/.test(tabSrc), "DownloadsTab clamps the list height");
         assert(/segmentIndicator/.test(tabSrc), "DownloadsTab declares the sliding segment indicator");
+        assert(/clearButton/.test(tabSrc), "DownloadsTab declares the clear history button");
+        assert(/isAriaAvailable/.test(tabSrc), "DownloadsTab checks aria availability");
+        assert(/ariaInstallBanner/.test(tabSrc), "DownloadsTab includes aria2 install guidance banner");
 
         const fxSrc = readLocalFile("../components/DownloadBorderEffect.qml");
         assert(/fusedTopNexus/.test(fxSrc), "effect declares fusedTopNexus");

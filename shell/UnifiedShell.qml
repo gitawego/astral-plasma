@@ -307,18 +307,10 @@ PanelWindow {
             height: (root.blurPopoutFused) ? 4 : 0
         }
         Region {
-            x: (root.blurPopoutFused) ? root.dockW : 0
-            // Spans the whole surface: the mask is a UNION, so overlapping the
-            // corner staircases below is harmless. Any inset here would instead
-            // leave a full-width band of unblurred glass, which shows the
-            // wallpaper sharply and reads as the blur lagging the popout.
-            // Consumes UnifiedFrame's authoritative FULL surface rect, so the mask
-            // cannot diverge from the drawn glass. fullRect (not bodyRect) is
-            // required: the top and bottom `filletR` bands are glass right across
-            // the width - only their leftmost sliver is the concave shoulder - so a
-            // body-sized mask would leave those bands unblurred.
-            // (Was `root.height - wrapper.y`, sized to the screen bottom rather
-            // than to the surface.)
+            x: (root.blurPopoutFused) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.x : 0
+            // Spans the straight-sided drawer body flush from dockW - 1 to currentPopW.
+            // Consumes UnifiedFrame's authoritative fullRect (starting at dockW - 1 with bodyW),
+            // so the mask cannot diverge from the drawn glass and never overruns to the right.
             y: (root.blurPopoutFused) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.y : 0
             width: (root.blurPopoutFused) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.width : 0
             height: (root.blurPopoutFused) ? desktopFrame.bottomPopoutSurfaceItem.fullRect.height : 0
@@ -412,51 +404,48 @@ PanelWindow {
             height: (root.blurPopoutFloating) ? 1 : 0
         }
 
-        // Bottom Popout Top Shoulder Fillet (Frosted Glass Blur, when bottom-fused)
-        //
-        // Fused-only: while floating, the drawer is not connected to anything
-        // above it, so this band would frost bare wallpaper over the card.
+        // Bottom Popout Top Shoulder Fillet (Frosted Glass Blur, when fused or floating)
         Region {
-            x: root.blurPopoutFused ? root.dockW : 0
-            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD1) : 0
-            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW1) : 0
-            height: root.blurPopoutFused ? root.filletH1 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD1) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW1) : 0
+            height: root.blurPopoutActive ? root.filletH1 : 0
         }
         Region {
-            x: root.blurPopoutFused ? root.dockW : 0
-            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD2) : 0
-            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW2) : 0
-            height: root.blurPopoutFused ? root.filletH2 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD2) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW2) : 0
+            height: root.blurPopoutActive ? root.filletH2 : 0
         }
         Region {
-            x: root.blurPopoutFused ? root.dockW : 0
-            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD3) : 0
-            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW3) : 0
-            height: root.blurPopoutFused ? root.filletH3 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD3) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW3) : 0
+            height: root.blurPopoutActive ? root.filletH3 : 0
         }
         Region {
-            x: root.blurPopoutFused ? root.dockW : 0
-            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD4) : 0
-            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW4) : 0
-            height: root.blurPopoutFused ? root.filletH4 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD4) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW4) : 0
+            height: root.blurPopoutActive ? root.filletH4 : 0
         }
         Region {
-            x: root.blurPopoutFused ? root.dockW : 0
-            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD5) : 0
-            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW5) : 0
-            height: root.blurPopoutFused ? root.filletH5 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD5) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW5) : 0
+            height: root.blurPopoutActive ? root.filletH5 : 0
         }
         Region {
-            x: root.blurPopoutFused ? root.dockW : 0
-            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD6) : 0
-            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW6) : 0
-            height: root.blurPopoutFused ? root.filletH6 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD6) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW6) : 0
+            height: root.blurPopoutActive ? root.filletH6 : 0
         }
         Region {
-            x: root.blurPopoutFused ? root.dockW : 0
-            y: root.blurPopoutFused ? (fusedBottomPopoutWrapper.y - root.filletD7) : 0
-            width: root.blurPopoutFused ? Math.min(root.currentPopW, root.filletW7) : 0
-            height: root.blurPopoutFused ? root.filletH7 : 0
+            x: root.blurPopoutActive ? root.dockW : 0
+            y: root.blurPopoutActive ? (fusedBottomPopoutWrapper.y - root.filletD7) : 0
+            width: root.blurPopoutActive ? Math.min(root.currentPopW, root.filletW7) : 0
+            height: root.blurPopoutActive ? root.filletH7 : 0
         }
 
         // Bottom Popout Bottom Shoulder Fillet (Frosted Glass Blur, when floating)
@@ -1556,9 +1545,14 @@ PanelWindow {
             ? Config.downloadsBorderEffect : true
         cornerBusy: (typeof NotificationService !== "undefined" && NotificationService.hasNotification) ? true : false
         totalProgress: (typeof DownloadService !== "undefined") ? DownloadService.totalProgress : 0.0
+        totalCompletedBytes: (typeof DownloadService !== "undefined") ? DownloadService.totalCompletedBytes : 0
+        totalBytes: (typeof DownloadService !== "undefined") ? DownloadService.totalBytes : 0
         totalSpeed: (typeof DownloadService !== "undefined") ? DownloadService.totalSpeed : 0
+        sessionMaxSpeed: (typeof DownloadService !== "undefined") ? DownloadService.sessionMaxSpeed : 0
+        sessionMinSpeed: (typeof DownloadService !== "undefined") ? DownloadService.sessionMinSpeed : 0
         activeCount: (typeof DownloadService !== "undefined") ? DownloadService.activeCount : 0
         indeterminate: (typeof DownloadService !== "undefined") ? DownloadService.indeterminate : false
+        hudText: (typeof DownloadService !== "undefined") ? DownloadService.hudText : ""
         hasError: {
             if (typeof DownloadService === "undefined" || !DownloadService.stoppedTasks) return false;
             const stopped = DownloadService.stoppedTasks;
@@ -1568,6 +1562,7 @@ PanelWindow {
             return false;
         }
         showCompleteFlash: downloadFlashState.showFlash
+        isPaused: (typeof DownloadService !== "undefined") ? DownloadService.isPaused : false
     }
 
     // 6. LEFT DOCK CONTENT
@@ -1651,7 +1646,6 @@ PanelWindow {
             width: bodyW + fusedBottomFilletR
             height: fusedBottomPopoutWrapper.height + topR + botR
             visible: fusedBottomPopoutWrapper.offsetProgress > 0.001
-            opacity: fusedBottomPopoutWrapper.offsetProgress
 
             // 1A. Solid Glass Surface Fill Shape (Floating drawer with inverted shoulder fillets)
             Shape {
@@ -1900,6 +1894,7 @@ PanelWindow {
             FusedBottomPopout {
                 id: fusedPopout
                 anchors.left: parent.left
+                anchors.leftMargin: (-fusedPopout.popWidth - 5) * (1.0 - fusedBottomPopoutWrapper.offsetProgress)
                 anchors.top: parent.top
                 width: fusedPopout.popWidth
                 mode: Config.bottomPopoutMode

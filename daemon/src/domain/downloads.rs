@@ -71,6 +71,8 @@ pub struct DownloadTask {
     pub dir: String,
     #[serde(default)]
     pub error_code: Option<String>,
+    #[serde(default)]
+    pub completed_at: Option<u64>,
 }
 
 impl DownloadTask {
@@ -259,6 +261,7 @@ pub fn parse_task(v: &serde_json::Value) -> Option<DownloadTask> {
         download_speed,
         dir,
         error_code,
+        completed_at: None,
     })
 }
 
@@ -306,3 +309,66 @@ impl NewDownloadOptions {
         m
     }
 }
+
+/// Persistent download history: retains completed/stopped tasks across restarts
+/// and tracks user-dismissed files so removed history is not re-imported.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct DownloadHistory {
+    #[serde(default)]
+    pub items: Vec<DownloadTask>,
+    #[serde(default)]
+    pub dismissed: Vec<String>,
+}
+
+impl DownloadHistory {
+    /// Inserts or updates a task. Dismissed items are ignored unless explicitly un-dismissed.
+    pub fn add_or_update(&mut self, task: DownloadTask) {
+        if self.dismissed.iter().any(|d| d == &task.gid || (!task.name.is_empty() && d == &task.name)) {
+            return;
+        }
+        if let Some(existing) = self.items.iter_mut().find(|t| {
+            t.gid == task.gid || (!task.name.is_empty() && t.name == task.name && t.dir == task.dir)
+        }) {
+            existing.status = task.status;
+            existing.total_length = task.total_length;
+            existing.completed_length = task.completed_length;
+            if task.completed_at.is_some() {
+                existing.completed_at = task.completed_at;
+            }
+            if task.error_code.is_some() {
+                existing.error_code = task.error_code;
+            }
+        } else {
+            self.items.push(task);
+        }
+    }
+
+    /// Dismisses a task by gid or name, removing it from active history and preventing re-import.
+    pub fn dismiss(&mut self, gid_or_name: &str) {
+        if let Some(pos) = self.items.iter().position(|t| t.gid == gid_or_name || t.name == gid_or_name) {
+            let item = self.items.remove(pos);
+            if !self.dismissed.contains(&item.gid) {
+                self.dismissed.push(item.gid);
+            }
+            if !item.name.is_empty() && !self.dismissed.contains(&item.name) {
+                self.dismissed.push(item.name);
+            }
+        } else if !self.dismissed.iter().any(|d| d == gid_or_name) {
+            self.dismissed.push(gid_or_name.to_string());
+        }
+    }
+
+    /// Clears all items from history and marks them as dismissed.
+    pub fn clear(&mut self) {
+        for item in &self.items {
+            if !self.dismissed.contains(&item.gid) {
+                self.dismissed.push(item.gid.clone());
+            }
+            if !item.name.is_empty() && !self.dismissed.contains(&item.name) {
+                self.dismissed.push(item.name.clone());
+            }
+        }
+        self.items.clear();
+    }
+}
+

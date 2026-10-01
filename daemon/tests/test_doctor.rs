@@ -133,4 +133,15 @@ fn test_live_diagnostics_collection() {
         .map(|o| o.status.success())
         .unwrap_or(false);
     assert_eq!(qs.installed, expected_installed);
+
+    // Download Manager (aria2) check must be present
+    let aria_check = report.checks.iter().find(|c| c.name.contains("aria2"));
+    assert!(aria_check.is_some(), "Download Manager (aria2) check must exist");
+    let aria = aria_check.unwrap();
+    assert_eq!(aria.required, false, "aria2 must be optional");
+    assert_eq!(aria.category, "Optional Enhancements");
+    if !aria.installed {
+        assert!(aria.recommendation.is_some());
+        assert!(aria.recommendation.as_ref().unwrap().contains("aria2"));
+    }
 }

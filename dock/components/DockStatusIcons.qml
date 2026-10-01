@@ -16,6 +16,15 @@ LiquidGlassCard {
     implicitHeight: layout.implicitHeight + vPad * 2
     radius: Math.round((Config.dockIconSize + 16) * 0.5)
 
+    showBorder: !Config.bottomPopoutVisible
+    showCaustic: !Config.bottomPopoutVisible
+    showRefraction: !Config.bottomPopoutVisible
+    showSpecular: !Config.bottomPopoutVisible
+    showShadow: !Config.bottomPopoutVisible
+    showBottomRim: !Config.bottomPopoutVisible
+    elevation: Config.bottomPopoutVisible ? 0 : 3
+    color: Config.bottomPopoutVisible ? "transparent" : Colors.glassCard
+
     HoverHandler {
         id: groupHover
         onHoveredChanged: {

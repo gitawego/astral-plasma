@@ -4,8 +4,8 @@
 //! owns no threads and no timers — QML consumes download events, never polls.
 
 use crate::domain::downloads::{
-    aggregate_total, clamp_split, parse_task, parse_urls, DownloadStatus, DownloadTask, DownloadsTotal,
-    NewDownloadOptions, DEFAULT_SPLIT,
+    aggregate_total, clamp_split, parse_task, parse_urls, DownloadHistory, DownloadStatus,
+    DownloadTask, DownloadsTotal, NewDownloadOptions, DEFAULT_SPLIT,
 };
 use crate::domain::ports::DynResult;
 use crate::infrastructure::aria2_adapter;
@@ -16,13 +16,34 @@ fn default_download_dir() -> String {
     home.join("Downloads").to_string_lossy().to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// Snapshot the shell renders: rows grouped by segment + the aggregate total.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct DownloadsSnapshot {
     pub active: Vec<DownloadTask>,
     pub waiting: Vec<DownloadTask>,
     pub stopped: Vec<DownloadTask>,
     pub total: DownloadsTotal,
+    #[serde(default = "default_true")]
+    pub aria_available: bool,
+    #[serde(default)]
+    pub aria_install_command: Option<String>,
+}
+
+impl Default for DownloadsSnapshot {
+    fn default() -> Self {
+        Self {
+            active: Vec::new(),
+            waiting: Vec::new(),
+            stopped: Vec::new(),
+            total: DownloadsTotal::default(),
+            aria_available: true,
+            aria_install_command: None,
+        }
+    }
 }
 
 /// Thin port over the aria2 adapter so tests can fake RPC without aria2c.
@@ -34,6 +55,21 @@ pub trait DownloadsPort: Send + Sync {
     fn retry(&self, gid: &str, opts: &NewDownloadOptions) -> DynResult<String>;
     fn purge(&self) -> DynResult<()>;
     fn secret(&self) -> DynResult<String>;
+    fn load_history(&self) -> DynResult<DownloadHistory> {
+        Ok(DownloadHistory::default())
+    }
+    fn save_history(&self, _history: &DownloadHistory) -> DynResult<()> {
+        Ok(())
+    }
+    fn scan_directory(&self, _dir: &str) -> DynResult<Vec<DownloadTask>> {
+        Ok(Vec::new())
+    }
+    fn is_aria2_installed(&self) -> bool {
+        true
+    }
+    fn aria2_install_command(&self) -> Option<String> {
+        None
+    }
 }
 
 pub struct Aria2DownloadsPort;
@@ -67,6 +103,21 @@ impl DownloadsPort for Aria2DownloadsPort {
     fn secret(&self) -> DynResult<String> {
         aria2_adapter::load_or_create_secret()
     }
+    fn load_history(&self) -> DynResult<DownloadHistory> {
+        aria2_adapter::load_history()
+    }
+    fn save_history(&self, history: &DownloadHistory) -> DynResult<()> {
+        aria2_adapter::save_history(history)
+    }
+    fn scan_directory(&self, dir: &str) -> DynResult<Vec<DownloadTask>> {
+        Ok(aria2_adapter::scan_download_directory(std::path::Path::new(dir)))
+    }
+    fn is_aria2_installed(&self) -> bool {
+        aria2_adapter::is_aria2_installed()
+    }
+    fn aria2_install_command(&self) -> Option<String> {
+        Some(aria2_adapter::aria2_install_command())
+    }
 }
 
 pub struct DownloadsUseCase {
@@ -93,15 +144,26 @@ impl DownloadsUseCase {
     }
 
     pub fn ensure_running(&self) -> DynResult<bool> {
+        if !self.port.is_aria2_installed() {
+            return Ok(false);
+        }
         self.port.ensure_running(&self.default_dir)
     }
 
-    /// One-shot snapshot: fetch raw RPC tasks, normalise, group, aggregate.
-    /// Change events (see `run_downloads_watch`) tell QML *when* to re-run
-    /// this; QML holds no polling timer of its own.
+    /// One-shot snapshot: fetch raw RPC tasks, normalise, group, aggregate,
+    /// and reconcile with persistent history + download directory.
     pub fn snapshot(&self) -> DynResult<DownloadsSnapshot> {
-        let raw = self.port.fetch_raw()?;
-        Ok(Self::build_snapshot(raw))
+        let is_installed = self.port.is_aria2_installed();
+        let raw = if is_installed {
+            self.port.fetch_raw().unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let mut snap = Self::build_snapshot(raw);
+        snap.aria_available = is_installed;
+        snap.aria_install_command = self.port.aria2_install_command();
+        self.reconcile_history(&mut snap)?;
+        Ok(snap)
     }
 
     pub fn build_snapshot(raw: Vec<serde_json::Value>) -> DownloadsSnapshot {
@@ -121,6 +183,51 @@ impl DownloadsUseCase {
         }
         snap.total = aggregate_total(&counted);
         snap
+    }
+
+    /// Reconciles live stopped tasks with persistent history and discovers
+    /// completed files in the target download directory.
+    pub fn reconcile_history(&self, snap: &mut DownloadsSnapshot) -> DynResult<()> {
+        let mut history = self.port.load_history().unwrap_or_default();
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // 1. Live stopped tasks from aria2 RPC (complete, error, removed)
+        for stopped_task in &mut snap.stopped {
+            history.dismissed.retain(|d| d != &stopped_task.gid && d != &stopped_task.name);
+            if stopped_task.completed_at.is_none() {
+                stopped_task.completed_at = Some(now_secs);
+            }
+            history.add_or_update(stopped_task.clone());
+        }
+
+        // 2. Ensure no active/waiting download remains in stopped history
+        history.items.retain(|item| {
+            !snap.active.iter().any(|a| a.gid == item.gid || a.name == item.name)
+                && !snap.waiting.iter().any(|w| w.gid == item.gid || w.name == item.name)
+        });
+
+        // 4. Sort newest first
+        history.items.sort_by(|a, b| {
+            b.completed_at
+                .unwrap_or(0)
+                .cmp(&a.completed_at.unwrap_or(0))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+
+        // 5. Bound to 100 items
+        if history.items.len() > 100 {
+            history.items.truncate(100);
+        }
+
+        // 6. Save persistent state
+        let _ = self.port.save_history(&history);
+
+        // 7. Update snap.stopped with the complete history
+        snap.stopped = history.items;
+        Ok(())
     }
 
     /// Adds each non-empty line as its own task (AriaNg multi-URL pattern).
@@ -159,11 +266,21 @@ impl DownloadsUseCase {
     }
 
     pub fn remove_result(&self, gid: &str) -> DynResult<()> {
-        self.port.control("removeDownloadResult", gid)
+        let _ = self.port.control("removeDownloadResult", gid);
+        if let Ok(mut history) = self.port.load_history() {
+            history.dismiss(gid);
+            let _ = self.port.save_history(&history);
+        }
+        Ok(())
     }
 
     pub fn purge_results(&self) -> DynResult<()> {
-        self.port.purge()
+        let _ = self.port.purge();
+        if let Ok(mut history) = self.port.load_history() {
+            history.clear();
+            let _ = self.port.save_history(&history);
+        }
+        Ok(())
     }
 
     pub fn retry(&self, gid: &str) -> DynResult<String> {

@@ -199,5 +199,42 @@ fn task(gid: &str, status: DownloadStatus, total: u64, done: u64, speed: u64) ->
         download_speed: speed,
         dir: String::new(),
         error_code: None,
+        completed_at: None,
     }
 }
+
+#[test]
+fn test_download_history_add_dismiss_clear() {
+    use astral_plasma::domain::downloads::DownloadHistory;
+
+    let mut hist = DownloadHistory::default();
+    let t1 = task("g1", DownloadStatus::Complete, 100, 100, 0);
+    let t2 = task("g2", DownloadStatus::Complete, 200, 200, 0);
+
+    hist.add_or_update(t1.clone());
+    hist.add_or_update(t2.clone());
+    assert_eq!(hist.items.len(), 2);
+
+    // Update existing task
+    let mut t1_updated = t1.clone();
+    t1_updated.completed_at = Some(123456);
+    hist.add_or_update(t1_updated);
+    assert_eq!(hist.items.len(), 2);
+    assert_eq!(hist.items[0].completed_at, Some(123456));
+
+    // Dismiss g1
+    hist.dismiss("g1");
+    assert_eq!(hist.items.len(), 1);
+    assert_eq!(hist.items[0].gid, "g2");
+    assert!(hist.dismissed.contains(&"g1".to_string()));
+
+    // Attempting to re-add dismissed item is blocked
+    hist.add_or_update(t1);
+    assert_eq!(hist.items.len(), 1);
+
+    // Clear all
+    hist.clear();
+    assert_eq!(hist.items.len(), 0);
+    assert!(hist.dismissed.contains(&"g2".to_string()));
+}
+

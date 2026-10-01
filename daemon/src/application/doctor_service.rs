@@ -42,6 +42,9 @@ impl DoctorService {
         // 10. Voice Input (never required: a shell without it is a healthy shell)
         checks.push(check_voice_engine());
 
+        // 11. Download Manager (aria2)
+        checks.push(check_aria2());
+
         DoctorReport::new(checks)
     }
 }
@@ -636,4 +639,41 @@ fn which(bin: &str) -> Option<String> {
 fn extract_version(text: &str) -> Option<String> {
     let re = regex::Regex::new(r"([0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[0-9a-zA-Z\.]+)*)").ok()?;
     re.captures(text).and_then(|c| c.get(1)).map(|m| m.as_str().to_string())
+}
+
+fn check_aria2() -> DependencyCheck {
+    let path = which("aria2c");
+    let install_cmd = crate::infrastructure::aria2_adapter::aria2_install_command();
+    if let Some(ref p) = path {
+        let mut ver = None;
+        if let Ok(output) = Command::new(p).arg("--version").output() {
+            let out = String::from_utf8_lossy(&output.stdout);
+            ver = extract_version(&out);
+        }
+        DependencyCheck {
+            name: "Download Manager (aria2)".to_string(),
+            category: "Optional Enhancements".to_string(),
+            required: false,
+            status: CheckStatus::Pass,
+            installed: true,
+            detected_version: ver,
+            required_version: None,
+            binary_path: Some(p.clone()),
+            message: "aria2c available for background downloads and dashboard downloads tab".to_string(),
+            recommendation: None,
+        }
+    } else {
+        DependencyCheck {
+            name: "Download Manager (aria2)".to_string(),
+            category: "Optional Enhancements".to_string(),
+            required: false,
+            status: CheckStatus::Warning,
+            installed: false,
+            detected_version: None,
+            required_version: None,
+            binary_path: None,
+            message: "aria2c not found (downloads tab will operate in history-only mode)".to_string(),
+            recommendation: Some(format!("Install aria2: {}", install_cmd)),
+        }
+    }
 }

@@ -29,6 +29,11 @@ ShellRoot {
             Config.activeDashboardTab = "performance";
             Config.dashboardVisible = true;
         }
+        function setDownloadsSegment(seg: string): void {
+            Config.activeDashboardTab = "downloads";
+            Config.activeDownloadsSegment = seg;
+            Config.dashboardVisible = true;
+        }
     }
 
     IpcHandler {
@@ -287,6 +292,7 @@ ShellRoot {
             }
         }
         function open(mode: string, targetY: real): void { Config.openBottomPopout(mode || "default", targetY); }
+        function keep(): void { Config.keepBottomPopout(); }
         function close(): void { Config.closeBottomPopout(); }
         function showTray(idOrService: string, customY: real): void {
             const trayItems = WindowService.tray || [];

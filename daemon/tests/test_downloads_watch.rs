@@ -19,6 +19,7 @@ fn task(gid: &str, done: u64, total: u64, speed: u64) -> DownloadTask {
         download_speed: speed,
         dir: String::new(),
         error_code: None,
+        completed_at: None,
     }
 }
 
@@ -31,7 +32,14 @@ fn snap_with(tasks: Vec<DownloadTask>, speed: u64) -> DownloadsSnapshot {
         active_count: tasks.len(),
         indeterminate: false,
     };
-    DownloadsSnapshot { active: tasks, waiting: vec![], stopped: vec![], total }
+    DownloadsSnapshot {
+        active: tasks,
+        waiting: vec![],
+        stopped: vec![],
+        total,
+        aria_available: true,
+        aria_install_command: None,
+    }
 }
 
 #[test]
@@ -64,6 +72,8 @@ fn test_status_flip_changes_sig() {
         waiting: tasks,
         stopped: vec![],
         total: DownloadsTotal::default(),
+        aria_available: true,
+        aria_install_command: None,
     };
     assert_ne!(snapshot_sig(&a), snapshot_sig(&paused_snap));
 }

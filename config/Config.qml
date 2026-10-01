@@ -214,6 +214,7 @@ Singleton {
     }
     readonly property bool downloadsBorderEffect: (root.settings && root.settings.downloads && root.settings.downloads.borderEffect !== undefined)
         ? Boolean(root.settings.downloads.borderEffect) : true
+    property string activeDownloadsSegment: "active"
 
     // Theme getters
     readonly property bool isDarkMode: root.settings.theme ? (root.settings.theme.darkMode ?? (root.settings.theme.mode !== "light")) : true

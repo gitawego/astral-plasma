@@ -598,6 +598,42 @@ fn test_check_turn_completed_antigravity() {
 {"step_index":100,"source":"MODEL","type":"PLANNER_RESPONSE","status":"IN_PROGRESS"}
 "#;
     assert!(!check_turn_completed_from_tail(tail_in_prog, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"));
+
+    // 6. Background task running followed by user update message -> MUST BE IN-FLIGHT!
+    let tail_bg_running = r#"
+{"step_index":2013,"source":"MODEL","type":"GENERIC","status":"RUNNING","content":"Created At: ...\nTool is running as a background task with task id: sess_1/task-2013\nTask Description: make test"}
+{"step_index":2014,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"I have launched `make test` and will wait for it to finish."}
+"#;
+    assert!(!check_turn_completed_from_tail(tail_bg_running, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"),
+        "Background task running must remain in-flight even if agent ended turn with a waiting message");
+
+    // 7. Background task finishes -> turn is now completed
+    let tail_bg_finished = r#"
+{"step_index":2013,"source":"MODEL","type":"GENERIC","status":"RUNNING","content":"Tool is running as a background task with task id: sess_1/task-2013"}
+{"step_index":2014,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"I have launched `make test`"}
+{"step_index":2015,"source":"SYSTEM","type":"SYSTEM_MESSAGE","status":"DONE","content":"[Message] sender=sess_1/task-2013 Task id \"sess_1/task-2013\" finished with result: ok"}
+{"step_index":2016,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"All tests passed successfully!"}
+"#;
+    assert!(check_turn_completed_from_tail(tail_bg_finished, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"),
+        "When background task finishes and agent gives final answer, turn must be completed");
+
+    // 8. Multiple background tasks, one finished, one still running -> MUST BE IN-FLIGHT!
+    let tail_multi_tasks = r#"
+{"step_index":2013,"source":"MODEL","type":"GENERIC","status":"RUNNING","content":"Tool is running as a background task with task id: sess_1/task-2013"}
+{"step_index":2015,"source":"MODEL","type":"GENERIC","status":"RUNNING","content":"Tool is running as a background task with task id: sess_1/task-2015"}
+{"step_index":2017,"source":"SYSTEM","type":"SYSTEM_MESSAGE","status":"DONE","content":"Task id \"sess_1/task-2013\" finished with result: ok"}
+{"step_index":2018,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"Task 2013 finished, waiting for task 2015"}
+"#;
+    assert!(!check_turn_completed_from_tail(tail_multi_tasks, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"),
+        "Turn must remain in-flight while any background task is still running");
+
+    // 9. Subagent launched in PLANNER_RESPONSE followed by waiting message -> MUST BE IN-FLIGHT!
+    let tail_subagent = r#"
+{"step_index":100,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","tool_calls":[{"name":"invoke_subagent","args":{"Subagents":[{"Role":"Research Agent","TypeName":"research"}]}}]}
+{"step_index":101,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"I've spawned a subagent and will await its reply."}
+"#;
+    assert!(!check_turn_completed_from_tail(tail_subagent, "/home/hlu/.gemini/antigravity/brain/session/logs/transcript.jsonl"),
+        "Subagent invocation must keep turn in-flight while awaiting subagent results");
 }
 
 #[test]

@@ -142,6 +142,8 @@ Item {
         "terminal": "󰆍",
         "code": "󰅩",
         "folder": "󰉋",
+        "folder_open": "󰉋",
+        "file_open": "󰏌",
         "movie": "󰿎",
         "sports_esports": "󰊴",
         "insights": "󰄧",

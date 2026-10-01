@@ -205,18 +205,13 @@ Item {
         assert(/floatingRect/.test(floatingBlock),
             "the floating body must read UnifiedFrame's floatingRect");
 
-        // The top shoulder band is fused-only glass: in the floating state it
-        // blurs bare wallpaper above the card (the drawer is not connected to
-        // anything there).
+        // The top shoulder fillet band is active for both fused and floating popouts
+        // (gated on blurPopoutActive) to ensure continuous liquid blur without black gaps.
         const shoulderBlock = shell.substring(
             shell.indexOf("// Bottom Popout Top Shoulder Fillet"),
             shell.indexOf("// Bottom Popout Bottom Shoulder Fillet"));
-        assert(/blurPopoutFused/.test(shoulderBlock),
-            "the top shoulder fillet band must be gated on blurPopoutFused");
-        assert(!/blurPopoutActive/.test(shoulderBlock),
-            "the top shoulder fillet band must NOT be gated on blurPopoutActive: that includes "
-            + "the floating state, where it blurs bare wallpaper above the card");
-
+        assert(/blurPopoutActive/.test(shoulderBlock),
+            "the top shoulder fillet band must be gated on blurPopoutActive so floating popouts have continuous blur to the dock edge");
 
         // ---- 3. No mask may reach the screen bottom ---------------------
         // `root.height - <wrapper>.y` has no basis in the surface's geometry and
@@ -234,38 +229,31 @@ Item {
         for (const fusedState of [false, true]) {
             const botR = fusedState ? 0 : filletR;
             const tag = fusedState ? "fused" : "floating";
-            // Surface (from UnifiedFrame's own expressions)
-            const surfTop = wrapperY - filletR;
-            const surfBottom = wrapperY + popoutH + botR;
             const surfLeft = dockW - 1;
 
             if (fusedState) {
-                // Fused glass IS the surface (shoulder bands included), so the
-                // exported fullRect must equal it: no overhang (blur on bare
-                // desktop) and no shortfall (unblurred glass).
-                const maskTop = wrapperY - filletR;          // fullRect.y
-                const maskBottom = wrapperY + popoutH + botR; // fullRect bottom
-                assert(maskTop === surfTop,
-                    tag + ": fullRect top must equal the surface top (mask " + maskTop
-                    + " vs surface " + surfTop + ")");
-                assert(maskBottom === surfBottom,
-                    tag + ": fullRect bottom must equal the surface bottom (mask " + maskBottom
-                    + " vs surface " + surfBottom + ") - a mismatch blurs bare desktop or "
+                // Fused glass body consumes fullRect: spans from dockW - 1 across
+                // the drawer body with zero overhang above the card or to the right.
+                const maskTop = wrapperY;                     // fullRect.y
+                const maskBottom = wrapperY + popoutH;        // fullRect bottom
+                const bodyTop = wrapperY;
+                const bodyBottom = wrapperY + popoutH;
+                assert(maskTop === bodyTop,
+                    tag + ": fullRect top must equal the body top (mask " + maskTop
+                    + " vs body " + bodyTop + ")");
+                assert(maskBottom === bodyBottom,
+                    tag + ": fullRect bottom must equal the body bottom (mask " + maskBottom
+                    + " vs body " + bodyBottom + ") - a mismatch blurs bare desktop or "
                     + "leaves glass unblurred");
             } else {
-                // Floating glass is the card: inset by the shoulder fillet on the
-                // left, and NOT extended by the fused-only top/bottom bands. The
-                // mask is floatingRect, so it must be strictly inside the surface
-                // (otherwise it frosts bare wallpaper) and must reach the card's
-                // own edges (otherwise glass stays sharp).
-                const cardLeft = surfLeft + filletR;
+                // Floating glass body consumes floatingRect starting flush at dockW - 1
+                // to guarantee zero unblurred gap against the dock.
+                const cardLeft = surfLeft;
                 const cardRight = surfLeft + popW + 1;      // bodyW
                 const cardTop = wrapperY;
                 const cardBottom = wrapperY + popoutH;
-                assert(cardLeft > surfLeft,
-                    "sanity: the floating card must be inset from the surface's left edge");
-                assert(cardTop === surfTop + filletR && cardBottom === surfBottom - filletR,
-                    "sanity: the card's top/bottom must sit inside the fused-only bands");
+                assert(cardLeft === surfLeft,
+                    "sanity: the floating card must start flush at the dock edge to avoid unblurred gaps");
                 assert(/floatingRect/.test(shell),
                     tag + ": the mask must consume floatingRect (the card), not the surface");
                 assert(cardRight > cardLeft && cardBottom > cardTop,

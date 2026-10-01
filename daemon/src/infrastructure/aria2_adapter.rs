@@ -14,7 +14,9 @@
 //!   change-only lines at 1s active / 5s idle cadence. No polling anywhere.
 
 use crate::domain::branding;
-use crate::domain::downloads::{ARIA2_RPC_PORT, NewDownloadOptions};
+use crate::domain::downloads::{
+    DownloadHistory, DownloadStatus, DownloadTask, NewDownloadOptions, ARIA2_RPC_PORT,
+};
 use crate::domain::ports::DynResult;
 use std::fs;
 use std::io::{Read, Write};
@@ -40,6 +42,10 @@ pub fn session_file() -> PathBuf {
 
 pub fn secret_file() -> PathBuf {
     downloads_state_dir().join("rpc.secret")
+}
+
+pub fn history_file() -> PathBuf {
+    downloads_state_dir().join("history.json")
 }
 
 fn lock_file() -> PathBuf {
@@ -288,3 +294,147 @@ pub fn retry(secret: &str, gid: &str, opts: &NewDownloadOptions) -> DynResult<St
     let _ = rpc_call(secret, "removeDownloadResult", serde_json::json!([gid]));
     Ok(new_gid)
 }
+
+/// Loads persistent download history from disk.
+pub fn load_history() -> DynResult<DownloadHistory> {
+    let path = history_file();
+    if !path.exists() {
+        return Ok(DownloadHistory::default());
+    }
+    let content = fs::read_to_string(&path)?;
+    if let Ok(hist) = serde_json::from_str::<DownloadHistory>(&content) {
+        return Ok(hist);
+    }
+    if let Ok(tasks) = serde_json::from_str::<Vec<DownloadTask>>(&content) {
+        return Ok(DownloadHistory {
+            items: tasks,
+            dismissed: Vec::new(),
+        });
+    }
+    Ok(DownloadHistory::default())
+}
+
+/// Saves persistent download history to disk.
+pub fn save_history(history: &DownloadHistory) -> DynResult<()> {
+    let dir = downloads_state_dir();
+    fs::create_dir_all(&dir)?;
+    let path = history_file();
+    let json = serde_json::to_string_pretty(history)?;
+    fs::write(&path, json)?;
+    Ok(())
+}
+
+/// 64-bit FNV-1a hash for deriving stable file GIDs without external dependencies.
+fn fnv1a_hash(s: &str) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in s.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+/// Scans the target download directory (e.g. ~/Downloads) for existing downloaded files.
+/// Ignores hidden files and temporary/control files (.aria2, .crdownload, .part, .tmp).
+pub fn scan_download_directory(dir: &std::path::Path) -> Vec<DownloadTask> {
+    let mut tasks = Vec::new();
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return tasks,
+    };
+
+    let dir_str = dir.to_string_lossy().to_string();
+
+    for entry in entries.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        if file_name.starts_with('.') {
+            continue;
+        }
+
+        let lower = file_name.to_lowercase();
+        if lower.ends_with(".aria2")
+            || lower.ends_with(".crdownload")
+            || lower.ends_with(".part")
+            || lower.ends_with(".tmp")
+            || lower.ends_with(".download")
+        {
+            continue;
+        }
+
+        let metadata = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        let file_len = metadata.len();
+        let mtime = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs());
+
+        let gid = format!("file-{:016x}", fnv1a_hash(&format!("{}/{}", dir_str, file_name)));
+
+        tasks.push(DownloadTask {
+            gid,
+            name: file_name,
+            status: DownloadStatus::Complete,
+            total_length: file_len,
+            completed_length: file_len,
+            download_speed: 0,
+            dir: dir_str.clone(),
+            error_code: None,
+            completed_at: mtime,
+        });
+    }
+
+    // Sort newest first
+    tasks.sort_by(|a, b| {
+        b.completed_at
+            .unwrap_or(0)
+            .cmp(&a.completed_at.unwrap_or(0))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    // Bound to top 100 recent files
+    if tasks.len() > 100 {
+        tasks.truncate(100);
+    }
+
+    tasks
+}
+
+/// Checks whether the aria2c binary is present in PATH and executable.
+pub fn is_aria2_installed() -> bool {
+    Command::new("aria2c")
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Derives the tailored installation command for the current distribution.
+pub fn aria2_install_command() -> String {
+    let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+    match crate::domain::voice::package_manager_for_os_release(&os_release) {
+        crate::domain::voice::PackageManager::Pacman => "sudo pacman -S aria2".to_string(),
+        crate::domain::voice::PackageManager::Apt => "sudo apt install aria2".to_string(),
+        crate::domain::voice::PackageManager::Dnf => "sudo dnf install aria2".to_string(),
+        crate::domain::voice::PackageManager::Zypper => "sudo zypper install aria2".to_string(),
+        crate::domain::voice::PackageManager::Nix => "nix-env -iA nixpkgs.aria2".to_string(),
+        crate::domain::voice::PackageManager::Unknown => "https://aria2.github.io/".to_string(),
+    }
+}
+
+

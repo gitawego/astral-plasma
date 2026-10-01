@@ -1415,6 +1415,7 @@ pub(crate) fn capture_utterance_shared(
         // required because a stalled capture ignores polite termination and the
         // blocked read must be interrupted.
         unsafe {
+            let _ = libc::kill(-(cap_pid as libc::pid_t), libc::SIGKILL);
             libc::kill(cap_pid as libc::pid_t, libc::SIGKILL);
         }
     });
@@ -1422,6 +1423,9 @@ pub(crate) fn capture_utterance_shared(
     let result = capture_loop(
         &mut PipeFrameRead { inner: &mut stdout },
         &mut || {
+            unsafe {
+                let _ = libc::kill(-(child.id() as libc::pid_t), libc::SIGKILL);
+            }
             let _ = child.kill();
         },
         &mut pcm,
@@ -1857,36 +1861,47 @@ pub fn trim_to_speech(
 
 /// Spawns `pw-record` with unbuffered stdout, reusing the visualizer's approach.
 pub(crate) fn spawn_capture(args: &[String]) -> std::io::Result<std::process::Child> {
+    #[cfg(unix)]
+    use std::os::unix::process::CommandExt;
+
     // Test/override seam: honour an explicit capture binary before falling back
     // to pw-record, so the session protocol is verifiable without a microphone.
     if let Ok(explicit) = std::env::var(CAPTURE_BIN_ENV) {
         if !explicit.is_empty() {
-            return Command::new(explicit)
-                .args(args)
+            let mut cmd = Command::new(explicit);
+            cmd.args(args)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .spawn();
+                .stderr(Stdio::null());
+            #[cfg(unix)]
+            cmd.process_group(0);
+            return cmd.spawn();
         }
     }
 
-    if let Ok(child) = Command::new("stdbuf")
+    let mut stdbuf_cmd = Command::new("stdbuf");
+    stdbuf_cmd
         .arg("-o0")
         .arg("pw-record")
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-    {
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    stdbuf_cmd.process_group(0);
+    if let Ok(child) = stdbuf_cmd.spawn() {
         return Ok(child);
     }
-    Command::new("pw-record")
+
+    let mut direct_cmd = Command::new("pw-record");
+    direct_cmd
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    direct_cmd.process_group(0);
+    direct_cmd.spawn()
 }
 
 /// Reports whether at least one audio capture source exists.

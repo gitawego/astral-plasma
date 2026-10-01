@@ -1212,7 +1212,7 @@ fn a_stalled_capture_still_hits_the_hard_cap() {
 
     // A capture stub that opens its stdout and then never writes a byte.
     let stalled = fx._dir.path().join("stalled-capture.sh");
-    write_script(&stalled, "#!/usr/bin/env bash\nsleep 600\n");
+    write_script(&stalled, "#!/usr/bin/env bash\nexec sleep 600\n");
 
     // A short cap, so the test does not have to wait half a minute.
     let config_dir = fx.config_home.join("astral-plasma");

@@ -157,9 +157,9 @@ Item {
                 fillColor: root.safeAlpha(root.energizedColor, 0.48 * (0.7 + 0.3 * root.pulse))
                 strokeColor: "transparent"
                 strokeWidth: 0
-                startX: parent.width; startY: 0
-                PathLine { x: parent.width; y: parent.height }
-                PathLine { x: 0; y: parent.height }
+                startX: fusedCornerNexus.width; startY: 0
+                PathLine { x: fusedCornerNexus.width; y: fusedCornerNexus.height }
+                PathLine { x: 0; y: fusedCornerNexus.height }
                 PathLine { x: 0; y: root.cornerFilletR }
                 PathArc {
                     x: root.cornerFilletR
@@ -168,7 +168,7 @@ Item {
                     radiusY: root.cornerFilletR
                     direction: PathArc.Counterclockwise
                 }
-                PathLine { x: parent.width; y: 0 }
+                PathLine { x: fusedCornerNexus.width; y: 0 }
             }
 
             // Continuous Specular Arc Stroke (1px hairline curving from bottom to right)

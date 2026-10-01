@@ -251,10 +251,36 @@ Item {
                     }
                 }
 
-                ActionItem {
-                    icon: "bluetooth"
-                    label: ((typeof BluetoothService !== "undefined" && BluetoothService.powered) || (Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled)) ? "Turn Bluetooth Off" : "Turn Bluetooth On"
-                    onClicked: {
+                readonly property bool btPowered: (typeof BluetoothService !== "undefined" && BluetoothService.powered) 
+                    || (Boolean(Bluetooth.defaultAdapter) && Boolean(Bluetooth.defaultAdapter.enabled))
+                readonly property var btDeviceList: (typeof BluetoothService !== "undefined" && BluetoothService.devices && BluetoothService.devices.length > 0)
+                    ? BluetoothService.devices
+                    : (Bluetooth.devices ? Bluetooth.devices.values : [])
+                readonly property var firstConnectedDevice: {
+                    for (let i = 0; i < btDeviceList.length; i++) {
+                        if (btDeviceList[i] && btDeviceList[i].connected) return btDeviceList[i];
+                    }
+                    return null;
+                }
+
+                function getBtDeviceIcon(name) {
+                    const n = (name || "").toLowerCase();
+                    if (n.includes("key") || n.includes("pop")) return "keyboard";
+                    if (n.includes("mouse")) return "mouse";
+                    if (n.includes("stadia") || n.includes("pad") || n.includes("game")) return "sports_esports";
+                    if (n.includes("head") || n.includes("ear") || n.includes("buds") || n.includes("airpod")) return "headphones";
+                    return "bluetooth";
+                }
+
+                ActionToggleItem {
+                    id: btToggleItem
+                    icon: !bluetoothSection.btPowered ? "bluetooth_disabled" : (bluetoothSection.firstConnectedDevice ? "bluetooth_connected" : "bluetooth")
+                    iconColor: bluetoothSection.btPowered ? (bluetoothSection.firstConnectedDevice ? Colors.primary : Colors.textOnSurface) : Colors.textOnSurfaceVariant
+                    label: bluetoothSection.btPowered
+                        ? (bluetoothSection.firstConnectedDevice ? ("Bluetooth: " + (bluetoothSection.firstConnectedDevice.name || bluetoothSection.firstConnectedDevice.address)) : "Bluetooth: On")
+                        : "Bluetooth: Off"
+                    checked: bluetoothSection.btPowered
+                    onToggled: {
                         if (typeof BluetoothService !== "undefined") {
                             BluetoothService.togglePower();
                         } else if (Bluetooth.defaultAdapter) {
@@ -265,76 +291,80 @@ Item {
                     }
                 }
 
-                ActionItem {
-                    icon: "search"
-                    label: "Make Discoverable"
-                    onClicked: Quickshell.execDetached(["bluetoothctl", "discoverable", "on"])
+                ActionDivider {
+                    visible: bluetoothSection.btPowered
                 }
 
-                ActionDivider {}
-
-                ActionItem {
-                    icon: "send"
-                    label: "Send Files to Device..."
-                    onClicked: Quickshell.execDetached(["blueman-sendto"])
-                }
-
-                ActionItem {
-                    icon: "history"
-                    label: "Reconnect to..."
-                }
-
-                // Connected / Paired devices
                 Repeater {
-                    model: Bluetooth.devices ? Bluetooth.devices.values.slice(0, 3) : []
+                    model: (bluetoothSection.btPowered && bluetoothSection.btDeviceList)
+                        ? bluetoothSection.btDeviceList.slice(0, 5)
+                        : []
 
                     delegate: ActionItem {
                         required property var modelData
-                        icon: "headphones"
-                        iconColor: modelData.connected ? "#388E3C" : Colors.textOnSurfaceVariant
-                        label: (modelData.name || modelData.address || "Audio Device")
+                        icon: bluetoothSection.getBtDeviceIcon(modelData.name)
+                        iconColor: modelData.connected ? Colors.primary : Colors.textOnSurfaceVariant
+                        label: modelData.name || modelData.address || "Bluetooth Device"
+                        detail: modelData.connected ? "Connected" : (modelData.paired ? "Paired" : "")
                         onClicked: {
-                            if (modelData.connected) modelData.disconnect();
-                            else modelData.connect();
+                            if (modelData.connected) {
+                                if (typeof BluetoothService !== "undefined") {
+                                    BluetoothService.disconnectDevice(modelData.address || modelData.mac);
+                                } else if (modelData.disconnect) {
+                                    modelData.disconnect();
+                                }
+                            } else {
+                                if (typeof BluetoothService !== "undefined") {
+                                    BluetoothService.connectDevice(modelData.address || modelData.mac);
+                                } else if (modelData.connect) {
+                                    modelData.connect();
+                                }
+                            }
                         }
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: 28
+                    visible: !bluetoothSection.btPowered
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Bluetooth is turned off"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        color: Colors.textOnSurfaceVariant
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: 28
+                    visible: bluetoothSection.btPowered && (!bluetoothSection.btDeviceList || bluetoothSection.btDeviceList.length === 0)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "No paired devices found"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        color: Colors.textOnSurfaceVariant
                     }
                 }
 
                 ActionDivider {}
 
                 ActionItem {
-                    icon: "devices"
-                    label: "Devices..."
-                    onClicked: Quickshell.execDetached(["blueman-manager"])
+                    icon: "search"
+                    label: "Make Discoverable"
+                    visible: bluetoothSection.btPowered
+                    onClicked: Quickshell.execDetached(["bluetoothctl", "discoverable", "on"])
                 }
 
                 ActionItem {
                     icon: "settings"
-                    label: "Adaptors..."
-                    onClicked: Quickshell.execDetached(["blueman-adapters"])
-                }
-
-                ActionItem {
-                    icon: "lan"
-                    label: "Local Services..."
-                }
-
-                ActionDivider {}
-
-                ActionItem {
-                    icon: "extension"
-                    label: "Plugins"
-                }
-
-                ActionItem {
-                    icon: "help"
-                    label: "Help"
-                }
-
-                ActionItem {
-                    icon: "close"
-                    label: "Exit"
-                    onClicked: Config.activePopout = ""
+                    label: "Bluetooth Settings..."
+                    onClicked: Quickshell.execDetached(["kcmshell6", "kcm_bluetooth"])
                 }
             }
 
@@ -358,23 +388,61 @@ Item {
                     }
                 }
 
-                ActionItem {
-                    icon: "wifi"
-                    label: "Wi-Fi: " + (NetworkService.connected ? (NetworkService.activeSsid || NetworkService.ssid || "Connected") : "Disconnected")
-                    onClicked: NetworkService.toggleWifi()
+                ActionToggleItem {
+                    id: wifiToggleItem
+                    icon: !NetworkService.wifiEnabled ? "wifi_off" : (NetworkService.connected ? "wifi" : "wifi_find")
+                    iconColor: NetworkService.wifiEnabled ? (NetworkService.connected ? Colors.primary : Colors.textOnSurface) : Colors.textOnSurfaceVariant
+                    label: NetworkService.wifiEnabled 
+                        ? ("Wi-Fi: " + (NetworkService.connected ? (NetworkService.activeSsid || NetworkService.ssid || "Connected") : "Disconnected"))
+                        : "Wi-Fi: Off"
+                    checked: NetworkService.wifiEnabled
+                    onToggled: NetworkService.toggleWifi()
                 }
 
-                ActionDivider {}
+                ActionDivider {
+                    visible: NetworkService.wifiEnabled
+                }
 
                 Repeater {
-                    model: (NetworkService.wifiNetworks || NetworkService.scannedNetworks) ? (NetworkService.wifiNetworks || NetworkService.scannedNetworks).slice(0, 5) : []
+                    model: (NetworkService.wifiEnabled && (NetworkService.wifiNetworks || NetworkService.scannedNetworks)) 
+                        ? (NetworkService.wifiNetworks || NetworkService.scannedNetworks).slice(0, 5) 
+                        : []
 
                     delegate: ActionItem {
                         required property var modelData
                         icon: "wifi"
+                        iconColor: (NetworkService.connected && modelData.ssid === NetworkService.activeSsid) ? Colors.primary : Colors.textOnSurface
                         label: modelData.ssid || "Hidden Network"
                         detail: modelData.signal + "%"
                         onClicked: NetworkService.connectToNetwork(modelData.ssid)
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: 28
+                    visible: !NetworkService.wifiEnabled
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Wi-Fi is turned off"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        color: Colors.textOnSurfaceVariant
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: 28
+                    visible: NetworkService.wifiEnabled && (!NetworkService.wifiNetworks || NetworkService.wifiNetworks.length === 0)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Scanning for networks..."
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        color: Colors.textOnSurfaceVariant
                     }
                 }
 

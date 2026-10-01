@@ -26,7 +26,13 @@ Item {
     property var testTasks: null
 
     // Segment filter: "active" | "queued" | "finished" (AriaNg list routes).
-    property string segment: "active"
+    property string segment: (typeof Config !== "undefined" && Config && Config.activeDownloadsSegment)
+        ? Config.activeDownloadsSegment : "active"
+    onSegmentChanged: {
+        if (typeof Config !== "undefined" && Config && Config.activeDownloadsSegment !== root.segment) {
+            Config.activeDownloadsSegment = root.segment;
+        }
+    }
     property bool addDialogOpen: false
 
     // Connections per file for the next add (1..16, clamped by setSplitValue).
@@ -37,6 +43,14 @@ Item {
     // that captures text raises this so UnifiedShell requests keyboard focus
     // for as long as the sheet is open.
     readonly property bool wantsKeyboard: root.addDialogOpen
+
+    // Aria2 availability: live from DownloadService, or test injection
+    property var testAriaAvailable: null
+    readonly property bool isAriaAvailable: root.testAriaAvailable !== null
+        ? Boolean(root.testAriaAvailable)
+        : ((typeof DownloadService !== "undefined" && DownloadService && DownloadService.ariaAvailable !== undefined)
+            ? Boolean(DownloadService.ariaAvailable)
+            : true)
 
     // Clipboard paste: TextEdit.paste() under the hood; testMode can inject
     // text so the append/trim contract is verifiable offscreen.
@@ -81,6 +95,7 @@ Item {
     // ---- Test hooks / structural aliases ----
     readonly property alias headerItem: headerRow
     readonly property alias addButtonItem: addButton
+    readonly property alias clearButtonItem: clearButton
     readonly property alias aggregateProgressItem: aggregateProgress
     readonly property alias segmentBarItem: segmentBar
     readonly property alias segmentIndicatorItem: segmentIndicator
@@ -104,6 +119,7 @@ Item {
     readonly property alias submitButtonItem: submitButton
     readonly property alias cancelButtonItem: cancelButton
     readonly property alias closeDialogButtonItem: closeDialogButton
+    readonly property alias ariaInstallBannerItem: ariaInstallBanner
 
     // Bounded list: 4 rows visible, the rest scrolls (AGENTS.md §7.2).
     readonly property int rowHeight: 58
@@ -160,7 +176,7 @@ Item {
         if (st === "active") return ["pause", "cancel"];
         if (st === "waiting" || st === "paused") return ["resume", "cancel"];
         if (st === "error") return ["retry", "remove"];
-        return ["remove"];
+        return ["open", "folder", "remove"];
     }
 
     function actionIcon(verb) {
@@ -168,6 +184,8 @@ Item {
         if (verb === "resume") return "play_arrow";
         if (verb === "cancel") return "close";
         if (verb === "retry") return "refresh";
+        if (verb === "open") return "open_in_new";
+        if (verb === "folder") return "folder";
         return "delete";
     }
 
@@ -293,6 +311,7 @@ Item {
     readonly property bool showTaskList: root.segmentTasks.length > 0 && !root.addDialogOpen
     readonly property bool showSegments: !root.addDialogOpen
     readonly property bool showAggregateProgress: root.activeCount > 0 && !root.addDialogOpen
+    readonly property bool showClearButton: root.segment === "finished" && root.finishedCount > 0 && !root.addDialogOpen
 
     readonly property string destinationLabel: {
         if (typeof Config !== "undefined" && Config && Config.downloadsDir && Config.downloadsDir.length > 0)
@@ -505,6 +524,24 @@ Item {
             }
 
             LiquidGlassButton {
+                id: clearButton
+                implicitWidth: 92
+                implicitHeight: 34
+                paddingHorizontal: 12
+                paddingVertical: 6
+                visible: root.showClearButton
+                text: "Clear"
+                iconText: "delete_sweep"
+                iconSize: 16
+                elevation: 3
+                onClicked: {
+                    if (typeof DownloadService !== "undefined" && DownloadService && typeof DownloadService.purge === "function") {
+                        DownloadService.purge();
+                    }
+                }
+            }
+
+            LiquidGlassButton {
                 id: addButton
                 implicitWidth: 92
                 implicitHeight: 34
@@ -541,6 +578,120 @@ Item {
                         duration: root.animEffects
                         easing.type: Easing.BezierSpline
                         easing.bezierCurve: root.curveEffects
+                    }
+                }
+            }
+        }
+
+        // ---- Missing aria2 install banner / guide ----
+        Card {
+            id: ariaInstallBanner
+            Layout.fillWidth: true
+            visible: (typeof DownloadService !== "undefined" && DownloadService && !DownloadService.ariaAvailable)
+            radius: root.radiusCard
+            implicitHeight: bannerColumn.implicitHeight + root.padMedium * 2
+
+            ColumnLayout {
+                id: bannerColumn
+                anchors.fill: parent
+                anchors.margins: root.padMedium
+                spacing: root.spaceSmall
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: root.spaceSmall
+
+                    Rectangle {
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        radius: root.radiusFull
+                        color: Qt.alpha(root.accent, 0.16)
+                        border.width: 1
+                        border.color: Qt.alpha(root.accent, 0.30)
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "warning"
+                            size: 18
+                            color: root.accent
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        Text {
+                            text: "Aria2 download engine not found"
+                            font.family: root.fontFamily
+                            font.pixelSize: root.fontBodySmall
+                            font.weight: Font.DemiBold
+                            color: root.textMain
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Astral Plasma uses aria2 for fast multi-connection downloading. Install it to enable downloading:"
+                            font.family: root.fontFamily
+                            font.pixelSize: root.fontLabelSmall
+                            color: root.textMuted
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: root.spaceSmall
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 32
+                        radius: root.radiusItem
+                        color: root.darkMode ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(255, 255, 255, 0.55)
+                        border.width: 1
+                        border.color: root.borderSubtle
+
+                        Text {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            verticalAlignment: Text.AlignVCenter
+                            text: (typeof DownloadService !== "undefined" && DownloadService && DownloadService.ariaInstallCommand)
+                                ? DownloadService.ariaInstallCommand
+                                : "sudo pacman -S aria2"
+                            font.family: root.fontMonospace
+                            font.pixelSize: root.fontLabelSmall
+                            color: root.accent
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    LiquidGlassButton {
+                        id: copyCmdButton
+                        implicitWidth: 84
+                        implicitHeight: 32
+                        paddingHorizontal: 12
+                        paddingVertical: 6
+                        text: copyTimer.running ? "Copied!" : "Copy"
+                        iconText: copyTimer.running ? "check" : "content_copy"
+                        iconSize: 14
+                        elevation: 3
+                        onClicked: {
+                            const cmd = (typeof DownloadService !== "undefined" && DownloadService && DownloadService.ariaInstallCommand)
+                                ? DownloadService.ariaInstallCommand
+                                : "sudo pacman -S aria2";
+                            if (typeof DownloadService !== "undefined" && DownloadService && typeof DownloadService.copyToClipboard === "function") {
+                                DownloadService.copyToClipboard(cmd);
+                            }
+                            copyTimer.restart();
+                        }
+
+                        Timer {
+                            id: copyTimer
+                            interval: 2000
+                            repeat: false
+                        }
                     }
                 }
             }
@@ -781,6 +932,28 @@ Item {
                     }
                 }
 
+                // Warning hint if aria2 is missing
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: !root.isAriaAvailable
+                    spacing: 6
+
+                    MaterialIcon {
+                        text: "warning"
+                        size: 14
+                        color: root.accent
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Aria2 is not installed. Install it with your package manager or click below to copy the command."
+                        font.family: root.fontFamily
+                        font.pixelSize: root.fontLabelSmall
+                        color: root.textMuted
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: root.spaceSmall
@@ -800,16 +973,38 @@ Item {
 
                     LiquidGlassButton {
                         id: submitButton
-                        implicitWidth: 116
+                        implicitWidth: !root.isAriaAvailable ? 130 : 116
                         implicitHeight: 32
                         paddingHorizontal: 14
                         paddingVertical: 6
-                        text: "Download"
-                        iconText: "download"
+                        text: !root.isAriaAvailable
+                            ? (copySubmitTimer.running ? "Copied!" : "Install Aria2")
+                            : "Download"
+                        iconText: !root.isAriaAvailable
+                            ? (copySubmitTimer.running ? "check" : "content_copy")
+                            : "download"
                         iconSize: 15
                         isPrimary: true
                         elevation: 4
-                        onClicked: root.submitDownload()
+                        onClicked: {
+                            if (root.isAriaAvailable) {
+                                root.submitDownload();
+                            } else {
+                                const cmd = (typeof DownloadService !== "undefined" && DownloadService && DownloadService.ariaInstallCommand)
+                                    ? DownloadService.ariaInstallCommand
+                                    : "sudo pacman -S aria2";
+                                if (typeof DownloadService !== "undefined" && DownloadService && typeof DownloadService.copyToClipboard === "function") {
+                                    DownloadService.copyToClipboard(cmd);
+                                }
+                                copySubmitTimer.restart();
+                            }
+                        }
+
+                        Timer {
+                            id: copySubmitTimer
+                            interval: 2000
+                            repeat: false
+                        }
                     }
                 }
             }
@@ -838,7 +1033,9 @@ Item {
 
                     MaterialIcon {
                         anchors.centerIn: parent
-                        text: root.segment === "finished" ? "task_alt" : "cloud_download"
+                        text: (!root.isAriaAvailable && root.segment !== "finished")
+                            ? "warning"
+                            : (root.segment === "finished" ? "task_alt" : "cloud_download")
                         size: 30
                         color: root.accent
                     }
@@ -847,9 +1044,11 @@ Item {
                 Text {
                     id: emptyTitle
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: root.segment === "active"
-                        ? "No active downloads"
-                        : (root.segment === "queued" ? "Queue is empty" : "Nothing finished yet")
+                    text: (!root.isAriaAvailable && root.segment !== "finished")
+                        ? "Aria2 not installed"
+                        : (root.segment === "active"
+                            ? "No active downloads"
+                            : (root.segment === "queued" ? "Queue is empty" : "Nothing finished yet"))
                     font.family: root.fontFamily
                     font.pixelSize: root.fontBodyMedium
                     font.weight: Font.DemiBold
@@ -864,11 +1063,13 @@ Item {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: root.segment === "active"
-                        ? "Paste a link with Add — it starts downloading right away."
-                        : (root.segment === "queued"
-                            ? "Paused and waiting downloads wait here until a slot frees up."
-                            : "Completed and failed downloads land here with their actions.")
+                    text: (!root.isAriaAvailable && root.segment !== "finished")
+                        ? "Install aria2 with your package manager to start downloading files directly in Astral Plasma."
+                        : (root.segment === "active"
+                            ? "Paste a link with Add — it starts downloading right away."
+                            : (root.segment === "queued"
+                                ? "Paused and waiting downloads wait here until a slot frees up."
+                                : "Completed and failed downloads land here with their actions."))
                     font.family: root.fontFamily
                     font.pixelSize: root.fontLabelSmall
                     color: root.textMuted
@@ -908,6 +1109,20 @@ Item {
                         width: listColumn.width
                         implicitHeight: rowColumn.implicitHeight + root.padSmall * 2
                         radius: root.radiusCard
+
+                        MouseArea {
+                            anchors.fill: parent
+                            z: -1
+                            cursorShape: (taskCard.status === "complete") ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                                if (taskCard.status === "complete" && typeof DownloadService !== "undefined" && DownloadService) {
+                                    const t = taskCard.task;
+                                    const name = (t && t.name) || "";
+                                    const dir = (t && t.dir) || "";
+                                    DownloadService.openFile(dir, name);
+                                }
+                            }
+                        }
 
                         ColumnLayout {
                             id: rowColumn
@@ -1010,12 +1225,16 @@ Item {
                                                 cursorShape: Qt.PointingHandCursor
                                                 onClicked: {
                                                     if (typeof DownloadService === "undefined" || !DownloadService) return;
-                                                    const gid = (taskCard.task && taskCard.task.gid) || "";
-                                                    if (!gid) return;
+                                                    const t = taskCard.task;
+                                                    const gid = (t && t.gid) || "";
+                                                    const name = (t && t.name) || "";
+                                                    const dir = (t && t.dir) || "";
                                                     if (actionButton.modelData === "pause") DownloadService.pause(gid);
                                                     else if (actionButton.modelData === "resume") DownloadService.resume(gid);
                                                     else if (actionButton.modelData === "cancel") DownloadService.cancel(gid, false);
                                                     else if (actionButton.modelData === "retry") DownloadService.retry(gid);
+                                                    else if (actionButton.modelData === "open") DownloadService.openFile(dir, name);
+                                                    else if (actionButton.modelData === "folder") DownloadService.openFolder(dir);
                                                     else DownloadService.removeResult(gid);
                                                 }
                                             }

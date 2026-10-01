@@ -26,9 +26,23 @@ Singleton {
     property double totalCompletedBytes: 0
     property double totalBytes: 0
     property double totalSpeed: 0
+    property double sessionMaxSpeed: 0
+    property double sessionMinSpeed: 0
     property int activeCount: 0
     property bool indeterminate: false
+    readonly property bool isPaused: {
+        if (root.activeTasks && root.activeTasks.length > 0) return false;
+        if (!root.waitingTasks || root.waitingTasks.length === 0) return false;
+        for (let i = 0; i < root.waitingTasks.length; i++) {
+            const t = root.waitingTasks[i];
+            if (t && (t.status === "paused" || t.status === "Paused")) {
+                return true;
+            }
+        }
+        return false;
+    }
     property bool ariaAvailable: true
+    property string ariaInstallCommand: ""
     property string lastError: ""
 
     // Completion edge detection: daemon emits change-only lines, so a gid
@@ -178,16 +192,36 @@ Singleton {
         if (d.stopped !== undefined && Array.isArray(d.stopped)) root.stoppedTasks = d.stopped;
         if (d.total) {
             const t = d.total;
+            const newActiveCount = (t.active_count !== undefined) ? (Number(t.active_count) || 0) : root.activeCount;
+            if (newActiveCount > 0 && root.activeCount === 0) {
+                root.sessionMaxSpeed = 0;
+                root.sessionMinSpeed = 0;
+            }
+            root.activeCount = newActiveCount;
+
             if (t.progress !== undefined) root.totalProgress = Number(t.progress) || 0.0;
             if (t.completed_length !== undefined) root.totalCompletedBytes = Number(t.completed_length) || 0;
             if (t.total_length !== undefined) root.totalBytes = Number(t.total_length) || 0;
-            if (t.download_speed !== undefined) root.totalSpeed = Number(t.download_speed) || 0;
-            if (t.active_count !== undefined) root.activeCount = Number(t.active_count) || 0;
+            if (t.download_speed !== undefined) {
+                const spd = Number(t.download_speed) || 0;
+                root.totalSpeed = spd;
+                if (root.activeCount > 0 && spd > 0) {
+                    if (root.sessionMaxSpeed <= 0 || spd > root.sessionMaxSpeed) {
+                        root.sessionMaxSpeed = spd;
+                    }
+                    if (root.sessionMinSpeed <= 0 || spd < root.sessionMinSpeed) {
+                        root.sessionMinSpeed = spd;
+                    }
+                }
+            }
             if (t.indeterminate !== undefined) root.indeterminate = Boolean(t.indeterminate);
         }
         root._prevStatus = next;
         root._seenBoot = true;
-        root.ariaAvailable = true;
+        if (d.aria_available !== undefined) root.ariaAvailable = Boolean(d.aria_available);
+        if (d.aria_install_command !== undefined && d.aria_install_command !== null) {
+            root.ariaInstallCommand = String(d.aria_install_command);
+        }
         root.snapshotChanged();
     }
 
@@ -252,6 +286,46 @@ Singleton {
     function retry(gid) { if (gid) runCmd(["retry", gid]); }
     function purge() { runCmd(["purge"]); }
 
+    function expandPath(p) {
+        if (!p) return "";
+        let path = p;
+        if (path.startsWith("~/")) {
+            const home = (typeof Quickshell !== "undefined" && typeof Quickshell.env === "function")
+                ? Quickshell.env("HOME") : "/home/hlu";
+            path = home + path.slice(1);
+        }
+        return path;
+    }
+
+    function openFile(dir, name) {
+        if (!name) return;
+        const d = (dir && dir.length > 0) ? dir : (root.defaultDir || "");
+        const raw = d ? (d.endsWith("/") ? (d + name) : (d + "/" + name)) : name;
+        const path = expandPath(raw);
+        if (typeof Quickshell !== "undefined" && typeof Quickshell.execDetached === "function") {
+            Quickshell.execDetached(["xdg-open", path]);
+        } else {
+            Qt.openUrlExternally("file://" + path);
+        }
+    }
+
+    function openFolder(dir) {
+        const d = (dir && dir.length > 0) ? dir : (root.defaultDir || "");
+        if (d) {
+            const path = expandPath(d);
+            if (typeof Quickshell !== "undefined" && typeof Quickshell.execDetached === "function") {
+                Quickshell.execDetached(["xdg-open", path]);
+            } else {
+                Qt.openUrlExternally("file://" + path);
+            }
+        }
+    }
+
+    function copyToClipboard(text) {
+        if (!text) return;
+        Quickshell.execDetached(["wl-copy", text]);
+    }
+
     // Aggregate helpers for the border HUD (D10–D15).
     function formatBytes(bytes) {
         if (!bytes || bytes <= 0) return "0 B";
@@ -262,11 +336,13 @@ Singleton {
     }
 
     function formatSpeed(bytesPerSec) {
+        if (root.isPaused) return "PAUSED";
         if (!bytesPerSec || bytesPerSec <= 0) return "stalled";
         return formatBytes(bytesPerSec) + "/s";
     }
 
     function formatEta() {
+        if (root.isPaused) return "--";
         if (!root.totalSpeed || root.totalSpeed <= 0) return "--";
         const remain = Math.max(0, root.totalBytes - root.totalCompletedBytes);
         if (remain <= 0) return "0s";
@@ -277,8 +353,13 @@ Singleton {
     }
 
     readonly property string hudText: {
-        if (root.activeCount <= 0) return "";
+        if (root.activeCount <= 0 && !root.isPaused) return "";
         const pct = Math.round(root.totalProgress * 100);
-        return "↓ " + root.activeCount + " · " + pct + "% · " + root.formatSpeed(root.totalSpeed) + " · " + root.formatEta();
+        const curSpd = root.isPaused ? "PAUSED" : root.formatSpeed(root.totalSpeed);
+        const maxSpd = (!root.isPaused && root.sessionMaxSpeed > 0) ? (" ▲ " + root.formatSpeed(root.sessionMaxSpeed)) : "";
+        const minSpd = (!root.isPaused && root.sessionMinSpeed > 0) ? (" ▼ " + root.formatSpeed(root.sessionMinSpeed)) : "";
+        const speedText = curSpd + (maxSpd || minSpd ? (" (" + (maxSpd ? maxSpd.trim() : "") + (minSpd ? (" · " + minSpd.trim()) : "") + ")") : "");
+        const doneText = root.totalBytes > 0 ? (" · " + root.formatBytes(root.totalCompletedBytes) + "/" + root.formatBytes(root.totalBytes)) : "";
+        return "↓ " + root.activeCount + " · " + pct + "%" + doneText + " · " + speedText + (!root.isPaused ? (" · " + root.formatEta()) : "");
     }
 }

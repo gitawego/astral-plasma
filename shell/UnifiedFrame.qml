@@ -235,8 +235,7 @@ Item {
     // Inner Fillet: Bottom-Left
     CornerFillet {
         id: innerFilletBL
-        visible: root.cornerFilletR > 1 && (1.0 - (root.fusedProgress * root.popoutOffsetProgress)) > 0.01
-        opacity: 1.0 - (root.fusedProgress * root.popoutOffsetProgress)
+        visible: root.cornerFilletR > 1 && (root.fusedProgress <= 0.5 || root.popoutOffsetProgress <= 0.001)
         x: root.dockW
         y: root.height - root.borderT - root.cornerFilletR
         width: root.cornerFilletR
@@ -457,13 +456,14 @@ Item {
         // agreed with the glass only while `botR == filletR`. In the fused state
         // `botR` is 0, so the mask was 20px taller than the glass and reached the
         // screen bottom -- the "blur zone is too large" defect.)
-        //
-        // `fullRect`: the entire painted surface, fillet bands included.
+        // `fullRect`: the fused card's own body bounding box.
+        // It spans the straight-sided section between the shoulder bands and bottom fillet,
+        // starting flush from dockW - 1 with bodyW to guarantee zero overrun on the right.
         readonly property rect fullRect: Qt.rect(
             root.dockW - 1,
-            root.popoutY - root.filletR,
-            sizeRounded(root.currentPopW + 1 + fusedBottomFilletR),
-            sizeRounded(root.popoutHeight + root.filletR + botR))
+            root.popoutY,
+            sizeRounded(bodyW),
+            sizeRounded(root.popoutHeight))
         // `bodyRect`: the straight-sided section between the two shoulder bands.
         // This is what a full-width blur region should span.
         readonly property rect bodyRect: Qt.rect(
@@ -471,17 +471,13 @@ Item {
             root.popoutY,
             sizeRounded(root.currentPopW),
             sizeRounded(root.popoutHeight))
-        // `floatingRect`: the floating card's own bounding box.
-        //
-        // While floating, the painted surface is LARGER than the glass: the left
-        // `currentFilletR` band holds the concave shoulder cut, and the top and
-        // bottom `filletR` bands exist only because the fused shape spans them.
-        // A blur mask sized to the surface would therefore frost bare wallpaper
-        // to the left, above and below the drawer.
+        // `floatingRect`: the floating card's own body bounding box.
+        // It spans the straight-sided section between the two shoulder bands,
+        // starting flush from dockW - 1 to guarantee zero unblurred gap against the dock.
         readonly property rect floatingRect: Qt.rect(
-            root.dockW - 1 + sizeRounded(currentFilletR),
+            root.dockW - 1,
             root.popoutY,
-            sizeRounded(Math.max(1, bodyW - currentFilletR)),
+            sizeRounded(bodyW),
             sizeRounded(root.popoutHeight))
 
         // 1A. Solid Glass Surface Fill Shape (Floating drawer with inverted shoulder fillets)

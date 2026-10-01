@@ -599,7 +599,8 @@ impl AiActivityMonitor {
                                             let is_fresh = now_ms.saturating_sub(mtime) < ACTIVE_AGENT_WINDOW_MS;
                                             if is_fresh {
                                                 let parse_registry = Arc::clone(&self.registry);
-                                                let parse_path = full_path.clone();
+                                                let session_file = resolve_session_path(&full_path);
+                                                let parse_path = session_file.clone();
                                                 let parsed = tokio::task::spawn_blocking(move || {
                                                     parse_registry.parse_file(&parse_path)
                                                 })
@@ -607,7 +608,7 @@ impl AiActivityMonitor {
                                                 .unwrap_or(None);
                                                 if let Some(parsed) = parsed {
                                                     if !parsed.is_turn_completed || now_ms.saturating_sub(mtime) < COMPLETED_WINDOW_MS {
-                                                        let session_key = extract_session_key(&full_path);
+                                                        let session_key = extract_session_key(&session_file);
                                                         self.record_activity_full_with_session(&session_key, &parsed.model_id, &parsed.tool_source, parsed.tokens, parsed.is_turn_completed).await;
                                                         let curr = self.get_state().await;
                                                         emit_activity_payload(&curr);
@@ -892,6 +893,24 @@ pub fn extract_session_key(path: &Path) -> String {
     path.file_stem()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default()
+}
+
+pub fn resolve_session_path(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if s.contains("antigravity") && !s.ends_with("transcript.jsonl") {
+        let mut curr = path;
+        while let Some(parent) = curr.parent() {
+            if curr.file_name().map(|f| f == ".system_generated").unwrap_or(false) {
+                let candidate = curr.join("logs/transcript.jsonl");
+                if candidate.exists() {
+                    return candidate;
+                }
+                break;
+            }
+            curr = parent;
+        }
+    }
+    path.to_path_buf()
 }
 
 fn current_epoch_ms() -> u64 {
