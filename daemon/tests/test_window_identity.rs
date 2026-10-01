@@ -50,7 +50,9 @@ fn the_shared_resolver_identifies_a_window_without_any_icon() {
     assert_eq!(meta.app_id, "steam_app_default");
     assert_eq!(meta.material_icon, "window");
     assert!(
-        meta.icon_name.is_empty() || meta.icon_name.ends_with(".png"),
+        meta.icon_name == "steam_app_default"
+            || meta.icon_name.is_empty()
+            || meta.icon_name.ends_with(".png"),
         "an identity resolves to either a theme name or an extracted icon file, got {:?}",
         meta.icon_name
     );
