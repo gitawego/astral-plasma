@@ -90,6 +90,12 @@ Item {
         assert(testRing.baseBarHeight === 2.5,
                "RadialCoverRing baseBarHeight should be 2.5, got: " + testRing.baseBarHeight);
 
+        // 6. Visualizer switcher button dedicated equalizer icon
+        assert(testMediaTab.vizSwitchBtn !== null && testMediaTab.vizSwitchBtn !== undefined,
+               "MediaTab must have vizSwitchBtn");
+        assert(testMediaTab.vizSwitchBtn.iconText === "equalizer",
+               "vizSwitchBtn iconText must be 'equalizer' (󰺢), got: " + testMediaTab.vizSwitchBtn.iconText);
+
         console.log("PASS: All Media Tab Layout & Visualiser tests passed!");
         Qt.exit(0);
     }

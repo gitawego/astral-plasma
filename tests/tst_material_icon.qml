@@ -85,6 +85,24 @@ Item {
         size: 16
     }
 
+    MaterialIcon {
+        id: iconSpeaker
+        text: "speaker"
+        size: 16
+    }
+
+    MaterialIcon {
+        id: iconEqualizer
+        text: "equalizer"
+        size: 16
+    }
+
+    MaterialIcon {
+        id: iconGraphicEq
+        text: "graphic_eq"
+        size: 16
+    }
+
     Timer {
         interval: 50
         running: true
@@ -140,6 +158,11 @@ Item {
         assert(iconDownloadForOffline.displaySymbol === "󰇚", "unmapped download_* names must resolve through the heuristic");
         assert(iconLink.displaySymbol === "󰌷", "link must resolve to the link glyph");
         assert(iconTaskAlt.displaySymbol === "󰗠", "task_alt must resolve to the check-in-circle glyph");
+
+        // 9. speaker and equalizer resolution
+        assert(iconSpeaker.displaySymbol === "󰓃", "speaker must resolve to speaker cabinet glyph (󰓃), not volume");
+        assert(iconEqualizer.displaySymbol === "󰺢", "equalizer must resolve to equalizer bars glyph (󰺢)");
+        assert(iconGraphicEq.displaySymbol === "󰺢", "graphic_eq must resolve to equalizer bars glyph (󰺢)");
 
         console.log("PASS: MaterialIcon Resolution Tests");
         Qt.exit(0);

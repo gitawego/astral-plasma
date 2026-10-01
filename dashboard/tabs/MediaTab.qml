@@ -13,6 +13,8 @@ Item {
     implicitHeight: 260
     clip: true
 
+    readonly property alias vizSwitchBtn: vizSwitchBtn
+
     Item {
         anchors.fill: parent
         clip: true
@@ -65,6 +67,7 @@ Item {
 
                 // Visualizer Switcher Pill Button (Floating subtle toggle)
                 LiquidGlassButton {
+                    id: vizSwitchBtn
                     anchors.top: parent.top
                     anchors.right: parent.right
                     anchors.topMargin: 4
@@ -74,7 +77,7 @@ Item {
                     implicitHeight: 28
                     paddingHorizontal: 6
                     paddingVertical: 6
-                    iconText: visualizerSlot.isSpeakerStyle ? "album" : "speaker"
+                    iconText: "equalizer"
                     iconSize: 16
                     elevation: 4
                     onClicked: {

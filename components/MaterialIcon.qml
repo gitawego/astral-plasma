@@ -108,8 +108,9 @@ Item {
         "visibility": "󰈈",
         "chat": "󰭹",
         "music_note": "󰝚",
-        "graphic_eq": "󰎇",
-        "equalizer": "󰎇",
+        "graphic_eq": "󰺢",
+        "equalizer": "󰺢",
+        "waveform": "󱑽",
         "album": "󰀥",
         "disc": "󰀥",
         "energy_savings_leaf": "󰌪",
@@ -132,7 +133,7 @@ Item {
         "lan": "󰌘",
         "extension": "󰏖",
         "help": "󰋖",
-        "speaker": "󰕾",
+        "speaker": "󰓃",
         "lock": "󰌾",
         "logout": "󰍃",
         "exit_to_app": "󰈆",
@@ -260,6 +261,8 @@ Item {
         if (key && (key.includes("image") || key.includes("photo") || key.includes("picture"))) return "󰋩";
         if (key && (key.includes("copy"))) return "󰆏";
         if (key && (key === "schema" || key.includes("diagram"))) return "󰅩";
+        if (key && (key.includes("equalizer") || key.includes("graphic_eq"))) return "󰺢";
+        if (key && key.includes("speaker")) return "󰓃";
         if (key && (key.includes("exit") || key.includes("leave") || key === "quit")) return "󰈆";
         return "";
     }

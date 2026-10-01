@@ -545,7 +545,7 @@ Item {
                 implicitHeight: 28
                 paddingHorizontal: 6
                 paddingVertical: 6
-                iconText: mediaCard.isSpeakerStyle ? "album" : "speaker"
+                iconText: "equalizer"
                 iconSize: 14
                 elevation: 4
                 onClicked: {

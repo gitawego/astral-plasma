@@ -260,7 +260,7 @@ ColumnLayout {
 
                                 MaterialIcon {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "album"
+                                    text: "equalizer"
                                     size: 16
                                     color: !pillWrapper.isSpeaker ? Colors.m3onPrimaryContainer : Colors.m3onSurfaceVariant
                                 }
