@@ -11,6 +11,28 @@
 
 ---
 
+<p align="center">
+  <img src="assets/screenshots/01-desktop-overview.png" alt="Astral Plasma Desktop Overview" width="100%" />
+</p>
+
+## 📸 Screenshots
+
+| Clean Desktop Surface & Outer Frame | Central Dashboard (Media & Visualizer) |
+| :---: | :---: |
+| ![Clean Desktop Surface](assets/screenshots/01-desktop-overview.png) | ![Media Dashboard Dropdown](assets/screenshots/02-media-dashboard.png) |
+
+| System Performance Telemetry | Command Launcher & Search |
+| :---: | :---: |
+| ![System Performance Dashboard](assets/screenshots/03-system-dashboard.png) | ![Command Launcher](assets/screenshots/04-command-launcher.png) |
+
+<p align="center">
+  <img src="assets/screenshots/05-liquid-glass-controls.png" alt="Liquid Glass Volume and Brightness Controls" width="100%" />
+  <br />
+  <em>Liquid Glass Volume & Brightness Edge Controls — floating circular controllers on recessed glass grooves</em>
+</p>
+
+---
+
 ## 🌟 Overview & Inspiration
 
 **Astral Plasma** is an extensible desktop shell engineered for **KDE Plasma 6 (KWin)**, **Hyprland**, and hosted **Omarchy** plugin environments.
