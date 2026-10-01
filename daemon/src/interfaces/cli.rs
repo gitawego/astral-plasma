@@ -1724,6 +1724,7 @@ async fn run_self_contained_app() -> DynResult<()> {
 
     // 3. Backup and disable KDE Plasma panels (only under KDE) and bind shortcuts
     if is_kwin {
+        let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
         let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
         let _ = plasma.backup_and_disable("all", Some(std::process::id()));
         let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
@@ -1778,6 +1779,7 @@ async fn run_self_contained_app() -> DynResult<()> {
         let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
         use crate::domain::ports::ShortcutControlPort;
         let _ = shortcuts.restore_relevant_shortcuts();
+        let _ = crate::infrastructure::preview_capture::remove_desktop_entry(None);
     }
 
     Ok(())

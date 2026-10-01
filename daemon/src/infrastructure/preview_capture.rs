@@ -61,18 +61,20 @@ pub fn install_desktop_entry_with_notification(
     );
 
     // Notify user via desktop notification
-    let _ = std::process::Command::new("notify-send")
-        .args(&[
-            "-a",
-            "Astral Plasma",
-            "-i",
-            "security-high",
-            "Astral Plasma Authorization",
-            "Registered KWin screenshot authorization for live window previews. It will be removed automatically when Astral Plasma stops.",
-        ])
-        .spawn();
+    if custom_dir.is_none() && !branding::test_mode() {
+        let _ = std::process::Command::new("notify-send")
+            .args(&[
+                "-a",
+                "Astral Plasma",
+                "-i",
+                "security-high",
+                "Astral Plasma Authorization",
+                "Registered KWin screenshot authorization for live window previews. It will be removed automatically when Astral Plasma stops.",
+            ])
+            .spawn();
 
-    let _ = std::process::Command::new("kbuildsycoca6").output();
+        let _ = std::process::Command::new("kbuildsycoca6").output();
+    }
 
     Ok(true)
 }
@@ -99,7 +101,7 @@ pub fn remove_desktop_entry(
         }
     }
 
-    if removed {
+    if removed && custom_dir.is_none() && !branding::test_mode() {
         let _ = std::process::Command::new("kbuildsycoca6").output();
     }
 
@@ -245,7 +247,19 @@ pub async fn capture_window_with_proxy(
 
     let (reply, raw_data) = match do_capture(proxy, clean_uuid, &options).await {
         Ok(res) => res,
-        Err(e) => return Err(e),
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("NoAuthorized") || err_str.contains("not authorized") {
+                // Re-register desktop entry and retry once
+                let _ = install_desktop_entry_with_notification(None, None);
+                if !branding::test_mode() {
+                    let _ = std::process::Command::new("kbuildsycoca6").output();
+                }
+                do_capture(proxy, clean_uuid, &options).await?
+            } else {
+                return Err(e);
+            }
+        }
     };
 
     if raw_data.is_empty() {
@@ -294,6 +308,9 @@ pub async fn capture_window(
     target_width: u32,
     slot: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // Preemptively ensure desktop entry is registered
+    let _ = install_desktop_entry_with_notification(None, None);
+
     let connection = Connection::session().await?;
 
     let proxy = zbus::Proxy::new(
@@ -311,6 +328,8 @@ pub async fn capture_windows_batch(
     window_ids: &[String],
     target_width: u32,
 ) -> Result<Vec<(String, String)>, Box<dyn std::error::Error + Send + Sync>> {
+    let _ = install_desktop_entry_with_notification(None, None);
+
     let connection = Connection::session().await?;
     let proxy = Arc::new(
         zbus::Proxy::new(

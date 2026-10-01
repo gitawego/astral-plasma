@@ -44,6 +44,7 @@ fn test_desktop_entries_rust_use_case() {
     assert!(mock_sessions_dir.join("astral-hyprland.desktop").exists());
     assert!(mock_applications_dir.join("astral-launcher.desktop").exists());
     assert!(mock_applications_dir.join("astral-dashboard.desktop").exists());
+    assert!(mock_applications_dir.join("astral-plasma.desktop").exists());
 
     // 3. Remove
     let st3 = use_case.remove().unwrap();
@@ -52,4 +53,5 @@ fn test_desktop_entries_rust_use_case() {
     assert!(!st3.shortcuts_installed);
     assert!(!mock_sessions_dir.join("astral-plasma.desktop").exists());
     assert!(!mock_applications_dir.join("astral-launcher.desktop").exists());
+    assert!(!mock_applications_dir.join("astral-plasma.desktop").exists());
 }

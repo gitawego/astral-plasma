@@ -124,7 +124,10 @@ impl DesktopIntegrationPort for DesktopEntriesAdapter {
             }
         }
 
-        // 4. Update databases if not in test mode
+        // 4. Install KWin authorization entry
+        let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(Some(&app_dir), None);
+
+        // 5. Update databases if not in test mode
         if !branding::test_mode() {
             let _ = Command::new("update-desktop-database")
                 .arg(&app_dir)

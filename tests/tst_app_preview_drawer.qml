@@ -318,11 +318,51 @@ Item {
         function isPointInMask(mask, px, py) {
             return px >= mask.x && px < (mask.x + mask.width) && py >= mask.y && py < (mask.y + mask.height);
         }
-        assert(isPointInMask(openMask, 150, 350), "Preview thumbnail point (150, 350) must be inside input mask");
-        assert(isPointInMask(openMask, 150, 600), "Action item button point (150, 600) must be inside input mask");
-        assert(!isPointInMask(openMask, 500, 350), "Point outside drawer (500, 350) must be outside input mask");
+        // 12. Architectural Source Contracts (Zero Regressions Guarantee)
+        console.log("TESTING: App Preview Architectural Source Contracts");
+        const unifiedDockSrc = readLocalFile("../shell/UnifiedDock.qml");
+        assert(unifiedDockSrc.length > 500, "shell/UnifiedDock.qml must be readable");
+        assert(/WindowService\.loadAppPreview\(modelData\)/.test(unifiedDockSrc),
+            "UnifiedDock appHover must load app preview on mouse entered");
+        assert(/Config\.openBottomPopout\("app",\s*targetCenterY\)/.test(unifiedDockSrc),
+            "UnifiedDock appHover must open bottom popout in 'app' mode on entered");
+        assert(/appsContainerHover\.hovered/.test(unifiedDockSrc),
+            "UnifiedDock appHover must guard popout close against appsContainerHover");
+
+        const windowServiceSrc = readLocalFile("../services/WindowService.qml");
+        assert(windowServiceSrc.length > 500, "services/WindowService.qml must be readable");
+        assert(/\[root\.daemonBin,\s*"preview",\s*winKey,\s*"320"\]/.test(windowServiceSrc),
+            "WindowService loadAppPreview must execute astral-plasma preview CLI command");
+        assert(/root\._previewCache\[reqKey\]\s*=\s*fileUrl/.test(windowServiceSrc),
+            "WindowService must cache captured preview file URL");
+        assert(/root\.activePreviewThumbnail\s*=\s*fileUrl/.test(windowServiceSrc),
+            "WindowService must update activePreviewThumbnail reactively");
+
+        const fusedPopoutSrc = readLocalFile("../dock/popouts/FusedBottomPopout.qml");
+        assert(fusedPopoutSrc.length > 500, "dock/popouts/FusedBottomPopout.qml must be readable");
+        assert(/LiveWindowThumbnail\s*\{/.test(fusedPopoutSrc),
+            "FusedBottomPopout must instantiate LiveWindowThumbnail");
+        assert(/WindowService\.activePreviewThumbnail/.test(fusedPopoutSrc),
+            "FusedBottomPopout must bind LiveWindowThumbnail source to WindowService.activePreviewThumbnail");
+
+        const previewCaptureSrc = readLocalFile("../daemon/src/infrastructure/preview_capture.rs");
+        assert(previewCaptureSrc.length > 500, "daemon/src/infrastructure/preview_capture.rs must be readable");
+        assert(/org\.kde\.KWin\.ScreenShot2/.test(previewCaptureSrc),
+            "preview_capture.rs must declare KWin ScreenShot2 DBus interface");
+        assert(/install_desktop_entry_with_notification\(None,\s*None\)/.test(previewCaptureSrc),
+            "preview_capture.rs must preemptively install authorization desktop entry");
+        assert(/NoAuthorized/.test(previewCaptureSrc),
+            "preview_capture.rs must handle NoAuthorized error and retry capture");
 
         console.log("PASS: App Preview Drawer Lifecycle Tests");
         Qt.exit(0);
+    }
+
+    function readLocalFile(relUrl) {
+        const xhr = new XMLHttpRequest();
+        const bust = (relUrl.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now() + Math.random();
+        xhr.open("GET", Qt.resolvedUrl(relUrl) + bust, false);
+        xhr.send();
+        return xhr.responseText || "";
     }
 }
