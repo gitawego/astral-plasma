@@ -1065,6 +1065,7 @@ fn session_status_reports_ready_when_engine_and_model_are_present() {
     let out = Command::new(daemon_bin())
         .arg("voice").arg("status")
         .env("ASTRAL_VOICE_ENGINE_BIN", &fx.engine)
+        .env("ASTRAL_VOICE_CAPTURE_BIN", &fx.capture)
         .env("ASTRAL_VOICE_MODEL_DIR", &fx.models)
         .env("XDG_CONFIG_HOME", &fx.config_home)
         .output()

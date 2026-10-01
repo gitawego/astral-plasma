@@ -1906,6 +1906,9 @@ pub(crate) fn spawn_capture(args: &[String]) -> std::io::Result<std::process::Ch
 
 /// Reports whether at least one audio capture source exists.
 pub fn has_audio_source() -> bool {
+    if std::env::var(CAPTURE_BIN_ENV).map_or(false, |s| !s.is_empty()) {
+        return true;
+    }
     which("pw-record").is_ok() || which("parecord").is_ok()
 }
 
