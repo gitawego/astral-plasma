@@ -203,6 +203,7 @@ Singleton {
     readonly property real aiWarningThreshold: (root.settings && root.settings.ai && root.settings.ai.warningThresholdPercent !== undefined) ? root.settings.ai.warningThresholdPercent : 80.0
     readonly property real aiCriticalThreshold: (root.settings && root.settings.ai && root.settings.ai.criticalThresholdPercent !== undefined) ? root.settings.ai.criticalThresholdPercent : 95.0
     readonly property string aiDockPillMode: (root.settings && root.settings.ai && root.settings.ai.dockPillMode) ? root.settings.ai.dockPillMode : "dynamic"
+    readonly property bool aiPrivacyMode: (root.settings && root.settings.ai && root.settings.ai.privacyMode !== undefined) ? root.settings.ai.privacyMode : false
     // Download manager defaults (D6/D7): global split parts + destination.
     readonly property string downloadsDir: (root.settings && root.settings.downloads && typeof root.settings.downloads.dir === "string" && root.settings.downloads.dir.length > 0)
         ? root.settings.downloads.dir : ""
@@ -479,6 +480,13 @@ Singleton {
         updateSettings(cfg => {
             if (!cfg.ai) cfg.ai = {};
             cfg.ai.geminiMonthlyResetDay = day;
+        });
+    }
+
+    function setAiPrivacyMode(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.ai) cfg.ai = {};
+            cfg.ai.privacyMode = enabled;
         });
     }
 
@@ -819,15 +827,9 @@ Singleton {
         });
     }
 
-    // Active selected dashboard tab ("dashboard", "media", "performance", "workspaces")
-    property string activeDashboardTab: (root.settings.dashboard && root.settings.dashboard.defaultTab) ? root.settings.dashboard.defaultTab : "dashboard"
+    // Active selected dashboard tab ("dashboard", "media", "performance", "workspaces", "downloads", "ai")
+    property string activeDashboardTab: (root.settings && root.settings.dashboard && root.settings.dashboard.defaultTab) ? root.settings.dashboard.defaultTab : "dashboard"
     property string perfSelectedDevice: "cpu"
-
-    onSettingsChanged: {
-        if (root.settings.dashboard && root.settings.dashboard.defaultTab) {
-            root.activeDashboardTab = root.settings.dashboard.defaultTab;
-        }
-    }
 
     // Active state toggles
     // Transient, like every other overlay: it opens because the user opened it

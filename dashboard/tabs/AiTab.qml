@@ -16,6 +16,9 @@ Item {
     property string testWarningLevel: "normal"
     property int activeProviderIndex: 0
     property string selectedAccountIdentity: ""
+    property bool privacyMode: (typeof Config !== "undefined" && Config.aiPrivacyMode !== undefined)
+        ? Config.aiPrivacyMode
+        : false
 
     readonly property var providersList: {
         if (testMode && testProviders !== null) return testProviders;
@@ -145,6 +148,15 @@ Item {
         target: (typeof AiTokenService !== "undefined") ? AiTokenService : null
         function onLastActiveProviderIdChanged() {
             root.syncActiveTab();
+        }
+    }
+
+    Connections {
+        target: (typeof Config !== "undefined") ? Config : null
+        function onAiPrivacyModeChanged() {
+            if (typeof Config !== "undefined" && Config.aiPrivacyMode !== undefined) {
+                root.privacyMode = Config.aiPrivacyMode;
+            }
         }
     }
 
@@ -707,6 +719,23 @@ Item {
                         Item { Layout.fillWidth: true }
 
                         ActionPill {
+                            id: privacyToggleBtn
+                            icon: root.privacyMode ? "visibility_off" : "visibility"
+                            text: root.privacyMode ? "Masked" : "Visible"
+                            variant: root.privacyMode ? "secondary" : "active"
+                            fontPixelSize: 9
+                            fixedHeight: 20
+                            paddingHorizontal: 8
+                            onClicked: {
+                                const nextVal = !root.privacyMode;
+                                if (typeof Config !== "undefined" && typeof Config.setAiPrivacyMode === "function") {
+                                    Config.setAiPrivacyMode(nextVal);
+                                }
+                                root.privacyMode = nextVal;
+                            }
+                        }
+
+                        ActionPill {
                             text: "Manage"
                             icon: "settings"
                             variant: "secondary"
@@ -728,7 +757,7 @@ Item {
 
                         Item {
                             Layout.fillWidth: true
-                            implicitHeight: 36
+                            implicitHeight: 38
 
                             readonly property bool isAccountActive: (typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail)
                                 ? (modelData.identity.toLowerCase() === AiTokenService.activeGeminiEmail.toLowerCase() || modelData.id === AiTokenService.activeGeminiEmail)
@@ -778,19 +807,39 @@ Item {
                                         }
                                     }
 
-                                    // Identity Email
-                                    Text {
-                                        text: root.maskIdentity(modelData.identity || modelData.id)
-                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-                                        font.pixelSize: 11
-                                        font.weight: isAccountActive ? Font.Bold : Font.Normal
-                                        color: isAccountActive 
-                                            ? ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF")
-                                            : ((typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0")
-                                        style: Text.Outline
-                                        styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
-                                        elide: Text.ElideMiddle
+                                    // Identity Email & Friendly Profile Name
+                                    ColumnLayout {
                                         Layout.fillWidth: true
+                                        spacing: 1
+
+                                        Text {
+                                            text: (root.privacyMode && !isHovered)
+                                                ? root.maskIdentity(modelData.identity || modelData.id)
+                                                : (modelData.identity || modelData.id)
+                                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                            font.pixelSize: 11
+                                            font.weight: isAccountActive ? Font.Bold : Font.Normal
+                                            color: isAccountActive 
+                                                ? ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF")
+                                                : ((typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#a0a0a0")
+                                            style: Text.Outline
+                                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
+                                            elide: Text.ElideMiddle
+                                            Layout.fillWidth: true
+                                        }
+
+                                        Text {
+                                            visible: !!(modelData.label && modelData.label !== modelData.identity)
+                                            text: (root.privacyMode && !isHovered) ? "••••••••" : modelData.label
+                                            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                            font.pixelSize: 9
+                                            font.weight: Font.Normal
+                                            color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Qt.alpha(Colors.m3onSurfaceVariant, 0.75) : Qt.rgba(1, 1, 1, 0.5)
+                                            style: Text.Outline
+                                            styleColor: (typeof Colors !== "undefined" && Colors.glassTextHalo) ? Colors.glassTextHalo : Qt.rgba(0, 0, 0, 0.62)
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
                                     }
 
                                     // Quota Preview Badge
@@ -813,6 +862,42 @@ Item {
                                         fixedHeight: 20
                                         paddingHorizontal: 8
                                         interactive: false
+                                    }
+                                }
+                            }
+
+                            // Hover Tooltip for exact account identity and label
+                            Rectangle {
+                                z: 200
+                                visible: isHovered
+                                anchors.bottom: parent.top
+                                anchors.bottomMargin: 4
+                                anchors.left: parent.left
+                                anchors.leftMargin: 20
+                                implicitWidth: tipRow.implicitWidth + 16
+                                implicitHeight: 22
+                                radius: 6
+                                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.08, 0.09, 0.12, 0.96) : Qt.rgba(0.96, 0.96, 0.98, 0.96)
+                                border.width: 1
+                                border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.25)
+
+                                RowLayout {
+                                    id: tipRow
+                                    anchors.centerIn: parent
+                                    spacing: 6
+
+                                    MaterialIcon {
+                                        text: "badge"
+                                        size: 11
+                                        color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
+                                    }
+
+                                    Text {
+                                        text: (modelData.label ? (modelData.label + " : ") : "") + (modelData.identity || modelData.id)
+                                        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                                        font.pixelSize: 10
+                                        font.weight: Font.DemiBold
+                                        color: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#FFFFFF"
                                     }
                                 }
                             }

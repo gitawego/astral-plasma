@@ -179,6 +179,10 @@ Item {
             assert(/onTabSelected/.test(standalone) && /Config\.activeDashboardTab\s*=/.test(standalone),
                 "CentralDashboard TabBar must persist tab selections to Config.activeDashboardTab");
 
+            const cfgSrc = readLocalFile("../config/Config.qml");
+            assert(!/onSettingsChanged:\s*\{[^}]*activeDashboardTab\s*=/.test(cfgSrc),
+                "Config.qml must never clobber activeDashboardTab on settingsChanged");
+
             console.log("PASS: CentralDropdown tab switching moves content for all "
                 + testRoot.tabIds.length + " tabs!");
             Qt.exit(0);

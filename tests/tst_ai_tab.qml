@@ -179,6 +179,15 @@ Item {
         assert(aiTab.getProviderShortName({ provider_id: "zcode" }) === "ZCode", "ZCode short name must be ZCode");
         assert(aiTab.getProviderIcon({ provider_id: "zcode" }) === "code", "ZCode icon must be code");
 
+        // 12. Privacy Mode & Identity Masking
+        assert(typeof aiTab.privacyMode === "boolean", "privacyMode must be a boolean property");
+        assert(typeof aiTab.maskIdentity === "function", "maskIdentity must be a function");
+        assert(aiTab.maskIdentity("gitawego@gmail.com") === "••••••••@gmail.com", "maskIdentity must mask email prefix");
+        aiTab.privacyMode = true;
+        assert(aiTab.privacyMode === true, "privacyMode should toggle to true");
+        aiTab.privacyMode = false;
+        assert(aiTab.privacyMode === false, "privacyMode should toggle back to false");
+
         console.log("PASS: All AiTab & CentralDropdown 6-Tab Unit Tests passed successfully!");
         Qt.exit(0);
     }
