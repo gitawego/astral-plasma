@@ -173,6 +173,30 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "desktop" => {
+            use crate::application::desktop_entries_service::DesktopEntriesUseCase;
+            use crate::infrastructure::desktop_entries_adapter::DesktopEntriesAdapter;
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
+            let use_case = DesktopEntriesUseCase::new(DesktopEntriesAdapter::new());
+            match sub {
+                "status" => {
+                    let st = use_case.get_status()?;
+                    println!("{}", serde_json::to_string(&st)?);
+                }
+                "install" => {
+                    let st = use_case.install()?;
+                    println!("{}", serde_json::to_string(&st)?);
+                }
+                "remove" | "cleanup" => {
+                    let st = use_case.remove()?;
+                    println!("{}", serde_json::to_string(&st)?);
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma desktop <status|install|remove>");
+                }
+            }
+        }
+
         "notifs" => {
             crate::application::notif_monitor::run_notif_monitor().await?;
         }
@@ -1193,22 +1217,6 @@ pub async fn run_cli() -> DynResult<()> {
                 eprintln!("   or: astral-plasma preview batch <target_width> [window_ids...]");
             }
         }
-        "desktop" => {
-            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("");
-            match sub {
-                "install" => {
-                    let installed = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None)?;
-                    println!(r#"{{"success":true,"installed":{}}}"#, installed);
-                }
-                "cleanup" | "remove" => {
-                    let removed = crate::infrastructure::preview_capture::remove_desktop_entry(None)?;
-                    println!(r#"{{"success":true,"removed":{}}}"#, removed);
-                }
-                _ => {
-                    eprintln!("Usage: astral-plasma desktop <install|cleanup>");
-                }
-            }
-        }
         "voice" => {
             use crate::application::voice_service::{write_event, VoiceService};
             use crate::domain::voice::VoiceEvent;
@@ -1709,11 +1717,6 @@ async fn run_self_contained_app() -> DynResult<()> {
 
     let is_kwin = crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin;
 
-    // Register desktop authorization entry with notification (only under KWin)
-    if is_kwin {
-        let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
-    }
-
     // 2. Start API server in background task
     tokio::spawn(async move {
         let _ = run_api_server(DEFAULT_API_PORT).await;
@@ -1769,13 +1772,12 @@ async fn run_self_contained_app() -> DynResult<()> {
 
     // 6. On exit, restore original Plasma panels cleanly (only under KDE), restore shortcuts, and clean up authorization entry
     if is_kwin {
-        println!("[{}] Quickshell stopped. Restoring original KDE Plasma panels and cleaning up authorization...", branding::APP_NAME);
+        println!("[{}] Quickshell stopped. Restoring original KDE Plasma panels...", branding::APP_NAME);
         let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
         let _ = plasma.restore();
         let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
         use crate::domain::ports::ShortcutControlPort;
         let _ = shortcuts.restore_relevant_shortcuts();
-        let _ = crate::infrastructure::preview_capture::remove_desktop_entry(None);
     }
 
     Ok(())

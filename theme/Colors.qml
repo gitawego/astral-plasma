@@ -290,6 +290,21 @@ Singleton {
     readonly property color accentErrorContainer: getColor("error_container", "#FFDAD6", "#93000A")
     readonly property color accentOnErrorContainer: getColor("on_error_container", "#410002", "#FFDAD6")
 
+    readonly property color accentWarning: getColor("warning", "#785900", "#FFBA28")
+    readonly property color accentOnWarning: getColor("on_warning", "#FFFFFF", "#422C00")
+    readonly property color accentWarningContainer: getColor("warning_container", "#FFDEA3", "#5F4100")
+    readonly property color accentOnWarningContainer: getColor("on_warning_container", "#261900", "#FFDEA3")
+
+    readonly property color accentInfo: getColor("info", "#0061A4", "#97CBFF")
+    readonly property color accentOnInfo: getColor("on_info", "#FFFFFF", "#003355")
+    readonly property color accentInfoContainer: getColor("info_container", "#CEE5FF", "#004A75")
+    readonly property color accentOnInfoContainer: getColor("on_info_container", "#001D33", "#CEE5FF")
+
+    readonly property color accentSuccess: getColor("success", "#206B33", "#95D598")
+    readonly property color accentOnSuccess: getColor("on_success", "#FFFFFF", "#003912")
+    readonly property color accentSuccessContainer: getColor("success_container", "#B0F2B2", "#125222")
+    readonly property color accentOnSuccessContainer: getColor("on_success_container", "#002107", "#B0F2B2")
+
     // Modern typography tokens (high contrast, crisp in both light and dark)
     readonly property color textMain: getColor("on_surface", "#14171F", "#F2EFF4")
     readonly property color textMuted: getColor("on_surface_variant", "#3F434B", "#D0D3DC")
@@ -310,11 +325,25 @@ Singleton {
     readonly property color secondaryContainer: root.accentSecondaryContainer
     readonly property color error: root.accentError
     readonly property color errorContainer: root.accentErrorContainer
+    readonly property color warning: root.accentWarning
+    readonly property color warningContainer: root.accentWarningContainer
+    readonly property color info: root.accentInfo
+    readonly property color infoContainer: root.accentInfoContainer
+    readonly property color success: root.accentSuccess
+    readonly property color successContainer: root.accentSuccessContainer
 
     readonly property color textOnPrimary: root.accentOnPrimary
     readonly property color textOnPrimaryContainer: root.accentOnPrimaryContainer
     readonly property color textOnSurface: root.textMain
     readonly property color textOnSurfaceVariant: root.textMuted
+    readonly property color textOnError: root.accentOnError
+    readonly property color textOnErrorContainer: root.accentOnErrorContainer
+    readonly property color textOnWarning: root.accentOnWarning
+    readonly property color textOnWarningContainer: root.accentOnWarningContainer
+    readonly property color textOnInfo: root.accentOnInfo
+    readonly property color textOnInfoContainer: root.accentOnInfoContainer
+    readonly property color textOnSuccess: root.accentOnSuccess
+    readonly property color textOnSuccessContainer: root.accentOnSuccessContainer
     readonly property color textInverse: root.isDarkMode ? "#1D1B20" : "#FFFFFF"
 
     // Material 3 "on" Tokens Bridge (Resolves QML on<Signal> grammar collision)
@@ -326,8 +355,14 @@ Singleton {
         readonly property color onPrimaryContainerVal: root.accentOnPrimaryContainer
         readonly property color onSecondaryVal: root.accentOnSecondary
         readonly property color onSecondaryContainerVal: root.accentOnSecondaryContainer
-        readonly property color onErrorVal: root.accentError
+        readonly property color onErrorVal: root.accentOnError
         readonly property color onErrorContainerVal: root.accentOnErrorContainer
+        readonly property color onWarningVal: root.accentOnWarning
+        readonly property color onWarningContainerVal: root.accentOnWarningContainer
+        readonly property color onInfoVal: root.accentOnInfo
+        readonly property color onInfoContainerVal: root.accentOnInfoContainer
+        readonly property color onSuccessVal: root.accentOnSuccess
+        readonly property color onSuccessContainerVal: root.accentOnSuccessContainer
         readonly property color onTertiaryVal: root.m3onTertiary
         readonly property color onTertiaryContainerVal: root.m3onTertiaryContainer
     }
@@ -340,6 +375,12 @@ Singleton {
     readonly property alias onSecondaryContainer: tokenBridge.onSecondaryContainerVal
     readonly property alias onError: tokenBridge.onErrorVal
     readonly property alias onErrorContainer: tokenBridge.onErrorContainerVal
+    readonly property alias onWarning: tokenBridge.onWarningVal
+    readonly property alias onWarningContainer: tokenBridge.onWarningContainerVal
+    readonly property alias onInfo: tokenBridge.onInfoVal
+    readonly property alias onInfoContainer: tokenBridge.onInfoContainerVal
+    readonly property alias onSuccess: tokenBridge.onSuccessVal
+    readonly property alias onSuccessContainer: tokenBridge.onSuccessContainerVal
     readonly property alias onTertiary: tokenBridge.onTertiaryVal
     readonly property alias onTertiaryContainer: tokenBridge.onTertiaryContainerVal
 
@@ -363,6 +404,18 @@ Singleton {
     readonly property color m3onError: root.accentOnError
     readonly property color m3errorContainer: root.accentErrorContainer
     readonly property color m3onErrorContainer: root.accentOnErrorContainer
+    readonly property color m3warning: root.accentWarning
+    readonly property color m3onWarning: root.accentOnWarning
+    readonly property color m3warningContainer: root.accentWarningContainer
+    readonly property color m3onWarningContainer: root.accentOnWarningContainer
+    readonly property color m3info: root.accentInfo
+    readonly property color m3onInfo: root.accentOnInfo
+    readonly property color m3infoContainer: root.accentInfoContainer
+    readonly property color m3onInfoContainer: root.accentOnInfoContainer
+    readonly property color m3success: root.accentSuccess
+    readonly property color m3onSuccess: root.accentOnSuccess
+    readonly property color m3successContainer: root.accentSuccessContainer
+    readonly property color m3onSuccessContainer: root.accentOnSuccessContainer
     readonly property color m3outline: root.outlineColor
     readonly property color m3outlineVariant: root.outlineVariantColor
 

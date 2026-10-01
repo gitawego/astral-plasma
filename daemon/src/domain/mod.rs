@@ -22,3 +22,4 @@ pub mod ai_activity;
 pub mod assistant;
 pub mod downloads;
 pub mod voice;
+pub mod desktop_entries;

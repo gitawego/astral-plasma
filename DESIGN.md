@@ -176,6 +176,43 @@ Popouts (Wi-Fi, Battery, Bluetooth, Context Menus) seamlessly attach to the oute
 - Use `components/CornerFillet.qml` to render inverted organic curve fillets between the dock edge and popout surface.
 - Enter with `Theme.curveExpressiveDefaultSpatial` to give the impression of expanding outward from the dock.
 
+### 3.4. Semantic Button & Interactive Controls System (`PillButton.qml`)
+
+All buttons, action triggers, and capsule controls follow a unified semantic design system governed by **Variants** and **Accents**:
+
+```qml
+PillButton {
+    label: "Exit Astral Plasma"
+    iconText: "exit_to_app"
+    accent: "error"      // "primary" | "secondary" | "error" | "warning" | "info" | "success" | "neutral"
+    variant: "tonal"     // "tonal" | "filled" | "outlined" | "ghost"
+    active: true
+    onClicked: Config.exitShell()
+}
+```
+
+#### 1. Variants (`variant`)
+- **`tonal`** *(Default)*: Container fill with high-contrast on-container text (`*Container` / `textOn*Container`) and subtle border (`Qt.alpha(base, 0.40)`). Provides organic depth with optimal legibility.
+- **`filled`**: Solid high-emphasis base fill (`base`) with high-contrast on-base text (`textOn*`). Used for focal actions.
+- **`outlined`**: Ultra-subtle glass substrate with prominent accent border (`border.color: base`) and accent text.
+- **`ghost`**: Completely transparent substrate with accent text, activating subtle glass on hover.
+
+#### 2. Semantic Accents (`accent`)
+| Accent | Purpose | Dark Tokens (Fill / Text) | Light Tokens (Fill / Text) | Contrast Ratio |
+| :--- | :--- | :--- | :--- | :--- |
+| **`primary`** | Default actions, active tabs | `Colors.primaryContainer` / `Colors.textOnPrimaryContainer` | `Colors.primaryContainer` / `Colors.textOnPrimaryContainer` | **$\ge 7.2:1$ (WCAG AAA)** |
+| **`secondary`** | Supporting actions | `Colors.secondaryContainer` / `Colors.textOnSecondaryContainer` | `Colors.secondaryContainer` / `Colors.textOnSecondaryContainer` | **$\ge 7.0:1$ (WCAG AAA)** |
+| **`error`** / **`danger`** | Destructive actions, Exit, Delete | `#93000A` (`errorContainer`) / `#FFDAD6` | `#FFDAD6` (`errorContainer`) / `#410002` | **$\ge 7.2:1$ (WCAG AAA)** |
+| **`warning`** | Cautionary actions, overrides | `#5F4100` (`warningContainer`) / `#FFDEA3` | `#FFDEA3` (`warningContainer`) / `#261900` | **$\ge 7.2:1$ (WCAG AAA)** |
+| **`info`** | Inspection, details, refresh | `#004A75` (`infoContainer`) / `#CEE5FF` | `#CEE5FF` (`infoContainer`) / `#001D33` | **$\ge 7.3:1$ (WCAG AAA)** |
+| **`success`** | Affirmations, confirmations | `#125222` (`successContainer`) / `#B0F2B2` | `#B0F2B2` (`successContainer`) / `#002107` | **$\ge 7.2:1$ (WCAG AAA)** |
+| **`neutral`** | Standard surface utilities | `#2B2930` (`surfaceContainerHigh`) / `#F3EDF6` | `#ECE6F0` (`surfaceContainerHigh`) / `#1D1B20` | **$\ge 12.5:1$ (WCAG AAA)** |
+
+#### 3. Contrast & Architecture Invariants
+- **No QML Grammar Collisions**: Colors must never be exposed or read via `Colors.on<Capital>` because QML treats `on...` properties as signal handlers. Always use `Colors.textOn*` or `Colors.m3on*`.
+- **Automatic Token Resolution**: `PillButton` dynamically calculates fill, text, border, and hover colors based on `accent`, `variant`, and `isDarkMode`. Explicit overrides (`activeColor`, `activeTextColor`, `activeBorderColor`) are preserved for backward compatibility.
+- **Physical Spring Micro-Physics**: Interactive depression scale ($0.95\times$) on press and elevation spring on hover are automatically applied.
+
 ---
 
 ## 4. Color & Theming System (Material You)

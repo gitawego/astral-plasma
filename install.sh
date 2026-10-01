@@ -39,16 +39,8 @@ else
     echo "[✓] Symlinked $DIR -> $TARGET"
 fi
 
-# Install desktop entries for app menu and shortcut binding
-mkdir -p "$HOME/.local/share/applications"
-cp -f "$DIR/shortcuts/"*.desktop "$HOME/.local/share/applications/"
-if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
-fi
-if command -v kbuildsycoca6 >/dev/null 2>&1; then
-    kbuildsycoca6 2>/dev/null || true
-fi
-echo "[✓] Installed desktop shortcuts in ~/.local/share/applications"
+# Desktop shortcuts and Wayland session files are NOT installed automatically.
+# Users can explicitly install/remove them anytime from Settings -> System & Services.
 
 # Generate palette if matugen is available
 if command -v matugen >/dev/null 2>&1; then
@@ -59,6 +51,7 @@ echo "=== Installation Complete! ==="
 if [ "$IS_OMARCHY" -eq 1 ]; then
     echo "Astral Plasma is installed in Omarchy. Restart omarchy-shell to load the plugin."
 else
-    echo "You can launch the shell using: quickshell"
+    echo "You can launch the shell using: ./run.sh (or quickshell)"
+    echo "Or select 'Astral Plasma (KWin)' directly from your display manager (SDDM/GDM)."
 fi
 echo "To uninstall cleanly at any time, simply run: $DIR/uninstall.sh"

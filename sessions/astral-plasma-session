@@ -1,0 +1,29 @@
+#!/bin/bash
+# Astral Plasma Wayland Session Entrypoint
+# Boots KWin Wayland and the Quickshell desktop shell cleanly
+set -euo pipefail
+
+SESSION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "$SESSION_DIR/.." && pwd -P)"
+
+export XDG_CURRENT_DESKTOP="KDE:Astral"
+export XDG_SESSION_TYPE="wayland"
+export XDG_SESSION_DESKTOP="KDE"
+export QT_QPA_PLATFORM="wayland"
+
+# Check if KWin Wayland is already running (e.g. launched inside an existing compositor)
+if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v qdbus6 >/dev/null 2>&1 && qdbus6 org.kde.KWin /KWin >/dev/null 2>&1; then
+    # Already inside KWin session: run Astral Plasma directly via run.sh
+    exec "$PROJECT_ROOT/run.sh" "$@"
+fi
+
+# Standalone session entrypoint (launched by Display Manager like SDDM/GDM):
+# Launch KWin Wayland compositor, managing the graphical session
+if command -v kwin_wayland >/dev/null 2>&1; then
+    echo "[*] Starting Astral Plasma standalone session via KWin Wayland..."
+    # Ensure systemd user environment has display variables
+    exec kwin_wayland --no-lockscreen --exit-with-session "$PROJECT_ROOT/run.sh" "$@"
+else
+    echo "[!] kwin_wayland compositor not found in PATH." >&2
+    exit 1
+fi

@@ -110,6 +110,13 @@ pub trait SystemdControlPort: Send + Sync {
     fn remove_service(&self) -> DynResult<ServiceStatus>;
 }
 
+pub trait DesktopIntegrationPort: Send + Sync {
+    fn query_status(&self) -> DynResult<crate::domain::desktop_entries::DesktopIntegrationStatus>;
+    fn install_desktop_entries(&self) -> DynResult<crate::domain::desktop_entries::DesktopIntegrationStatus>;
+    fn remove_desktop_entries(&self) -> DynResult<crate::domain::desktop_entries::DesktopIntegrationStatus>;
+}
+
+
 pub trait ShortcutControlPort: Send + Sync {
     fn snapshot_relevant_shortcuts(
         &self,

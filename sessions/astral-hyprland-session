@@ -1,0 +1,24 @@
+#!/bin/bash
+# Astral Shell Hyprland Session Entrypoint
+set -euo pipefail
+
+SESSION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "$SESSION_DIR/.." && pwd -P)"
+
+export XDG_CURRENT_DESKTOP="Hyprland:Astral"
+export XDG_SESSION_TYPE="wayland"
+export XDG_SESSION_DESKTOP="Hyprland"
+export QT_QPA_PLATFORM="wayland"
+
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    # Already inside Hyprland: run Astral directly
+    exec "$PROJECT_ROOT/run.sh" "$@"
+fi
+
+if command -v Hyprland >/dev/null 2>&1; then
+    echo "[*] Starting Astral Shell standalone session via Hyprland..."
+    exec Hyprland "$@"
+else
+    echo "[!] Hyprland compositor not found in PATH." >&2
+    exit 1
+fi

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Astral Shell (Hyprland)
+Comment=Fluid and expressive desktop shell powered by Quickshell and Hyprland
+Exec=astral-hyprland-session
+TryExec=Hyprland
+Type=Application
+DesktopNames=Hyprland:Astral
+Keywords=quickshell;hyprland;desktop;shell;astral;

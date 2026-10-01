@@ -59,14 +59,16 @@ rm -f "$DATA_HOME/applications/astral-dashboard.desktop" \
       "$DATA_HOME/applications/astral-settings.desktop" \
       "$DATA_HOME/applications/astral-launcher.desktop" \
       "$DATA_HOME/applications/astral-wallpaper.desktop" \
-      "$DATA_HOME/applications/astral-plasma.desktop"
+      "$DATA_HOME/applications/astral-plasma.desktop" \
+      "$DATA_HOME/wayland-sessions/astral-plasma.desktop"
+rm -f "$HOME/.local/bin/astral-plasma-session"
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$DATA_HOME/applications" 2>/dev/null || true
 fi
 if command -v kbuildsycoca6 >/dev/null 2>&1; then
     kbuildsycoca6 2>/dev/null || true
 fi
-echo "[✓] Removed desktop shortcuts"
+echo "[✓] Removed desktop shortcuts and Wayland session entry"
 
 # Clean data, cache and state
 for dir in "$DATA_HOME/astral-plasma" "$CACHE_HOME/astral-plasma" "$STATE_HOME/astral-plasma"; do

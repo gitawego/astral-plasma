@@ -6,14 +6,144 @@ Rectangle {
 
     signal clicked()
 
+    // Semantic Design System Properties
+    property string accent: "primary" // "primary" | "secondary" | "error" | "danger" | "destructive" | "warning" | "info" | "success" | "neutral" | "surface"
+    property string variant: "tonal"  // "tonal" | "filled" | "outlined" | "ghost"
+
+    readonly property bool isDark: (typeof Colors !== "undefined" && typeof Colors.isDarkMode !== "undefined")
+        ? Colors.isDarkMode : true
+
+    // Internal normalized accent key
+    readonly property string resolvedAccent: {
+        const a = (accent || "primary").toLowerCase();
+        if (a === "danger" || a === "destructive") return "error";
+        if (a === "surface") return "neutral";
+        return a;
+    }
+
+    // Palette lookup for current accent
+    readonly property var accentPalette: {
+        const dark = root.isDark;
+        switch (resolvedAccent) {
+        case "error":
+            return {
+                base: (typeof Colors !== "undefined" && Colors.error) ? Colors.error : (dark ? "#FFB4AB" : "#BA1A1A"),
+                onBase: (typeof Colors !== "undefined" && Colors.textOnError) ? Colors.textOnError : (dark ? "#690005" : "#FFFFFF"),
+                container: (typeof Colors !== "undefined" && Colors.errorContainer) ? Colors.errorContainer : (dark ? "#93000A" : "#FFDAD6"),
+                onContainer: (typeof Colors !== "undefined" && Colors.textOnErrorContainer) ? Colors.textOnErrorContainer : (dark ? "#FFDAD6" : "#410002"),
+                border: (typeof Colors !== "undefined" && Colors.error) ? Qt.alpha(Colors.error, 0.40) : (dark ? "#99FFB4AB" : "#66BA1A1A")
+            };
+        case "warning":
+            return {
+                base: (typeof Colors !== "undefined" && Colors.warning) ? Colors.warning : (dark ? "#FFBA28" : "#785900"),
+                onBase: (typeof Colors !== "undefined" && Colors.textOnWarning) ? Colors.textOnWarning : (dark ? "#422C00" : "#FFFFFF"),
+                container: (typeof Colors !== "undefined" && Colors.warningContainer) ? Colors.warningContainer : (dark ? "#5F4100" : "#FFDEA3"),
+                onContainer: (typeof Colors !== "undefined" && Colors.textOnWarningContainer) ? Colors.textOnWarningContainer : (dark ? "#FFDEA3" : "#261900"),
+                border: (typeof Colors !== "undefined" && Colors.warning) ? Qt.alpha(Colors.warning, 0.40) : (dark ? "#99FFBA28" : "#66785900")
+            };
+        case "info":
+            return {
+                base: (typeof Colors !== "undefined" && Colors.info) ? Colors.info : (dark ? "#97CBFF" : "#0061A4"),
+                onBase: (typeof Colors !== "undefined" && Colors.textOnInfo) ? Colors.textOnInfo : (dark ? "#003355" : "#FFFFFF"),
+                container: (typeof Colors !== "undefined" && Colors.infoContainer) ? Colors.infoContainer : (dark ? "#004A75" : "#CEE5FF"),
+                onContainer: (typeof Colors !== "undefined" && Colors.textOnInfoContainer) ? Colors.textOnInfoContainer : (dark ? "#CEE5FF" : "#001D33"),
+                border: (typeof Colors !== "undefined" && Colors.info) ? Qt.alpha(Colors.info, 0.40) : (dark ? "#9997CBFF" : "#660061A4")
+            };
+        case "success":
+            return {
+                base: (typeof Colors !== "undefined" && Colors.success) ? Colors.success : (dark ? "#95D598" : "#206B33"),
+                onBase: (typeof Colors !== "undefined" && Colors.textOnSuccess) ? Colors.textOnSuccess : (dark ? "#003912" : "#FFFFFF"),
+                container: (typeof Colors !== "undefined" && Colors.successContainer) ? Colors.successContainer : (dark ? "#125222" : "#B0F2B2"),
+                onContainer: (typeof Colors !== "undefined" && Colors.textOnSuccessContainer) ? Colors.textOnSuccessContainer : (dark ? "#B0F2B2" : "#002107"),
+                border: (typeof Colors !== "undefined" && Colors.success) ? Qt.alpha(Colors.success, 0.40) : (dark ? "#9995D598" : "#66206B33")
+            };
+        case "secondary":
+            return {
+                base: (typeof Colors !== "undefined" && Colors.secondary) ? Colors.secondary : (dark ? "#CBC2DB" : "#625B71"),
+                onBase: (typeof Colors !== "undefined" && Colors.m3onSecondary) ? Colors.m3onSecondary : (dark ? "#332D41" : "#FFFFFF"),
+                container: (typeof Colors !== "undefined" && Colors.secondaryContainer) ? Colors.secondaryContainer : (dark ? "#4A4458" : "#E8DEF8"),
+                onContainer: (typeof Colors !== "undefined" && Colors.m3onSecondaryContainer) ? Colors.m3onSecondaryContainer : (dark ? "#E8DEF8" : "#1D192B"),
+                border: (typeof Colors !== "undefined" && Colors.secondary) ? Qt.alpha(Colors.secondary, 0.40) : (dark ? "#99CBC2DB" : "#66625B71")
+            };
+        case "neutral":
+            return {
+                base: (typeof Colors !== "undefined" && Colors.outline) ? Colors.outline : (dark ? "#8F9099" : "#79747E"),
+                onBase: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : (dark ? "#F3EDF6" : "#1D1B20"),
+                container: (typeof Colors !== "undefined" && Colors.surfaceContainerHigh) ? Colors.surfaceContainerHigh : (dark ? "#2B2930" : "#ECE6F0"),
+                onContainer: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : (dark ? "#F3EDF6" : "#1D1B20"),
+                border: (typeof Colors !== "undefined" && Colors.outlineVariant) ? Qt.alpha(Colors.outlineVariant, 0.50) : (dark ? "#6649454F" : "#66CAC4D0")
+            };
+        case "primary":
+        default:
+            return {
+                base: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : (dark ? "#CFBCFF" : "#6750A4"),
+                onBase: (typeof Colors !== "undefined" && Colors.m3onPrimary) ? Colors.m3onPrimary : (dark ? "#381E72" : "#FFFFFF"),
+                container: (typeof Colors !== "undefined" && Colors.primaryContainer) ? Colors.primaryContainer : (dark ? "#4F378B" : "#EADDFF"),
+                onContainer: (typeof Colors !== "undefined" && Colors.m3onPrimaryContainer) ? Colors.m3onPrimaryContainer : (dark ? "#EADDFF" : "#21005D"),
+                border: (typeof Colors !== "undefined" && Colors.primary) ? Qt.alpha(Colors.primary, 0.50) : (dark ? "#80CFBCFF" : "#806750A4")
+            };
+        }
+    }
+
+    readonly property color defaultActiveColor: {
+        switch (root.variant) {
+        case "filled":
+            return root.accentPalette.base;
+        case "outlined":
+            return Qt.alpha(root.accentPalette.base, root.isDark ? 0.16 : 0.12);
+        case "ghost":
+            return Qt.alpha(root.accentPalette.base, root.isDark ? 0.12 : 0.08);
+        case "tonal":
+        default:
+            return root.accentPalette.container;
+        }
+    }
+
+    readonly property color defaultActiveTextColor: {
+        switch (root.variant) {
+        case "filled":
+            return root.accentPalette.onBase;
+        case "outlined":
+        case "ghost":
+            return root.accentPalette.base;
+        case "tonal":
+        default:
+            return root.accentPalette.onContainer;
+        }
+    }
+
+    readonly property color defaultActiveBorderColor: {
+        switch (root.variant) {
+        case "filled":
+            return Qt.alpha(root.accentPalette.base, 0.80);
+        case "outlined":
+            return root.accentPalette.base;
+        case "ghost":
+            return "transparent";
+        case "tonal":
+        default:
+            return root.accentPalette.border;
+        }
+    }
+
+    readonly property color defaultInactiveTextColor: {
+        if (root.variant === "outlined" || root.variant === "ghost") {
+            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral") {
+                return root.accentPalette.base;
+            }
+        }
+        return (typeof Colors !== 'undefined' && Colors.m3onSurface) ? Colors.m3onSurface : (root.isDark ? "#F3EDF6" : "#1D1B20");
+    }
+
     property string iconText: ""
     property string iconName: ""
     property string label: ""
     property bool active: false
-    property color activeColor: (typeof Colors !== 'undefined' && Colors.primaryContainer) ? Colors.primaryContainer : "#FFDBD1"
-    property color activeTextColor: (typeof Colors !== 'undefined' && Colors.m3onPrimaryContainer) ? Colors.m3onPrimaryContainer : "#3B0900"
+    property color activeColor: defaultActiveColor
+    property color activeTextColor: defaultActiveTextColor
+    property color activeBorderColor: defaultActiveBorderColor
     property color inactiveColor: "transparent"
-    property color inactiveTextColor: (typeof Colors !== 'undefined' && Colors.m3onSurface) ? Colors.m3onSurface : "#231917"
+    property color inactiveTextColor: defaultInactiveTextColor
     property int iconSize: 18
 
     // Liquid Glass elevation & optics
@@ -36,21 +166,49 @@ Rectangle {
     readonly property alias iconItem: icon
 
     // Base Translucent Substrate Fill
-    color: active 
-        ? activeColor 
-        : (mouseArea.containsPress 
-            ? ((typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.60)) 
-            : (mouseArea.containsMouse 
-                ? ((typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.50)) 
-                : (inactiveColor !== "transparent" 
-                    ? inactiveColor 
-                    : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(1, 1, 1, 0.35)))))
+    color: {
+        if (active) return activeColor;
+        if (mouseArea.containsPress) {
+            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral") {
+                return Qt.alpha(root.accentPalette.base, root.isDark ? 0.24 : 0.18);
+            }
+            return (typeof Colors !== "undefined" && Colors.isDarkMode) 
+                ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.60);
+        }
+        if (mouseArea.containsMouse) {
+            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral") {
+                return Qt.alpha(root.accentPalette.base, root.isDark ? 0.15 : 0.10);
+            }
+            return (typeof Colors !== "undefined" && Colors.isDarkMode) 
+                ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.50);
+        }
+        if (inactiveColor !== "transparent") return inactiveColor;
+        if (root.variant === "ghost") return "transparent";
+        if (root.variant === "outlined") {
+            return root.isDark ? Qt.rgba(1, 1, 1, 0.03) : Qt.rgba(1, 1, 1, 0.15);
+        }
+        return (typeof Colors !== "undefined" && Colors.isDarkMode) 
+            ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(1, 1, 1, 0.35);
+    }
 
-    border.color: active 
-        ? ((typeof Colors !== "undefined" && Colors.primary) ? Qt.alpha(Colors.primary, 0.5) : "#9bcbfb") 
-        : (mouseArea.containsMouse 
-            ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.65)) 
-            : ((typeof Colors !== "undefined" && Colors.glassBorderSubtle) ? Colors.glassBorderSubtle : Qt.rgba(1, 1, 1, 0.14)))
+    border.color: {
+        if (active) return root.activeBorderColor;
+        if (root.variant === "ghost") {
+            return mouseArea.containsMouse ? Qt.alpha(root.accentPalette.base, 0.30) : "transparent";
+        }
+        if (root.variant === "outlined") {
+            return mouseArea.containsMouse ? root.accentPalette.base : Qt.alpha(root.accentPalette.base, 0.60);
+        }
+        if (mouseArea.containsMouse) {
+            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral") {
+                return Qt.alpha(root.accentPalette.base, 0.50);
+            }
+            return (typeof Colors !== "undefined" && Colors.glassBorderSpecular) 
+                ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.65);
+        }
+        return (typeof Colors !== "undefined" && Colors.glassBorderSubtle) 
+            ? Colors.glassBorderSubtle : Qt.rgba(1, 1, 1, 0.14);
+    }
     border.width: active ? 1.2 : 1.0
 
     // Tactile Spring Micro-Physics

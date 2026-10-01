@@ -12,7 +12,11 @@ ColumnLayout {
     property bool testMode: false
     property bool testInstalled: false
     property string testStatusText: ""
+    property bool testDesktopInstalled: false
+    property string testDesktopStatusText: ""
     property bool testDebugMode: false
+
+    readonly property alias exitButton: exitShellButton
 
     readonly property bool debugModeActive: testMode
         ? testDebugMode
@@ -26,19 +30,33 @@ ColumnLayout {
         ? (testStatusText || (testInstalled ? "Installed" : "Not Installed"))
         : ((typeof Config !== "undefined" && Config.systemdServiceStatusText !== undefined) ? Config.systemdServiceStatusText : "Not Installed")
 
-    readonly property color onSurfaceColor: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#231917"
-    readonly property color onSurfaceVariantColor: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#524340"
-    readonly property color surfaceContainerColor: (typeof Colors !== "undefined" && Colors.surfaceContainer) ? Colors.surfaceContainer : "#F2EDE7"
-    readonly property color primaryColor: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#6B4FA0"
-    readonly property color errorContainerColor: (typeof Colors !== "undefined" && Colors.errorContainer) ? Colors.errorContainer : "#FFDAD6"
-    readonly property color onErrorContainerColor: (typeof Colors !== "undefined" && Colors.onErrorContainer) ? Colors.onErrorContainer : "#410002"
-    readonly property color borderSubtleColor: (typeof Theme !== "undefined" && Theme.borderSubtle) ? Theme.borderSubtle : "#D6CEC5"
+    readonly property bool isDesktopInstalled: testMode
+        ? testDesktopInstalled
+        : ((typeof Config !== "undefined" && Config.desktopIntegrationInstalled !== undefined) ? Config.desktopIntegrationInstalled : false)
 
-    readonly property int padLargeVal: (typeof Theme !== "undefined" && Theme.padLarge) ? Theme.padLarge : 16
-    readonly property int padMediumVal: (typeof Theme !== "undefined" && Theme.padMedium) ? Theme.padMedium : 12
+    readonly property string desktopStatusText: testMode
+        ? (testDesktopStatusText || (testDesktopInstalled ? "Installed" : "Not Installed"))
+        : ((typeof Config !== "undefined" && Config.desktopIntegrationStatusText !== undefined) ? Config.desktopIntegrationStatusText : "Not Installed")
+
+    readonly property bool isHyprland: (typeof DesktopSessionFacade !== "undefined" && DesktopSessionFacade.profile === "hyprland")
+
+    readonly property bool isDark: (typeof Colors !== "undefined" && Colors.isDarkMode !== undefined)
+        ? Colors.isDarkMode
+        : ((typeof Config !== "undefined" && Config.isDarkMode !== undefined) ? Config.isDarkMode : true)
+
+    readonly property color onSurfaceColor: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : (isDark ? "#F3EDF6" : "#231917")
+    readonly property color onSurfaceVariantColor: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : (isDark ? "#E1DBE7" : "#524340")
+    readonly property color surfaceContainerColor: (typeof Colors !== "undefined" && Colors.surfaceContainer) ? Colors.surfaceContainer : (isDark ? "#1D1B20" : "#F2EDE7")
+    readonly property color primaryColor: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#6B4FA0"
+    readonly property color errorColor: (typeof Colors !== "undefined" && Colors.error) ? Colors.error : (isDark ? "#FFB4AB" : "#BA1A1A")
+    readonly property color errorContainerColor: (typeof Colors !== "undefined" && Colors.m3errorContainer) ? Colors.m3errorContainer : (isDark ? "#93000A" : "#FFDAD6")
+    readonly property color onErrorContainerColor: (typeof Colors !== "undefined" && Colors.m3onErrorContainer) ? Colors.m3onErrorContainer : (isDark ? "#FFDAD6" : "#410002")
+    readonly property color borderSubtleColor: (typeof Theme !== "undefined" && Theme.borderSubtle) ? Theme.borderSubtle : (isDark ? "#44464F" : "#D6CEC5")
+
     readonly property int radiusMediumVal: (typeof Theme !== "undefined" && Theme.radiusMedium) ? Theme.radiusMedium : 16
     readonly property int spaceMediumVal: (typeof Theme !== "undefined" && Theme.spaceMedium) ? Theme.spaceMedium : 12
     readonly property int spaceSmallVal: (typeof Theme !== "undefined" && Theme.spaceSmall) ? Theme.spaceSmall : 8
+    readonly property int padLargeVal: (typeof Theme !== "undefined" && Theme.padLarge) ? Theme.padLarge : 16
 
     spacing: root.spaceMediumVal
 
@@ -70,7 +88,9 @@ ColumnLayout {
 
         ColumnLayout {
             id: statusLayout
-            anchors.fill: parent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
             anchors.margins: root.padLargeVal
             spacing: root.spaceSmallVal
 
@@ -111,6 +131,8 @@ ColumnLayout {
             id: installBtn
             label: "Install Service"
             iconText: "add_circle"
+            accent: "primary"
+            variant: "tonal"
             active: !root.isInstalled
             onClicked: {
                 if (typeof Config !== "undefined" && Config.installSystemdService) {
@@ -123,9 +145,9 @@ ColumnLayout {
             id: removeBtn
             label: "Remove Service"
             iconText: "delete"
+            accent: "error"
+            variant: "tonal"
             active: root.isInstalled
-            activeColor: root.errorContainerColor
-            activeTextColor: root.onErrorContainerColor
             onClicked: {
                 if (typeof Config !== "undefined" && Config.removeSystemdService) {
                     Config.removeSystemdService();
@@ -150,6 +172,130 @@ ColumnLayout {
     Item { height: root.spaceMediumVal }
 
     Text {
+        text: "Desktop & Session Integration"
+        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
+        font.weight: Font.Bold
+        color: root.onSurfaceColor
+    }
+
+    Text {
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        text: "Astral Plasma respects user autonomy: desktop shortcuts (.desktop) and display manager Wayland session files are never installed automatically without your explicit permission. You can choose whether to register or remove them below."
+        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodySmall) ? Theme.fontBodySmall : 13
+        color: root.onSurfaceVariantColor
+    }
+
+    // Desktop Integration Status Card
+    Rectangle {
+        Layout.fillWidth: true
+        implicitHeight: desktopStatusLayout.implicitHeight + root.padLargeVal * 2
+        radius: root.radiusMediumVal
+        color: root.surfaceContainerColor
+        border.color: root.isDesktopInstalled ? Qt.alpha(root.primaryColor, 0.3) : root.borderSubtleColor
+        border.width: 1
+
+        ColumnLayout {
+            id: desktopStatusLayout
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: root.padLargeVal
+            spacing: root.spaceSmallVal
+
+            RowLayout {
+                spacing: root.spaceMediumVal
+
+                Rectangle {
+                    width: 12
+                    height: 12
+                    radius: 6
+                    color: root.isDesktopInstalled ? "#4CAF50" : (root.desktopStatusText === "Partially Installed" ? "#FF9800" : "#9E9E9E")
+                }
+
+                Text {
+                    text: "Desktop Integration Status: " + root.desktopStatusText
+                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                    font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 15
+                    font.weight: Font.DemiBold
+                    color: root.onSurfaceColor
+                }
+            }
+
+            Text {
+                text: "Wayland Sessions: ~/.local/share/wayland-sessions/ (KDE Plasma & Hyprland)"
+                font.family: "monospace"
+                font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodySmall) ? Theme.fontBodySmall : 13
+                color: root.onSurfaceVariantColor
+            }
+
+            Text {
+                text: "App Shortcuts: ~/.local/share/applications/ (Launcher, Dashboard, Settings, Wallpaper)"
+                font.family: "monospace"
+                font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodySmall) ? Theme.fontBodySmall : 13
+                color: root.onSurfaceVariantColor
+            }
+        }
+    }
+
+    // Desktop Integration Action Buttons
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: root.spaceMediumVal
+
+        PillButton {
+            id: installDesktopBtn
+            label: "Install Integration"
+            iconText: "add_circle"
+            accent: "primary"
+            variant: "tonal"
+            active: !root.isDesktopInstalled
+            onClicked: {
+                if (root.testMode) {
+                    root.testDesktopInstalled = true;
+                    root.testDesktopStatusText = "Installed";
+                } else if (typeof Config !== "undefined" && Config.installDesktopIntegration) {
+                    Config.installDesktopIntegration();
+                }
+            }
+        }
+
+        PillButton {
+            id: removeDesktopBtn
+            label: "Remove Integration"
+            iconText: "delete"
+            accent: "error"
+            variant: "tonal"
+            active: root.isDesktopInstalled
+            onClicked: {
+                if (root.testMode) {
+                    root.testDesktopInstalled = false;
+                    root.testDesktopStatusText = "Not Installed";
+                } else if (typeof Config !== "undefined" && Config.removeDesktopIntegration) {
+                    Config.removeDesktopIntegration();
+                }
+            }
+        }
+
+        Item { Layout.fillWidth: true }
+
+        PillButton {
+            label: "Refresh Status"
+            iconText: "refresh"
+            active: false
+            onClicked: {
+                if (typeof Config !== "undefined" && Config.checkDesktopIntegrationStatus) {
+                    Config.checkDesktopIntegrationStatus();
+                }
+            }
+        }
+    }
+
+    Item { height: root.spaceMediumVal }
+
+    Text {
         text: "Session"
         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
         font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
@@ -159,7 +305,9 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
-        text: "Leaving the shell restores the Plasma panels it replaced. Start it again with ./run.sh."
+        text: root.isHyprland
+            ? "Leaving the shell closes Astral Shell. Start it again with ./run.sh or your Hyprland configuration."
+            : "Leaving the shell restores the Plasma panels it replaced. Start it again with ./run.sh."
         wrapMode: Text.WordWrap
         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
         font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodySmall) ? Theme.fontBodySmall : 13
@@ -174,9 +322,9 @@ ColumnLayout {
             id: exitShellButton
             label: "Exit Astral Plasma"
             iconText: "exit_to_app"
+            accent: "error"
+            variant: "tonal"
             active: true
-            activeColor: root.errorContainerColor
-            activeTextColor: root.onErrorContainerColor
             onClicked: {
                 if (typeof Config !== "undefined" && Config.exitShell) {
                     Config.exitShell();

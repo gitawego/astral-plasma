@@ -51,15 +51,23 @@ if [ ! -f "$DIR/bin/astral-plasma" ]; then
     cp -f "$DIR/daemon/target/release/astral-plasma" "$DIR/bin/astral-plasma"
 fi
 
-# Ensure shortcuts are bound and original state is snapshotted
-bash "$DIR/scripts/bind_shortcuts.sh" meta-space || true
+# Detect compositor environment (Hyprland vs KWin/Plasma)
+IS_HYPRLAND=0
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || [ "${XDG_CURRENT_DESKTOP:-}" = "Hyprland" ]; then
+    IS_HYPRLAND=1
+fi
+
+# Ensure shortcuts are bound and original state is snapshotted (KWin only)
+if [ "$IS_HYPRLAND" -eq 0 ]; then
+    bash "$DIR/scripts/bind_shortcuts.sh" meta-space || true
+fi
 
 # Tune KWin compositor blur for the shell's liquid glass. KWin executes the
 # BackgroundEffect blur regions behind the panel, and an excessive radius
 # homogenises the backdrop into flat grey - which makes even a genuinely
 # translucent panel read as an opaque slab. This applies the configured glass
 # fidelity to kwinrc; without it that setting is dead config.
-if [ -x "$DIR/bin/astral-plasma" ]; then
+if [ "$IS_HYPRLAND" -eq 0 ] && [ -x "$DIR/bin/astral-plasma" ]; then
     BLUR_PREF=$(python3 -c "
 import json,sys
 try:
@@ -85,11 +93,15 @@ cleanup() {
             kill -9 "$QS_PID" 2>/dev/null || true
         fi
     fi
-    bash "$DIR/scripts/restore_shortcuts.sh" || true
+    if [ "$IS_HYPRLAND" -eq 0 ]; then
+        bash "$DIR/scripts/restore_shortcuts.sh" || true
+    fi
     if [ -x "$DIR/bin/astral-plasma" ]; then
-        "$DIR/bin/astral-plasma" plasma restore || true
-        # Blur is tuned for the shell's glass; the desktop must not keep it.
-        "$DIR/bin/astral-plasma" blur restore || true
+        if [ "$IS_HYPRLAND" -eq 0 ]; then
+            "$DIR/bin/astral-plasma" plasma restore || true
+            # Blur is tuned for the shell's glass; the desktop must not keep it.
+            "$DIR/bin/astral-plasma" blur restore || true
+        fi
         # The refresh preference is the shell's; hand the session back the mode it
         # was running before (no-op when it never changed).
         "$DIR/bin/astral-plasma" display restore || true
@@ -106,8 +118,8 @@ trap cleanup EXIT INT TERM
 quickshell -n -p "$DIR" &
 QS_PID=$!
 
-# Disable Plasma panels and launch watchdog monitoring Quickshell
-if [ -x "$DIR/bin/astral-plasma" ]; then
+# Disable Plasma panels and launch watchdog monitoring Quickshell (KDE only)
+if [ "$IS_HYPRLAND" -eq 0 ] && [ -x "$DIR/bin/astral-plasma" ]; then
     "$DIR/bin/astral-plasma" plasma disable all "$QS_PID" >/dev/null 2>&1 || true
 fi
 

@@ -115,6 +115,10 @@ pub const ENV_PACKAGE_DIR: &str = "ASTRAL_PLASMA_PACKAGE_DIR";
 pub const ENV_THEME_DIR: &str = "ASTRAL_PLASMA_THEME_DIR";
 /// Overrides the systemd user unit directory.
 pub const ENV_SYSTEMD_DIR: &str = "ASTRAL_PLASMA_SYSTEMD_DIR";
+/// Overrides the applications desktop entry directory.
+pub const ENV_APPLICATIONS_DIR: &str = "ASTRAL_PLASMA_APPLICATIONS_DIR";
+/// Overrides the wayland-sessions directory.
+pub const ENV_WAYLAND_SESSIONS_DIR: &str = "ASTRAL_PLASMA_WAYLAND_SESSIONS_DIR";
 /// Overrides the Plasma panel backup directory.
 pub const ENV_PLASMA_BACKUP_DIR: &str = "ASTRAL_PLASMA_BACKUP_DIR";
 /// Overrides the shortcut backup directory.

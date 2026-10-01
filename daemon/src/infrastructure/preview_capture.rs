@@ -245,17 +245,7 @@ pub async fn capture_window_with_proxy(
 
     let (reply, raw_data) = match do_capture(proxy, clean_uuid, &options).await {
         Ok(res) => res,
-        Err(e) => {
-            let err_str = e.to_string();
-            if err_str.contains("NoAuthorized") || err_str.contains("not authorized") {
-                // Re-register desktop entry and notify user, then retry once
-                let _ = install_desktop_entry_with_notification(None, None);
-                let _ = std::process::Command::new("kbuildsycoca6").output();
-                do_capture(proxy, clean_uuid, &options).await?
-            } else {
-                return Err(e);
-            }
-        }
+        Err(e) => return Err(e),
     };
 
     if raw_data.is_empty() {
@@ -304,9 +294,6 @@ pub async fn capture_window(
     target_width: u32,
     slot: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    // Preemptively ensure desktop entry is registered
-    let _ = install_desktop_entry_with_notification(None, None);
-
     let connection = Connection::session().await?;
 
     let proxy = zbus::Proxy::new(
@@ -324,8 +311,6 @@ pub async fn capture_windows_batch(
     window_ids: &[String],
     target_width: u32,
 ) -> Result<Vec<(String, String)>, Box<dyn std::error::Error + Send + Sync>> {
-    let _ = install_desktop_entry_with_notification(None, None);
-
     let connection = Connection::session().await?;
     let proxy = Arc::new(
         zbus::Proxy::new(

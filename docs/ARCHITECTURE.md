@@ -94,7 +94,7 @@ Key components:
 - **`DesktopSessionCoordinator`**: Coordinates desktop snapshot retrieval, capability validation, and intent execution across active compositor ports.
 - **`WindowControlUseCase`**: Orchestrates window focus handoffs, activations, and graceful closures.
 - **`WorkspaceControlUseCase`**: Coordinates virtual desktop switching and creation.
-- **`PlasmaControlUseCase`**: Manages KDE Plasma panel backup, disabling, and restoration with PID-tracked watchdog protection.
+- **`PlasmaControlUseCase`**: Manages KDE Plasma panel lifecycle via systemd user units (`plasma-plasmashell.service`) non-destructively, preserving user configs without runtime containment deletion (see [`docs/KDE-INTEGRATION.md`](KDE-INTEGRATION.md)).
 - **`ShortcutControlUseCase`**: Granular snapshotting, binding, and restoring of desktop shortcuts.
 - **`WineMprisService`**: Bridges non-native Windows applications (e.g., NetEase Cloud Music running under Wine/Proton) to standard Linux MPRIS D-Bus interfaces.
 - **`WatchEvents`**: Event dispatching loop listening to system changes and broadcasting updates to the frontend.

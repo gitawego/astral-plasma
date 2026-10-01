@@ -145,10 +145,13 @@ This will:
 - Check dependencies and build the daemon.
 - Back up any existing `~/.config/quickshell` and symlink this repository to it.
 - Install desktop entries in `~/.local/share/applications`.
+- Install the Wayland session in `~/.local/share/wayland-sessions/astral-plasma.desktop`.
 - Bind global shortcuts (with a snapshot of the previous state).
 - Generate the initial color palette.
 
-Launch anytime via `quickshell` (or the installed desktop entries).
+Launch anytime via `./run.sh` (or `quickshell`), or select **"Astral Plasma (KWin)"** directly from your display manager (SDDM/GDM).
+
+> 💡 **KDE Plasma & Quickshell Architecture**: For an in-depth breakdown of how Astral Plasma coordinates non-destructively with KDE Plasma 6 (`plasma-plasmashell.service`), see [docs/KDE-INTEGRATION.md](docs/KDE-INTEGRATION.md).
 
 ### 4. Uninstall
 ```bash

@@ -30,7 +30,19 @@ impl SystemdAdapter {
         if let Some(dir) = branding::dir_override(branding::ENV_THEME_DIR) {
             return dir;
         }
+        if std::path::Path::new("shell.qml").exists() {
+            if let Ok(cwd) = env::current_dir() {
+                return cwd;
+            }
+        }
         if let Ok(exe) = env::current_exe() {
+            let mut curr = exe.parent();
+            while let Some(dir) = curr {
+                if dir.join("shell.qml").exists() {
+                    return dir.to_path_buf();
+                }
+                curr = dir.parent();
+            }
             if let Some(parent) = exe.parent() {
                 if let Some(root) = parent.parent() {
                     return root.to_path_buf();

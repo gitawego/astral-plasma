@@ -324,6 +324,35 @@ Singleton {
         }
     }
 
+    // Desktop & Session Integration Management (Strictly Opt-in by User in Settings)
+    property bool desktopIntegrationInstalled: false
+    property bool desktopSessionInstalled: false
+    property bool desktopShortcutsInstalled: false
+    property string desktopIntegrationStatusText: "Not Installed"
+    property string desktopSessionFile: ""
+    property string desktopShortcutsDir: ""
+
+    function checkDesktopIntegrationStatus() {
+        if (typeof desktopEntriesProc !== "undefined" && !desktopEntriesProc.running) {
+            desktopEntriesProc.command = [root.daemonBin, "desktop", "status"];
+            desktopEntriesProc.running = true;
+        }
+    }
+
+    function installDesktopIntegration() {
+        if (typeof desktopEntriesProc !== "undefined" && !desktopEntriesProc.running) {
+            desktopEntriesProc.command = [root.daemonBin, "desktop", "install"];
+            desktopEntriesProc.running = true;
+        }
+    }
+
+    function removeDesktopIntegration() {
+        if (typeof desktopEntriesProc !== "undefined" && !desktopEntriesProc.running) {
+            desktopEntriesProc.command = [root.daemonBin, "desktop", "remove"];
+            desktopEntriesProc.running = true;
+        }
+    }
+
     // Pinned apps management
     readonly property var pinnedApps: (root.settings.dock && root.settings.dock.pinnedApps) ? root.settings.dock.pinnedApps : []
 
@@ -1301,7 +1330,41 @@ Singleton {
         }
     }
 
+    Process {
+        id: desktopEntriesProc
+        command: [root.daemonBin, "desktop", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const res = JSON.parse(this.text.trim());
+                    if (res.action === "installed") {
+                        root.desktopIntegrationInstalled = true;
+                        root.desktopSessionInstalled = true;
+                        root.desktopShortcutsInstalled = true;
+                        root.desktopIntegrationStatusText = "Installed";
+                        root.checkDesktopIntegrationStatus();
+                    } else if (res.action === "removed") {
+                        root.desktopIntegrationInstalled = false;
+                        root.desktopSessionInstalled = false;
+                        root.desktopShortcutsInstalled = false;
+                        root.desktopIntegrationStatusText = "Not Installed";
+                    } else if (res.installed !== undefined) {
+                        root.desktopIntegrationInstalled = !!res.installed;
+                        root.desktopSessionInstalled = !!res.session_installed;
+                        root.desktopShortcutsInstalled = !!res.shortcuts_installed;
+                        if (res.session_file) root.desktopSessionFile = res.session_file;
+                        if (res.shortcuts_dir) root.desktopShortcutsDir = res.shortcuts_dir;
+                        root.desktopIntegrationStatusText = res.installed
+                            ? "Installed"
+                            : (res.session_installed || res.shortcuts_installed ? "Partially Installed" : "Not Installed");
+                    }
+                } catch (e) {}
+            }
+        }
+    }
+
     Component.onCompleted: {
         root.checkSystemdServiceStatus();
+        root.checkDesktopIntegrationStatus();
     }
 }

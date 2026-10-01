@@ -34,4 +34,5 @@ pub mod voice_server;
 pub mod echo_cancel;
 pub mod noise_suppress;
 pub mod mic_check;
+pub mod desktop_entries_adapter;
 

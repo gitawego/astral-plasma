@@ -348,6 +348,16 @@ impl PlasmaControlPort for PlasmaAdapter {
         }
 
         let target_sanitized = target.replace('\'', "");
+        if target_sanitized == "all" || target_sanitized.is_empty() {
+            let count = self.query_panels().map(|p| p.len() as u32).unwrap_or(0);
+            // Non-destructive: stop plasma-plasmashell cleanly via systemd rather
+            // than deleting containments from the user's desktop configuration.
+            Self::stop_plasmashell();
+            return Ok(count);
+        }
+
+        // Targeted hiding for specific panel positions:
+        // Use non-destructive hiding ('windowscover') instead of permanently deleting containments!
         let script = format!(
             r#"
             var ps = panels();
@@ -356,12 +366,12 @@ impl PlasmaControlPort for PlasmaAdapter {
             var targets = target.split(',');
             for (var i = ps.length - 1; i >= 0; --i) {{
                 var loc = ps[i].location;
-                if (target === 'all' || targets.indexOf(loc) !== -1) {{
-                    ps[i].remove();
+                if (targets.indexOf(loc) !== -1) {{
+                    ps[i].hiding = "windowscover";
                     count++;
                 }}
             }}
-            print('REMOVED:' + count);
+            print('HIDDEN:' + count);
             "#,
             target = target_sanitized
         );
@@ -375,8 +385,8 @@ impl PlasmaControlPort for PlasmaAdapter {
             if let Ok(out) = output {
                 if out.status.success() {
                     let text = String::from_utf8_lossy(&out.stdout);
-                    if let Some(pos) = text.find("REMOVED:") {
-                        let num_str: String = text[pos + 8..].chars().take_while(|c| c.is_ascii_digit()).collect();
+                    if let Some(pos) = text.find("HIDDEN:") {
+                        let num_str: String = text[pos + 7..].chars().take_while(|c| c.is_ascii_digit()).collect();
                         if let Ok(n) = num_str.parse::<u32>() {
                             count = n;
                             break;
@@ -435,10 +445,18 @@ impl PlasmaControlPort for PlasmaAdapter {
         let config_dir = self.resolve_config_dir();
         fs::create_dir_all(&config_dir)?;
 
-        if backed_appletsrc.exists() {
-            fs::copy(&backed_appletsrc, config_dir.join("plasma-org.kde.plasma.desktop-appletsrc"))?;
+        let current_appletsrc = config_dir.join("plasma-org.kde.plasma.desktop-appletsrc");
+        let active_has_containments = current_appletsrc.exists()
+            && fs::read_to_string(&current_appletsrc)
+                .map(|c| c.contains("[Containments][") && c.contains("plugin=org.kde.panel"))
+                .unwrap_or(false);
+
+        // Preserve current active config if it already has intact panel containments;
+        // only copy backup if active config was wiped or missing containments, or in test mode.
+        if (!active_has_containments || is_test) && backed_appletsrc.exists() {
+            fs::copy(&backed_appletsrc, &current_appletsrc)?;
         }
-        if backed_shellrc.exists() {
+        if (!active_has_containments || is_test) && backed_shellrc.exists() {
             fs::copy(&backed_shellrc, config_dir.join("plasmashellrc"))?;
         }
 
@@ -454,6 +472,19 @@ impl PlasmaControlPort for PlasmaAdapter {
             let _ = fs::write(&restoring_lock, std::process::id().to_string());
 
             if Self::start_plasmashell() {
+                // If any panels were set to 'windowscover', restore them to 'none'
+                let unhide_script = r#"
+                    var ps = panels();
+                    for (var i = 0; i < ps.length; ++i) {
+                        if (ps[i].hiding === "windowscover") {
+                            ps[i].hiding = "none";
+                        }
+                    }
+                "#;
+                let _ = Command::new("qdbus6")
+                    .args(["org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", unhide_script])
+                    .output();
+
                 let panels = self.restore_panels(&backed_layout);
                 if panels == 0 {
                     eprintln!(

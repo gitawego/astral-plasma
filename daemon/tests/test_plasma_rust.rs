@@ -226,3 +226,20 @@ fn test_plasmashell_stop_never_uses_kquitapp() {
     assert!(source.contains("systemctl"),
         "plasma_adapter must stop/start plasmashell through its systemd user unit");
 }
+
+#[test]
+fn test_disable_panels_never_destructively_removes_containments() {
+    // Destructive removal (ps[i].remove()) deletes user containments and applet
+    // configurations at runtime, causing loss of pinned taskbar apps, custom
+    // widgets, and corrupted empty configs upon crash. Panels must be hidden
+    // via service lifecycle (stop_plasmashell) or non-destructive hiding.
+    let source = std::fs::read_to_string(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/src/infrastructure/plasma_adapter.rs"),
+    )
+    .expect("plasma_adapter.rs must be readable");
+    assert!(
+        !source.contains(".remove()"),
+        "plasma_adapter must never invoke destructive .remove() on user containments"
+    );
+}
+

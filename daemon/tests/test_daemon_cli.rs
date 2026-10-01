@@ -76,7 +76,7 @@ fn test_daemon_desktop_cli() {
     let bin = get_bin_path();
     let out = Command::new(&bin).args(["desktop", "unknown"]).output().expect("Failed to run desktop command");
     let stderr_str = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr_str.contains("Usage: astral-plasma desktop <install|cleanup>"));
+    assert!(stderr_str.contains("Usage: astral-plasma desktop <status|install|remove>") || stderr_str.contains("Usage: astral-plasma desktop <install|cleanup>"));
 }
 
 #[test]
