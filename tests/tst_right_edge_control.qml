@@ -70,6 +70,27 @@ Item {
             assert(rightControl.cardItem.color === Colors.glassCard, "cardItem must use Colors.glassCard");
         }
 
+        // 1b. Controller on Bar Hierarchy & Liquid Glass Geometry (Volume & Brightness)
+        assert(rightControl.volumeTrackItem !== undefined, "volumeTrackItem must exist");
+        assert(rightControl.volumeKnobItem !== undefined, "volumeKnobItem must exist");
+        assert(rightControl.volumeFillItem !== undefined, "volumeFillItem must exist");
+        assert(rightControl.volumeTrackItem.width <= 14, "Volume track groove must be a slender rail (width <= 14px)");
+        assert(rightControl.volumeKnobItem.width >= 32, "Volume knob must be a prominent controller disc (width >= 32px)");
+        assert(rightControl.volumeKnobItem.width >= rightControl.volumeTrackItem.width * 2, "Volume knob must distinctly overhang the rail (knob width >= 2x track width)");
+        assert(rightControl.volumeKnobItem.radius >= rightControl.volumeKnobItem.width / 2, "Volume knob must be circular");
+        assert(rightControl.volumeFillItem.width <= rightControl.volumeTrackItem.width, "Volume liquid fill must be confined inside the slender track groove");
+        assert(rightControl.volumeKnobItem.layer.enabled === true, "Volume knob must have layer elevation enabled for optical glass depth");
+
+        assert(rightControl.brightnessTrackItem !== undefined, "brightnessTrackItem must exist");
+        assert(rightControl.brightnessKnobItem !== undefined, "brightnessKnobItem must exist");
+        assert(rightControl.brightnessFillItem !== undefined, "brightnessFillItem must exist");
+        assert(rightControl.brightnessTrackItem.width <= 14, "Brightness track groove must be a slender rail (width <= 14px)");
+        assert(rightControl.brightnessKnobItem.width >= 32, "Brightness knob must be a prominent controller disc (width >= 32px)");
+        assert(rightControl.brightnessKnobItem.width >= rightControl.brightnessTrackItem.width * 2, "Brightness knob must distinctly overhang the rail");
+        assert(rightControl.brightnessKnobItem.radius >= rightControl.brightnessKnobItem.width / 2, "Brightness knob must be circular");
+        assert(rightControl.brightnessFillItem.width <= rightControl.brightnessTrackItem.width, "Brightness liquid fill must be confined inside the slender track groove");
+        assert(rightControl.brightnessKnobItem.layer.enabled === true, "Brightness knob must have layer elevation enabled");
+
         // 2. Lifecycle & Hover Auto-Close State Transitions
         assert(!testRoot.rightEdgeControlVisible, "Control must initially be hidden");
 

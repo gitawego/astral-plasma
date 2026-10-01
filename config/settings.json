@@ -149,6 +149,7 @@
     "showTabs": true
   },
   "theme": {
+    "archetype": "liquid_glass",
     "mode": "dark",
     "preset": "ocean",
     "blurStrength": 0.85,

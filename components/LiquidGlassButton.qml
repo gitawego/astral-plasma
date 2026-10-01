@@ -25,9 +25,12 @@ Item {
     property real elevation: 6
     property int paddingHorizontal: 22
     property int paddingVertical: 10
+    property bool showSpecular: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
+    property bool showCaustic: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.causticEnabled : true
 
     // Stadium Pill Geometry
     readonly property int radius: Math.round(height / 2)
+    readonly property bool isCircular: root.text === "" && (Math.abs(root.width - root.height) <= 6)
     implicitHeight: 42
     implicitWidth: Math.max(100, contentRow.implicitWidth + paddingHorizontal * 2)
 
@@ -46,7 +49,7 @@ Item {
     readonly property alias contentRowItem: contentRow
 
     // Spring Micro-Physics & Target Scale
-    readonly property real targetScale: root.interactive ? (root.pressed ? 0.96 : (root.hovered ? 1.02 : 1.0)) : 1.0
+    readonly property real targetScale: root.interactive ? (root.pressed ? (root.isCircular ? 0.92 : 0.96) : (root.hovered ? (root.isCircular ? 1.08 : 1.02) : 1.0)) : 1.0
     scale: targetScale
 
     Behavior on scale {
@@ -57,46 +60,48 @@ Item {
         }
     }
 
-    // 0. Ambient Contact Drop Shadow (Physical surface separation)
+    // 0. Ambient Contact Drop Shadow (Physical surface separation, fully translucent contour)
     Rectangle {
         id: contactShadow
         visible: true
         z: -1
         anchors.fill: glassBody
-        anchors.topMargin: Math.max(2, Math.round(root.elevation * 0.4))
-        anchors.bottomMargin: -Math.max(2, Math.round(root.elevation * 0.5))
-        anchors.leftMargin: -Math.max(1, Math.round(root.elevation * 0.15))
-        anchors.rightMargin: -Math.max(1, Math.round(root.elevation * 0.15))
+        anchors.topMargin: Math.max(2, Math.round(root.elevation * 0.35))
+        anchors.bottomMargin: -Math.max(2, Math.round(root.elevation * 0.40))
+        anchors.leftMargin: -Math.max(1, Math.round(root.elevation * 0.12))
+        anchors.rightMargin: -Math.max(1, Math.round(root.elevation * 0.12))
         radius: root.radius
         color: "transparent"
-        border.color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-            ? Qt.rgba(0.0, 0.0, 0.0, 0.35)
-            : Qt.rgba(0.0, 0.0, 0.0, 0.14)
-        border.width: Math.max(2, Math.round(root.elevation * 0.5))
-        opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.40 : 0.25
+        border.color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.0, 0.0, 0.0, 0.30) : Qt.rgba(0.0, 0.0, 0.0, 0.12)
+        border.width: Math.max(1, Math.round(root.elevation * 0.25))
+        opacity: root.hovered ? 0.45 : 0.25
     }
 
-    // 1. Translucent Frosted Glass Body Capsule
+    // 1. Translucent Frosted Glass Body Capsule (Smooth, unified substrate)
     Rectangle {
         id: glassBody
         anchors.fill: parent
         radius: root.radius
         color: root.isPrimary
-            ? Qt.tint((typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1.0, 1.0, 1.0, 0.15) : Qt.rgba(1.0, 1.0, 1.0, 0.55), Qt.alpha(root.accentColor, 0.25))
+            ? (root.pressed 
+                ? Qt.alpha(root.accentColor, 0.45) 
+                : (root.hovered ? Qt.alpha(root.accentColor, 0.35) : Qt.alpha(root.accentColor, 0.24)))
             : ((typeof Colors !== "undefined" && Colors.isDarkMode)
-                ? (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.12) : Qt.rgba(1.0, 1.0, 1.0, 0.07))
-                : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.55) : Qt.rgba(1.0, 1.0, 1.0, 0.42)))
+                ? (root.pressed ? Qt.rgba(1.0, 1.0, 1.0, 0.18) : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.12) : Qt.rgba(1.0, 1.0, 1.0, 0.06)))
+                : (root.pressed ? Qt.rgba(1.0, 1.0, 1.0, 0.70) : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.60) : Qt.rgba(1.0, 1.0, 1.0, 0.42))))
 
-        border.color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-            ? (root.hovered ? Colors.glassBorderSpecular : Qt.rgba(1.0, 1.0, 1.0, 0.16))
-            : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.90) : Qt.rgba(1.0, 1.0, 1.0, 0.70))
+        border.color: root.isPrimary
+            ? (root.hovered ? Qt.alpha(root.accentColor, 0.90) : Qt.alpha(root.accentColor, 0.55))
+            : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+                ? (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.32) : Qt.rgba(1.0, 1.0, 1.0, 0.12))
+                : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.85) : Qt.rgba(1.0, 1.0, 1.0, 0.55)))
         border.width: 1
 
         Behavior on color { ColorAnimation { duration: 150 } }
         Behavior on border.color { ColorAnimation { duration: 150 } }
     }
 
-    // 2. Fresnel Refraction Cushion
+    // 2. Fresnel Refraction Cushion (Soft continuous vertical depth sheen)
     Rectangle {
         id: refractionCushion
         anchors.fill: parent
@@ -107,25 +112,23 @@ Item {
             GradientStop {
                 position: 0.0
                 color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.12), Qt.alpha(root.accentColor, 0.08))
-                    : Qt.rgba(1.0, 1.0, 1.0, 0.45)
+                    ? Qt.rgba(1.0, 1.0, 1.0, root.hovered ? 0.14 : 0.08)
+                    : Qt.rgba(1.0, 1.0, 1.0, 0.35)
             }
-            GradientStop { position: 0.45; color: "transparent" }
-            GradientStop { position: 0.85; color: "transparent" }
+            GradientStop { position: 0.50; color: "transparent" }
             GradientStop {
                 position: 1.0
                 color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.rgba(0.0, 0.0, 0.0, 0.08)
-                    : Qt.rgba(1.0, 1.0, 1.0, 0.18)
+                    ? Qt.rgba(0.0, 0.0, 0.0, 0.06)
+                    : Qt.rgba(0.0, 0.0, 0.0, 0.04)
             }
         }
     }
 
-    // 3. Dual-Layer Specular Hairline Glare (Horizontal light catch along flat top edge)
-    // NOTE: Must strictly stay within [radius, width - radius] to eliminate detached overhang lines!
+    // 3. Specular Hairline Glare (Horizontal light catch along flat top edge for pills)
     Rectangle {
         id: topGlare
-        visible: parent.width > (root.radius * 2 + 8)
+        visible: root.showSpecular && !root.isCircular && (parent.width > (root.radius * 2 + 8))
         anchors.top: parent.top
         anchors.topMargin: 0.5
         anchors.left: parent.left
@@ -145,10 +148,10 @@ Item {
         }
     }
 
-    // 4. Bottom Caustic Reflection Rim
+    // 4. Bottom Reflection Rim (For stadium pills)
     Rectangle {
         id: bottomRim
-        visible: parent.width > (root.radius * 2 + 8)
+        visible: root.showSpecular && !root.isCircular && (parent.width > (root.radius * 2 + 8))
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 0.5
         anchors.left: parent.left
@@ -170,12 +173,12 @@ Item {
     Row {
         id: shadowRow
         anchors.centerIn: parent
-        anchors.verticalCenterOffset: 2.5
+        anchors.verticalCenterOffset: 1.5
         spacing: (typeof Theme !== "undefined" && Theme.spaceSmall) ? Theme.spaceSmall : 6
-        opacity: 0.80
+        opacity: (root.isCircular || root.text === "") ? 0.0 : 0.60
 
         MaterialIcon {
-            visible: root.iconText !== "" || root.iconName !== ""
+            visible: !root.isCircular && (root.iconText !== "" || root.iconName !== "")
             text: root.iconText
             iconName: root.iconName
             size: root.iconSize
@@ -206,7 +209,9 @@ Item {
             text: root.iconText
             iconName: root.iconName
             size: root.iconSize
-            color: root.isPrimary ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : root.accentColor) : root.textColor
+            color: root.isPrimary 
+                ? "#FFFFFF" 
+                : (root.hovered ? "#FFFFFF" : ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : root.textColor))
             anchors.verticalCenter: parent.verticalCenter
         }
 
@@ -217,7 +222,7 @@ Item {
             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
             font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyLarge) ? Theme.fontBodyLarge : 14
             font.weight: Font.DemiBold
-            color: root.isPrimary ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : root.accentColor) : root.textColor
+            color: root.isPrimary ? "#FFFFFF" : root.textColor
             anchors.verticalCenter: parent.verticalCenter
         }
     }

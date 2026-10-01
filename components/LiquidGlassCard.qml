@@ -7,11 +7,11 @@ Rectangle {
     // Customization tokens
     property color accentGlint: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb"
     property color specularColor: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.6)
-    property bool showSpecular: true
-    property bool showCaustic: true
-    property bool showBottomRim: true
-    property bool showRefraction: true
-    property bool showShadow: true
+    property bool showSpecular: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
+    property bool showCaustic: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.causticEnabled : true
+    property bool showBottomRim: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
+    property bool showRefraction: (typeof Theme !== "undefined" && Theme.material) ? (Theme.material.surfaceStyle !== "flat_minimal") : true
+    property bool showShadow: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true
     property real elevation: 6
     property bool interactive: false
     property bool hovered: false

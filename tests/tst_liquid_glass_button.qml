@@ -36,6 +36,17 @@ Item {
         isPrimary: true
     }
 
+    // 4. Circular primary liquid glass disc button (e.g. Play/Pause)
+    LiquidGlassButton {
+        id: circularButton
+        x: 650
+        y: 50
+        implicitWidth: 48
+        implicitHeight: 48
+        iconText: "play_arrow"
+        isPrimary: true
+    }
+
     Timer {
         interval: 50
         running: true
@@ -120,6 +131,17 @@ Item {
         let iconItem = iconButton.iconItem;
         assert(iconItem !== undefined && iconItem !== null, "iconButton must expose iconItem");
         assert(iconItem.visible === true, "iconItem must be visible when iconText is provided");
+
+        // ========================================================
+        // 8. Circular Disc Glass Button Invariants
+        // ========================================================
+        assert(circularButton.isCircular === true, "circularButton must identify as isCircular");
+        assert(circularButton.radius === 24, "circularButton radius must be 24 (48/2)");
+        assert(circularButton.iconItem.text === "play_arrow", "circularButton iconText must be play_arrow");
+        assert(circularButton.targetScale === 1.0, "circularButton default scale must be 1.0");
+        circularButton.pressed = true;
+        assert(circularButton.targetScale === 0.92, "circularButton pressed scale must be 0.92 (deep liquid spring)");
+        circularButton.pressed = false;
 
         console.log("PASS: LiquidGlassButton Optical & Behavioral Tests");
         Qt.exit(0);

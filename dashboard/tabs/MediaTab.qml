@@ -146,26 +146,27 @@ Item {
                     LiquidGlassButton {
                         implicitWidth: 38
                         implicitHeight: 38
-                        paddingHorizontal: 8
-                        paddingVertical: 8
+                        paddingHorizontal: 6
+                        paddingVertical: 6
                         iconText: "skip_previous"
                         iconSize: 20
-                        elevation: 4
+                        elevation: 2
                         interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true
-                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true) ? 1.0 : 0.45
+                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true) ? 1.0 : 0.40
                         onClicked: MprisMedia.previous()
                     }
 
-                    // Play / Pause (Prominent Circular Primary Liquid Glass)
+                    // Play / Pause (Hero Circular Liquid Glass Gem)
                     LiquidGlassButton {
                         implicitWidth: 48
                         implicitHeight: 48
-                        paddingHorizontal: 10
-                        paddingVertical: 10
+                        paddingHorizontal: 8
+                        paddingVertical: 8
                         isPrimary: true
                         iconText: (typeof MprisMedia !== "undefined" && MprisMedia.isPlaying) ? "pause" : "play_arrow"
-                        iconSize: 26
-                        elevation: 8
+                        iconSize: 24
+                        accentColor: Colors.primary
+                        elevation: 6
                         onClicked: MprisMedia.playPause()
                     }
 
@@ -173,13 +174,13 @@ Item {
                     LiquidGlassButton {
                         implicitWidth: 38
                         implicitHeight: 38
-                        paddingHorizontal: 8
-                        paddingVertical: 8
+                        paddingHorizontal: 6
+                        paddingVertical: 6
                         iconText: "skip_next"
                         iconSize: 20
-                        elevation: 4
+                        elevation: 2
                         interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true
-                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true) ? 1.0 : 0.45
+                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true) ? 1.0 : 0.40
                         onClicked: MprisMedia.next()
                     }
                 }
@@ -189,39 +190,66 @@ Item {
                 // Progress Bar with Vertical Pill Thumb & Interactive Seeking
                 Item {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 16
+                    Layout.preferredHeight: 18
 
+                    // Frosted Glass Track Groove
                     Rectangle {
                         id: sliderTrack
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        height: 5
-                        radius: 2.5
-                        color: Colors.surfaceContainerHigh
+                        height: 6
+                        radius: 3
+                        color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                            ? Qt.rgba(1.0, 1.0, 1.0, 0.10)
+                            : Qt.rgba(0.0, 0.0, 0.0, 0.08)
+                        border.color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                            ? Qt.rgba(1.0, 1.0, 1.0, 0.12)
+                            : Qt.rgba(0.0, 0.0, 0.0, 0.06)
+                        border.width: 1
 
+                        // Filled Liquid Progress Bar
                         Rectangle {
                             anchors.left: parent.left
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
-                            width: parent.width * Math.min(1.0, Math.max(0.0, MprisMedia.progress))
+                            anchors.margins: 0.5
+                            width: Math.max(0, (parent.width - 1) * Math.min(1.0, Math.max(0.0, MprisMedia.progress)))
                             radius: 2.5
-                            color: Colors.primary
+
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: Qt.darker(Colors.primary, 1.1) }
+                                GradientStop { position: 1.0; color: Colors.primary }
+                            }
+
+                            // Top subtle highlight inside progress
+                            Rectangle {
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: 1
+                                color: Qt.rgba(1.0, 1.0, 1.0, 0.45)
+                                radius: 1
+                            }
                         }
 
-                        // Bespoke Vertical Pill Thumb
+                        // Bespoke Liquid Glass Capsule Thumb
                         Rectangle {
                             id: sliderThumb
-                            width: 5
-                            height: 15
-                            radius: 2.5
+                            width: 6
+                            height: 16
+                            radius: 3
                             anchors.verticalCenter: parent.verticalCenter
                             x: Math.max(0, Math.min(parent.width - width, parent.width * Math.min(1.0, Math.max(0.0, MprisMedia.progress)) - width / 2))
                             color: Colors.primary
                             visible: MprisMedia.length > 0
 
-                            scale: sliderMouse.pressed ? 1.25 : (sliderMouse.containsMouse ? 1.12 : 1.0)
-                            Behavior on scale { NumberAnimation { duration: 100 } }
+                            border.color: Qt.rgba(1.0, 1.0, 1.0, 0.85)
+                            border.width: 1
+
+                            scale: sliderMouse.pressed ? 1.30 : (sliderMouse.containsMouse ? 1.15 : 1.0)
+                            Behavior on scale { NumberAnimation { duration: 120 } }
                         }
                     }
 
@@ -287,13 +315,17 @@ Item {
                     Layout.alignment: Qt.AlignHCenter
                     spacing: 12
 
-                    // Shuffle Button
+                    // Shuffle Button (Sleek Micro-Control)
                     Rectangle {
-                        width: 30
-                        height: 30
-                        radius: 15
-                        color: MprisMedia.shuffle ? Qt.alpha(Colors.primary, 0.22) : (shufHover.containsMouse ? Qt.alpha(Colors.textMain, 0.12) : Colors.surfaceContainerHigh)
-                        border.color: MprisMedia.shuffle ? Colors.primary : Theme.borderSubtle
+                        width: 32
+                        height: 32
+                        radius: 16
+                        color: (typeof MprisMedia !== "undefined" && MprisMedia.shuffle)
+                            ? Qt.alpha(Colors.primary, 0.22)
+                            : (shufHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : "transparent")
+                        border.color: (typeof MprisMedia !== "undefined" && MprisMedia.shuffle)
+                            ? Qt.alpha(Colors.primary, 0.60)
+                            : (shufHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.16) : "transparent")
                         border.width: 1
 
                         Behavior on color { ColorAnimation { duration: 150 } }
@@ -303,7 +335,7 @@ Item {
                             anchors.centerIn: parent
                             text: "shuffle"
                             size: 16
-                            color: MprisMedia.shuffle ? Colors.primary : Colors.m3onSurfaceVariant
+                            color: (typeof MprisMedia !== "undefined" && MprisMedia.shuffle) ? Colors.primary : Colors.m3onSurfaceVariant
                         }
 
                         MouseArea {
@@ -315,16 +347,20 @@ Item {
                         }
                     }
 
-                    // Active Player Pill Badge (Interactive player switch/dropdown)
+                    // Active Player Pill Badge (Subtle Frosted Glass Capsule)
                     Rectangle {
                         id: playerBadge
-                        implicitWidth: playerRow.implicitWidth + 28
+                        implicitWidth: playerRow.implicitWidth + 24
                         implicitHeight: 28
                         Layout.preferredWidth: implicitWidth
                         Layout.preferredHeight: implicitHeight
                         radius: 14
-                        color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primaryContainer : Colors.surfaceContainerHigh
-                        border.color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible) ? Colors.primary : Theme.borderSubtle
+                        color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible)
+                            ? Qt.alpha(Colors.primary, 0.20)
+                            : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1.0, 1.0, 1.0, 0.06) : Qt.rgba(1.0, 1.0, 1.0, 0.45))
+                        border.color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible)
+                            ? Qt.alpha(Colors.primary, 0.50)
+                            : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1.0, 1.0, 1.0, 0.12) : Qt.rgba(1.0, 1.0, 1.0, 0.35))
                         border.width: 1
 
                         Behavior on color { ColorAnimation { duration: 150 } }
@@ -333,7 +369,7 @@ Item {
                         RowLayout {
                             id: playerRow
                             anchors.centerIn: parent
-                            spacing: 6
+                            spacing: 5
 
                             MaterialIcon {
                                 text: (MprisMedia.players && MprisMedia.players.length > 1) ? "graphic_eq" : "music_note"
@@ -356,7 +392,7 @@ Item {
                             MaterialIcon {
                                 visible: MprisMedia.players && MprisMedia.players.length > 1
                                 text: "expand_more"
-                                size: 15
+                                size: 14
                                 color: Colors.onSurfaceVariant
                                 Layout.alignment: Qt.AlignVCenter
                                 rotation: playerDropdownOverlay.visible ? 180 : 0
@@ -383,13 +419,17 @@ Item {
                         }
                     }
 
-                    // Loop Mode Button
+                    // Loop Mode Button (Sleek Micro-Control)
                     Rectangle {
-                        width: 30
-                        height: 30
-                        radius: 15
-                        color: MprisMedia.loopState !== 0 ? Qt.alpha(Colors.primary, 0.22) : (loopHover.containsMouse ? Qt.alpha(Colors.textMain, 0.12) : Colors.surfaceContainerHigh)
-                        border.color: MprisMedia.loopState !== 0 ? Colors.primary : Theme.borderSubtle
+                        width: 32
+                        height: 32
+                        radius: 16
+                        color: (typeof MprisMedia !== "undefined" && MprisMedia.loopState !== 0)
+                            ? Qt.alpha(Colors.primary, 0.22)
+                            : (loopHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : "transparent")
+                        border.color: (typeof MprisMedia !== "undefined" && MprisMedia.loopState !== 0)
+                            ? Qt.alpha(Colors.primary, 0.60)
+                            : (loopHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.16) : "transparent")
                         border.width: 1
 
                         Behavior on color { ColorAnimation { duration: 150 } }
@@ -397,9 +437,9 @@ Item {
 
                         MaterialIcon {
                             anchors.centerIn: parent
-                            text: MprisMedia.loopState === 1 ? "repeat_one" : "repeat"
+                            text: (typeof MprisMedia !== "undefined" && MprisMedia.loopState === 1) ? "repeat_one" : "repeat"
                             size: 16
-                            color: MprisMedia.loopState !== 0 ? Colors.primary : Colors.m3onSurfaceVariant
+                            color: (typeof MprisMedia !== "undefined" && MprisMedia.loopState !== 0) ? Colors.primary : Colors.m3onSurfaceVariant
                         }
 
                         MouseArea {
@@ -413,7 +453,7 @@ Item {
                 }
             }
 
-            // Right: Media Avatar (Supports gif, svg, png, jpg, and video; defaults to bongo cat)
+            // Right: Media Avatar (clean, seamless without heavy framing)
             Item {
                 Layout.preferredWidth: 200
                 Layout.preferredHeight: 200

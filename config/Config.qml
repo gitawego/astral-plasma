@@ -221,7 +221,12 @@ Singleton {
     readonly property string themeMode: root.isDarkMode ? "dark" : "light"
     readonly property bool dynamicColors: root.settings.theme ? (root.settings.theme.dynamicColors ?? (root.settings.theme.mode === "dynamic")) : false
     readonly property string themePreset: root.settings.theme ? (root.settings.theme.preset ?? "iris") : "iris"
+    readonly property string themeArchetype: root.settings.theme ? (root.settings.theme.archetype ?? "liquid_glass") : "liquid_glass"
     readonly property int themeCornerRadius: root.settings.theme ? (root.settings.theme.cornerRadius ?? 20) : 20
+
+    function setThemeArchetype(archetypeId) {
+        root.updateSetting("theme", "archetype", archetypeId);
+    }
 
     // Dynamic script path resolution (config-driven, agnostic, zero hardcoded paths)
     readonly property string scriptsDir: {

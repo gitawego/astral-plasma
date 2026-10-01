@@ -2,61 +2,119 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import "./archetypes"
 
 Singleton {
     id: root
 
-    // Corner Radii
-    readonly property int radiusFull: 9999
-    readonly property int radiusLarge: 24
-    readonly property int radiusMedium: 16
-    readonly property int radiusSmall: 10
-    readonly property int radiusExtraSmall: 6
+    // =========================================================================
+    // Active Theme Archetype Delegation
+    // =========================================================================
+    // Built-in theme archetype instances
+    readonly property LiquidGlassArchetype archetypeLiquidGlass: LiquidGlassArchetype {}
+    readonly property NordicMinimalArchetype archetypeNordicMinimal: NordicMinimalArchetype {}
+    readonly property CyberpunkNeonArchetype archetypeCyberpunkNeon: CyberpunkNeonArchetype {}
 
-    // Spacing and Margins
-    readonly property int spaceExtraLarge: 24
-    readonly property int spaceLarge: 16
-    readonly property int spaceMedium: 12
-    readonly property int spaceSmall: 8
-    readonly property int spaceExtraSmall: 4
+    // Registry table mapping archetype ID to instance
+    readonly property var archetypes: ({
+        "liquid_glass": root.archetypeLiquidGlass,
+        "nordic_minimal": root.archetypeNordicMinimal,
+        "cyberpunk_neon": root.archetypeCyberpunkNeon
+    })
 
-    // Padding
-    readonly property int padExtraLarge: 20
-    readonly property int padLarge: 16
-    readonly property int padMedium: 12
-    readonly property int padSmall: 8
-    readonly property int padExtraSmall: 4
+    // Active archetype name (reactively bound to Config)
+    readonly property string archetypeName: {
+        if (typeof Config !== "undefined" && Config.themeArchetype) {
+            return Config.themeArchetype;
+        }
+        return "liquid_glass";
+    }
 
-    // Typography - Retina scaled
-    readonly property string fontFamily: "Google Sans Flex, Cantarell, Noto Sans, sans-serif"
-    readonly property string fontMonospace: "JetBrains Mono, monospace"
+    // Active archetype instance (defaults to liquid_glass)
+    readonly property ThemeArchetype activeArchetype: {
+        const key = (root.archetypeName || "liquid_glass").toLowerCase();
+        return root.archetypes[key] || root.archetypeLiquidGlass;
+    }
 
-    readonly property int fontTitleLarge: 26
-    readonly property int fontTitleMedium: 21
-    readonly property int fontTitleSmall: 16
-    readonly property int fontBodyMedium: 15
-    readonly property int fontBodySmall: 13
-    readonly property int fontLabelSmall: 12
+    // Helper: list of registered archetype descriptors
+    function listArchetypes() {
+        return [
+            { id: "liquid_glass", name: root.archetypeLiquidGlass.name, description: root.archetypeLiquidGlass.description },
+            { id: "nordic_minimal", name: root.archetypeNordicMinimal.name, description: root.archetypeNordicMinimal.description },
+            { id: "cyberpunk_neon", name: root.archetypeCyberpunkNeon.name, description: root.archetypeCyberpunkNeon.description }
+        ];
+    }
+
+    // Material & Optical Surface Tokens Facade
+    readonly property QtObject material: QtObject {
+        id: materialTokens
+        readonly property string surfaceStyle: root.activeArchetype ? root.activeArchetype.surfaceStyle : "liquid_glass"
+        readonly property bool specularEnabled: root.activeArchetype ? root.activeArchetype.specularEnabled : true
+        readonly property bool causticEnabled: root.activeArchetype ? root.activeArchetype.causticEnabled : true
+        readonly property bool shadowsEnabled: root.activeArchetype ? root.activeArchetype.shadowsEnabled : true
+        readonly property bool innerRimEnabled: root.activeArchetype ? root.activeArchetype.innerRimEnabled : true
+        readonly property real specularWidth: root.activeArchetype ? root.activeArchetype.glassSpecularWidth : 1.0
+        readonly property real borderWidth: root.activeArchetype ? root.activeArchetype.glassBorderWidth : 1.0
+        readonly property real causticIntensity: root.activeArchetype ? root.activeArchetype.glassCausticIntensity : 0.06
+        readonly property real shadowElevationScale: root.activeArchetype ? root.activeArchetype.shadowElevationScale : 1.0
+    }
+
+    // =========================================================================
+    // 1. Corner Radii (Dynamically Delegated to Active Archetype)
+    // =========================================================================
+    readonly property int radiusFull: root.activeArchetype ? root.activeArchetype.radiusFull : 9999
+    readonly property int radiusLarge: root.activeArchetype ? root.activeArchetype.radiusLarge : 24
+    readonly property int radiusMedium: root.activeArchetype ? root.activeArchetype.radiusMedium : 16
+    readonly property int radiusSmall: root.activeArchetype ? root.activeArchetype.radiusSmall : 10
+    readonly property int radiusExtraSmall: root.activeArchetype ? root.activeArchetype.radiusExtraSmall : 6
+
+    // =========================================================================
+    // 2. Spacing and Margins
+    // =========================================================================
+    readonly property int spaceExtraLarge: root.activeArchetype ? root.activeArchetype.spaceExtraLarge : 24
+    readonly property int spaceLarge: root.activeArchetype ? root.activeArchetype.spaceLarge : 16
+    readonly property int spaceMedium: root.activeArchetype ? root.activeArchetype.spaceMedium : 12
+    readonly property int spaceSmall: root.activeArchetype ? root.activeArchetype.spaceSmall : 8
+    readonly property int spaceExtraSmall: root.activeArchetype ? root.activeArchetype.spaceExtraSmall : 4
+
+    // =========================================================================
+    // 3. Padding
+    // =========================================================================
+    readonly property int padExtraLarge: root.activeArchetype ? root.activeArchetype.padExtraLarge : 20
+    readonly property int padLarge: root.activeArchetype ? root.activeArchetype.padLarge : 16
+    readonly property int padMedium: root.activeArchetype ? root.activeArchetype.padMedium : 12
+    readonly property int padSmall: root.activeArchetype ? root.activeArchetype.padSmall : 8
+    readonly property int padExtraSmall: root.activeArchetype ? root.activeArchetype.padExtraSmall : 4
+
+    // =========================================================================
+    // 4. Typography - Retina Scaled
+    // =========================================================================
+    readonly property string fontFamily: root.activeArchetype ? root.activeArchetype.fontFamily : "Google Sans Flex, Cantarell, Noto Sans, sans-serif"
+    readonly property string fontMonospace: root.activeArchetype ? root.activeArchetype.fontMonospace : "JetBrains Mono, monospace"
+
+    readonly property int fontTitleLarge: root.activeArchetype ? root.activeArchetype.fontTitleLarge : 26
+    readonly property int fontTitleMedium: root.activeArchetype ? root.activeArchetype.fontTitleMedium : 21
+    readonly property int fontTitleSmall: root.activeArchetype ? root.activeArchetype.fontTitleSmall : 16
+    readonly property int fontBodyMedium: root.activeArchetype ? root.activeArchetype.fontBodyMedium : 15
+    readonly property int fontBodySmall: root.activeArchetype ? root.activeArchetype.fontBodySmall : 13
+    readonly property int fontLabelSmall: root.activeArchetype ? root.activeArchetype.fontLabelSmall : 12
 
     readonly property int fontSmall: root.fontBodySmall
     readonly property int fontMedium: root.fontBodyMedium
     readonly property int fontLarge: root.fontTitleMedium
 
-    // Animation presets & Material 3 Expressive Motion Tokens
+    // =========================================================================
+    // 5. Animation Presets & Motion Tokens (Canonical DESIGN.md Specification)
+    // =========================================================================
     readonly property int animDurationFast: 150
     readonly property int animDurationNormal: 250
     readonly property int animDurationSlow: 400
     readonly property var animEasing: Easing.OutCubic
 
-    // Upper bound on the update rate (fps) of decorative, continuously running
-    // motion — pulses, travelling light packets, ambient glows, slow cover
-    // rotations. Qt Quick repaints the whole window on every property change, so
-    // uncapped decorative animations force one full-window render per display
-    // refresh (165–240 Hz on modern panels) and saturate the iGPU. Interactive
-    // and spatial transitions are never throttled; only idle-time decoration is.
+    // Upper bound on decorative idle motion update rate
     readonly property int decorativeMaxFps: 30
 
-    // Expressive Motion Durations (ms) matching the upstream design language
+    // Expressive Motion Durations (ms)
     readonly property int animExpressiveFastSpatial: 350
     readonly property int animExpressiveDefaultSpatial: 500
     readonly property int animExpressiveSlowSpatial: 650
@@ -65,7 +123,7 @@ Singleton {
     readonly property int animExpressiveSlowEffects: 300
     readonly property int animEmphasized: 400
 
-    // Expressive Cubic Bezier Spline Control Points: [c1x, c1y, c2x, c2y, endX, endY]
+    // Expressive Cubic Bezier Spline Curves
     readonly property var curveExpressiveDefaultSpatial: [0.38, 1.21, 0.22, 1.0, 1.0, 1.0]
     readonly property var curveExpressiveFastSpatial: [0.42, 1.67, 0.21, 0.9, 1.0, 1.0]
     readonly property var curveExpressiveSlowSpatial: [0.39, 1.29, 0.35, 0.98, 1.0, 1.0]
@@ -80,22 +138,20 @@ Singleton {
     readonly property color borderSubtle: Qt.alpha(Colors.outline, 0.18)
 
     // =========================================================================
-    // Apple Liquid Glass Design System Tokens
+    // 6. Surface & Component Tokens
     // =========================================================================
-    // Concentric corner curvature: R_card = R_modal - padding (32 - 14 = 18)
-    readonly property int radiusGlassModal: 32
-    readonly property int radiusGlassCard: 18
-    readonly property int radiusGlassItem: 12
-    readonly property int radiusGlassPill: 9999
+    readonly property int radiusGlassModal: root.activeArchetype ? root.activeArchetype.radiusGlassModal : 32
+    readonly property int radiusGlassCard: root.activeArchetype ? root.activeArchetype.radiusGlassCard : 18
+    readonly property int radiusGlassItem: root.activeArchetype ? root.activeArchetype.radiusGlassItem : 12
+    readonly property int radiusGlassPill: root.activeArchetype ? root.activeArchetype.radiusGlassPill : 9999
 
-    readonly property real glassSpecularWidth: 1.0
-    readonly property real glassBorderWidth: 1.0
-    readonly property real glassCausticIntensity: 0.06
+    readonly property real glassSpecularWidth: root.activeArchetype ? root.activeArchetype.glassSpecularWidth : 1.0
+    readonly property real glassBorderWidth: root.activeArchetype ? root.activeArchetype.glassBorderWidth : 1.0
+    readonly property real glassCausticIntensity: root.activeArchetype ? root.activeArchetype.glassCausticIntensity : 0.06
 
     // Interactive scale bounce & liquid compression physics
-    readonly property real glassScaleBounce: 0.985
-    readonly property int animGlassPress: 120
-    readonly property int animGlassRelease: 240
-    readonly property var curveGlassElastic: [0.34, 1.35, 0.30, 1.0, 1.0, 1.0]
+    readonly property real glassScaleBounce: root.activeArchetype ? root.activeArchetype.glassScaleBounce : 0.985
+    readonly property int animGlassPress: root.activeArchetype ? root.activeArchetype.animGlassPress : 120
+    readonly property int animGlassRelease: root.activeArchetype ? root.activeArchetype.animGlassRelease : 240
+    readonly property var curveGlassElastic: root.activeArchetype ? root.activeArchetype.curveGlassElastic : [0.34, 1.35, 0.30, 1.0, 1.0, 1.0]
 }
-
