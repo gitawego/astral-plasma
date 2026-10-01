@@ -208,7 +208,8 @@ Item {
 
                     Column {
                         id: navCol
-                        width: parent.width
+                        width: parent.width - 4
+                        x: 2
                         spacing: 12
 
                         Repeater {

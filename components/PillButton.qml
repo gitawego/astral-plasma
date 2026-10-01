@@ -211,8 +211,9 @@ Rectangle {
     }
     border.width: active ? 1.2 : 1.0
 
-    // Tactile Spring Micro-Physics
-    scale: mouseArea.containsPress ? 0.95 : (mouseArea.containsMouse ? 1.02 : 1.0)
+    // Tactile Spring Micro-Physics (Depression compression on press; no boundary expansion on hover to prevent clipping)
+    property bool hoverScale: false
+    scale: mouseArea.containsPress ? 0.95 : (hoverScale && mouseArea.containsMouse ? 1.02 : 1.0)
 
     Behavior on color { ColorAnimation { duration: 150 } }
     Behavior on border.color { ColorAnimation { duration: 150 } }

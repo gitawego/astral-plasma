@@ -273,6 +273,10 @@ Item {
         assert(("" + customOverrideBtn.activeTextColor).toLowerCase() === "#abcdef", "Explicit activeTextColor override preserved");
         assert(("" + customOverrideBtn.activeBorderColor).toLowerCase() === "#56789a", "Explicit activeBorderColor override preserved");
 
+        // Anti-Cropping & Scale Bounds Contract
+        assert(pillBtn.hoverScale === false, "hoverScale must default to false to prevent clipping against clipped parent containers");
+        assert(pillBtn.scale === 1.0, "PillButton scale must be exactly 1.0 by default to stay within bounding box");
+
         console.log("PASS: PillButton & GlassPill Liquid Glass Tests");
         Qt.exit(0);
     }
