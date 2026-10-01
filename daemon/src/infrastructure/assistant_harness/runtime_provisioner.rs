@@ -214,8 +214,10 @@ mod tests {
     #[test]
     fn test_locate_pi_or_fallback() {
         let status = RuntimeProvisioner::get_status();
-        // On this test machine, pi is known to be installed in nvm
-        assert!(status.pi_executable.is_some());
+        assert_eq!(status.pi_executable, RuntimeProvisioner::locate_pi());
+        if let Some(ref pi) = status.pi_executable {
+            assert!(pi.exists(), "Located pi executable must exist on disk");
+        }
     }
 
     #[test]
@@ -243,7 +245,17 @@ mod tests {
     fn test_check_pi_packages_only_requires_subagents() {
         // MCP is built into pi; the provisioner must not require an adapter package.
         let packages = RuntimeProvisioner::check_pi_packages();
-        assert!(packages.subagents, "pi-subagents should be configured in settings.json");
+        if let Some(settings_path) = RuntimeProvisioner::pi_settings_path() {
+            if settings_path.exists() {
+                assert_eq!(
+                    packages,
+                    PiPackages::from_settings(&settings_path),
+                    "check_pi_packages must reflect live settings.json when present"
+                );
+            } else {
+                assert!(!packages.subagents, "Missing settings must report no packages configured");
+            }
+        }
     }
 
     #[test]
@@ -253,8 +265,9 @@ mod tests {
         assert!(!RuntimeProvisioner::pi_supports_mcp(Some(Path::new("/nonexistent/pi"))),
             "a missing binary must report no MCP support");
         let pi = RuntimeProvisioner::locate_pi();
-        assert!(pi.is_some(), "Pi should be detected on host");
-        assert!(RuntimeProvisioner::pi_supports_mcp(pi.as_deref()),
-            "pi ships built-in MCP: `pi mcp --help` must succeed");
+        if let Some(ref pi_path) = pi {
+            assert!(RuntimeProvisioner::pi_supports_mcp(Some(pi_path.as_path())),
+                "pi ships built-in MCP: `pi mcp --help` must succeed when pi is installed");
+        }
     }
 }

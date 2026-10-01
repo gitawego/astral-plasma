@@ -930,11 +930,16 @@ pub fn system_language() -> String {
 
 /// The language a fresh install transcribes in.
 ///
-/// The user's locale, falling back to auto-detect only when the environment
-/// says nothing usable. See [`VoiceSettings::effective_language`] for why this
-/// is not `auto`.
+/// The user's locale, falling back to a known supported language ("en") only
+/// when the environment says nothing usable or resolves to auto-detect. See
+/// [`VoiceSettings::effective_language`] for why this is not `auto`.
 pub fn default_voice_language() -> String {
-    system_language()
+    let lang = system_language();
+    if lang == LANGUAGE_AUTO {
+        "en".to_string()
+    } else {
+        lang
+    }
 }
 
 // ---------------------------------------------------------------------------

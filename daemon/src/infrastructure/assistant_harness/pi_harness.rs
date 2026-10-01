@@ -37,10 +37,21 @@ impl PiHarness {
 
         // 1. Built-in astral skills
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let builtin_paths = vec![
+        let mut builtin_paths = vec![
             current_dir.join("skills"),
+            current_dir.join("../skills"),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../skills"),
+            PathBuf::from("/usr/share/astral-plasma/skills"),
             PathBuf::from("/mnt/data/workspace/astral-plasma/skills"),
         ];
+
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(bin_dir) = exe.parent() {
+                builtin_paths.push(bin_dir.join("../skills"));
+                builtin_paths.push(bin_dir.join("../../skills"));
+                builtin_paths.push(bin_dir.join("../share/astral-plasma/skills"));
+            }
+        }
 
         for bdir in builtin_paths {
             if bdir.is_dir() {

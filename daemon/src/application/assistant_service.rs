@@ -80,10 +80,18 @@ impl AssistantService {
         let target_dir = Path::new(&home).join(".agents/skills");
         std::fs::create_dir_all(&target_dir).map_err(|e| format!("Failed to create ~/.agents/skills: {}", e))?;
 
-        let skills_src = Path::new("/mnt/data/workspace/astral-plasma/skills");
-        if !skills_src.is_dir() {
-            return Ok(0);
-        }
+        let candidate_sources = [
+            std::env::current_dir().ok().map(|d| d.join("skills")),
+            std::env::current_dir().ok().and_then(|d| d.parent().map(|p| p.join("skills"))),
+            Path::new(env!("CARGO_MANIFEST_DIR")).parent().map(|p| p.join("skills")),
+            Some(PathBuf::from("/usr/share/astral-plasma/skills")),
+            Some(PathBuf::from("/mnt/data/workspace/astral-plasma/skills")),
+        ];
+        let skills_src = candidate_sources.into_iter().flatten().find(|p| p.is_dir());
+        let skills_src = match skills_src {
+            Some(src) => src,
+            None => return Ok(0),
+        };
 
         let mut linked = 0;
         if let Ok(entries) = std::fs::read_dir(skills_src) {

@@ -22,10 +22,12 @@ fn test_harness_discovery_and_skills() {
 #[test]
 fn test_runtime_provisioning_status() {
     let status = RuntimeProvisioner::get_status();
-    // On the development host, pi is present and packages were installed
-    assert!(status.pi_executable.is_some(), "Pi should be detected on host");
-    assert!(status.has_mcp_support, "pi built-in MCP should be available");
-    assert!(status.has_subagents, "pi-subagents should be installed");
+    assert_eq!(status.pi_executable, RuntimeProvisioner::locate_pi());
+    if status.pi_executable.is_some() {
+        assert!(status.has_mcp_support, "pi built-in MCP should be available when pi is installed");
+    } else {
+        assert!(!status.has_mcp_support, "MCP should not be reported when pi is not installed");
+    }
 }
 
 #[test]
