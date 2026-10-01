@@ -41,14 +41,13 @@ Item {
     readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayEnergy : 0.0
     readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayBeat : 0.0
 
-    // Gentle idle wave phase when playing without audio stream. Capped at
-    // Theme.decorativeMaxFps so the full-screen shell surfaces stay idle-capable.
+    // Clock pacer for smooth continuous bar interpolation when active audio flows.
+    // Capped at Theme.decorativeMaxFps so full-screen surfaces stay idle-capable.
     MotionPacer {
-        id: idlePacer
-        running: root.isPlaying && root.isTargetVisible
-        period: 3500
+        id: audioPacer
+        running: root.isPlaying && root.isTargetVisible && root.isVisualizerActive && root.audioEnergy > 0.005
+        period: 4000
     }
-    readonly property real idlePhase: idlePacer.phase * Math.PI * 2
 
     // Smoothed bar values (0..1) and their brightness, advanced once per painted
     // frame - the presentation smoothing the removed per-bar Behaviors provided
@@ -59,18 +58,14 @@ Item {
     readonly property real alphaEase: 0.22
 
     function getBarValue(idx) {
-        if (!root.isPlaying) return 0.0;
-
-        if (root.isVisualizerActive && AudioVisualizer.displayBands && AudioVisualizer.displayBands.length > 0) {
-            let bandIdx = Math.floor((idx / root.barsCount) * 16);
-            let raw = AudioVisualizer.displayBands[bandIdx] || 0.0;
-            let boosted = raw * (0.8 + root.audioEnergy * 0.5 + root.audioBeat * 0.3);
-            return Math.max(0.0, Math.min(1.0, boosted));
+        if (!root.isPlaying || !root.isVisualizerActive || !AudioVisualizer.displayBands || AudioVisualizer.displayBands.length === 0) {
+            return 0.0;
         }
 
-        // Idle wave animation
-        let wave = Math.sin(root.idlePhase + idx * 0.45) * 0.3 + 0.3;
-        return Math.max(0.0, Math.min(0.7, wave));
+        let bandIdx = Math.floor((idx / root.barsCount) * 16);
+        let raw = AudioVisualizer.displayBands[bandIdx] || 0.0;
+        let boosted = raw * (0.8 + root.audioEnergy * 0.5 + (root.audioBeat > 0.05 ? root.audioBeat * 0.3 : 0.0));
+        return Math.max(0.0, Math.min(1.0, boosted));
     }
 
     Canvas {

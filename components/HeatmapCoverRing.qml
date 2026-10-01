@@ -75,26 +75,17 @@ Item {
                     ? AudioVisualizer.displayBands[modelData.bandIdx]
                     : 0.0
 
-                // DYNAMIC BEAT JUMP: energetic, visible 15 to 20 pixel hop on every beat transient
-                property real beatJump: (root.audioBeat * 15.0) + (bandAmp * 5.0)
-                readonly property real floatBob: Math.sin(root.animPhase + index * 0.5) * 1.5
-                readonly property real currentR: (root.outerRadius * modelData.rBase) + floatBob + beatJump
-
-                // presentation smoothing removed: these values already arrive at
-                // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
-                // here re-animated them at display refresh and never finished
-
+                // DYNAMIC BEAT JUMP: strictly driven by physical beat transient flux
+                // If no beat, ZERO jumping (beatJump = 0, scale = 1.0)
+                readonly property real beatJump: (root.audioBeat > 0.05) ? (root.audioBeat * 16.0) : 0.0
+                readonly property real currentR: (root.outerRadius * modelData.rBase) + beatJump
 
                 x: root.centerX + Math.cos(rad) * currentR - width / 2
                 y: root.centerY + Math.sin(rad) * currentR - height / 2
                 width: modelData.type === "note" ? 16 : modelData.dotSize
                 height: width
 
-                scale: 1.0 + (root.audioBeat * 0.40) + (bandAmp * 0.18)
-                // presentation smoothing removed: these values already arrive at
-                // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
-                // here re-animated them at display refresh and never finished
-
+                scale: (root.audioBeat > 0.05) ? (1.0 + root.audioBeat * 0.40) : 1.0
 
                 opacity: 0.80 + root.audioEnergy * 0.20
 

@@ -644,8 +644,9 @@ Item {
                             duration: 80
                             bezier: Theme.curveExpressiveFastEffects
                             target: (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active
-                                     && Config.dashboardVisible && Config.activeDashboardTab === "dashboard")
-                                    ? (1.0 + Math.min(0.12, AudioVisualizer.displayBeat * 0.08 + AudioVisualizer.displayBass * 0.06))
+                                     && Config.dashboardVisible && Config.activeDashboardTab === "dashboard"
+                                     && AudioVisualizer.displayBeat > 0.05)
+                                    ? (1.0 + Math.min(0.12, AudioVisualizer.displayBeat * 0.10))
                                     : 1.0
                         }
 

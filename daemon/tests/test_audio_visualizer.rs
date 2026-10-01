@@ -8,16 +8,9 @@ fn test_pw_record_sink_monitor_args_capture_sink_not_mic() {
     let args = build_pw_record_args();
     assert!(args.contains(&"--raw".to_string()), "pw-record must include --raw to avoid AU container header corruption");
 
-    // NO `-P stream.capture.sink` property: verified live that combining it
-    // with `--target @DEFAULT_AUDIO_SINK@` binds a silent stream (31 KB of
-    // pure zeros while music plays), muting the visualizer, the audio-flow
-    // gate and all MPRIS arbitration. Targeting the sink alone selects its
-    // monitor with real audio. A test once pinned the property; it pinned
-    // the bug.
-    assert!(!args.iter().any(|a| a == "-P"),
-        "pw-record must not request stream properties: stream.capture.sink binds silence on PipeWire 1.x");
-    assert!(!args.iter().any(|a| a.contains("stream.capture.sink")),
-        "no capture-semantics property may be emitted for either target");
+    let p_idx = args.iter().position(|a| a == "-P").expect("pw-record must include -P properties flag for sink monitor capture");
+    assert_eq!(args[p_idx + 1], "stream.capture.sink=true",
+        "pw-record must set stream.capture.sink=true so PipeWire links to speaker/headphone monitor rather than physical microphone");
 
     let target_idx = args.iter().position(|a| a == "--target").expect("pw-record must specify target");
     assert_eq!(args[target_idx + 1], "@DEFAULT_AUDIO_SINK@", "pw-record must target @DEFAULT_AUDIO_SINK@");
@@ -216,6 +209,30 @@ fn test_dsp_beat_transient_response() {
     }
     let silent_frame = analyzer.process_samples(&silence);
     assert_eq!(silent_frame.beat, 0.0, "Beat must be 0.0 on silence");
+}
+
+#[test]
+fn test_instant_zero_on_silence() {
+    let mut analyzer = AudioAnalyzer::new();
+    // Warm up with moderate audio
+    let mut audio = Vec::with_capacity(WINDOW_SIZE);
+    for i in 0..WINDOW_SIZE {
+        let t = i as f32 / SAMPLE_RATE as f32;
+        audio.push(0.20 * (2.0 * std::f32::consts::PI * 120.0 * t).sin());
+    }
+    for _ in 0..5 {
+        analyzer.process_samples(&audio);
+    }
+
+    // Now send silence (all 0.0, matching sink monitor when music stopped)
+    let silence = vec![0.0f32; WINDOW_SIZE];
+    let frame = analyzer.process_samples(&silence);
+    assert_eq!(frame.energy, 0.0, "Energy must be 0.0 on silence");
+    assert_eq!(frame.bass, 0.0, "Bass must be 0.0 on silence");
+    assert_eq!(frame.mid, 0.0, "Mid must be 0.0 on silence");
+    assert_eq!(frame.treble, 0.0, "Treble must be 0.0 on silence");
+    assert_eq!(frame.beat, 0.0, "Beat must be 0.0 on silence");
+    assert!(frame.bands.iter().all(|&b| b == 0.0), "All bands must be 0.0 on silence");
 }
 
 #[test]

@@ -55,21 +55,27 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 
 ---
 
-## 4. Absolute Architectural Integrity: Data-Driven, Built-In, No Content Fabrication
+## 4. Mandatory Rule: Never Ever Fabricate Content, Must Be Data Driven
 
-> [!IMPORTANT]
-> **MANDATORY CORE PRINCIPLES**:
-> 1. **Generic, Edge-Case Resilient & Purely Data/Config-Driven**:
->    - All solutions must be architectural, generic, and driven entirely by dynamic system state, audio data, and configuration.
+> [!CAUTION]
+> **CRITICAL MANDATORY RULE: NEVER EVER FABRICATE CONTENT, MUST BE DATA DRIVEN.**
+> All animations, audio visualizers, indicators, badges, and layout states must be purely driven by physical ground-truth system telemetry, audio data, and reactive configuration. Fabricating, faking, simulating, or synthesizing content is strictly forbidden:
+>
+> 1. **Strict Physical Ground-Truth (No Synthetic Content)**:
+>    - You must NEVER fabricate, fake, or synthesize content (e.g. generating synthetic beats with hardcoded BPM timers, generating fake sine waves or idle wobbles, generating artificial frequency bands, or guessing playback state with isolated booleans).
+>    - Audio visualizers, bar heights, and beat pulses must reflect ground-truth PCM streaming through the PipeWire audio sink output monitor (`CaptureTarget::Sink` with `stream.capture.sink=true`) and live DSP spectral flux. Audio capture MUST NEVER capture from the physical microphone or inject artificial noise.
+> 2. **Follow The Music Beats — If No Beat, Then No Jumping**:
+>    - Visualizer elements (speaker rings, notes, bars, dots, album covers) **MUST strictly follow physical music beats**. If there is no beat transient, there must be **ZERO jumping**.
+>    - When music is stopped, paused, or silent, all energy, band heights, and beat values must cleanly settle to `0.0`. All bouncing, hopping, and scaling must be completely stationary.
+>    - Never use artificial timers (`MotionPacer`, periodic sine bobbing, or idle wave oscillators) to move visualizer elements when there is no physical audio activity.
+> 3. **Generic & Edge-Case Resilient Architecture**:
+>    - All solutions must be architectural, generic, and resilient to all player backends (Wine, native MPRIS, browser media sessions).
 >    - Avoid ad-hoc monkey patches, hardcoded player identities, brittle boolean flipping, or arbitrary pixel offsets.
-> 2. **High-Performance & Built-In Primitives**:
->    - Audio visualizers, canvas renders, and animations must be exceptionally performant.
->    - Use built-in Qt Quick primitives, GPU-accelerated items (`Canvas`, `ShaderEffect`, `PropertyAnimation`), and native system facilities rather than CPU-heavy polling loops or uncoordinated subprocesses.
-> 3. **NEVER Fabricate or Hard-Code Content**:
->    - You must NEVER fabricate, fake, or synthesize content (e.g. generating synthetic beats with hardcoded 124 BPM math, generating fake audio frequency bands, or guessing playback state with isolated booleans).
->    - Every visualizer frame, beat pulse, and playback status must reflect physical ground-truth (actual PCM audio streaming through PipeWire, DSP spectral flux, and live MPRIS signals). When audio is silent, energy and beats must be purely and cleanly 0.0.
+> 4. **High-Performance & Built-In Primitives**:
+>    - Audio visualizers, canvas renders, and animations must use built-in Qt Quick primitives, GPU-accelerated items (`Canvas`, `ShaderEffect`), and native system facilities rather than CPU-heavy polling loops or uncoordinated subprocesses.
 
 ---
+
 
 ## 5. Repository Map
 

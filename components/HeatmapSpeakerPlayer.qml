@@ -107,26 +107,17 @@ Item {
                     ? AudioVisualizer.displayBands[modelData.bandIdx]
                     : 0.0
 
-                // DYNAMIC BEAT JUMP: energetic, visible 18 to 25 pixel hop on every beat transient
-                property real beatJump: (root.audioBeat * 18.0) + (bandAmp * 6.0)
-                readonly property real floatBob: Math.sin(root.animPhase + index * 0.4) * 2.0
-                readonly property real currentR: (root.speakerRadius * modelData.rBase) + floatBob + beatJump
-
-                // presentation smoothing removed: these values already arrive at
-                // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
-                // here re-animated them at display refresh and never finished
-
+                // DYNAMIC BEAT JUMP: strictly driven by physical beat transient flux
+                // If no beat, ZERO jumping (beatJump = 0, scale = 1.0)
+                readonly property real beatJump: (root.audioBeat > 0.05) ? (root.audioBeat * 20.0) : 0.0
+                readonly property real currentR: (root.speakerRadius * modelData.rBase) + beatJump
 
                 x: root.centerX + Math.cos(rad) * currentR - width / 2
                 y: root.centerY + Math.sin(rad) * currentR - height / 2
                 width: modelData.type === "note" ? 19 : modelData.dotSize
                 height: width
 
-                scale: 1.0 + (root.audioBeat * 0.40) + (bandAmp * 0.20)
-                // presentation smoothing removed: these values already arrive at
-                // Theme.decorativeMaxFps (see AudioVisualizer.display*); a Behavior
-                // here re-animated them at display refresh and never finished
-
+                scale: (root.audioBeat > 0.05) ? (1.0 + root.audioBeat * 0.40) : 1.0
 
                 opacity: 0.75 + root.audioEnergy * 0.25
 
@@ -139,7 +130,7 @@ Item {
                     font.pixelSize: modelData.size || 15
                     font.bold: true
                     color: modelData.color
-                    rotation: (modelData.angle + 90) + Math.sin(root.animPhase + index) * 12.0
+                    rotation: (modelData.angle + 90)
                     style: Text.Outline
                     styleColor: Qt.alpha(modelData.color, 0.45)
                 }
@@ -312,7 +303,9 @@ Item {
             duration: 80
             bezier: (typeof Theme !== "undefined" && Theme.curveExpressiveFastEffects)
                 ? Theme.curveExpressiveFastEffects : null
-            target: 1.0 + Math.min(0.12, (root.audioBeat * 0.08) + (root.audioBass * 0.05))
+            target: (root.isPlaying && root.isTargetVisible && root.audioBeat > 0.05)
+                ? (1.0 + Math.min(0.12, root.audioBeat * 0.10))
+                : 1.0
         }
 
         scale: speakerBounce.value

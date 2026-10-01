@@ -181,8 +181,8 @@ impl AudioAnalyzer {
     /// Process a chunk of normalized samples [-1.0 .. 1.0] and return a smoothed frame
     pub fn process_samples(&mut self, samples: &[f32]) -> VisualizerFrame {
         let raw_rms = Self::calculate_rms(samples);
-        if raw_rms < 0.002 {
-            let decay_factor = if raw_rms == 0.0 { 0.20 } else { 0.45 };
+        if raw_rms < 0.003 {
+            let decay_factor = if raw_rms == 0.0 { 0.0 } else { 0.35 };
             self.envelope_energy *= decay_factor;
             self.envelope_bass *= decay_factor;
             self.envelope_mid *= decay_factor;
@@ -227,15 +227,15 @@ impl AudioAnalyzer {
         // Track the spectral peak with fast attack and smooth decay (~2s)
         // so real music playing at normal, comfortable listening levels
         // maps cleanly into the dynamic visualizer range [0.0 .. 1.0].
-        // Floor peak at 0.035 to prevent low-level noise amplification.
+        // Floor peak at 0.05 to prevent low-level noise amplification.
         let frame_peak = max_band.max(raw_rms * 1.8);
         if frame_peak > self.peak_level {
             self.peak_level += (frame_peak - self.peak_level) * 0.10;
         } else {
-            self.peak_level = (self.peak_level * 0.985 + frame_peak * 0.015).max(0.035);
+            self.peak_level = (self.peak_level * 0.985 + frame_peak * 0.015).max(0.05);
         }
 
-        let gain = 1.0 / self.peak_level.max(0.035);
+        let gain = 1.0 / self.peak_level.max(0.05);
         let norm_energy = ((raw_rms * 1.8) * gain).min(1.0);
         for b in &mut raw_bands {
             *b = (*b * gain).min(1.0);
@@ -261,9 +261,9 @@ impl AudioAnalyzer {
 
         // Transient onset occurs when instantaneous bass delta or energy delta spikes above noise threshold
         let onset_flux = bass_delta * 0.75 + energy_delta * 0.25;
-        let flux_threshold = (self.rolling_bass_avg * 0.15).max(0.03);
+        let flux_threshold = (self.rolling_bass_avg * 0.18).max(0.04);
 
-        if onset_flux > flux_threshold {
+        if onset_flux > flux_threshold && inst_bass > 0.06 {
             let transient = ((onset_flux - flux_threshold) / (flux_threshold * 1.5 + 0.05)).min(1.0);
             if transient > self.envelope_beat {
                 self.envelope_beat = transient; // Genuine transient strength derived from acoustic spectral flux
@@ -274,7 +274,7 @@ impl AudioAnalyzer {
             self.envelope_beat *= 0.65;
         }
 
-        if self.envelope_beat < 0.02 {
+        if self.envelope_beat < 0.03 {
             self.envelope_beat = 0.0;
         }
 
