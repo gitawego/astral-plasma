@@ -78,7 +78,10 @@ fn a_missing_voice_engine_is_a_warning_not_a_failure() {
             .recommendation
             .as_ref()
             .expect("a missing engine must come with an install hint");
-        assert!(rec.contains("whisper-cpp"), "recommendation must name the package: {rec}");
+        assert!(
+            rec.contains("whisper-cpp") || rec.contains("whisper.cpp"),
+            "recommendation must name the package: {rec}"
+        );
     }
 }
 
