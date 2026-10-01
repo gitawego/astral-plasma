@@ -363,6 +363,15 @@ Singleton {
             return;
         }
 
+        // ScreenShot2 CLI preview capture is KWin-specific (Hyprland uses internal ScreencopyView)
+        if (typeof DesktopSessionFacade !== "undefined" && DesktopSessionFacade.profile !== "kde") {
+            root.activePreviewThumbnail = "";
+            root.activePreviewLoading = false;
+            previewCaptureProc.running = false;
+            previewCaptureProc.requestedWinKey = "";
+            return;
+        }
+
         const winKey = app.id.toString();
         previewCaptureProc.requestedWinKey = winKey;
         const cached = root._previewCache[winKey];
@@ -514,6 +523,11 @@ Singleton {
         root.overviewActive = true;
         const keys = root._overviewKeys();
         overviewCycle.items = keys;
+
+        if (typeof DesktopSessionFacade !== "undefined" && DesktopSessionFacade.profile !== "kde") {
+            if (!overviewCycle.active) overviewCycle.start();
+            return;
+        }
 
         if (keys.length > 0) {
             overviewBatchProc.running = false;

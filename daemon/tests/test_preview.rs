@@ -244,3 +244,27 @@ fn test_get_existing_preview_resolution() {
     let _ = fs::remove_file(&p0);
     let _ = fs::remove_file(&p1);
 }
+
+#[tokio::test]
+async fn test_preview_capture_hyprland_compositor_isolation() {
+    std::env::set_var("HYPRLAND_INSTANCE_SIGNATURE", "mock-hyprland-sig");
+    let res = capture_window("0x12345", 320, None).await;
+    let res_batch = capture_windows_batch(&["0x12345".to_string()], 320).await;
+    std::env::remove_var("HYPRLAND_INSTANCE_SIGNATURE");
+
+    assert!(res.is_err(), "capture_window under Hyprland must return Err");
+    let err_msg = res.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("KWin"),
+        "Error message must clearly explain ScreenShot2 is only for KWin, got: {}",
+        err_msg
+    );
+
+    assert!(res_batch.is_err(), "capture_windows_batch under Hyprland must return Err");
+    let batch_err = res_batch.unwrap_err().to_string();
+    assert!(
+        batch_err.contains("KWin"),
+        "Batch error message must clearly explain ScreenShot2 is only for KWin, got: {}",
+        batch_err
+    );
+}

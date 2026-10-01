@@ -60,8 +60,12 @@ pub fn install_desktop_entry_with_notification(
         desktop_path.display()
     );
 
-    // Notify user via desktop notification
-    if custom_dir.is_none() && !branding::test_mode() {
+    // Notify user via desktop notification (only for KWin where authorization is required)
+    if custom_dir.is_none()
+        && !branding::test_mode()
+        && crate::infrastructure::desktop_factory::detect_compositor()
+            == crate::infrastructure::desktop_factory::CompositorKind::KWin
+    {
         let _ = std::process::Command::new("notify-send")
             .args(&[
                 "-a",
@@ -101,7 +105,12 @@ pub fn remove_desktop_entry(
         }
     }
 
-    if removed && custom_dir.is_none() && !branding::test_mode() {
+    if removed
+        && custom_dir.is_none()
+        && !branding::test_mode()
+        && crate::infrastructure::desktop_factory::detect_compositor()
+            == crate::infrastructure::desktop_factory::CompositorKind::KWin
+    {
         let _ = std::process::Command::new("kbuildsycoca6").output();
     }
 
@@ -308,6 +317,12 @@ pub async fn capture_window(
     target_width: u32,
     slot: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    if crate::infrastructure::desktop_factory::detect_compositor()
+        != crate::infrastructure::desktop_factory::CompositorKind::KWin
+    {
+        return Err("Live window capture via ScreenShot2 is only supported under KWin compositor (Hyprland uses internal ScreencopyView)".into());
+    }
+
     // Preemptively ensure desktop entry is registered
     let _ = install_desktop_entry_with_notification(None, None);
 
@@ -328,6 +343,12 @@ pub async fn capture_windows_batch(
     window_ids: &[String],
     target_width: u32,
 ) -> Result<Vec<(String, String)>, Box<dyn std::error::Error + Send + Sync>> {
+    if crate::infrastructure::desktop_factory::detect_compositor()
+        != crate::infrastructure::desktop_factory::CompositorKind::KWin
+    {
+        return Err("Batch window capture via ScreenShot2 is only supported under KWin compositor (Hyprland uses internal ScreencopyView)".into());
+    }
+
     let _ = install_desktop_entry_with_notification(None, None);
 
     let connection = Connection::session().await?;

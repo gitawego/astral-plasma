@@ -353,6 +353,11 @@ Item {
             "preview_capture.rs must preemptively install authorization desktop entry");
         assert(/NoAuthorized/.test(previewCaptureSrc),
             "preview_capture.rs must handle NoAuthorized error and retry capture");
+        assert(/detect_compositor\(\)\s*!=\s*crate::infrastructure::desktop_factory::CompositorKind::KWin/.test(previewCaptureSrc),
+            "preview_capture.rs must enforce KWin compositor isolation for ScreenShot2");
+
+        assert(/DesktopSessionFacade\.profile\s*!==\s*"kde"/.test(windowServiceSrc),
+            "WindowService.qml must bypass ScreenShot2 CLI when running under non-KDE/Hyprland profiles");
 
         console.log("PASS: App Preview Drawer Lifecycle Tests");
         Qt.exit(0);
