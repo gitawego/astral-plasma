@@ -100,6 +100,20 @@ Item {
         return "● Local Config & Tool Scanner";
     }
 
+    function maskIdentity(raw) {
+        if (!raw) return "account";
+        const str = String(raw).trim();
+        const at = str.indexOf("@");
+        if (at > 0) {
+            const domain = str.substring(at);
+            return "••••••••" + domain;
+        }
+        if (str.length > 4) {
+            return str.substring(0, 2) + "••••••••";
+        }
+        return "••••••••";
+    }
+
     function syncActiveTab() {
         if (!root.providersList || root.providersList.length === 0) return;
         const lastId = (typeof AiTokenService !== "undefined" && AiTokenService.lastActiveProviderId)
@@ -766,7 +780,7 @@ Item {
 
                                     // Identity Email
                                     Text {
-                                        text: modelData.identity || modelData.id
+                                        text: root.maskIdentity(modelData.identity || modelData.id)
                                         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                                         font.pixelSize: 11
                                         font.weight: isAccountActive ? Font.Bold : Font.Normal

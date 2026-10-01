@@ -12,23 +12,23 @@
 ---
 
 <p align="center">
-  <img src="assets/screenshots/01-desktop-overview.png" alt="Astral Plasma Desktop Overview" width="100%" />
+  <img src="assets/screenshots/02-dashboard-overview.png" alt="Astral Plasma Central Dashboard Overview" width="100%" />
 </p>
 
 ## 📸 Screenshots
 
-| Clean Desktop Surface & Outer Frame | Central Dashboard (Media & Visualizer) |
+| AI Quotas & Telemetry Dashboard | Central Overview Dashboard |
 | :---: | :---: |
-| ![Clean Desktop Surface](assets/screenshots/01-desktop-overview.png) | ![Media Dashboard Dropdown](assets/screenshots/02-media-dashboard.png) |
+| ![AI Quotas Dashboard](assets/screenshots/01-ai-dashboard.png) | ![Central Overview Dashboard](assets/screenshots/02-dashboard-overview.png) |
 
-| System Performance Telemetry | Command Launcher & Search |
+| Downloads Manager | AI Copilot Chat Window |
 | :---: | :---: |
-| ![System Performance Dashboard](assets/screenshots/03-system-dashboard.png) | ![Command Launcher](assets/screenshots/04-command-launcher.png) |
+| ![Downloads Manager](assets/screenshots/03-downloads.png) | ![AI Copilot Chat Window](assets/screenshots/04-ai-chat-window.png) |
 
 <p align="center">
-  <img src="assets/screenshots/05-liquid-glass-controls.png" alt="Liquid Glass Volume and Brightness Controls" width="100%" />
+  <img src="assets/screenshots/05-wallpaper-picker.png" alt="Command Launcher Wallpaper Picker" width="100%" />
   <br />
-  <em>Liquid Glass Volume & Brightness Edge Controls — floating circular controllers on recessed glass grooves</em>
+  <em>Interactive Wallpaper Picker & Carousel — Liquid Glass floating previews with Material You palette generation</em>
 </p>
 
 ---
@@ -77,11 +77,46 @@ The daemon builds into a **single self-contained binary** (`bin/astral-plasma`) 
 - **Fused bottom popouts**: `FusedBottomPopout` morphs out of the dock for Audio, Battery, Bluetooth, Brightness, Keyboard layout, Wi-Fi, tray menus, and app previews.
 
 ### Surfaces & Overlays
-- **Central dashboard** (`CentralDropdown`): dropdown overlay with configurable tabs — **Dashboard** (weather, quick toggles, notifications), **Media**, **Performance** (system metrics), and **Workspaces**.
+- **Central dashboard** (`CentralDropdown`): dropdown overlay with configurable tabs — **Dashboard** (weather, system host card, clock, calendar, quick sliders, media controls), **Media**, **Performance** (system metrics), **Workspaces**, **Downloads** (aria2 manager), and **AI Quotas** (multi-provider tokens & rolling limits).
+- **AI Copilot** (`AssistantWindow`): floating Liquid Glass desktop copilot with multi-model arbitration (OpenCode Go, Gemini, DeepSeek), quick system diagnostics, and voice transcription.
 - **Command launcher** (`CommandLauncher`): bottom search/launch modal with keyboard navigation and an integrated **wallpaper carousel**.
 - **Active apps overview** (`ActiveAppsOverview`): fullscreen overlay on bare `Meta` (KWin shortcut → daemon → shell IPC) showing **live window thumbnails** captured through KWin's `ScreenShot2` API, with double-buffered flicker-free updates.
 - **Volume OSD**, **right-edge control rail**, **power confirmation dialog**, and **notification popups**.
 - **Settings GUI** (`settings_gui/`): in-shell settings window with a Nexus hub and pages for Dock, Dashboard, Theme, Wallpaper & Style, Audio, Bluetooth, Network, Status icons, and System.
+
+### 🤖 AI Copilot & Telemetry Ecosystem
+Astral Plasma features a native, liquid-glass AI suite engineered for proactive system self-healing, multi-model chat, and live quota monitoring:
+
+- **Astral Copilot (`AssistantWindow`)**:
+  - **Floating Liquid Glass Surface**: Wayland compositor-integrated floating copilot with Material 3 Expressive spring physics, adaptive sizing, and true backdrop blur.
+  - **Multi-Model Arbitration**: Seamless runtime switching between providers (**OpenCode Go**, **Google Gemini**, **MiniMax**, **DeepSeek**, **Claude**, **OpenAI**) and models (`deepseek-v4.1-flash`, `gemini-2.5-pro`, `mimo-v2.6-flash`, etc.).
+  - **Agent Harness Integration**: Pluggable backend architecture supporting CLI agent runtimes including **Pi Agent** (`pi`) and **Hermes**.
+  - **One-Click Diagnostic Actions**: Instant triage pills built into the prompt bar — *Diagnose Errors*, *Check High CPU*, *Fix Audio Glitches*, and *Clean Cache*.
+  - **Proactive Crash Carousel**: Daemon crash monitor hooks process termination signals (`SIGSEGV`, `SIGABRT`) in real time, displaying a dismissible multi-crash carousel with a 1-click *Debug* workflow that passes stack traces directly to the Copilot.
+  - **Vision & Multi-Modal Input**: Attach local files, images, or instant desktop screenshots to inspect UI glitches and logs visually.
+  - **Whisper Voice Dictation**: Local speech-to-text dictation with Silero VAD, PipeWire noise suppression, and echo cancellation.
+  - **Session Management**: Full chat session drawer with history navigation and fast new-chat instantiation.
+
+- **AI Quotas & Rate Limits Dashboard (`AiTab`)**:
+  - **Rolling Quota Tracking**: Live telemetry tracking for 5-hour rolling limits and weekly quotas with visual progress bars, percentage readouts, and exact countdown timers (*"Resets in 1h 43m"*).
+  - **Prompt Cache Efficiency**: Monitors global token cache hit rates (e.g. 97% cache hit, 1.1B cached tokens saved).
+  - **Multi-Account Switching & Privacy Masking**: Switch between multiple Gemini/provider profiles on the fly with built-in privacy masking (`••••••••@gmail.com`) to prevent leaking sensitive email addresses during screencasts and presentations.
+  - **Zero-Config Agent Discovery**: Automatically scans and synchronizes credentials from Antigravity Cockpit, Desktop Keyring, Pi Agent (`~/.pi/agent`), and OpenCode (`~/.config/opencode`).
+
+- **Dynamic AI Dock Pill & Popout (`AiPill` & `AiTokensSection`)**:
+  - Live dock pill reactively pulses with token streaming rate, active model identity, and request load.
+  - Color-coded threshold alerts (warning at 80%, critical at 95%) that notify you before rate limits are exhausted.
+  - Morphing dock popout for quick quota status and one-click account switching.
+
+### 📥 Integrated Downloads Manager (Aria2 Engine)
+A dedicated, fluid download manager embedded directly inside the Central Dashboard:
+
+- **Native Aria2 RPC Integration**: Connects to the local `aria2c` JSON-RPC daemon (`localhost:6800`) with zero polling overhead and reactive state synchronization.
+- **Segmented Filter Control**: Material 3 segmented pill bar toggling between **Active**, **Queued**, and **Finished** tasks with live count badges.
+- **Per-Download Split & Thread Tuning**: Slide-over sheet allows overriding connection splits (1 to 16 parallel threads per file) before dispatching downloads.
+- **Clipboard Auto-Detection**: Instant URL capture from clipboard with automatic Wayland keyboard focus delegation when opening the add-URL sheet.
+- **Bounded Liquid Glass Cards**: Height-clamped, scrolling list container (`maxListHeight`) prevents tall lists from stretching off-screen; includes real-time speedometers, progress bars, and file management actions (Pause, Resume, Remove, Open Folder).
+- **Graceful Empty States**: Designed glass placeholders for all segments when no tasks are queued.
 
 ### Media
 - **Multi-player MPRIS**: adapters for Spotify, NetEase Cloud Music, QQ Music, and a generic/universal fallback, with player switching.
@@ -113,6 +148,7 @@ The daemon builds into a **single self-contained binary** (`bin/astral-plasma`) 
 - **Build dependencies**:
   - Rust toolchain (`cargo`, stable) — builds the daemon
 - **Optional**:
+  - `aria2` / `aria2c` (downloads manager engine)
   - `fcitx5` / `fcitx5-remote` (IME switcher)
   - `power-profiles-daemon` / `powerprofilesctl` (power profiles)
   - `matugen` (dynamic wallpaper palette extraction)
@@ -221,7 +257,9 @@ quickshell ipc -p "$PWD" call launcher open apps
 
 | Target | Functions | Purpose |
 | :--- | :--- | :--- |
-| `dashboard` | `toggle` `open` `close` `setTab(tab)` | Central dropdown dashboard |
+| `dashboard` | `toggle` `open` `close` `setTab(tab)` `setDownloadsSegment(seg)` | Central dropdown dashboard (`dashboard`, `media`, `performance`, `workspaces`, `downloads`, `ai`) |
+| `assistant` | `open` `close` `toggle` `newChat` `send(prompt)` `toggleVoice` `dismissCrashes` | Astral Copilot floating AI assistant window |
+| `ai` | `refresh` `selectProvider(id)` `switchGemini(account)` `togglePopout` | AI token quota service & dock popout |
 | `media` | `playPause` `next` `previous` `cyclePlayer` `selectPlayer(bus)` `setVisualizer(style)` `toggleVisualizer` | MPRIS media & visualizer style |
 | `launcher` | `toggle` `open(mode)` `close` `next` `prev` `pageUp` `pageDown` `select(idx)` | Bottom command launcher (`apps` / `wallpaper` modes) |
 | `overview` | `toggle` `open` `close` | Active apps overview (live thumbnails) |

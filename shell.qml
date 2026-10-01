@@ -252,6 +252,9 @@ ShellRoot {
         function cancelVoice(): void {
             AssistantService.cancelVoiceInput();
         }
+        function dismissCrashes(): void {
+            AssistantService.dismissAllCrashes();
+        }
     }
 
     IpcHandler {
