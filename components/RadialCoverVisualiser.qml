@@ -53,7 +53,7 @@ Item {
     MotionValue {
         id: coverPulse
         animated: root.isPlaying && root.isTargetVisible
-        duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastEffects) ? Theme.animExpressiveFastEffects : 150
+        duration: 80
         bezier: (typeof Theme !== "undefined" && Theme.curveExpressiveFastEffects) ? Theme.curveExpressiveFastEffects : null
         target: (root.isPlaying && root.isTargetVisible && root.audioBeat > 0.08)
             ? (1.0 + Math.min(0.04, root.audioBeat * 0.06))

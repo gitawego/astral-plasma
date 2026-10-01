@@ -641,7 +641,7 @@ Item {
                         MotionValue {
                             id: beatBounce
                             animated: root.isTargetVisible && (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active)
-                            duration: Theme.animExpressiveFastEffects
+                            duration: 80
                             bezier: Theme.curveExpressiveFastEffects
                             target: (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active
                                      && Config.dashboardVisible && Config.activeDashboardTab === "dashboard")

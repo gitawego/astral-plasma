@@ -219,6 +219,53 @@ fn test_dsp_beat_transient_response() {
 }
 
 #[test]
+fn test_adaptive_gain_control_scales_moderate_listening_audio() {
+    let mut analyzer = AudioAnalyzer::new();
+
+    // Moderate listening audio (~0.15 amplitude sine wave, RMS ~0.10)
+    let freq = 120.0f32;
+    let mut moderate_audio = Vec::with_capacity(WINDOW_SIZE);
+    for i in 0..WINDOW_SIZE {
+        let t = i as f32 / SAMPLE_RATE as f32;
+        moderate_audio.push(0.15 * (2.0 * std::f32::consts::PI * freq * t).sin());
+    }
+
+    let mut last_frame = analyzer.process_samples(&moderate_audio);
+    for _ in 0..10 {
+        last_frame = analyzer.process_samples(&moderate_audio);
+    }
+
+    // Adaptive gain must lift moderate audio into energetic visual range
+    assert!(last_frame.energy >= 0.40, "Adaptive AGC must scale moderate audio energy >= 0.40, got {}", last_frame.energy);
+    assert!(last_frame.bass >= 0.35, "Adaptive AGC must scale bass >= 0.35, got {}", last_frame.bass);
+    assert!(last_frame.bands.iter().any(|&b| b >= 0.30), "At least one band must be active >= 0.30");
+}
+
+#[test]
+fn test_moderate_level_kick_triggers_transient_beat() {
+    let mut analyzer = AudioAnalyzer::new();
+
+    // Baseline tone at quiet-to-moderate volume (0.10 amplitude)
+    let mut baseline = Vec::with_capacity(WINDOW_SIZE);
+    for i in 0..WINDOW_SIZE {
+        let t = i as f32 / SAMPLE_RATE as f32;
+        baseline.push(0.10 * (2.0 * std::f32::consts::PI * 100.0 * t).sin());
+    }
+    for _ in 0..10 {
+        analyzer.process_samples(&baseline);
+    }
+
+    // Moderate kick drum burst (0.28 amplitude)
+    let mut kick = Vec::with_capacity(WINDOW_SIZE);
+    for i in 0..WINDOW_SIZE {
+        let t = i as f32 / SAMPLE_RATE as f32;
+        kick.push(0.28 * (2.0 * std::f32::consts::PI * 80.0 * t).sin());
+    }
+    let kick_frame = analyzer.process_samples(&kick);
+    assert!(kick_frame.beat > 0.10, "Kick transient in moderate audio must trigger beat > 0.10, got {}", kick_frame.beat);
+}
+
+#[test]
 fn test_json_serialization() {
     let frame = VisualizerFrame {
         energy: 0.42,

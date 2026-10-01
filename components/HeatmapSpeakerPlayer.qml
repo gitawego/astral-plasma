@@ -309,8 +309,7 @@ Item {
         MotionValue {
             id: speakerBounce
             animated: root.isPlaying && root.isTargetVisible
-            duration: (typeof Theme !== "undefined" && Theme.animExpressiveFastEffects)
-                ? Theme.animExpressiveFastEffects : 150
+            duration: 80
             bezier: (typeof Theme !== "undefined" && Theme.curveExpressiveFastEffects)
                 ? Theme.curveExpressiveFastEffects : null
             target: 1.0 + Math.min(0.12, (root.audioBeat * 0.08) + (root.audioBass * 0.05))

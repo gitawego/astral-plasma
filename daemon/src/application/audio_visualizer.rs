@@ -48,6 +48,7 @@ pub struct AudioAnalyzer {
     prev_bass: f32,
     prev_energy: f32,
     envelope_bands: [f32; NUM_BANDS],
+    peak_level: f32,
 }
 
 impl Default for AudioAnalyzer {
@@ -68,6 +69,7 @@ impl AudioAnalyzer {
             prev_bass: 0.0,
             prev_energy: 0.0,
             envelope_bands: [0.0; NUM_BANDS],
+            peak_level: 0.06,
         }
     }
 
@@ -209,18 +211,39 @@ impl AudioAnalyzer {
             };
         }
 
-        let raw_energy = (raw_rms * 2.2).min(1.0);
-
         let mut raw_bands = [0.0f32; NUM_BANDS];
+        let mut max_band = 0.0f32;
         for i in 0..NUM_BANDS {
             let base_mag = Self::goertzel_magnitude(samples, BAND_FREQUENCIES[i], SAMPLE_RATE as f32);
             // Apply spectral weighting so high bands have lively dynamic motion
-            raw_bands[i] = (base_mag * BAND_WEIGHTS[i]).min(1.0);
+            let val = (base_mag * BAND_WEIGHTS[i]).min(1.0);
+            raw_bands[i] = val;
+            if val > max_band {
+                max_band = val;
+            }
+        }
+
+        // Adaptive Automatic Gain Control (AGC):
+        // Track the spectral peak with fast attack and smooth decay (~2s)
+        // so real music playing at normal, comfortable listening levels
+        // maps cleanly into the dynamic visualizer range [0.0 .. 1.0].
+        // Floor peak at 0.035 to prevent low-level noise amplification.
+        let frame_peak = max_band.max(raw_rms * 1.8);
+        if frame_peak > self.peak_level {
+            self.peak_level += (frame_peak - self.peak_level) * 0.10;
+        } else {
+            self.peak_level = (self.peak_level * 0.985 + frame_peak * 0.015).max(0.035);
+        }
+
+        let gain = 1.0 / self.peak_level.max(0.035);
+        let norm_energy = ((raw_rms * 1.8) * gain).min(1.0);
+        for b in &mut raw_bands {
+            *b = (*b * gain).min(1.0);
         }
 
         // Bass: bands 0..4 (60 to 220 Hz)
         let inst_bass = (raw_bands[0..4].iter().sum::<f32>() / 4.0).min(1.0);
-        let raw_bass = (inst_bass * 1.3).min(1.0);
+        let raw_bass = (inst_bass * 1.2).min(1.0);
         // Mid: bands 4..10 (320 to 1800 Hz)
         let raw_mid = (raw_bands[4..10].iter().sum::<f32>() / 6.0).min(1.0);
         // Treble: bands 10..16 (2400 to 4000 Hz)
@@ -229,16 +252,16 @@ impl AudioAnalyzer {
         // --- DYNAMIC BEAT ONSET & TRANSIENT FLUX ---
         // Positive flux / derivative detection: measure sharp rises in bass and full-spectrum energy
         let bass_delta = (inst_bass - self.prev_bass).max(0.0);
-        let energy_delta = (raw_energy - self.prev_energy).max(0.0);
+        let energy_delta = (norm_energy - self.prev_energy).max(0.0);
         self.prev_bass = inst_bass;
-        self.prev_energy = raw_energy;
+        self.prev_energy = norm_energy;
 
         // Adapt moving bass baseline to adapt to song loudness
-        self.rolling_bass_avg += (inst_bass - self.rolling_bass_avg) * 0.05;
+        self.rolling_bass_avg += (inst_bass - self.rolling_bass_avg) * 0.08;
 
         // Transient onset occurs when instantaneous bass delta or energy delta spikes above noise threshold
         let onset_flux = bass_delta * 0.75 + energy_delta * 0.25;
-        let flux_threshold = 0.05f32.max(self.rolling_bass_avg * 0.07);
+        let flux_threshold = (self.rolling_bass_avg * 0.15).max(0.03);
 
         if onset_flux > flux_threshold {
             let transient = ((onset_flux - flux_threshold) / (flux_threshold * 1.5 + 0.05)).min(1.0);
@@ -256,13 +279,13 @@ impl AudioAnalyzer {
         }
 
         // Smooth envelope follower: fast attack, responsive decay
-        Self::apply_envelope(&mut self.envelope_energy, raw_energy, 0.80, 0.22);
-        Self::apply_envelope(&mut self.envelope_bass, raw_bass, 0.85, 0.20);
-        Self::apply_envelope(&mut self.envelope_mid, raw_mid, 0.75, 0.25);
-        Self::apply_envelope(&mut self.envelope_treble, raw_treble, 0.70, 0.28);
+        Self::apply_envelope(&mut self.envelope_energy, norm_energy, 0.85, 0.22);
+        Self::apply_envelope(&mut self.envelope_bass, raw_bass, 0.88, 0.20);
+        Self::apply_envelope(&mut self.envelope_mid, raw_mid, 0.78, 0.25);
+        Self::apply_envelope(&mut self.envelope_treble, raw_treble, 0.75, 0.28);
 
         for i in 0..NUM_BANDS {
-            Self::apply_envelope(&mut self.envelope_bands[i], raw_bands[i], 0.82, 0.24);
+            Self::apply_envelope(&mut self.envelope_bands[i], raw_bands[i], 0.85, 0.24);
         }
 
         VisualizerFrame {
