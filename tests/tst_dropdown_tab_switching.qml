@@ -174,8 +174,17 @@ Item {
                 "CentralDropdown tab clicks must persist to Config.activeDashboardTab");
 
             const standalone = readLocalFile("../dashboard/CentralDashboard.qml");
-            assert(/activeTab:\s*Config\.activeDashboardTab/.test(standalone),
-                "CentralDashboard TabBar must bind activeTab to Config.activeDashboardTab");
+            // The bar shows the tab the user selected, unless that tab cannot be
+            // rendered here (disabled in settings, or the engine-dependent
+            // Downloads tab without aria2): a bar pointing at a tab it does not
+            // render, or a loader showing content with no chip to return from, is
+            // the bug the fallback exists for.
+            assert(/activeTab:\s*root\.shownTab/.test(standalone),
+                "CentralDashboard TabBar must bind activeTab to the policy's shown tab");
+            assert(/shownTab:\s*DashboardTabs\.fallbackActiveTab\([\s\S]{0,200}Config\.activeDashboardTab\)/.test(standalone),
+                "the shown tab must be the selected one when it is available, else the first");
+            assert(/DashboardTabs\.availableTabs\(Config\.dashboardTabs/.test(standalone),
+                "the rendered tabs must come from the settings, minus the unavailable ones");
             assert(/onTabSelected/.test(standalone) && /Config\.activeDashboardTab\s*=/.test(standalone),
                 "CentralDashboard TabBar must persist tab selections to Config.activeDashboardTab");
 

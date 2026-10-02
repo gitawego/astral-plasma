@@ -18,3 +18,6 @@ Thumbs.db
 # Rust target
 daemon/target/
 bin/
+
+# Exported pi session transcripts (not repository content)
+pi-session-*.html

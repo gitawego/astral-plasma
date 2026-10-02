@@ -16,6 +16,23 @@ pub const MAX_SPLIT: u32 = 16;
 /// aria2 default RPC port.
 pub const ARIA2_RPC_PORT: u16 = 6800;
 
+/// Message for a download request made on a machine without the engine.
+///
+/// aria2c is an optional dependency, so its absence is never an error state -
+/// but starting a download cannot work either. Reporting the raw RPC failure
+/// (`Connection refused` on port 6800) tells the user nothing they can act on;
+/// naming the missing binary and the command that installs it does.
+pub fn engine_missing_message(install_command: Option<&str>) -> String {
+    match install_command.map(str::trim).filter(|cmd| !cmd.is_empty()) {
+        Some(command) => format!(
+            "aria2c is not installed, so downloads cannot start. Install it first: {command}"
+        ),
+        None => "aria2c is not installed, so downloads cannot start. Install aria2 from \
+                 https://aria2.github.io/ and try again."
+            .to_string(),
+    }
+}
+
 /// Lifecycle of one download, mapped from aria2 `status` strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -372,3 +389,207 @@ impl DownloadHistory {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Engine settings
+// ---------------------------------------------------------------------------
+// Everything the user can tune about the download engine is expressed once
+// here: the argv it is spawned with, the payload a *running* engine is
+// reconfigured with, and the clamps that keep a hand-edited settings file from
+// handing aria2 a nonsensical value.
+
+/// aria2's own floor/ceiling for parallel downloads (`--max-concurrent-downloads`).
+pub const MIN_CONCURRENT_DOWNLOADS: u32 = 1;
+pub const MAX_CONCURRENT_DOWNLOADS: u32 = 16;
+/// Shipped default: five files at a time, the value the engine ran with before
+/// this was configurable.
+pub const DEFAULT_CONCURRENT_DOWNLOADS: u32 = 5;
+/// Upper bound for the global speed limit, in KiB/s (10 GiB/s). A larger value
+/// is a typo, not a preference.
+pub const MAX_SPEED_LIMIT_KBPS: u64 = 10_000_000;
+
+/// Engine-wide settings, as the shell presents them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineSettings {
+    /// Files downloaded in parallel.
+    pub max_concurrent_downloads: u32,
+    /// Global download cap in KiB/s; `0` means unlimited (aria2's convention).
+    pub speed_limit_kbps: u64,
+    /// Default destination for new downloads; empty uses aria2's own default.
+    pub dir: String,
+}
+
+impl Default for EngineSettings {
+    fn default() -> Self {
+        Self {
+            max_concurrent_downloads: DEFAULT_CONCURRENT_DOWNLOADS,
+            speed_limit_kbps: 0,
+            dir: String::new(),
+        }
+    }
+}
+
+impl EngineSettings {
+    /// Clamp user input into what aria2 accepts, so the engine never sees a
+    /// value the UI could not have offered.
+    pub fn clamped(max_concurrent_downloads: u32, speed_limit_kbps: u64, dir: &str) -> Self {
+        Self {
+            max_concurrent_downloads: max_concurrent_downloads
+                .clamp(MIN_CONCURRENT_DOWNLOADS, MAX_CONCURRENT_DOWNLOADS),
+            speed_limit_kbps: speed_limit_kbps.min(MAX_SPEED_LIMIT_KBPS),
+            dir: dir.trim().to_string(),
+        }
+    }
+
+    /// The limit as aria2 spells it: `<n>K` (or nothing at all when unlimited).
+    fn limit_arg(&self) -> Option<String> {
+        (self.speed_limit_kbps > 0).then(|| format!("--max-overall-download-limit={}K", self.speed_limit_kbps))
+    }
+
+    /// argv fragments for a freshly spawned engine.
+    pub fn spawn_args(&self) -> Vec<String> {
+        let mut args = vec![format!("--max-concurrent-downloads={}", self.max_concurrent_downloads)];
+        if let Some(limit) = self.limit_arg() {
+            args.push(limit);
+        }
+        if !self.dir.is_empty() {
+            args.push(format!("--dir={}", self.dir));
+        }
+        args
+    }
+
+    /// Payload for `aria2.changeGlobalOption` on a running engine.
+    ///
+    /// Every field is sent, including "unlimited"/empty ones: clearing a limit
+    /// or a destination has to reach the engine too, or the old value keeps
+    /// applying until the next restart.
+    pub fn to_rpc_map(&self) -> serde_json::Map<String, serde_json::Value> {
+        let mut m = serde_json::Map::new();
+        m.insert(
+            "max-concurrent-downloads".into(),
+            serde_json::Value::String(self.max_concurrent_downloads.to_string()),
+        );
+        m.insert(
+            "max-overall-download-limit".into(),
+            serde_json::Value::String(
+                if self.speed_limit_kbps > 0 {
+                    format!("{}K", self.speed_limit_kbps)
+                } else {
+                    "0".to_string()
+                },
+            ),
+        );
+        if !self.dir.is_empty() {
+            m.insert("dir".into(), serde_json::Value::String(self.dir.clone()));
+        }
+        m
+    }
+}
+
+/// Version string from `aria2c --version` (`aria2 version 1.37.0`).
+pub fn parse_aria2_version(version_output: &str) -> Option<String> {
+    let first = version_output.lines().next()?.trim();
+    let rest = first.strip_prefix("aria2 version")?.trim();
+    let version: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-' || c.is_ascii_alphabetic())
+        .collect();
+    (!version.is_empty()).then_some(version)
+}
+
+/// What the native install flow did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallOutcome {
+    Installed,
+    /// The user dismissed the authentication dialog (polkit exit 126).
+    AuthenticationDismissed,
+    /// No polkit agent answered (exit 127): the prompt could not even be shown.
+    NoAuthenticationAgent,
+    /// The distribution has no package we can name, so there is nothing to run.
+    NoKnownPackage,
+    Failed(i32),
+}
+
+impl InstallOutcome {
+    pub fn succeeded(self) -> bool {
+        matches!(self, InstallOutcome::Installed)
+    }
+
+    /// Stable machine name for the JSON report. The QML side branches on this,
+    /// so the wording of `message` stays free to change.
+    pub fn code(self) -> &'static str {
+        match self {
+            InstallOutcome::Installed => "installed",
+            InstallOutcome::AuthenticationDismissed => "dismissed",
+            InstallOutcome::NoAuthenticationAgent => "no_agent",
+            InstallOutcome::NoKnownPackage => "no_package",
+            InstallOutcome::Failed(_) => "failed",
+        }
+    }
+
+    /// Message for the user. Every failure hands over the command they can run
+    /// themselves, so a dismissed prompt never becomes a dead end.
+    pub fn message(self, install_command: &str) -> String {
+        match self {
+            InstallOutcome::Installed => "aria2 installed.".to_string(),
+            InstallOutcome::AuthenticationDismissed => format!(
+                "Installation cancelled. You can install it yourself with: {install_command}"
+            ),
+            InstallOutcome::NoAuthenticationAgent => format!(
+                "No authentication dialog is available here. Run this in a terminal: {install_command}"
+            ),
+            InstallOutcome::NoKnownPackage => format!(
+                "This distribution has no known aria2 package. Get it from {install_command} and try again."
+            ),
+            InstallOutcome::Failed(code) => format!(
+                "Installing aria2 failed (exit {code}). Run this in a terminal to see why: {install_command}"
+            ),
+        }
+    }
+}
+
+/// Map a privilege-helper exit code onto an outcome.
+///
+/// `pkexec` reports 126 when the authentication dialog was dismissed and 127
+/// when it could not find an agent (or the command), which need different
+/// messages: one is a choice, the other is a missing feature.
+pub fn install_outcome(exit_code: i32) -> InstallOutcome {
+    match exit_code {
+        0 => InstallOutcome::Installed,
+        126 => InstallOutcome::AuthenticationDismissed,
+        127 => InstallOutcome::NoAuthenticationAgent,
+        other => InstallOutcome::Failed(other),
+    }
+}
+
+/// argv that installs aria2 through the distribution's package manager.
+///
+/// This is the *unprivileged* half: the caller prefixes it with the desktop's
+/// privilege helper (`pkexec`), which is what shows the native password dialog.
+/// `None` for a distribution we cannot name a package for, so the caller points
+/// at the upstream build instead of inventing a command.
+pub fn aria2_install_argv(package_manager: crate::domain::voice::PackageManager) -> Option<Vec<String>> {
+    use crate::domain::voice::PackageManager;
+    let argv: Vec<&str> = match package_manager {
+        PackageManager::Pacman => vec!["pacman", "-S", "--noconfirm", "aria2"],
+        PackageManager::Apt => vec!["apt-get", "install", "-y", "aria2"],
+        PackageManager::Dnf => vec!["dnf", "install", "-y", "aria2"],
+        PackageManager::Zypper => vec!["zypper", "--non-interactive", "install", "aria2"],
+        PackageManager::Nix => vec!["nix-env", "-iA", "nixpkgs.aria2"],
+        PackageManager::Unknown => return None,
+    };
+    Some(argv.into_iter().map(str::to_string).collect())
+}
+
+/// The same install step, as the one-liner the user is shown.
+pub fn aria2_install_command(package_manager: crate::domain::voice::PackageManager) -> Option<&'static str> {
+    use crate::domain::voice::PackageManager;
+    match package_manager {
+        PackageManager::Pacman => Some("sudo pacman -S aria2"),
+        PackageManager::Apt => Some("sudo apt install aria2"),
+        PackageManager::Dnf => Some("sudo dnf install aria2"),
+        PackageManager::Zypper => Some("sudo zypper install aria2"),
+        PackageManager::Nix => Some("nix-env -iA nixpkgs.aria2"),
+        PackageManager::Unknown => None,
+    }
+}

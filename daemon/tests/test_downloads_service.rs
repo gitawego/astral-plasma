@@ -5,7 +5,7 @@
 //! cancel/delete-partial/remove/retry verb mapping, defaults filled from settings.
 
 use astral_plasma::application::download_service::{DownloadsPort, DownloadsSnapshot, DownloadsUseCase};
-use astral_plasma::domain::downloads::{DownloadStatus, DownloadTask, NewDownloadOptions};
+use astral_plasma::domain::downloads::{DownloadStatus, DownloadTask, EngineSettings, NewDownloadOptions};
 use astral_plasma::domain::ports::DynResult;
 use std::sync::{Arc, Mutex};
 
@@ -15,19 +15,74 @@ struct FakePort {
     calls: Mutex<Vec<(String, String)>>,
     added: Mutex<Vec<(String, NewDownloadOptions)>>,
     retry_gid: Mutex<Option<String>>,
+    /// `true` simulates a machine without aria2c: every RPC path must stay
+    /// untouched and the user must be told what to install.
+    engine_missing: bool,
+    install_command: Option<String>,
+    spawn_calls: Mutex<Vec<String>>,
+    fetch_calls: Mutex<usize>,
+    history: Mutex<astral_plasma::domain::downloads::DownloadHistory>,
+    /// Engine probe answers (version + whether the native prompt is available).
+    engine_version: Option<String>,
+    pkexec_available: bool,
+    os_release: Mutex<String>,
+    install_exit_code: Mutex<i32>,
+    privileged: Mutex<Vec<Vec<String>>>,
+    applied: Mutex<Vec<EngineSettings>>,
+    spawn_settings: Mutex<Vec<EngineSettings>>,
 }
 
 impl FakePort {
     fn with_raw(raw: Vec<serde_json::Value>) -> Self {
         Self { raw: Mutex::new(raw), ..Default::default() }
     }
+
+    /// A machine the download manager cannot start anything on.
+    fn without_engine() -> Self {
+        Self {
+            engine_missing: true,
+            install_command: Some("sudo pacman -S aria2".to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn fetch_calls(&self) -> usize {
+        *self.fetch_calls.lock().unwrap()
+    }
+
+    fn spawn_calls(&self) -> Vec<String> {
+        self.spawn_calls.lock().unwrap().clone()
+    }
+
+    fn set_os_release(&self, text: &str) {
+        *self.os_release.lock().unwrap() = text.to_string();
+    }
+
+    fn set_install_exit_code(&self, code: i32) {
+        *self.install_exit_code.lock().unwrap() = code;
+    }
+
+    fn privileged_calls(&self) -> Vec<Vec<String>> {
+        self.privileged.lock().unwrap().clone()
+    }
+
+    fn applied_settings(&self) -> Vec<EngineSettings> {
+        self.applied.lock().unwrap().clone()
+    }
+
+    fn spawn_settings(&self) -> Vec<EngineSettings> {
+        self.spawn_settings.lock().unwrap().clone()
+    }
 }
 
 impl DownloadsPort for FakePort {
-    fn ensure_running(&self, _default_dir: &str) -> DynResult<bool> {
+    fn ensure_running(&self, settings: &EngineSettings) -> DynResult<bool> {
+        self.spawn_calls.lock().unwrap().push(settings.dir.clone());
+        self.spawn_settings.lock().unwrap().push(settings.clone());
         Ok(false)
     }
     fn fetch_raw(&self) -> DynResult<Vec<serde_json::Value>> {
+        *self.fetch_calls.lock().unwrap() += 1;
         Ok(self.raw.lock().unwrap().clone())
     }
     fn add_uri(&self, url: &str, opts: &NewDownloadOptions) -> DynResult<String> {
@@ -48,6 +103,32 @@ impl DownloadsPort for FakePort {
     }
     fn secret(&self) -> DynResult<String> {
         Ok("s".to_string())
+    }
+    fn load_history(&self) -> DynResult<astral_plasma::domain::downloads::DownloadHistory> {
+        Ok(self.history.lock().unwrap().clone())
+    }
+    fn is_aria2_installed(&self) -> bool {
+        !self.engine_missing
+    }
+    fn aria2_install_command(&self) -> Option<String> {
+        self.install_command.clone()
+    }
+    fn engine_version(&self) -> Option<String> {
+        self.engine_version.clone()
+    }
+    fn pkexec_available(&self) -> bool {
+        self.pkexec_available
+    }
+    fn os_release(&self) -> String {
+        self.os_release.lock().unwrap().clone()
+    }
+    fn run_privileged_install(&self, argv: &[String]) -> DynResult<i32> {
+        self.privileged.lock().unwrap().push(argv.to_vec());
+        Ok(*self.install_exit_code.lock().unwrap())
+    }
+    fn apply_global_options(&self, settings: &EngineSettings) -> DynResult<()> {
+        self.applied.lock().unwrap().push(settings.clone());
+        Ok(())
     }
 }
 
@@ -187,7 +268,7 @@ fn test_reconcile_history_persists_stopped_and_purges() {
     }
 
     impl DownloadsPort for MockHistoryPort {
-        fn ensure_running(&self, _dir: &str) -> DynResult<bool> { Ok(false) }
+        fn ensure_running(&self, _settings: &EngineSettings) -> DynResult<bool> { Ok(false) }
         fn fetch_raw(&self) -> DynResult<Vec<serde_json::Value>> {
             Ok(self.raw.lock().unwrap().clone())
         }
@@ -259,3 +340,235 @@ fn test_reconcile_history_persists_stopped_and_purges() {
     assert_eq!(port.history.lock().unwrap().items.len(), 0, "purge clears history completely");
 }
 
+
+// ============================================================================
+// No engine installed
+// ============================================================================
+// aria2c is an optional dependency. A machine that does not have it must never
+// see a raw socket error: the snapshot has to say the engine is missing, name
+// the install command, and keep working in history-only mode, and starting a
+// download has to explain what is missing instead of reporting that a
+// connection to port 6800 was refused.
+
+fn engine_less_use_case() -> (DownloadsUseCase, Arc<FakePort>) {
+    let port = Arc::new(FakePort::without_engine());
+    let uc = DownloadsUseCase::with_defaults(port.clone(), "/dl".into(), 4);
+    (uc, port)
+}
+
+#[test]
+fn test_snapshot_without_the_engine_is_history_only_and_names_the_install() {
+    let (uc, port) = engine_less_use_case();
+    // A finished download from an earlier, engine-equipped session.
+    {
+        let mut history = port.history.lock().unwrap();
+        history.add_or_update(DownloadTask {
+            gid: "done-1".into(),
+            name: "old.iso".into(),
+            status: DownloadStatus::Complete,
+            total_length: 100,
+            completed_length: 100,
+            download_speed: 0,
+            dir: "/dl".into(),
+            error_code: None,
+            completed_at: Some(1700000000),
+        });
+    }
+
+    let snap = uc.snapshot().expect("a missing engine is not an error");
+
+    assert!(!snap.aria_available, "the shell must learn the engine is missing");
+    assert_eq!(
+        snap.aria_install_command.as_deref(),
+        Some("sudo pacman -S aria2"),
+        "the install command is what the banner and the button copy"
+    );
+    assert_eq!(port.fetch_calls(), 0, "a missing engine must not be talked to");
+    assert!(snap.active.is_empty() && snap.waiting.is_empty());
+    assert_eq!(
+        snap.stopped.iter().filter(|t| t.gid == "done-1").count(),
+        1,
+        "finished downloads stay visible while the engine is missing"
+    );
+}
+
+#[test]
+fn test_ensure_running_without_the_engine_never_tries_to_spawn_it() {
+    let (uc, port) = engine_less_use_case();
+
+    assert_eq!(uc.ensure_running().expect("checked, not failed"), false);
+    assert!(
+        port.spawn_calls().is_empty(),
+        "spawning a binary that does not exist would log a spawn error on every poll"
+    );
+}
+
+#[test]
+fn test_adding_a_url_without_the_engine_says_what_to_install() {
+    let (uc, port) = engine_less_use_case();
+
+    let error = uc
+        .add_urls("https://h/a.iso", NewDownloadOptions::default())
+        .expect_err("a download cannot start without an engine");
+    let message = error.to_string();
+
+    assert!(
+        message.contains("aria2c is not installed"),
+        "the error must name the missing engine, got: {message}"
+    );
+    assert!(
+        message.contains("sudo pacman -S aria2"),
+        "the error must carry the install command, got: {message}"
+    );
+    assert!(
+        port.added.lock().unwrap().is_empty(),
+        "nothing may be sent to an engine that is not there"
+    );
+}
+
+// ============================================================================
+// Engine status and the native install flow
+// ============================================================================
+// The settings page shows what the engine is, offers to install it with the
+// desktop's own authentication dialog, and falls back to the manual command
+// whenever that dialog is unavailable or dismissed.
+
+impl FakePort {
+    fn with_engine_status(installed: bool, version: Option<&str>, pkexec: bool) -> Self {
+        Self {
+            engine_missing: !installed,
+            install_command: Some("sudo pacman -S aria2".to_string()),
+            pkexec_available: pkexec,
+            engine_version: version.map(str::to_string),
+            ..Default::default()
+        }
+    }
+}
+
+#[test]
+fn test_engine_status_reports_version_and_whether_installing_is_possible() {
+    let port = Arc::new(FakePort::with_engine_status(true, Some("1.37.0"), true));
+    let uc = DownloadsUseCase::with_defaults(port.clone(), "/dl".into(), 4);
+
+    let status = uc.engine_status().expect("status");
+    assert!(status.installed);
+    assert_eq!(status.version.as_deref(), Some("1.37.0"));
+    assert_eq!(status.install_command, "sudo pacman -S aria2");
+    assert!(status.installable, "polkit is the native install path");
+
+    // The snapshot carries the same facts, so the tab needs no second call.
+    let snap = uc.snapshot().expect("snapshot");
+    assert_eq!(snap.aria_version.as_deref(), Some("1.37.0"));
+    assert!(snap.aria_installable);
+
+    let absent = Arc::new(FakePort::with_engine_status(false, None, false));
+    let absent_uc = DownloadsUseCase::with_defaults(absent, "/dl".into(), 4);
+    let absent_status = absent_uc.engine_status().expect("status");
+    assert!(!absent_status.installed && absent_status.version.is_none());
+    assert!(!absent_status.installable, "no polkit = guide instead of prompt");
+    let snap = absent_uc.snapshot().expect("snapshot");
+    assert!(!snap.aria_available && !snap.aria_installable);
+}
+
+#[test]
+fn test_install_engine_runs_the_distribution_install_through_polkit() {
+    let port = Arc::new(FakePort::with_engine_status(false, None, true));
+    port.set_os_release("ID=cachyos\nID_LIKE=arch\n");
+    port.set_install_exit_code(0);
+    let uc = DownloadsUseCase::with_defaults(port.clone(), "/dl".into(), 4);
+
+    let report = uc.install_engine().expect("install runs");
+
+    assert_eq!(report.outcome, "installed");
+    assert!(report.installed);
+    assert_eq!(
+        port.privileged_calls(),
+        vec![vec!["pacman".to_string(), "-S".to_string(), "--noconfirm".to_string(), "aria2".to_string()]],
+        "searched in the fake os-release, package manager and flags included"
+    );
+    assert!(!report.message.is_empty());
+}
+
+#[test]
+fn test_install_engine_without_polkit_guides_instead_of_prompting() {
+    let port = Arc::new(FakePort::with_engine_status(false, None, false));
+    port.set_os_release("ID=arch\n");
+    let uc = DownloadsUseCase::with_defaults(port.clone(), "/dl".into(), 4);
+
+    let report = uc.install_engine().expect("install reports, never fails hard");
+
+    assert_eq!(report.outcome, "no_agent");
+    assert!(
+        report.message.contains("sudo pacman -S aria2"),
+        "the manual command has to be in the message: {}",
+        report.message
+    );
+    assert!(port.privileged_calls().is_empty(), "nothing may be spawned without a prompt");
+}
+
+#[test]
+fn test_install_engine_maps_a_dismissed_prompt_to_guidance() {
+    let port = Arc::new(FakePort::with_engine_status(false, None, true));
+    port.set_os_release("ID=debian\n");
+    port.set_install_exit_code(126);
+    let uc = DownloadsUseCase::with_defaults(port.clone(), "/dl".into(), 4);
+
+    let report = uc.install_engine().expect("install reports");
+
+    assert_eq!(report.outcome, "dismissed");
+    assert!(report.message.contains("sudo apt install aria2"), "{}", report.message);
+}
+
+#[test]
+fn test_install_engine_on_an_unknown_distribution_points_at_upstream() {
+    let port = Arc::new(FakePort::with_engine_status(false, None, true));
+    port.set_os_release("ID=some-new-distro\n");
+    let uc = DownloadsUseCase::with_defaults(port.clone(), "/dl".into(), 4);
+
+    let report = uc.install_engine().expect("install reports");
+
+    assert!(report.message.contains("aria2.github.io"), "{}", report.message);
+    assert!(port.privileged_calls().is_empty(), "no invented package manager");
+}
+
+#[test]
+fn test_engine_settings_reach_the_running_engine_and_are_clamped() {
+    use astral_plasma::domain::downloads::EngineSettings;
+
+    let port = Arc::new(FakePort::with_engine_status(true, Some("1.37.0"), true));
+    let uc = DownloadsUseCase::with_defaults(port.clone(), "/dl".into(), 4);
+
+    uc.apply_engine_settings(&EngineSettings::clamped(99, 42, "/dl"))
+        .expect("applied");
+    let applied = port.applied_settings();
+    assert_eq!(applied.len(), 1);
+    assert_eq!(applied[0].max_concurrent_downloads, 16, "clamped on the way out");
+    assert_eq!(applied[0].speed_limit_kbps, 42);
+
+    // A missing engine is not an error: there is nothing to reconfigure, and the
+    // settings are picked up at the next spawn.
+    let absent = Arc::new(FakePort::with_engine_status(false, None, true));
+    let absent_uc = DownloadsUseCase::with_defaults(absent.clone(), "/dl".into(), 4);
+    let report = absent_uc.apply_engine_settings(&EngineSettings::default()).expect("no-op");
+    assert!(!report.applied);
+    assert!(report.reason.is_some());
+    assert!(absent.applied_settings().is_empty());
+}
+
+#[test]
+fn test_ensure_running_passes_the_configured_engine_settings() {
+    use astral_plasma::domain::downloads::EngineSettings;
+
+    let port = Arc::new(FakePort::with_engine_status(true, Some("1.37.0"), true));
+    let uc = DownloadsUseCase::with_engine(
+        port.clone(),
+        "/dl".into(),
+        4,
+        EngineSettings::clamped(7, 900, "/dl"),
+    );
+
+    uc.ensure_running().expect("ensure");
+    assert_eq!(port.spawn_settings().len(), 1);
+    assert_eq!(port.spawn_settings()[0].max_concurrent_downloads, 7);
+    assert_eq!(port.spawn_settings()[0].speed_limit_kbps, 900);
+}

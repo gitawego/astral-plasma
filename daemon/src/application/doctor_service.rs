@@ -45,6 +45,11 @@ impl DoctorService {
         // 11. Download Manager (aria2)
         checks.push(check_aria2());
 
+        // 12. Pi Agent (the AI Copilot's harness)
+        checks.push(check_pi_harness(
+            crate::infrastructure::assistant_harness::runtime_provisioner::RuntimeProvisioner::locate_pi(),
+        ));
+
         DoctorReport::new(checks)
     }
 }
@@ -675,5 +680,73 @@ fn check_aria2() -> DependencyCheck {
             message: "aria2c not found (downloads tab will operate in history-only mode)".to_string(),
             recommendation: Some(format!("Install aria2: {}", install_cmd)),
         }
+    }
+}
+
+/// Reports the AI Copilot's pi harness.
+///
+/// The harness is the user's own `pi` installation (Astral never pins or
+/// downgrades it), so the check reports the version it finds and names the update
+/// command when that version is older than what this integration needs. The
+/// Copilot is optional, hence `required: false`: a missing or outdated harness
+/// must never make the shell claim to be broken.
+pub fn check_pi_harness(pi: Option<std::path::PathBuf>) -> DependencyCheck {
+    use crate::infrastructure::assistant_harness::runtime_provisioner::{
+        version_at_least, RuntimeProvisioner, PI_MIN_VERSION,
+    };
+
+    const INSTALL: &str = "npm install -g @earendil-works/pi-coding-agent";
+
+    let Some(path) = pi else {
+        return DependencyCheck {
+            name: "Pi Agent (AI Copilot harness)".to_string(),
+            category: "Optional Enhancements".to_string(),
+            required: false,
+            status: CheckStatus::Warning,
+            installed: false,
+            detected_version: None,
+            required_version: Some(PI_MIN_VERSION.to_string()),
+            binary_path: None,
+            message: "pi not found (the AI Copilot needs the pi harness)".to_string(),
+            recommendation: Some(format!("Install Pi: {INSTALL}")),
+        };
+    };
+
+    let version = RuntimeProvisioner::probe_pi_version(Some(path.as_path()));
+    let has_mcp = RuntimeProvisioner::pi_supports_mcp(Some(path.as_path()));
+    let outdated = version
+        .as_deref()
+        .map(|found| !version_at_least(found, PI_MIN_VERSION))
+        .unwrap_or(false);
+    let current = version.is_some() && !outdated && has_mcp;
+
+    let message = match (&version, has_mcp) {
+        (Some(found), true) if !outdated => {
+            format!("pi {found} available for the AI Copilot (built-in MCP)")
+        }
+        (Some(found), true) => format!(
+            "pi {found} is older than {PI_MIN_VERSION}: built-in MCP and the JSON event stream this shell uses may differ"
+        ),
+        (Some(found), false) => format!(
+            "pi {found} does not provide built-in MCP (`pi mcp`); the Copilot needs {PI_MIN_VERSION} or newer"
+        ),
+        (None, _) => "pi is installed but does not report a version".to_string(),
+    };
+
+    DependencyCheck {
+        name: "Pi Agent (AI Copilot harness)".to_string(),
+        category: "Optional Enhancements".to_string(),
+        required: false,
+        status: if current { CheckStatus::Pass } else { CheckStatus::Warning },
+        installed: true,
+        detected_version: version,
+        required_version: Some(PI_MIN_VERSION.to_string()),
+        binary_path: Some(path.to_string_lossy().to_string()),
+        message,
+        recommendation: if current {
+            None
+        } else {
+            Some(format!("Update Pi: pi update self  (or: {INSTALL}@latest)"))
+        },
     }
 }

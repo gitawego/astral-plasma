@@ -135,6 +135,16 @@
         "id": "workspaces",
         "label": "Workspaces",
         "enabled": true
+      },
+      {
+        "id": "downloads",
+        "label": "Downloads",
+        "enabled": true
+      },
+      {
+        "id": "ai",
+        "label": "AI Quotas",
+        "enabled": true
       }
     ],
     "weather": {
@@ -159,6 +169,10 @@
     "dynamicColors": true
   },
   "debugMode": false,
+  "logging": {
+    "level": "info",
+    "categories": {}
+  },
   "border": {
     "thickness": 14,
     "rounding": 20
@@ -188,6 +202,8 @@
   "downloads": {
     "dir": "",
     "split": 4,
+    "maxConcurrentDownloads": 5,
+    "speedLimitKbps": 0,
     "borderEffect": true
   },
   "voice": {

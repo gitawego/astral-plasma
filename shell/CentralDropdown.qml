@@ -4,6 +4,8 @@ import "../theme"
 import "../config"
 import "../components"
 import "../dashboard/tabs"
+import "../dashboard/tabs/DashboardTabs.js" as DashboardTabs
+import "../services"
 
 Item {
     id: root
@@ -41,9 +43,33 @@ Item {
         }
     }
 
-    property string activeTab: (typeof Config !== "undefined" && Config.activeDashboardTab) ? Config.activeDashboardTab : "dashboard"
+    /// Whether the download engine is present. Unknown (no snapshot yet, or a
+    /// context without the service) counts as present: hiding a tab the user has
+    /// enabled must be a statement about the engine, never about missing data.
+    readonly property bool ariaAvailable: (typeof DownloadService !== "undefined" && DownloadService
+        && DownloadService.ariaAvailable !== undefined) ? Boolean(DownloadService.ariaAvailable) : true
+
+    /// The tabs this machine can render: the ones enabled in settings, minus the
+    /// tabs whose dependency is missing (the Downloads tab needs the aria2
+    /// engine).
+    ///
+    /// The *panes* keep their fixed order below - the content strip and the
+    /// per-pane visibility are index-based - so a tab hidden here is simply
+    /// never selected, instead of shifting every pane.
+    readonly property var visibleTabs: DashboardTabs.availableTabs(Config.dashboardTabs, root.ariaAvailable)
+
+    /// The selected tab, falling back to one that is actually rendered: the
+    /// stored preference can point at a hidden tab (it was disabled, or the
+    /// engine went away), and a view left on a tab with no chip is a view the
+    /// user cannot leave.
+    property string activeTab: DashboardTabs.fallbackActiveTab(root.visibleTabs, (typeof Config !== "undefined" && Config.activeDashboardTab) ? Config.activeDashboardTab : "dashboard")
     onActiveTabChanged: {
-        if (typeof Config !== "undefined" && Config.activeDashboardTab !== undefined && Config.activeDashboardTab !== activeTab) {
+        // Only a *selected* tab is worth persisting. Writing the fallback back
+        // would overwrite the user's choice with the fallback and lose it as soon
+        // as the tab becomes available again.
+        if (typeof Config === "undefined" || Config.activeDashboardTab === undefined) return;
+        if (!root.visibleTabs.some(t => t.id === root.activeTab)) return;
+        if (Config.activeDashboardTab !== activeTab) {
             Config.activeDashboardTab = activeTab;
         }
     }
@@ -94,14 +120,7 @@ Item {
         id: dropdownHover
     }
 
-    readonly property var tabs: [
-        { id: "dashboard", label: "Dashboard", icon: "grid_view" },
-        { id: "media", label: "Media", icon: "queue_music" },
-        { id: "performance", label: "Performance", icon: "speed" },
-        { id: "workspaces", label: "Workspaces", icon: "workspaces" },
-        { id: "downloads", label: "Downloads", icon: "download" },
-        { id: "ai", label: "AI Quotas", icon: "auto_awesome" }
-    ]
+    readonly property var tabs: root.visibleTabs
 
     ColumnLayout {
         id: cardLayout
@@ -245,16 +264,14 @@ Item {
                 radius: 1.5
                 color: Colors.primary
 
+                // Position within the *rendered* bar: the indicator has to sit
+                // under the chip that is selected, and the bar is no longer the
+                // fixed six-tab list.
                 readonly property int activeIdx: {
-                    switch (root.activeTab) {
-                        case "dashboard": return 0;
-                        case "media": return 1;
-                        case "performance": return 2;
-                        case "workspaces": return 3;
-                        case "downloads": return 4;
-                        case "ai": return 5;
-                        default: return 0;
+                    for (let i = 0; i < root.tabs.length; ++i) {
+                        if (root.tabs[i].id === root.activeTab) return i;
                     }
+                    return 0;
                 }
 
                 readonly property Item activeTabItem: (tabRepeater.count > activeIdx) ? tabRepeater.itemAt(activeIdx) : null

@@ -866,21 +866,22 @@ PanelWindow {
         ? Math.max(1, root.currentDropH - root.filletR)
         : 0
 
-    // Region probe (opt-in via Config.debugMode). Logs the exact rect handed to
-    // the compositor so a blur-teardown problem can be diagnosed from the shell
-    // log instead of inferred from screenshots. Costs nothing when debug is off.
+    // Region probe (opt-in: `logging.categories.blur` at "debug" or higher). Logs
+    // the exact rect handed to the compositor so a blur-teardown problem can be
+    // diagnosed from the shell log instead of inferred from screenshots. The
+    // guard runs before the string is built, so a quiet level costs one boolean
+    // per change.
     readonly property rect dropdownBlurRect: Qt.rect(
         root.blurRegionActive ? root.dropX : 0,
         0,
         root.blurRegionActive ? root.dropW : 0,
         root.blurRegionActive ? root.blurDropH : 0)
     onDropdownBlurRectChanged: {
-        if (typeof Config !== "undefined" && Config.debugMode) {
-            console.log("[BlurRegion] t=" + Date.now()
-                + " dropdown=" + root.dropdownBlurRect.width + "x" + root.dropdownBlurRect.height.toFixed(1)
-                + " popout=" + (root.blurPopoutActive ? "on" : "off")
-                + " rightEdge=" + (root.blurRightEdgeActive ? "on" : "off"));
-        }
+        if (!Log.debugEnabled("blur")) return;
+        Log.debug("blur", "t=" + Date.now()
+            + " dropdown=" + root.dropdownBlurRect.width + "x" + root.dropdownBlurRect.height.toFixed(1)
+            + " popout=" + (root.blurPopoutActive ? "on" : "off")
+            + " rightEdge=" + (root.blurRightEdgeActive ? "on" : "off"));
     }
 
 
@@ -895,14 +896,15 @@ PanelWindow {
     readonly property rect floatingCardRect: desktopFrame.bottomPopoutSurfaceItem.floatingRect
     readonly property bool blurRightEdgeActive: rightEdgeControlWrapper.offsetProgress > root.blurRegionMinProgress
 
-    // Blur-region audit trail (opt-in via Config.debugMode; no cost when off).
+    // Blur-region audit trail (opt-in: `logging.categories.blur` = "debug"; no
+    // cost when quiet).
     //
     // The compositor blur is the UNION of every region below, so a region that is
     // stale, mis-sized, or lingering shows as frosted glass somewhere the user
     // never opened a drawer - and because blur can only be observed in a
     // screenshot, an intermittent case is very hard to catch after the fact.
-    // Logging every region-driving rect makes such a case self-reporting: with
-    // debugMode on, reproduce it and read the offending rect out of the log.
+    // Logging every region-driving rect makes such a case self-reporting: turn the
+    // category up, reproduce it, and read the offending rect out of the log.
     readonly property var blurDebugRects: {
         const app = appContextMenu;
         const tray = trayContextMenu;
@@ -936,7 +938,7 @@ PanelWindow {
     Timer {
         interval: 700; running: true; repeat: true
         onTriggered: {
-            if (typeof Config === "undefined" || !Config.debugMode) return;
+            if (!Log.debugEnabled("blur")) return;
             root._blurAuditTick++;
             if (root._blurAuditTick % 3 !== 0) return;
             const rects = root.blurDebugRects;
@@ -948,7 +950,7 @@ PanelWindow {
                         + " " + Math.round(r.w) + "x" + Math.round(r.h));
                 }
             }
-            console.log("[BlurAudit] active: " + (active.length ? active.join("  ") : "(none)"));
+            Log.debug("blur", "active: " + (active.length ? active.join("  ") : "(none)"));
         }
     }
 
@@ -999,12 +1001,11 @@ PanelWindow {
         || (Math.abs(rightEdgeControlWrapper.offsetProgress - (Config.rightEdgeControlVisible ? 1.0 : 0.0)) > 0.001)
 
     onIsCommitPumpActiveChanged: {
-        if (typeof Config !== "undefined" && Config.debugMode) {
-            console.log("[CommitPump] isCommitPumpActive=" + isCommitPumpActive
-                + " flushTimer=" + commitFlushTimer.running
-                + " dropProg=" + dropdownContainer.offsetProgress.toFixed(3)
-                + " popProg=" + fusedBottomPopoutWrapper.offsetProgress.toFixed(3));
-        }
+        if (!Log.debugEnabled("commit")) return;
+        Log.debug("commit", "isCommitPumpActive=" + isCommitPumpActive
+            + " flushTimer=" + commitFlushTimer.running
+            + " dropProg=" + dropdownContainer.offsetProgress.toFixed(3)
+            + " popProg=" + fusedBottomPopoutWrapper.offsetProgress.toFixed(3));
     }
 
     onBlurRegionActiveChanged: flushCommitPump(700)
@@ -1136,9 +1137,8 @@ PanelWindow {
     readonly property color glassFill: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.06, 0.08, 0.12, 0.70)
 
     Component.onCompleted: {
-        if (Config.debugMode) {
-            DebugService.log("Shell", "UnifiedShell initialized with Debug Mode active");
-        }
+        Log.debug("shell", "UnifiedShell initialized, disablePlasmaPanels: " + Config.disablePlasmaPanels
+            + ", daemonBin: " + Config.daemonBin + ", pid: " + Quickshell.processId);
     }
 
     // Domain Policy: Central Dropdown Dashboard Hover & Auto-Close

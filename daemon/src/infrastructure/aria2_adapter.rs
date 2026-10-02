@@ -15,7 +15,8 @@
 
 use crate::domain::branding;
 use crate::domain::downloads::{
-    DownloadHistory, DownloadStatus, DownloadTask, NewDownloadOptions, ARIA2_RPC_PORT,
+    DownloadHistory, DownloadStatus, DownloadTask, EngineSettings, NewDownloadOptions,
+    ARIA2_RPC_PORT,
 };
 use crate::domain::ports::DynResult;
 use std::fs;
@@ -109,9 +110,9 @@ pub fn aria2_args(
     session: &PathBuf,
     log: &PathBuf,
     _daemon_bin: &PathBuf,
-    default_dir: &str,
+    settings: &EngineSettings,
 ) -> Vec<String> {
-    let args = vec![
+    let mut args = vec![
         "--enable-rpc=true".into(),
         "--rpc-listen-port".into(),
         ARIA2_RPC_PORT.to_string(),
@@ -119,14 +120,15 @@ pub fn aria2_args(
         format!("--rpc-secret={}", secret),
         "--daemon=true".into(),
         "--continue=true".into(),
-        "--max-concurrent-downloads=5".into(),
-        format!("--dir={}", default_dir),
         format!("--input-file={}", session.display()),
         format!("--save-session={}", session.display()),
         "--save-session-interval=30".into(),
         format!("--log={}", log.display()),
         "--log-level=warn".into(),
     ];
+    // The user's own settings (parallelism, speed cap, destination) come last:
+    // one source of truth for what the engine runs with.
+    args.extend(settings.spawn_args());
     // aria2 requires the session file to exist for --input-file.
     let _ = fs::OpenOptions::new().create(true).write(true).open(session);
     args
@@ -134,7 +136,7 @@ pub fn aria2_args(
 
 /// Spawns aria2c detached when no healthy instance answers. Idempotent:
 /// returns Ok(false) when already running, Ok(true) when (re)started.
-pub fn ensure_running(default_dir: &str) -> DynResult<bool> {
+pub fn ensure_running(settings: &EngineSettings) -> DynResult<bool> {
     let dir = downloads_state_dir();
     fs::create_dir_all(&dir)?;
     let session = session_file();
@@ -151,8 +153,7 @@ pub fn ensure_running(default_dir: &str) -> DynResult<bool> {
     let _ = fs::remove_file(lock_file());
 
     let log = dir.join("aria2.log");
-    let home_dl = default_dir.to_string();
-    let args = aria2_args(&secret, &session, &log, &PathBuf::new(), &home_dl);
+    let args = aria2_args(&secret, &session, &log, &PathBuf::new(), settings);
 
     let mut cmd = Command::new("aria2c");
     cmd.args(&args);
@@ -170,7 +171,13 @@ pub fn ensure_running(default_dir: &str) -> DynResult<bool> {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
     }
-    cmd.spawn()?;
+    // `--daemon=true` makes the process we spawn fork a detached child and exit,
+    // so this child is short-lived: reap it, or every engine start leaves a
+    // zombie in the daemon's process table for the rest of the session.
+    let mut child = cmd.spawn()?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
 
     // Wait briefly for the RPC port to answer (bounded, off the async runtime).
     for _ in 0..20 {
@@ -424,17 +431,64 @@ pub fn is_aria2_installed() -> bool {
         .unwrap_or(false)
 }
 
+/// The installed engine's version, read from its own probe output.
+pub fn engine_version() -> Option<String> {
+    let output = Command::new("aria2c").arg("--version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    crate::domain::downloads::parse_aria2_version(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// Whether the desktop's privilege helper is usable.
+///
+/// `pkexec` is what turns an install into the native password dialog (the
+/// session's polkit agent draws it). Asking it for its version proves the binary
+/// runs without needing a prompt; a misconfigured helper (not setuid root) is
+/// treated exactly like a missing one, so the caller guides instead of failing.
+pub fn pkexec_available() -> bool {
+    Command::new("pkexec")
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+/// Runs the package manager through polkit, returning the helper's exit code.
+///
+/// The dialog is drawn by the session's polkit agent, so this call blocks until
+/// the user answers it. stdio is inherited: when the prompt cannot be shown, the
+/// helper's own message has to reach the journal.
+pub fn run_privileged_install(argv: &[String]) -> DynResult<i32> {
+    let status = Command::new("pkexec").args(argv).status()?;
+    Ok(status.code().unwrap_or(-1))
+}
+
+/// Pushes engine-wide options to a running engine.
+///
+/// A live `changeGlobalOption` is what makes a setting apply to the downloads
+/// already running, instead of only to the next time the engine starts.
+pub fn apply_global_options(secret: &str, settings: &EngineSettings) -> DynResult<()> {
+    rpc_call(
+        secret,
+        "changeGlobalOption",
+        serde_json::Value::Array(vec![serde_json::Value::Object(settings.to_rpc_map())]),
+    )?;
+    Ok(())
+}
+
 /// Derives the tailored installation command for the current distribution.
 pub fn aria2_install_command() -> String {
     let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
-    match crate::domain::voice::package_manager_for_os_release(&os_release) {
-        crate::domain::voice::PackageManager::Pacman => "sudo pacman -S aria2".to_string(),
-        crate::domain::voice::PackageManager::Apt => "sudo apt install aria2".to_string(),
-        crate::domain::voice::PackageManager::Dnf => "sudo dnf install aria2".to_string(),
-        crate::domain::voice::PackageManager::Zypper => "sudo zypper install aria2".to_string(),
-        crate::domain::voice::PackageManager::Nix => "nix-env -iA nixpkgs.aria2".to_string(),
-        crate::domain::voice::PackageManager::Unknown => "https://aria2.github.io/".to_string(),
-    }
+    let package_manager = crate::domain::voice::package_manager_for_os_release(&os_release);
+    // A distribution we cannot name a package for gets the upstream build, never
+    // an invented command.
+    crate::domain::downloads::aria2_install_command(package_manager)
+        .unwrap_or("https://aria2.github.io/")
+        .to_string()
 }
 
 

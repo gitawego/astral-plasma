@@ -10,6 +10,58 @@ pub struct ProvisioningStatus {
     /// implementation, so provisioning neither requires nor installs it.
     pub has_mcp_support: bool,
     pub has_subagents: bool,
+    /// Version the installed `pi` reports (`pi --version`).
+    pub pi_version: Option<String>,
+}
+
+/// The oldest pi this integration supports.
+///
+/// 0.99 brought built-in MCP, which the harness relies on. Newer versions are
+/// reported as they are - nothing here pins or downgrades pi, it only decides
+/// whether the Copilot should suggest `pi update self`.
+pub const PI_MIN_VERSION: &str = "0.99.0";
+
+/// Version from `pi --version` (`1.0.0`).
+///
+/// Tolerant on purpose: the line may carry a prefix or a build suffix, and any
+/// decoration must not hide the version it names.
+pub fn parse_pi_version(version_output: &str) -> Option<String> {
+    let mut token = String::new();
+    for ch in version_output.chars() {
+        if ch.is_ascii_digit() || ch == '.' || ch == '-' {
+            token.push(ch);
+        } else if !token.is_empty() {
+            break;
+        }
+    }
+    let version = token.trim_matches(|c| c == '.' || c == '-');
+    let numbers = version.split('-').next().unwrap_or("");
+    let parts: Vec<&str> = numbers.split('.').collect();
+    let numeric = parts.len() >= 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
+    numeric.then(|| version.to_string())
+}
+
+/// Is `installed` at least `floor`? Compares the dotted numbers, ignoring a
+/// pre-release suffix (so `1.0.0-rc.1` still counts as 1.0.0 for the floor).
+pub fn version_at_least(installed: &str, floor: &str) -> bool {
+    let parse = |text: &str| -> Vec<u32> {
+        text.split('-')
+            .next()
+            .unwrap_or("")
+            .split('.')
+            .map(|part| part.parse::<u32>().unwrap_or(0))
+            .collect()
+    };
+    let have = parse(installed);
+    let want = parse(floor);
+    for i in 0..want.len().max(have.len()) {
+        let a = *have.get(i).unwrap_or(&0);
+        let b = *want.get(i).unwrap_or(&0);
+        if a != b {
+            return a > b;
+        }
+    }
+    true
 }
 
 /// Companion packages Astral Plasma provisions for the pi harness.
@@ -32,6 +84,11 @@ impl PiPackages {
     }
 
     /// Every package entry configured in a pi settings file.
+    ///
+    /// pi writes plain strings (`"npm:pi-subagents"`); its documentation also
+    /// shows the object form (`{ "source": "npm:pi-subagents" }`). Both are read,
+    /// or an already-installed package would be reported missing and reinstalled
+    /// on every provisioning pass.
     pub fn configured_packages(settings_path: &Path) -> Vec<String> {
         let Ok(content) = std::fs::read_to_string(settings_path) else {
             return Vec::new();
@@ -44,7 +101,14 @@ impl PiPackages {
             .map(|entries| {
                 entries
                     .iter()
-                    .filter_map(|entry| entry.as_str().map(str::to_string))
+                    .filter_map(|entry| match entry {
+                        serde_json::Value::String(name) => Some(name.clone()),
+                        serde_json::Value::Object(map) => map
+                            .get("source")
+                            .and_then(|source| source.as_str())
+                            .map(str::to_string),
+                        _ => None,
+                    })
                     .collect()
             })
             .unwrap_or_default()
@@ -166,6 +230,19 @@ impl RuntimeProvisioner {
             .unwrap_or(false)
     }
 
+    /// Version the installed binary reports (`pi --version`).
+    ///
+    /// Probed, never assumed: Astral does not pin pi, so reporting the version is
+    /// the only honest answer to "which harness am I running?".
+    pub fn probe_pi_version(pi_bin: Option<&Path>) -> Option<String> {
+        let bin = pi_bin?;
+        let output = Command::new(bin).arg("--version").output().ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        parse_pi_version(&String::from_utf8_lossy(&output.stdout))
+    }
+
     /// Ensures the companion packages Astral Plasma relies on are installed.
     /// MCP is built in and must never be installed as a separate package: the
     /// legacy `pi-mcp-adapter` shadows the built-in implementation.
@@ -193,6 +270,7 @@ impl RuntimeProvisioner {
 
         ProvisioningStatus {
             has_mcp_support: Self::pi_supports_mcp(pi.as_deref()),
+            pi_version: Self::probe_pi_version(pi.as_deref()),
             pi_executable: pi,
             hermes_executable: hermes,
             has_subagents: packages.subagents,

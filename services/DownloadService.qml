@@ -43,7 +43,41 @@ Singleton {
     }
     property bool ariaAvailable: true
     property string ariaInstallCommand: ""
+    /// Engine version the daemon reported ("1.37.0"), empty when absent.
+    property string ariaVersion: ""
+    /// Whether the native authentication dialog can be raised for an install.
+    /// `false` means the shell guides with the manual command instead.
+    property bool ariaInstallable: false
     property string lastError: ""
+
+    // --- Native install flow (settings page) ---
+    // "idle" | "running" | "installed" | "dismissed" | "no_agent" | "no_package" | "failed"
+    property string installState: "idle"
+    property string installMessage: ""
+
+    /// Install aria2 through the desktop's own authentication dialog, then
+    /// re-probe: the snapshot's `aria_available`/`aria_version` are what the tab
+    /// policy and the settings page read.
+    function installEngine() {
+        if (installProc.running) return;
+        root.installState = "running";
+        root.installMessage = "";
+        installProc.command = [root.daemonBin, "downloads", "install-engine"];
+        installProc.running = true;
+    }
+
+    /// Push the engine-wide settings to the running engine, so a change in the
+    /// settings page applies to the downloads that are already queued.
+    function applyEngineSettings() {
+        if (!root.ariaAvailable) return;
+        applyProc.command = [
+            root.daemonBin, "downloads", "apply-settings",
+            "--max-concurrent", String(root.maxConcurrent),
+            "--limit-kbps", String(root.speedLimitKbps),
+            "--dir", root.defaultDir
+        ];
+        applyProc.running = true;
+    }
 
     // Completion edge detection: daemon emits change-only lines, so a gid
     // moving active/waiting -> stopped+complete fires exactly once here.
@@ -62,6 +96,12 @@ Singleton {
         ? Config.downloadsDir : ""
     readonly property int defaultSplit: (typeof Config !== "undefined" && Config.downloadsSplit)
         ? Config.downloadsSplit : 4
+    /// Files downloaded in parallel (engine-wide setting).
+    readonly property int maxConcurrent: (typeof Config !== "undefined" && Config.downloadsMaxConcurrent)
+        ? Config.downloadsMaxConcurrent : 5
+    /// Global cap in KiB/s; 0 = unlimited.
+    readonly property int speedLimitKbps: (typeof Config !== "undefined" && Config.downloadsSpeedLimit !== undefined)
+        ? Config.downloadsSpeedLimit : 0
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
     readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
@@ -72,6 +112,11 @@ Singleton {
             cmd.push("--dir", root.defaultDir);
         }
         cmd.push("--split", String(root.defaultSplit || 4));
+        // Engine-wide settings travel with the spawn: this is the only moment
+        // aria2 reads them from argv (a later change is pushed with
+        // applyEngineSettings).
+        cmd.push("--max-concurrent", String(root.maxConcurrent));
+        cmd.push("--limit-kbps", String(root.speedLimitKbps));
         return cmd;
     }
 
@@ -114,6 +159,53 @@ Singleton {
             if (!watchProc.running) {
                 watchProc.command = root.watchCommand();
                 watchProc.running = true;
+            }
+        }
+    }
+
+    // Native install: `install-engine` prints one JSON report and exits. It is
+    // long-lived on purpose - it blocks inside polkit until the user answers the
+    // password dialog - so it runs on its own Process, never on the command one.
+    Process {
+        id: installProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+                if (!text) return;
+                try {
+                    const report = JSON.parse(text);
+                    root.installState = String(report.outcome || "failed");
+                    root.installMessage = String(report.message || "");
+                } catch (e) {
+                    root.installState = "failed";
+                    root.installMessage = text;
+                }
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const err = this.text.trim();
+                if (err && root.installState === "running") {
+                    root.installState = "failed";
+                    root.installMessage = err;
+                }
+            }
+        }
+    }
+
+    // Live reconfiguration of the running engine (max concurrent, speed cap, dir).
+    Process {
+        id: applyProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+                if (!text) return;
+                try {
+                    const report = JSON.parse(text);
+                    if (report.reason) root.lastError = String(report.reason);
+                } catch (e) {
+                    root.lastError = text;
+                }
             }
         }
     }
@@ -222,6 +314,14 @@ Singleton {
         if (d.aria_install_command !== undefined && d.aria_install_command !== null) {
             root.ariaInstallCommand = String(d.aria_install_command);
         }
+        if (d.aria_version !== undefined && d.aria_version !== null) {
+            root.ariaVersion = String(d.aria_version);
+        }
+        // The engine is present: an install just finished somewhere.
+        if (root.ariaAvailable && root.installState === "running") {
+            root.installState = "installed";
+        }
+        if (d.aria_installable !== undefined) root.ariaInstallable = Boolean(d.aria_installable);
         root.snapshotChanged();
     }
 

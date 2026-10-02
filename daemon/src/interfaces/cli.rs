@@ -697,13 +697,15 @@ pub async fn run_cli() -> DynResult<()> {
         }
         "downloads" => {
             use crate::application::download_service::{Aria2DownloadsPort, DownloadsUseCase};
-            use crate::domain::downloads::{clamp_split, NewDownloadOptions};
+            use crate::domain::downloads::{clamp_split, EngineSettings, NewDownloadOptions};
             use std::sync::Arc;
             let sub = args.get(2).map(|s| s.as_str()).unwrap_or("snapshot");
             // Settings-supplied defaults (QML passes --dir/--split); the
             // use case fills the rest (~/Downloads, split 4).
             let mut opt_dir: Option<String> = None;
             let mut opt_split: Option<u32> = None;
+            let mut opt_max_concurrent: Option<u32> = None;
+            let mut opt_limit_kbps: Option<u64> = None;
             let mut positional: Vec<String> = Vec::new();
             let mut i = 3;
             while i < args.len() {
@@ -720,20 +722,36 @@ pub async fn run_cli() -> DynResult<()> {
                             i += 1;
                         }
                     }
+                    "--max-concurrent" => {
+                        if let Some(v) = args.get(i + 1).and_then(|s| s.parse::<u32>().ok()) {
+                            opt_max_concurrent = Some(v);
+                            i += 1;
+                        }
+                    }
+                    "--limit-kbps" => {
+                        if let Some(v) = args.get(i + 1).and_then(|s| s.parse::<u64>().ok()) {
+                            opt_limit_kbps = Some(v);
+                            i += 1;
+                        }
+                    }
                     other => positional.push(other.to_string()),
                 }
                 i += 1;
             }
-            let use_case = match (opt_dir.clone(), opt_split) {
-                (None, None) => DownloadsUseCase::new(Arc::new(Aria2DownloadsPort)),
-                _ => DownloadsUseCase::with_defaults(
-                    Arc::new(Aria2DownloadsPort),
-                    opt_dir.clone().unwrap_or_else(|| {
-                        crate::domain::branding::home_dir().join("Downloads").to_string_lossy().to_string()
-                    }),
-                    opt_split.unwrap_or(crate::domain::downloads::DEFAULT_SPLIT),
-                ),
-            };
+            let resolved_dir = opt_dir.clone().unwrap_or_else(|| {
+                crate::domain::branding::home_dir().join("Downloads").to_string_lossy().to_string()
+            });
+            let engine = EngineSettings::clamped(
+                opt_max_concurrent.unwrap_or(crate::domain::downloads::DEFAULT_CONCURRENT_DOWNLOADS),
+                opt_limit_kbps.unwrap_or(0),
+                &resolved_dir,
+            );
+            let use_case = DownloadsUseCase::with_engine(
+                Arc::new(Aria2DownloadsPort),
+                resolved_dir,
+                opt_split.unwrap_or(crate::domain::downloads::DEFAULT_SPLIT),
+                engine,
+            );
             match sub {
                 // One-shot state query: the `watch` stream tells QML *when*
                 // to re-run this, so QML never polls on a timer.
@@ -741,10 +759,22 @@ pub async fn run_cli() -> DynResult<()> {
                     let _ = use_case.ensure_running();
                     let snap = use_case.snapshot()?;
                     println!("{}", serde_json::to_string(&snap)?);
-                }
-                "ensure" => {
+                }                "ensure" => {
                     let started = use_case.ensure_running()?;
                     println!(r#"{{"success":true,"started":{}}}"#, started);
+                }
+                // The settings page asks what the engine is and how it could be
+                // installed; the `install-engine` verb then performs the native
+                // (polkit) install and reports what happened.
+                "engine-status" => {
+                    println!("{}", serde_json::to_string(&use_case.engine_status()?)?);
+                }
+                "install-engine" => {
+                    println!("{}", serde_json::to_string(&use_case.install_engine()?)?);
+                }
+                "apply-settings" => {
+                    let report = use_case.apply_engine_settings(use_case.engine_settings())?;
+                    println!("{}", serde_json::to_string(&report)?);
                 }
                 "add" => {
                     let _ = use_case.ensure_running();
@@ -799,7 +829,7 @@ pub async fn run_cli() -> DynResult<()> {
                     crate::application::download_service::run_downloads_watch(use_case).await?;
                 }
                 _ => {
-                    eprintln!("Usage: astral-plasma downloads <snapshot|ensure|add|pause|resume|cancel|cancel-delete|remove|retry|purge|watch> [args...]");
+                    eprintln!("Usage: astral-plasma downloads <snapshot|ensure|engine-status|install-engine|apply-settings|add|pause|resume|cancel|cancel-delete|remove|retry|purge|watch> [args...]");
                     std::process::exit(2);
                 }
             }
@@ -1582,9 +1612,23 @@ pub async fn run_cli() -> DynResult<()> {
                         "hermes_executable": st.hermes_executable.map(|p| p.to_string_lossy().to_string()),
                         "has_mcp_support": st.has_mcp_support,
                         "has_subagents": st.has_subagents,
+                        "pi_version": st.pi_version,
                         "status": "ok"
                     });
                     println!("{}", serde_json::to_string(&payload)?);
+                }
+                // Updating the harness the user runs: the same `pi update` their
+                // terminal would run, reported back as JSON (version before and
+                // after, and everything pi printed).
+                "update-pi" => {
+                    use crate::application::assistant_service::PiUpdateTarget;
+                    let target = match args.get(3).map(|a| a.as_str()) {
+                        Some("--extensions") => PiUpdateTarget::Extensions,
+                        Some("--models") => PiUpdateTarget::Models,
+                        _ => PiUpdateTarget::Pi,
+                    };
+                    let report = assistant_svc.update_harness(target)?;
+                    println!("{}", serde_json::to_string(&report)?);
                 }
                 "exec" => {
                     if let Some(cmd) = args.get(3) {
@@ -1663,7 +1707,7 @@ pub async fn run_cli() -> DynResult<()> {
                     turn_result?;
                 }
                 _ => {
-                    eprintln!("Usage: astral-plasma assistant <status|skills|sync-skills|crashes|provision|exec|chat> [args...]");
+                    eprintln!("Usage: astral-plasma assistant <status|skills|sync-skills|crashes|provision|exec|chat|update-pi [--extensions|--models]> [args...]");
                 }
             }
         }

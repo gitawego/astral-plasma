@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../config"
+import "PiUpdateMessage.js" as PiUpdateMessage
 import "../services"
 
 Singleton {
@@ -64,8 +65,11 @@ Singleton {
         { "id": "minimax-cn", "name": "MiniMax CN", "models": ["MiniMax-M2.7", "MiniMax-M3"] },
         { "id": "ollama", "name": "Local Ollama", "models": ["llama3.2", "mistral", "deepseek-r1"] }
     ]
+    // Fallback shown until the daemon reports: the harness version is *probed*
+    // there (`pi --version`), so this list must never carry one - a hardcoded
+    // version lies about the user's installation the moment pi is upgraded.
     property var availableHarnesses: [
-        { "id": "pi", "name": "Pi Agent", "is_available": true, "version": "0.87.1", "is_default": true },
+        { "id": "pi", "name": "Pi Agent", "is_available": true, "version": "", "is_default": true },
         { "id": "hermes", "name": "Hermes Agent", "is_available": false, "version": null, "is_default": false }
     ]
     property var discoveredSkills: []
@@ -844,6 +848,102 @@ Singleton {
 
     function refreshStatus() {
         runProc(statusProc, [daemonBin, "assistant", "status"]);
+    }
+
+    // -----------------------------------------------------------------------
+    // Harness updates (Settings -> AI -> Pi Harness)
+    //
+    // The Copilot runs on the user's own pi installation, so "update it" is the
+    // same `pi update` their terminal would run - run by the daemon, reported
+    // back as a version before/after plus pi's own output. The shell never
+    // installs a fixed version: it reports what happened.
+    // -----------------------------------------------------------------------
+
+    /** The `pi` harness entry as the daemon reports it. */
+    readonly property var piHarness: {
+        const list = root.availableHarnesses;
+        if (!list || !Array.isArray(list)) return null;
+        for (let i = 0; i < list.length; ++i) {
+            if (list[i] && list[i].id === "pi") return list[i];
+        }
+        return null;
+    }
+    /** Installed harness version ("1.0.0"), empty until the daemon reports. */
+    readonly property string harnessVersion: (root.piHarness && root.piHarness.version)
+        ? String(root.piHarness.version) : ""
+    readonly property bool harnessInstalled: root.piHarness ? Boolean(root.piHarness.is_available) : false
+    readonly property string harnessPath: (root.piHarness && root.piHarness.path)
+        ? String(root.piHarness.path) : ""
+
+    /** "idle" | "running" | "done" | "failed" */
+    property string harnessUpdateState: "idle"
+    /** "pi" | "extensions" | "models" - which update the message describes. */
+    property string harnessUpdateTarget: ""
+    property string harnessUpdateMessage: ""
+    /** pi's own output, shown as the detail line. */
+    property string harnessUpdateDetail: ""
+
+    /** Human line for one update report (see services/PiUpdateMessage.js). */
+    function describeHarnessUpdate(report) {
+        return PiUpdateMessage.describe(report);
+    }
+
+    /** Last non-empty line of pi's output, for the detail under the message. */
+    function harnessOutputTail(output) {
+        return PiUpdateMessage.tail(output);
+    }
+
+    /** Update the harness, its packages, or its model catalogs. */
+    function updateHarness(target) {
+        if (harnessUpdateProc.running) return;
+        const which = target || "pi";
+        const argv = [daemonBin, "assistant", "update-pi"];
+        if (which === "extensions") argv.push("--extensions");
+        else if (which === "models") argv.push("--models");
+        root.harnessUpdateTarget = which;
+        root.harnessUpdateState = "running";
+        root.harnessUpdateMessage = "";
+        root.harnessUpdateDetail = "";
+        runProc(harnessUpdateProc, argv);
+    }
+
+    /** Convenience wrappers for the three buttons. */
+    function updatePi() { updateHarness("pi"); }
+    function updatePiPackages() { updateHarness("extensions"); }
+    function refreshPiModelCatalogs() { updateHarness("models"); }
+
+    Process {
+        id: harnessUpdateProc
+        property bool discardOutput: false
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (this.discardOutput) return;
+                const text = this.text.trim();
+                if (text.length === 0) return;
+                try {
+                    const report = JSON.parse(text);
+                    root.harnessUpdateState = "done";
+                    root.harnessUpdateMessage = root.describeHarnessUpdate(report);
+                    root.harnessUpdateDetail = root.harnessOutputTail(report.output);
+                    // The version the daemon probed after the update is the truth
+                    // from here on.
+                    refreshStatus();
+                } catch (e) {
+                    root.harnessUpdateState = "failed";
+                    root.harnessUpdateMessage = text;
+                }
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const err = this.text.trim();
+                if (err && root.harnessUpdateState === "running") {
+                    root.harnessUpdateState = "failed";
+                    root.harnessUpdateMessage = err;
+                    root.harnessUpdateDetail = "";
+                }
+            }
+        }
     }
 
     function refreshSkills() {

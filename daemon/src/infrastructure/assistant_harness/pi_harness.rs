@@ -137,6 +137,53 @@ impl PiHarness {
     }
 }
 
+// --------------------------------------------------------------------------
+// Invocation contract
+// --------------------------------------------------------------------------
+
+/// argv for one non-interactive JSON turn.
+///
+/// Pure, so the 1.0 rules are pinned by tests instead of by a live provider:
+///
+/// * `--provider` is only passed together with `--model`. pi 1.0 fails a run
+///   whose provider has no model ([#10236](https://github.com/earendil-works/pi/issues/10236)),
+///   and the provider is not lost by omitting it: Astral writes
+///   `defaultProvider`/`defaultModel` into pi's settings.
+/// * Empty strings mean "not configured" and never become arguments.
+/// * `--skill` is added for an existing skills directory, so the Copilot sees
+///   the same skills the user has.
+pub fn pi_argv(
+    prompt: &str,
+    provider: Option<&str>,
+    model: Option<&str>,
+    skills_dir: Option<&Path>,
+) -> Vec<String> {
+    let mut argv = vec![
+        "-p".to_string(),
+        prompt.to_string(),
+        "--mode".to_string(),
+        "json".to_string(),
+    ];
+
+    let model = model.map(str::trim).filter(|value| !value.is_empty());
+    let provider = provider.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(model) = model {
+        argv.push("--model".to_string());
+        argv.push(model.to_string());
+        if let Some(provider) = provider {
+            argv.push("--provider".to_string());
+            argv.push(provider.to_string());
+        }
+    }
+
+    if let Some(dir) = skills_dir.filter(|dir| dir.is_dir()) {
+        argv.push("--skill".to_string());
+        argv.push(dir.to_string_lossy().to_string());
+    }
+
+    argv
+}
+
 impl PiHarness {
     pub fn harness_id(&self) -> &'static str {
         "pi"
@@ -156,7 +203,9 @@ impl PiHarness {
             id: "pi".to_string(),
             name: "Pi Agent".to_string(),
             is_available: self.executable.is_some(),
-            version: Some("0.87.1".to_string()),
+            // Probed, not pinned: the harness is the user's own pi installation,
+            // so the reported version follows whatever they have installed.
+            version: RuntimeProvisioner::probe_pi_version(self.executable.as_deref()),
             is_default: true,
             path: path_str,
         }
@@ -300,7 +349,7 @@ impl PiHarness {
         result
     }
 
-    pub fn parse_pi_json_event(line: &str) -> Option<Vec<AssistantEvent>> {
+pub fn parse_pi_json_event(line: &str) -> Option<Vec<AssistantEvent>> {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with("[pi-") {
             return None;
@@ -392,29 +441,12 @@ impl PiHarness {
         };
 
         let mut cmd = Command::new(exe);
-        cmd.arg("-p");
-        cmd.arg(prompt);
-        cmd.arg("--mode").arg("json");
-
-        if let Some(p) = provider {
-            if !p.is_empty() {
-                cmd.arg("--provider").arg(p);
-            }
-        }
-        if let Some(m) = model {
-            if !m.is_empty() {
-                cmd.arg("--model").arg(m);
-            }
-        }
-
-        // Add built-in skills directory
+        // The user's own skills directory, when it exists.
         let home = std::env::var("HOME").unwrap_or_default();
-        if !home.is_empty() {
-            let user_skills = format!("{}/.agents/skills", home);
-            if Path::new(&user_skills).is_dir() {
-                cmd.arg("--skill").arg(user_skills);
-            }
-        }
+        let skills_dir = (!home.is_empty())
+            .then(|| std::path::PathBuf::from(format!("{}/.agents/skills", home)))
+            .filter(|dir| dir.is_dir());
+        cmd.args(pi_argv(prompt, provider, model, skills_dir.as_deref()));
 
         // Explicitly disconnect stdin to prevent Node.js / Pi readline hanging on open pipes
         cmd.stdin(Stdio::null());

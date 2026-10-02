@@ -116,7 +116,11 @@ ShellRoot {
                 });
             }
         }
-        function triggerMultiActivity(agent1: string, model1: string, name1: string, color1: string, tokens1: real, agent2: string, model2: string, name2: string, color2: string, tokens2: real, rate: real): void {
+        // Quickshell's IPC exposes at most 10 arguments per function, and a
+        // function above that limit is dropped silently. `rate` therefore keeps
+        // the default the body already applies when it is absent (2.0), instead
+        // of being an 11th parameter that made the whole endpoint unusable.
+        function triggerMultiActivity(agent1: string, model1: string, name1: string, color1: string, tokens1: real, agent2: string, model2: string, name2: string, color2: string, tokens2: real): void {
             if (typeof AiActivityService !== "undefined") {
                 AiActivityService.applyActivity({
                     agent: agent1,
@@ -126,7 +130,7 @@ ShellRoot {
                     brand_icon: "token",
                     is_active: true,
                     intensity: 1.0,
-                    request_rate: (rate !== undefined) ? rate : 2.0,
+                    request_rate: 2.0,
                     token_rate: (tokens1 + tokens2),
                     recent_tokens: (tokens1 + tokens2),
                     active_agents: [
@@ -136,7 +140,7 @@ ShellRoot {
                             display_name: name1,
                             brand_color: color1,
                             brand_icon: "auto_awesome",
-                            request_rate_rpm: (rate !== undefined) ? rate / 2 : 1.0,
+                            request_rate_rpm: 1.0,
                             token_rate_tpm: tokens1,
                             recent_tokens: tokens1
                         },
@@ -146,7 +150,7 @@ ShellRoot {
                             display_name: name2,
                             brand_color: color2,
                             brand_icon: "psychology",
-                            request_rate_rpm: (rate !== undefined) ? rate / 2 : 1.0,
+                            request_rate_rpm: 1.0,
                             token_rate_tpm: tokens2,
                             recent_tokens: tokens2
                         }
@@ -465,8 +469,9 @@ ShellRoot {
     }
 
     Component.onCompleted: {
-        if (Config.debugMode) {
-            console.log("[shell.qml] onCompleted, disablePlasmaPanels:", Config.disablePlasmaPanels, "daemonBin:", Config.daemonBin, "pid:", Quickshell.processId);
+        if (Log.debugEnabled("shell")) {
+            Log.debug("shell", "onCompleted, disablePlasmaPanels: " + Config.disablePlasmaPanels
+                + ", daemonBin: " + Config.daemonBin + ", pid: " + Quickshell.processId);
         }
         if (Config.disablePlasmaPanels && DesktopSessionFacade.profile === "kde") {
             const target = (typeof Config.disablePlasmaPanels === "string") ? Config.disablePlasmaPanels : "all";
@@ -483,8 +488,8 @@ ShellRoot {
     }
 
     Component.onDestruction: {
-        if (Config.debugMode) {
-            console.log("[shell.qml] onDestruction, autoRestorePlasmaOnExit:", Config.autoRestorePlasmaOnExit);
+        if (Log.debugEnabled("shell")) {
+            Log.debug("shell", "onDestruction, autoRestorePlasmaOnExit: " + Config.autoRestorePlasmaOnExit);
         }
         // No restore here: onDestruction also runs for a *reload*, which is not
         // the user quitting. The daemon's watchdog supervises this process and

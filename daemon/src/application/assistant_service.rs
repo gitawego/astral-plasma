@@ -16,6 +16,58 @@ pub struct AssistantService {
     sessions_dir: Option<PathBuf>,
 }
 
+/// What `pi update` should update.
+///
+/// Two knobs, because they answer different questions: `pi` moves the harness
+/// itself, `extensions` refreshes the companion packages and model catalogs
+/// (which do not change the pi version, so their update is never reported as a
+/// version bump).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PiUpdateTarget {
+    Pi,
+    Extensions,
+    /// Refresh the model catalogs only (`pi update --models`).
+    Models,
+}
+
+impl PiUpdateTarget {
+    /// Machine name used in the report and the CLI (`--extensions`).
+    pub fn id(self) -> &'static str {
+        match self {
+            PiUpdateTarget::Pi => "pi",
+            PiUpdateTarget::Extensions => "extensions",
+            PiUpdateTarget::Models => "models",
+        }
+    }
+}
+
+/// What one harness update did.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct PiUpdateReport {
+    pub target: String,
+    /// Version before the update (probed, `None` when pi could not report one).
+    pub before: Option<String>,
+    pub after: Option<String>,
+    /// Version movement, or `None` when a version is not the point of this
+    /// update (extensions): the output is the evidence there.
+    pub changed: Option<bool>,
+    /// Everything pi printed, stdout and stderr, for the UI to show.
+    pub output: String,
+}
+
+/// argv for `pi update …`.
+///
+/// pi 1.0's target table (`docs/cli.md`): the bare `pi update` updates *pi only*
+/// and explicitly skips extensions, so every target names its own flag rather
+/// than relying on that default.
+pub fn pi_update_argv(target: PiUpdateTarget) -> Vec<&'static str> {
+    match target {
+        PiUpdateTarget::Pi => vec!["update", "self"],
+        PiUpdateTarget::Extensions => vec!["update", "--extensions"],
+        PiUpdateTarget::Models => vec!["update", "--models"],
+    }
+}
+
 impl Default for AssistantService {
     fn default() -> Self {
         Self::new()
@@ -42,6 +94,66 @@ impl AssistantService {
     /// Returns list of available harnesses and their status
     pub fn list_harnesses(&self) -> Vec<HarnessInfo> {
         vec![self.pi.harness_info(), self.hermes.harness_info()]
+    }
+
+    /// Update the user's pi installation (the harness the Copilot runs on).
+    ///
+    /// Astral never pins pi, so "keep it current" is the user's call; this is the
+    /// same `pi update` their terminal would run, with the result reported back
+    /// instead of scrolling past. The version is probed before and after, because
+    /// "did anything happen?" is the only question a user has about an update.
+    pub fn update_harness(&self, target: PiUpdateTarget) -> Result<PiUpdateReport, String> {
+        Self::update_harness_with(RuntimeProvisioner::locate_pi().as_deref(), target)
+    }
+
+    /// [`Self::update_harness`] against a specific binary (tests, or a pi found
+    /// outside `PATH`).
+    pub fn update_harness_with(pi: Option<&Path>, target: PiUpdateTarget) -> Result<PiUpdateReport, String> {
+        let Some(bin) = pi else {
+            return Err(
+                "pi is not installed. Install it with: npm install -g @earendil-works/pi-coding-agent"
+                    .to_string(),
+            );
+        };
+
+        let before = RuntimeProvisioner::probe_pi_version(Some(bin));
+        let output = std::process::Command::new(bin)
+            .args(pi_update_argv(target))
+            .output()
+            .map_err(|e| format!("Failed to run `pi update`: {e}"))?;
+
+        let mut text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if !stderr.is_empty() {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text.push_str(&stderr);
+        }
+        if !output.status.success() {
+            return Err(format!(
+                "`pi update {}` failed ({}): {}",
+                pi_update_argv(target).join(" "),
+                output.status,
+                if text.is_empty() { "no output" } else { text.as_str() }
+            ));
+        }
+
+        let after = RuntimeProvisioner::probe_pi_version(Some(bin));
+        let changed = match target {
+            PiUpdateTarget::Pi => Some(before != after),
+            // Neither an extensions nor a catalog update moves the pi version;
+            // claiming it did (or did not) from the version would be a guess.
+            PiUpdateTarget::Extensions | PiUpdateTarget::Models => None,
+        };
+
+        Ok(PiUpdateReport {
+            target: target.id().to_string(),
+            before,
+            after,
+            changed,
+            output: text,
+        })
     }
 
     /// Returns the active harness according to preference

@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../dashboard/tabs/DashboardTabs.js" as DashboardTabs
 
 Singleton {
     id: root
@@ -85,7 +86,13 @@ Singleton {
                 { "id": "dashboard", "label": "Dashboard", "enabled": true },
                 { "id": "media", "label": "Media", "enabled": true },
                 { "id": "performance", "label": "Performance", "enabled": true },
-                { "id": "workspaces", "label": "Workspaces", "enabled": true }
+                { "id": "workspaces", "label": "Workspaces", "enabled": true },
+                // The Downloads tab needs the aria2 engine: it is hidden while
+                // the engine is missing, whatever this flag says, and the
+                // settings page offers to install the engine instead of
+                // enabling a tab that could only show an install banner.
+                { "id": "downloads", "label": "Downloads", "enabled": true },
+                { "id": "ai", "label": "AI Quotas", "enabled": true }
             ],
             "weather": {
                 "location": "auto",
@@ -113,18 +120,40 @@ Singleton {
             "dockPillMode": "dynamic"
         },
         // Download manager: "" dir = ~/Downloads; split clamped 1..16.
+        // `maxConcurrentDownloads` (1..16) and `speedLimitKbps` (0 = unlimited)
+        // are the engine-wide settings: they are passed to aria2c when it starts
+        // and pushed to a running engine when they change.
         "downloads": {
             "dir": "",
             "split": 4,
+            "maxConcurrentDownloads": 5,
+            "speedLimitKbps": 0,
             "borderEffect": true
+        },
+        // Diagnostic verbosity. `level` is the floor for every category
+        // (off, error, warn, info, debug, trace); `categories` tunes one
+        // category on its own, e.g. { "blur": "debug" }. The
+        // ASTRAL_PLASMA_LOG_LEVEL / ASTRAL_PLASMA_LOG_CATEGORIES environment
+        // variables override both for a single run (see services/Logging.js).
+        "logging": {
+            "level": "info",
+            "categories": {}
         },
         "debugMode": false
     })
 
     property var settings: root.defaultSettings
 
-    // Single Debug Mode toggle (gates all debug features & freeze)
+    // Single Debug Mode toggle: freezes drawer auto-close for inspection, and
+    // (legacy) shows every diagnostic trail while no logging level is set.
     readonly property bool debugMode: root.settings.debugMode ?? false
+
+    // Diagnostic verbosity. `services/Log.qml` reads these reactively, so a
+    // change here applies to the next message without a reload.
+    readonly property string logLevel: (root.settings.logging && root.settings.logging.level !== undefined)
+        ? root.settings.logging.level : "info"
+    readonly property var logCategories: (root.settings.logging && root.settings.logging.categories)
+        ? root.settings.logging.categories : ({})
 
     // Convenient getters
     readonly property bool dockEnabled: root.settings.dock ? (root.settings.dock.enabled ?? true) : true
@@ -219,6 +248,36 @@ Singleton {
     }
     readonly property bool downloadsBorderEffect: (root.settings && root.settings.downloads && root.settings.downloads.borderEffect !== undefined)
         ? Boolean(root.settings.downloads.borderEffect) : true
+    /// Files downloaded in parallel (1..16), clamped on read like on write.
+    readonly property int downloadsMaxConcurrent: {
+        const v = (root.settings && root.settings.downloads && root.settings.downloads.maxConcurrentDownloads !== undefined)
+            ? Number(root.settings.downloads.maxConcurrentDownloads) : NaN;
+        if (isNaN(v)) return 5;
+        return Math.max(1, Math.min(16, Math.round(v)));
+    }
+    /// Global download cap in KiB/s; 0 means unlimited.
+    readonly property int downloadsSpeedLimit: {
+        const v = (root.settings && root.settings.downloads && root.settings.downloads.speedLimitKbps !== undefined)
+            ? Number(root.settings.downloads.speedLimitKbps) : NaN;
+        if (isNaN(v) || v < 0) return 0;
+        return Math.round(Math.min(10000000, v));
+    }
+    /// Whether the Downloads tab is switched on in the settings (the engine state
+    /// is applied on top of this by the dashboard's tab policy).
+    readonly property bool downloadsTabEnabled: root.dashboardTabEnabled("downloads")
+    /// The dashboard tabs the settings allow, in order.
+    readonly property var dashboardTabs: DashboardTabs.enabledTabs(root.settings.dashboard ? root.settings.dashboard.tabs : null)
+    /// Is a specific dashboard tab switched on?
+    function dashboardTabEnabled(tabId) {
+        const tabs = root.settings.dashboard ? root.settings.dashboard.tabs : null;
+        if (!tabs || !Array.isArray(tabs)) return true;
+        for (let i = 0; i < tabs.length; i++) {
+            if (tabs[i] && tabs[i].id === tabId) {
+                return tabs[i].enabled !== false;
+            }
+        }
+        return true;
+    }
     property string activeDownloadsSegment: "active"
 
     // Theme getters
@@ -514,6 +573,25 @@ Singleton {
         updateSettings(cfg => {
             if (!cfg.downloads) cfg.downloads = {};
             cfg.downloads.borderEffect = Boolean(enabled);
+        });
+    }
+
+    /// Parallel downloads (1..16). Clamped here as well as on read, so the file
+    /// never carries a value the engine cannot use.
+    function setDownloadsMaxConcurrent(value) {
+        const v = Math.max(1, Math.min(16, Math.round(Number(value) || 5)));
+        updateSettings(cfg => {
+            if (!cfg.downloads) cfg.downloads = {};
+            cfg.downloads.maxConcurrentDownloads = v;
+        });
+    }
+
+    /// Global download cap in KiB/s; 0 = unlimited.
+    function setDownloadsSpeedLimit(kbps) {
+        const v = Math.max(0, Math.min(10000000, Math.round(Number(kbps) || 0)));
+        updateSettings(cfg => {
+            if (!cfg.downloads) cfg.downloads = {};
+            cfg.downloads.speedLimitKbps = v;
         });
     }
 
@@ -834,6 +912,27 @@ Singleton {
     function setDebugMode(enabled) {
         updateSettings(cfg => {
             cfg.debugMode = enabled;
+        });
+    }
+
+    function setLogLevel(level) {
+        updateSettings(cfg => {
+            if (!cfg.logging) cfg.logging = {};
+            cfg.logging.level = level;
+        });
+    }
+
+    /// `level` of null/"default" removes the override, so the category follows
+    /// the global level again.
+    function setLogCategoryLevel(category, level) {
+        updateSettings(cfg => {
+            if (!cfg.logging) cfg.logging = {};
+            if (!cfg.logging.categories) cfg.logging.categories = {};
+            if (!level || level === "default") {
+                delete cfg.logging.categories[category];
+            } else {
+                cfg.logging.categories[category] = level;
+            }
         });
     }
 
@@ -1286,7 +1385,17 @@ Singleton {
 
         const shipped = root.parseSettingsFile(defaultsView) || {};
         const user = root.userFileExists ? (root.parseSettingsFile(userView) || {}) : {};
-        root.settings = root.mergeSettings(root.mergeSettings(root.defaultSettings, shipped), user);
+        const merged = root.mergeSettings(root.mergeSettings(root.defaultSettings, shipped), user);
+
+        // Arrays are replaced wholesale by the merge, so a settings file written
+        // before a dashboard tab existed could never grow it - and the tab's
+        // toggle (its only handle) would never appear. The user's own order and
+        // choices win; tabs this build added are appended.
+        const shippedTabs = root.mergeSettings(root.defaultSettings, shipped).dashboard.tabs;
+        if (merged.dashboard) {
+            merged.dashboard.tabs = DashboardTabs.reconcileTabs(merged.dashboard.tabs, shippedTabs);
+        }
+        root.settings = merged;
 
         if (!root.userFileExists) {
             // First run (or migration from the checkout file): seed the user

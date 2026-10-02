@@ -238,3 +238,124 @@ fn test_download_history_add_dismiss_clear() {
     assert!(hist.dismissed.contains(&"g2".to_string()));
 }
 
+
+#[test]
+fn test_engine_missing_message_names_the_install_command() {
+    use astral_plasma::domain::downloads::engine_missing_message;
+
+    let with_command = engine_missing_message(Some("sudo apt install aria2"));
+    assert!(with_command.contains("aria2c is not installed"), "{with_command}");
+    assert!(with_command.contains("sudo apt install aria2"), "{with_command}");
+
+    // A blank command is not a command: fall back to the project's own source.
+    for empty in [None, Some(""), Some("   ")] {
+        let message = engine_missing_message(empty);
+        assert!(message.contains("aria2c is not installed"), "{message}");
+        assert!(message.contains("aria2.github.io"), "{message}");
+    }
+}
+
+// ============================================================================
+// Engine settings, availability and installation
+// ============================================================================
+// The download manager is optional, and every knob the user can change must be
+// expressed once in the domain: the argv aria2c is spawned with, the payload the
+// live engine is reconfigured with, the version the shell reports, and the
+// outcome of the native (polkit) install flow.
+
+#[test]
+fn test_engine_settings_clamp_and_render() {
+    use astral_plasma::domain::downloads::EngineSettings;
+
+    // Out-of-range values are clamped, not rejected: a settings file edited by
+    // hand must not be able to give aria2 a nonsensical value.
+    let clamped = EngineSettings::clamped(0, 999_999_999, "  /tmp/dl  ");
+    assert_eq!(clamped.max_concurrent_downloads, 1, "at least one download at a time");
+    assert_eq!(clamped.speed_limit_kbps, 10_000_000, "an absurd limit is capped, not passed on");
+    assert_eq!(clamped.dir, "/tmp/dl", "the destination is trimmed");
+
+    assert_eq!(EngineSettings::clamped(999, 0, "").max_concurrent_downloads, 16);
+    assert_eq!(EngineSettings::clamped(5, 0, "").speed_limit_kbps, 0, "0 means unlimited");
+
+    // Spawn args: the limit is aria2's alphabetical suffix form, and an
+    // unlimited engine simply has no limit flag.
+    let limited = EngineSettings::clamped(3, 1500, "/dl");
+    let args = limited.spawn_args();
+    assert!(args.contains(&"--max-concurrent-downloads=3".to_string()), "{args:?}");
+    assert!(args.contains(&"--max-overall-download-limit=1500K".to_string()), "{args:?}");
+    assert!(args.contains(&"--dir=/dl".to_string()), "{args:?}");
+
+    let unlimited = EngineSettings::clamped(5, 0, "");
+    let args = unlimited.spawn_args();
+    assert!(!args.iter().any(|a| a.starts_with("--max-overall-download-limit")), "{args:?}");
+    assert!(!args.iter().any(|a| a.starts_with("--dir=")), "no dir = aria2's own default: {args:?}");
+
+    // Live reconfiguration: only what is set, always in aria2's string form.
+    let live = limited.to_rpc_map();
+    assert_eq!(live.get("max-concurrent-downloads").and_then(|v| v.as_str()), Some("3"));
+    assert_eq!(live.get("max-overall-download-limit").and_then(|v| v.as_str()), Some("1500K"));
+    assert_eq!(live.get("dir").and_then(|v| v.as_str()), Some("/dl"));
+    assert_eq!(unlimited.to_rpc_map().get("max-overall-download-limit").and_then(|v| v.as_str()), Some("0"),
+        "clearing a limit has to reach the running engine");
+}
+
+#[test]
+fn test_aria2_version_is_read_from_the_probe_output() {
+    use astral_plasma::domain::downloads::parse_aria2_version;
+
+    assert_eq!(
+        parse_aria2_version("aria2 version 1.37.0\nCopyright (C) 2006, 2019 Tatsuhiro Tsujikawa\n"),
+        Some("1.37.0".to_string())
+    );
+    assert_eq!(parse_aria2_version("aria2 version 1.36.0-1\n"), Some("1.36.0-1".to_string()));
+    assert_eq!(parse_aria2_version("command not found"), None);
+    assert_eq!(parse_aria2_version(""), None);
+}
+
+#[test]
+fn test_install_argv_names_the_package_manager() {
+    use astral_plasma::domain::downloads::{aria2_install_argv, aria2_install_command};
+    use astral_plasma::domain::voice::PackageManager;
+
+    // The argv is what polkit runs; the command is what the user is shown, and
+    // the two must agree (no `sudo` in the argv - pkexec is the privilege step).
+    let pacman = aria2_install_argv(PackageManager::Pacman).expect("pacman");
+    assert_eq!(pacman, vec!["pacman", "-S", "--noconfirm", "aria2"]);
+    assert_eq!(aria2_install_command(PackageManager::Pacman), Some("sudo pacman -S aria2"));
+
+    assert_eq!(aria2_install_argv(PackageManager::Apt).unwrap(), vec!["apt-get", "install", "-y", "aria2"]);
+    assert_eq!(aria2_install_argv(PackageManager::Dnf).unwrap(), vec!["dnf", "install", "-y", "aria2"]);
+    assert_eq!(
+        aria2_install_argv(PackageManager::Zypper).unwrap(),
+        vec!["zypper", "--non-interactive", "install", "aria2"]
+    );
+    assert_eq!(aria2_install_argv(PackageManager::Nix).unwrap(), vec!["nix-env", "-iA", "nixpkgs.aria2"]);
+
+    // An unknown distribution gets no invented command - the caller points at
+    // the upstream build instead.
+    assert!(aria2_install_argv(PackageManager::Unknown).is_none());
+    assert!(aria2_install_command(PackageManager::Unknown).is_none());
+}
+
+#[test]
+fn test_polkit_exit_codes_become_actionable_outcomes() {
+    use astral_plasma::domain::downloads::{install_outcome, InstallOutcome};
+
+    assert_eq!(install_outcome(0), InstallOutcome::Installed);
+    assert_eq!(install_outcome(126), InstallOutcome::AuthenticationDismissed);
+    assert_eq!(install_outcome(127), InstallOutcome::NoAuthenticationAgent);
+    assert_eq!(install_outcome(1), InstallOutcome::Failed(1));
+
+    let command = "sudo pacman -S aria2";
+    assert!(install_outcome(0).message(command).contains("installed"));
+    // A dismissed or unanswerable prompt must hand the user the command rather
+    // than leaving them with a silent failure.
+    for code in [126, 127, 1] {
+        let message = install_outcome(code).message(command);
+        assert!(message.contains(command), "outcome {code} must show the manual command: {message}");
+    }
+    assert!(install_outcome(127).message(command).to_lowercase().contains("terminal"),
+        "without an authentication agent the manual path is the only one left");
+    assert!(InstallOutcome::Installed.succeeded());
+    assert!(!install_outcome(1).succeeded());
+}

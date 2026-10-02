@@ -182,6 +182,12 @@ Item {
         assert(/property string selectedHarness/.test(serviceSrc), "AssistantService must track selectedHarness");
         assert(/property string selectedProviderId/.test(serviceSrc), "AssistantService must track selectedProviderId");
         assert(/property string selectedModelId/.test(serviceSrc), "AssistantService must track selectedModelId");
+        // The harness version is probed by the daemon (`pi --version`). A hardcoded
+        // one here lied about the installation the moment pi was upgraded (it read
+        // 0.87.1 while 1.0.0 was installed), and the fallback is what the Copilot
+        // shows before the first `assistant status` reply arrives.
+        assert(!/\"version\":\s*\"\d+\.\d+/.test(serviceSrc),
+            "AssistantService must not hardcode a harness version");
         assert(/function selectProvider\(/.test(serviceSrc), "AssistantService must implement selectProvider");
         assert(/function selectModel\(/.test(serviceSrc), "AssistantService must implement selectModel");
         assert(/function getModelsForProvider\(/.test(serviceSrc), "AssistantService must implement getModelsForProvider");

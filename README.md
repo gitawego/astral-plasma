@@ -108,6 +108,46 @@ Astral Plasma features a native, liquid-glass AI suite engineered for proactive 
   - Color-coded threshold alerts (warning at 80%, critical at 95%) that notify you before rate limits are exhausted.
   - Morphing dock popout for quick quota status and one-click account switching.
 
+#### Pi harness updates
+
+The Copilot's engine is the user's own **pi** installation. Astral never pins,
+bundles or downgrades it — it probes what is installed and reports it everywhere
+(`assistant status`, **Settings → AI → Pi Harness**, `doctor`).
+
+**Settings → AI → Pi Harness** updates it without leaving the shell: the card
+shows the installed version and offers *Update Pi* (`pi update self`), *Update
+packages* (`pi update --extensions`) and *Refresh model catalogs*
+(`pi update --models`), reporting the version it moved between — or pi's own
+output when nothing was a version change. A machine without pi is offered the
+install command instead. The same three targets are scriptable:
+
+```bash
+astral-plasma assistant update-pi                 # pi itself  (Settings → AI → Update Pi)
+astral-plasma assistant update-pi --extensions    # installed packages
+astral-plasma assistant update-pi --models        # model catalogs
+astral-plasma doctor                              # "Pi Agent (AI Copilot harness): pi <version> ..."
+astral-plasma assistant status                    # machine-readable: harness version, path, skills
+```
+
+The equivalent by hand is `pi update` / `pi update --extensions` /
+`pi update --models` (or `npm i -g @earendil-works/pi-coding-agent@latest`).
+
+What Astral relies on, and therefore checks after an upgrade:
+
+| contract | how it is used |
+|---|---|
+| `pi -p <prompt> --mode json` | one turn per invocation; the JSONL stream is parsed for text deltas, tool calls and errors |
+| `--provider` **only with** `--model` | pi 1.0 fails a run whose provider has no model, so a lone provider is omitted (pi then uses `defaultProvider` from its settings, which Astral keeps in sync) |
+| `--skill <dir>` | the same `~/.agents/skills` the user has |
+| `pi mcp --help` | built-in MCP, required since 0.99 (the legacy `pi-mcp-adapter` must not be installed) |
+| `packages` in `~/.pi/agent/settings.json` | `pi-subagents` provisioning; both the string and `{ "source": … }` entry shapes are read |
+| `defaultProvider` / `defaultModel` | written so a bare `pi` run uses the model chosen in the shell |
+
+The floor is **0.99.0** (built-in MCP); 1.x is the tested line. Below the floor,
+`doctor` reports a warning with the update command — never an error, because the
+Copilot is optional. The pi contract itself is pinned by
+`daemon/tests/test_assistant_harness.rs`, including a captured pi 1.0 JSON stream.
+
 ### 📥 Integrated Downloads Manager (Aria2 Engine)
 A dedicated, fluid download manager embedded directly inside the Central Dashboard:
 
@@ -117,6 +157,10 @@ A dedicated, fluid download manager embedded directly inside the Central Dashboa
 - **Clipboard Auto-Detection**: Instant URL capture from clipboard with automatic Wayland keyboard focus delegation when opening the add-URL sheet.
 - **Bounded Liquid Glass Cards**: Height-clamped, scrolling list container (`maxListHeight`) prevents tall lists from stretching off-screen; includes real-time speedometers, progress bars, and file management actions (Pause, Resume, Remove, Open Folder).
 - **Graceful Empty States**: Designed glass placeholders for all segments when no tasks are queued.
+
+**Settings → Downloads** owns the engine: destination folder, connections per download, parallel downloads, a global speed cap (0 = unlimited) and the border HUD. The engine-wide values are pushed to the running `aria2c` (`changeGlobalOption`), so a change applies to downloads already queued instead of on the next restart.
+
+**Optional engine, explicit consent.** aria2 is not required for a healthy shell. When it is missing the Downloads tab is *not* shown in the dashboard (its setting is remembered and applies as soon as the engine exists), and the settings pages say so instead of failing silently. Either page offers to install it through the desktop's own authentication dialog (`pkexec` → the KDE polkit prompt, nothing is installed without your confirmation) or copies the distribution's install command for a terminal. `astral-plasma doctor` reports the same state as an optional warning, and `astral-plasma downloads engine-status` / `install-engine` expose it to scripts.
 
 ### Media
 - **Multi-player MPRIS**: adapters for Spotify, NetEase Cloud Music, QQ Music, and a generic/universal fallback, with player switching.
@@ -316,8 +360,31 @@ doctor [--json]              Diagnose all system dependencies
 Configuration lives in `config/` and `theme/`:
 
 - **`config/settings.json`** — shipped defaults. Top-level sections:
-  `dock` (width, entries, pinned apps, tray, status icons), `dashboard` (tabs, weather, avatars), `topBar`, `theme` (mode, preset, blur strength, corner radius, dynamic colors), `border`, `plasma` (panel/notification takeover), `debugMode`, `media` (visualizer style), `display` (refresh rate: 60 by default, or any target rate / `max`).
+  `dock` (width, entries, pinned apps, tray, status icons), `dashboard` (tabs, weather, avatars), `topBar`, `theme` (mode, preset, blur strength, corner radius, dynamic colors), `border`, `plasma` (panel/notification takeover), `debugMode`, `logging` (diagnostic verbosity), `media` (visualizer style), `display` (refresh rate: 60 by default, or any target rate / `max`).
   Your live settings live in `~/.config/astral-plasma/settings.json` — the only file the shell writes (updated atomically via `astral-plasma config write`).
+
+### Diagnostic logging
+
+Every diagnostic line the shell prints carries a level and a category, and goes through
+`services/Log.qml`. The shipped default is **`info`**: lifecycle events, warnings and errors are
+visible, while the per-frame trails (`blur`, `commit`, ...) stay off until somebody asks for them.
+Settings → System → *Log Verbosity* changes the level live; `logging.categories` raises a single
+category on its own, which is what makes "keep the blur trail, quieten everything else" possible:
+
+```json
+"logging": { "level": "info", "categories": { "blur": "debug" } }
+```
+
+For one run, without editing a file:
+
+```bash
+ASTRAL_PLASMA_LOG_LEVEL=debug ASTRAL_PLASMA_LOG_CATEGORIES=blur=debug ./run.sh
+```
+
+Precedence (highest first): `ASTRAL_PLASMA_LOG_CATEGORIES` → `logging.categories` →
+`ASTRAL_PLASMA_LOG_LEVEL` → `logging.level` → the legacy `debugMode: true` (which still shows every
+trail when no level is configured) → `info`. Levels: `off < error < warn < info < debug < trace`.
+The decision table is pure code in `services/Logging.js` and is asserted by `tests/tst_log_level.qml`.
 - **`theme/Theme.qml`** — typography scale, corner radii, borders, shadows, and all motion tokens (M3 Expressive beziers/durations).
 - **`theme/Colors.qml`** — Material Design 3 color roles and dynamic palette mappings; plug in presets or wire new schemes here.
 

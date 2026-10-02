@@ -145,3 +145,78 @@ fn test_live_diagnostics_collection() {
         assert!(aria.recommendation.as_ref().unwrap().contains("aria2"));
     }
 }
+
+// ============================================================================
+// Pi harness check
+// ============================================================================
+// The AI Copilot runs on the user's own `pi` installation, and pi 1.0 changed two
+// things Astral depends on. `doctor` therefore reports which pi is installed and
+// names the update command - as an *optional* check: a missing or older pi must
+// never make the shell report itself broken.
+#[test]
+fn pi_harness_check_reports_the_installed_version_and_how_to_update() {
+    use astral_plasma::application::doctor_service::check_pi_harness;
+    use astral_plasma::domain::doctor::CheckStatus;
+
+    // Not installed: optional, a warning, and the install command.
+    let missing = check_pi_harness(None);
+    assert!(!missing.required, "the AI Copilot harness is optional");
+    assert!(!missing.installed);
+    assert_eq!(missing.status, CheckStatus::Warning);
+    assert!(
+        missing.recommendation.as_deref().unwrap_or("").contains("pi-coding-agent"),
+        "the recommendation must name the package, got: {:?}",
+        missing.recommendation
+    );
+
+    // An older pi, or one without built-in MCP: current enough to be found, and
+    // the update command is what the user needs.
+    let stale = fake_pi("0.50.0", false);
+    let stale_check = check_pi_harness(Some(stale.clone()));
+    assert!(stale_check.installed);
+    assert_eq!(stale_check.status, CheckStatus::Warning);
+    assert_eq!(stale_check.detected_version.as_deref(), Some("0.50.0"));
+    assert!(
+        stale_check.recommendation.as_deref().unwrap_or("").contains("pi update self"),
+        "an outdated harness must be told how to update, got: {:?}",
+        stale_check.recommendation
+    );
+
+    // pi 1.0 with built-in MCP: pass, version reported, nothing to do.
+    let current = fake_pi("1.0.0", true);
+    let current_check = check_pi_harness(Some(current.clone()));
+    assert_eq!(current_check.status, CheckStatus::Pass);
+    assert_eq!(current_check.detected_version.as_deref(), Some("1.0.0"));
+    assert!(current_check.recommendation.is_none(),
+        "a current harness needs no recommendation, got: {:?}", current_check.recommendation);
+    assert!(!current_check.name.is_empty() && !current_check.message.is_empty());
+
+    std::fs::remove_file(&stale).ok();
+    std::fs::remove_file(&current).ok();
+}
+
+/// A fake `pi` that answers `--version` and, when `mcp` is true, `mcp --help`.
+fn fake_pi(version: &str, mcp: bool) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!(
+        "astral-doctor-pi-{}-{}-{}",
+        std::process::id(),
+        version.replace('.', "_"),
+        mcp
+    ));
+    let mcp_exit = if mcp { 0 } else { 1 };
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo {version}; exit 0; fi\nif [ \"$1\" = \"mcp\" ]; then exit {mcp_exit}; fi\nexit 0\n"
+        ),
+    )
+    .expect("write fake pi");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&path).expect("stat").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).expect("chmod");
+    }
+    path
+}

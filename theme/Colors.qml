@@ -4,6 +4,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../config"
+// The palette fallback is a diagnostic: it goes through the leveled logger
+// instead of a bare console.log, so a quiet shell stays quiet.
+import "../services"
 
 Singleton {
     id: root
@@ -627,7 +630,7 @@ Singleton {
                 }
             }
         } catch (e) {
-            console.log("[Palette] Using default Astral Plasma scheme");
+            Log.info("palette", "Using default Astral Plasma scheme: " + e);
         }
     }
 

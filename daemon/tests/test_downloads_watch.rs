@@ -39,6 +39,8 @@ fn snap_with(tasks: Vec<DownloadTask>, speed: u64) -> DownloadsSnapshot {
         total,
         aria_available: true,
         aria_install_command: None,
+        aria_version: None,
+        aria_installable: false,
     }
 }
 
@@ -74,6 +76,8 @@ fn test_status_flip_changes_sig() {
         total: DownloadsTotal::default(),
         aria_available: true,
         aria_install_command: None,
+        aria_version: None,
+        aria_installable: false,
     };
     assert_ne!(snapshot_sig(&a), snapshot_sig(&paused_snap));
 }
@@ -98,4 +102,65 @@ fn test_large_speed_jitter_is_bucketed() {
     assert_eq!(speed_bucket(1_048_576), speed_bucket(1_049_600));
     // 1 MiB/s vs 2 MiB/s: different bucket.
     assert_ne!(speed_bucket(1_048_576), speed_bucket(2_097_152));
+}
+
+#[test]
+fn engine_state_changes_the_snapshot_signature() {
+    // The stream is change-only: state that is not part of the signature never
+    // reaches the UI. Engine availability decides whether the Downloads tab
+    // exists, so installing aria2 while the shell runs (or losing it) has to
+    // re-emit - otherwise the tab stays hidden until some unrelated download
+    // changes, and the settings page keeps saying "not installed".
+    let mut absent = snap_with(vec![], 0);
+    let mut present = snap_with(vec![], 0);
+    absent.aria_available = false;
+    present.aria_available = true;
+    assert_ne!(
+        snapshot_sig(&absent),
+        snapshot_sig(&present),
+        "engine availability must be part of the signature"
+    );
+
+    let mut old = snap_with(vec![], 0);
+    old.aria_version = Some("1.36.0".to_string());
+    let mut new = snap_with(vec![], 0);
+    new.aria_version = Some("1.37.0".to_string());
+    assert_ne!(
+        snapshot_sig(&old),
+        snapshot_sig(&new),
+        "a version change is a change"
+    );
+
+    let mut installable = snap_with(vec![], 0);
+    installable.aria_installable = true;
+    let mut guided = snap_with(vec![], 0);
+    guided.aria_installable = false;
+    assert_ne!(
+        snapshot_sig(&installable),
+        snapshot_sig(&guided),
+        "the native install path appearing or going away is a change"
+    );
+}
+
+#[test]
+fn the_engine_is_started_the_moment_it_appears() {
+    use astral_plasma::application::download_service::should_start_engine;
+
+    // First observation: the watch loop starts the engine itself, so this is not
+    // a transition.
+    assert!(!should_start_engine(None, true));
+    assert!(!should_start_engine(None, false));
+
+    // Still missing, still missing with the engine: nothing to do.
+    assert!(!should_start_engine(Some(false), false));
+    assert!(!should_start_engine(Some(true), true));
+
+    // Installed while the shell was running (the settings page's install flow, or
+    // a package manager): the engine has to be started, or the tab is present and
+    // its list can never fill.
+    assert!(should_start_engine(Some(false), true), "the engine appearing must start it");
+
+    // The other direction needs no action: a vanished engine is reported, and a
+    // failed start is not retried on every tick (the next `add`/`ensure` tries).
+    assert!(!should_start_engine(Some(true), false));
 }

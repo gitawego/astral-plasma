@@ -5,7 +5,9 @@ import Quickshell.Wayland
 import "../theme"
 import "../components"
 import "../config"
+import "../services"
 import "tabs"
+import "tabs/DashboardTabs.js" as DashboardTabs
 
 PanelWindow {
     id: root
@@ -15,9 +17,17 @@ PanelWindow {
 
     visible: Config.dashboardVisible
 
-    anchors {
-        top: true
-    }
+    /// The tab actually rendered: the configured one when it is available,
+    /// otherwise the first one that is. A selected tab can disappear (the user
+    /// disabled it, or the download engine went away), and a loader left on a tab
+    /// the bar no longer shows is a view with no way back to it.
+    /// See shell/CentralDropdown.qml: unknown counts as present.
+    readonly property bool ariaAvailable: (typeof DownloadService !== "undefined" && DownloadService
+        && DownloadService.ariaAvailable !== undefined) ? Boolean(DownloadService.ariaAvailable) : true
+
+    readonly property var visibleTabs: DashboardTabs.availableTabs(Config.dashboardTabs, root.ariaAvailable)
+    readonly property string shownTab: DashboardTabs.fallbackActiveTab(root.visibleTabs, Config.activeDashboardTab)
+
 
     margins {
         top: Config.topBarEnabled ? (Config.topBarHeight + 6) : 16
@@ -51,15 +61,11 @@ PanelWindow {
             TabBar {
                 id: tabNav
                 Layout.fillWidth: true
-                activeTab: Config.activeDashboardTab
-                tabs: [
-                    { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-                    { id: "media", label: "Media", icon: "media" },
-                    { id: "performance", label: "Performance", icon: "performance" },
-                    { id: "workspaces", label: "Workspaces", icon: "workspaces" },
-                    { id: "downloads", label: "Downloads", icon: "download" },
-                    { id: "ai", label: "AI Quotas", icon: "auto_awesome" }
-                ]
+                activeTab: root.shownTab
+                // The list is a setting, minus the tabs this machine cannot
+                // serve: the Downloads tab needs the aria2 engine, so it is not
+                // rendered while the engine is missing even if it is enabled.
+                tabs: root.visibleTabs
                 onTabSelected: tabId => Config.activeDashboardTab = tabId
             }
 
@@ -69,7 +75,7 @@ PanelWindow {
                 Layout.preferredHeight: 320
 
                 sourceComponent: {
-                    switch (Config.activeDashboardTab) {
+                    switch (root.shownTab) {
                         case "dashboard": return dashboardTabComp;
                         case "media": return mediaTabComp;
                         case "performance": return perfTabComp;
