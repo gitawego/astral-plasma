@@ -56,7 +56,13 @@ def run_test(path):
     try:
         res = subprocess.run([qml_bin, "-platform", "offscreen", path], capture_output=True, text=True, env=env, timeout=20)
         output = (res.stdout or "") + (res.stderr or "")
-        passed = (res.returncode == 0) and ("PASS:" in output)
+        # A suite passes only if it exits 0, reports PASS *and* never reported a
+        # failure. The last condition matters: several suites' `assert()` calls
+        # `Qt.exit(1)` and then keeps running (Qt.exit does not stop JavaScript),
+        # so a failing assertion used to be followed by the final PASS line and an
+        # exit-0 override - a failure the harness reported as green.
+        failed_marker = ("FAIL:" in output) or ("✗" in output)
+        passed = (res.returncode == 0) and ("PASS:" in output) and not failed_marker
         return name, passed, output, res.returncode
     except subprocess.TimeoutExpired:
         return name, False, "Timed out after 20s", -1

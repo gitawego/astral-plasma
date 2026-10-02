@@ -19,6 +19,10 @@ Item {
     PerformanceTab {
         id: perfTab
         anchors.fill: parent
+        // The tab reports `isTargetVisible` true only when the dashboard says it is
+        // the active tab; the component's own test seam stands in for that state,
+        // which the harness has no Config to provide.
+        testMode: true
     }
 
     Timer {
@@ -32,6 +36,9 @@ Item {
                 if (!condition) {
                     console.error("FAIL: " + message);
                     Qt.exit(1);
+            // Qt.exit only schedules the exit: a suite that keeps running would
+            // print its PASS line and override the code (docs/LESSONS.md 37).
+            throw new Error(message);
                 }
             }
 

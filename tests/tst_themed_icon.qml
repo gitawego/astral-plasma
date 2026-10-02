@@ -40,6 +40,9 @@ Item {
         if (!cond) {
             console.error("FAIL: " + msg);
             Qt.exit(1);
+            // Qt.exit only schedules the exit: a suite that keeps running would
+            // print its PASS line and override the code (docs/LESSONS.md 37).
+            throw new Error(msg);
         }
     }
 
@@ -47,12 +50,15 @@ Item {
         console.log("RUNNING: ThemedIcon Contrast & Symbolism Tests");
 
         assert(symbolicIcon.isSymbolic, "Icon ending in -symbolic must be identified as symbolic");
-        assert(symbolicIcon.color === "#1c1b1f", "Symbolic icon color must match foreground color for maximum contrast");
+        // A colour value is an object, not the string it was written as:
+        // `Qt.colorEqual` is the only comparison that means "the same colour".
+        assert(Qt.colorEqual(symbolicIcon.color, "#1c1b1f"),
+            "Symbolic icon color must match foreground color for maximum contrast");
 
         assert(!appIcon.isSymbolic, "App icon must not be marked as symbolic");
 
         assert(fallbackIcon.materialIcon === "settings", "Fallback material icon preserves name");
-        assert(fallbackIcon.color === "#1c1b1f", "Fallback icon inherits foreground color");
+        assert(Qt.colorEqual(fallbackIcon.color, "#1c1b1f"), "Fallback icon inherits foreground color");
 
         console.log("PASS: ThemedIcon Contrast & Symbolism Tests");
         Qt.exit(0);

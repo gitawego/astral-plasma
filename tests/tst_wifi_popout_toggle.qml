@@ -11,6 +11,9 @@ Item {
         if (!cond) {
             console.error("FAIL: " + msg);
             Qt.exit(1);
+            // Qt.exit only schedules the exit: a suite that keeps running would
+            // print its PASS line and override the code (docs/LESSONS.md 37).
+            throw new Error(msg);
             return false;
         }
         return true;
@@ -43,7 +46,10 @@ Item {
     ActionToggleItem {
         id: testToggleItem
         icon: !mockNetworkService.wifiEnabled ? "wifi_off" : (mockNetworkService.connected ? "wifi" : "wifi_find")
-        iconColor: mockNetworkService.wifiEnabled ? (mockNetworkService.connected ? Colors.primary : Colors.textOnSurface) : Colors.textOnSurfaceVariant
+        // Literal stand-ins for Colors.primary / textOnSurface / textOnSurfaceVariant:
+        // the offscreen harness cannot load the theme singleton, and the popout's own
+        // binding to those tokens is asserted from its source in part 2.
+        iconColor: mockNetworkService.wifiEnabled ? (mockNetworkService.connected ? "#CFBCFF" : "#E6E1E6") : "#CAC4D0"
         label: mockNetworkService.formatWifiLabel()
         checked: mockNetworkService.wifiEnabled
         onToggled: mockNetworkService.toggleWifi()
@@ -79,7 +85,10 @@ Item {
         assert(testToggleItem.checked === true, "Toggle switch must be checked when Wi-Fi is enabled");
         assert(testToggleItem.label === "Wi-Fi: darktalker", "Label must display connected SSID");
         assert(testToggleItem.icon === "wifi", "Icon must be wifi when connected");
-        assert(testToggleItem.iconColor === Colors.primary, "Icon color must be primary when connected");
+        assert(Qt.colorEqual(testToggleItem.iconColor, "#CFBCFF"),
+            "Icon color must be the primary stand-in when connected");
+        assert(Qt.colorEqual(testToggleItem.iconItem.color, testToggleItem.iconColor),
+            "the rendered glyph follows the toggle's iconColor");
 
         // 2. Toggle Wi-Fi OFF via toggle switch action
         const prevCalls = mockNetworkService.toggleCallCount;
@@ -89,7 +98,8 @@ Item {
         assert(testToggleItem.checked === false, "Toggle switch must be unchecked when Wi-Fi is disabled");
         assert(testToggleItem.label === "Wi-Fi: Off", "Label must display 'Wi-Fi: Off' when disabled");
         assert(testToggleItem.icon === "wifi_off", "Icon must be wifi_off when disabled");
-        assert(testToggleItem.iconColor === Colors.textOnSurfaceVariant, "Icon color must be muted when disabled");
+        assert(Qt.colorEqual(testToggleItem.iconColor, "#CAC4D0"),
+            "Icon color must be the muted stand-in when disabled");
 
         // 3. Toggle Wi-Fi back ON
         testToggleItem.toggled();
@@ -110,6 +120,16 @@ Item {
         const legacyPattern = /ActionItem\s*\{[\s\S]*?Wi-Fi:[\s\S]*?onClicked:\s*NetworkService\.toggleWifi\(\)/;
         assert(!legacyPattern.test(popoutSource),
             "CRITICAL: Wi-Fi name must NOT be an ActionItem whose onClicked toggles Wi-Fi");
+
+        // The real binding: the popout derives the icon colour from the live state
+        // and the theme tokens (the mirror above uses literals for the harness).
+        const wifiToggleStart = popoutSource.indexOf("id: wifiToggleItem");
+        assert(wifiToggleStart >= 0, "FusedBottomPopout must render the Wi-Fi toggle");
+        const wifiToggleBlock = popoutSource.substring(wifiToggleStart, wifiToggleStart + 400);
+        assert(wifiToggleBlock.indexOf("iconColor: NetworkService.wifiEnabled") >= 0
+                && wifiToggleBlock.indexOf("Colors.primary") >= 0
+                && wifiToggleBlock.indexOf("Colors.textOnSurfaceVariant") >= 0,
+            "the Wi-Fi toggle's icon colour comes from the live state and the theme tokens");
 
         // Must have dedicated toggle switch item or ActionToggleItem
         assert(popoutSource.indexOf("ActionToggleItem") !== -1 || popoutSource.indexOf("wifiToggle") !== -1,

@@ -48,6 +48,9 @@ Item {
         if (!condition) {
             console.error("FAIL: " + message);
             Qt.exit(1);
+            // Qt.exit only schedules the exit: a suite that keeps running would
+            // print its PASS line and override the code (docs/LESSONS.md 37).
+            throw new Error(message);
         }
     }
 
@@ -55,8 +58,14 @@ Item {
         console.log("RUNNING: Menu Components Tests");
 
         // Test 1: MenuCard geometry and tokens
-        assert(menuCard.radius === 14, "MenuCard radius must be 14 (M3 container)");
-        assert(menuCard.border.width === 1, "MenuCard border.width must be 1");
+        // The fused card takes its radius from the shell's glass-card token (with
+        // the component's documented fallback) and draws its perimeter with a
+        // Shape, so the dock-fused left edge stays seamless - a rectangle border
+        // there would draw a second, straight edge over it.
+        const expectedRadius = (typeof Theme !== "undefined" && Theme.radiusGlassCard !== undefined)
+            ? Theme.radiusGlassCard : 20;
+        assert(menuCard.radius === expectedRadius, "MenuCard radius must follow Theme.radiusGlassCard");
+        assert(menuCard.border.width === 0, "MenuCard draws a Shape perimeter, not a rectangle border");
         assert(menuCard.width === 220, "MenuCard width should be 220");
         assert(menuCard.implicitHeight > 100, "MenuCard should calculate implicit height from contents");
 

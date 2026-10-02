@@ -18,6 +18,9 @@ Item {
         if (!cond) {
             console.error("FAIL: " + msg);
             Qt.exit(1);
+            // Qt.exit only schedules the exit: a suite that keeps running would
+            // print its PASS line and override the code (docs/LESSONS.md 37).
+            throw new Error(msg);
             return false;
         }
         return true;
@@ -149,9 +152,16 @@ Item {
         assert(aiModel.warningLevel === "normal", "Warning level must be normal");
         assert(aiModel.shouldShowPill === true, "Dynamic pill shows because active provider exists");
 
-        // 4. Test warning mode pill filter
-        aiModel.aiDockPillMode = "warning";
-        assert(aiModel.shouldShowPill === false, "Pill must be hidden when pillMode is warning but level is normal");
+        // 4. Test the pill modes that exist: always / never / dynamic. ("warning"
+        // was never a mode - the ladder is always, never, dynamic, and the settings
+        // page offers exactly those three; an unknown mode falls through to the
+        // dynamic rule, which is what this step used to measure by accident.)
+        aiModel.aiDockPillMode = "never";
+        assert(aiModel.shouldShowPill === false, "Pill must be hidden in 'never' mode, whatever the level");
+        aiModel.aiDockPillMode = "always";
+        assert(aiModel.shouldShowPill === true, "Pill must show in 'always' mode, whatever the level");
+        aiModel.aiDockPillMode = "dynamic";
+        assert(aiModel.shouldShowPill === true, "Dynamic mode shows while a provider is present");
 
         // 5. Ingest amber warning snapshot (82%)
         var warningSnapshot = {
@@ -175,7 +185,7 @@ Item {
 
         aiModel.applySnapshot(warningSnapshot);
         assert(aiModel.warningLevel === "warning", "Warning level must be warning");
-        assert(aiModel.shouldShowPill === true, "Pill must show when pillMode is warning and level is warning");
+        assert(aiModel.shouldShowPill === true, "Pill must show when the level is warning (dynamic mode)");
 
         // 6. Ingest critical rose snapshot (97%)
         var criticalSnapshot = {

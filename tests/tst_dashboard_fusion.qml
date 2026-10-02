@@ -35,6 +35,17 @@ Item {
         isOpen: true
     }
 
+    property int stage: 0
+
+    // The morphing is a Behavior-driven tween, so the geometry at a given progress
+    // is only readable once the animation has settled - hence the two stages.
+    Timer {
+        id: settleTimer
+        interval: 800   // the expressive spatial step (500ms) plus margin
+        repeat: false
+        onTriggered: testRoot.runStage()
+    }
+
     Timer {
         interval: 50
         running: true
@@ -46,6 +57,9 @@ Item {
         if (!condition) {
             console.error("FAIL: " + message);
             Qt.exit(1);
+            // Qt.exit only schedules the exit: a suite that keeps running would
+            // print its PASS line and override the code (docs/LESSONS.md 37).
+            throw new Error(message);
         }
     }
 
@@ -79,18 +93,39 @@ Item {
         assert(absFillet2X === (testRoot.dropX + 980), "Absolute screen X of right fillet");
         assert(absFillet2Y === 14, "Absolute screen Y of right fillet");
 
-        // Verify overshoot behavior (progress = 1.21 during spring bounce)
+        // Overshoot (progress = 1.21 during the spring bounce). The morph is a
+        // Behavior-driven tween, so the reading is taken once it has settled.
         dashboardPanel.offsetProgress = 1.21;
-        assert(dashboardPanel.card.y === 0, "Card y must REMAIN at 0 during spring overshoot - zero disconnection!");
-        assert(dashboardPanel.card.height > 560, "Card height expands elastically during spring bounce");
-        assert(dashboardPanel.fillet1.y === 14, "Left fillet remains welded to top border during overshoot");
-        assert(dashboardPanel.fillet2.y === 14, "Right fillet remains welded to top border during overshoot");
+        settleTimer.start();
+    }
 
-        // Verify partial morphing behavior (progress = 0.5)
-        dashboardPanel.offsetProgress = 0.5;
+    function runStage() {
+        if (testRoot.stage === 0) {
+            testRoot.stage = 1;
+
+            // The card *is* the envelope: it morphs elastically and the overshoot
+            // pushes it past panelHeight, which is what welds it to the top border.
+            assert(dashboardPanel.card.y === 0, "Card y must REMAIN at 0 during spring overshoot - zero disconnection!");
+            const overshootEnvelope = 14 + (560 - 14) * 1.21;
+            assert(Math.abs(dashboardPanel.card.height - overshootEnvelope) < 0.01,
+                "The card morphs to the envelope formula during the spring overshoot (got "
+                    + dashboardPanel.card.height + ")");
+            assert(dashboardPanel.card.height > 560,
+                "and the overshoot is what makes it exceed panelHeight (got " + dashboardPanel.card.height + ")");
+            assert(dashboardPanel.fillet1.y === 14, "Left fillet remains welded to top border during overshoot");
+            assert(dashboardPanel.fillet2.y === 14, "Right fillet remains welded to top border during overshoot");
+
+            // Partial morphing (progress = 0.5), again once settled.
+            dashboardPanel.offsetProgress = 0.5;
+            settleTimer.start();
+            return;
+        }
+
         assert(dashboardPanel.card.y === 0, "Card y must be 0 at midway morphing");
         const expectedMidHeight = 14 + (560 - 14) * 0.5;
-        assert(Math.abs(dashboardPanel.card.height - expectedMidHeight) < 0.01, "Card height matches morphing formula at progress 0.5");
+        assert(Math.abs(dashboardPanel.card.height - expectedMidHeight) < 0.01,
+            "Card height matches the morphing formula at progress 0.5 (got "
+                + dashboardPanel.card.height + ")");
         assert(dashboardPanel.filletFactor === 1.0, "Fillet is at full strength once height exceeds borderT + filletR");
 
         console.log("PASS: Dashboard Fusion Tests");

@@ -49,6 +49,7 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 > 4. **Automated Verification**:
 >    - Run `make test` on every change. It runs both the Rust test suite and all QML test suites.
 >    - All tests must pass with 0 failures before completing any work.
+>    - **A QML suite passes only if it exits 0, prints `PASS:`, and never prints `FAIL:`** (`tests/run_qml_tests.sh` enforces all three). An `assert()` must therefore `throw` after `Qt.exit(1)` — `Qt.exit` schedules an exit, it does not stop JavaScript, so a failure would otherwise be followed by the suite's own `PASS:` line and an exit-0 override: a masked failure (see [docs/LESSONS.md](docs/LESSONS.md) §37).
 > 5. **Test Scope Coverage**:
 >    - **Backend (Rust Daemon)**: Domain models, DBus error filtering, system metrics parsing, and process resolvers must have full unit test coverage.
 >    - **Frontend (QML)**: Geometry calculations, non-overlapping borders, corner fillets, auto-close timers, and component boundaries must have dedicated offscreen QML test suites (`tests/tst_*.qml`).

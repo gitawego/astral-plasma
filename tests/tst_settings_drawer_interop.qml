@@ -65,6 +65,9 @@ Item {
         if (!cond) {
             console.error("FAIL: " + msg);
             Qt.exit(1);
+            // Qt.exit only schedules the exit: a suite that keeps running would
+            // print its PASS line and override the code (docs/LESSONS.md 37).
+            throw new Error(msg);
         }
     }
 
@@ -95,10 +98,11 @@ Item {
         assert(shellState.dashboardVisible === true, "Dashboard must become visible on top edge hover");
         assert(dropdown.isOpen === true, "Dropdown isOpen must reactively become true after settings was closed");
 
-        // 6. Test Escape key resilience: Escape pressed should NOT destroy reactive binding
+        // 6. Test Escape key resilience: Escape closes the drawer through the state
+        // that owns it. Assigning `dropdown.isOpen` directly would destroy the very
+        // reactive binding this suite exists to verify - step 7 would then fail for
+        // a reason that has nothing to do with the product.
         dropdown.Keys.escapePressed({ accepted: true });
-        // Escape sets dashboardVisible to false via Config or root.isOpen
-        dropdown.isOpen = false;
         shellState.dashboardVisible = false;
         assert(dropdown.isOpen === false, "Dropdown isOpen must be false after closing");
 

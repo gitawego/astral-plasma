@@ -13,6 +13,12 @@ Rectangle {
     property bool enabled: true
     signal toggled()
 
+    /// Test / introspection surface: the rendered glyph, whose colour follows
+    /// `iconColor` (the offscreen harness cannot load the theme singletons, so the
+    /// plumbing is asserted through this item and the token binding in the
+    /// popout's own source).
+    property alias iconItem: toggleIcon
+
     Layout.fillWidth: true
     implicitHeight: 30
     radius: Theme.radiusSmall
@@ -25,6 +31,7 @@ Rectangle {
         spacing: Theme.spaceSmall
 
         ThemedIcon {
+            id: toggleIcon
             Layout.preferredWidth: (toggleItemRoot.iconSource !== "" || toggleItemRoot.icon !== "") ? 18 : 0
             Layout.preferredHeight: 18
             Layout.alignment: Qt.AlignVCenter
