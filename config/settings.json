@@ -114,6 +114,7 @@
     "hostAvatar": "",
     "hostAvatarBg": "#ffffff",
     "hostAvatarBgOpacity": 0.2,
+    "bongoCatAvatar": "",
     "tabs": [
       {
         "id": "dashboard",

@@ -25,3 +25,4 @@ pub mod desktop_session_coordinator;
 pub mod assistant_service;
 pub mod voice_service;
 pub mod desktop_entries_service;
+pub mod stale_claim;

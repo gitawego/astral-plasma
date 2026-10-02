@@ -545,6 +545,7 @@ Singleton {
     readonly property bool hasMedia: activePlayer !== null
     readonly property string rawTrackTitle: activePlayer && activePlayer.trackTitle ? activePlayer.trackTitle : ""
     readonly property string rawTrackArtist: activePlayer ? (activePlayer.trackArtist || (activePlayer.trackArtists && activePlayer.trackArtists.length > 0 ? activePlayer.trackArtists.join(", ") : "") || "") : ""
+    readonly property string rawTrackAlbum: activePlayer ? (activePlayer.trackAlbum || (activePlayer.metadata && activePlayer.metadata["xesam:album"]) || "") : ""
     readonly property string title: hasMedia ? cleanTitle(rawTrackTitle, rawTrackArtist) : "No Media Playing"
     readonly property string artist: hasMedia ? cleanArtist(rawTrackTitle, rawTrackArtist, identity) : "Unknown Artist"
     readonly property string artUrl: activePlayer ? (activePlayer.trackArtUrl || activePlayer.artUrl || "") : ""
@@ -572,7 +573,7 @@ Singleton {
     readonly property real position: currentPosition
     readonly property real progress: length > 0 ? Math.min(1.0, Math.max(0.0, currentPosition / length)) : 0
 
-    readonly property string album: activePlayer ? (activePlayer.trackAlbum || "") : ""
+    readonly property string album: activePlayer ? (activePlayer.trackAlbum || (activePlayer.metadata && activePlayer.metadata["xesam:album"]) || "") : ""
     readonly property bool shuffle: activePlayer ? (activePlayer.shuffle ?? false) : false
     readonly property bool shuffleSupported: activePlayer ? (activePlayer.shuffleSupported ?? false) : false
     readonly property int loopState: activePlayer ? (activePlayer.loopState ?? 0) : 0

@@ -35,6 +35,12 @@ Singleton {
     property real swapUsedBytes: 0
     property var ramHistory: []
 
+    // Disk / Storage Metrics
+    property real diskUsage: 0.30
+    property real diskTotalBytes: 0
+    property real diskUsedBytes: 0
+    property real diskAvailableBytes: 0
+
     // GPU Metrics
     property real gpuUsage: 0.0
     property real gpuTemp: 0.0
@@ -139,6 +145,14 @@ Singleton {
                         if (d.memory.swap_usage !== undefined) root.swapUsage = d.memory.swap_usage;
                         if (d.memory.swap_total_bytes !== undefined) root.swapTotalBytes = d.memory.swap_total_bytes;
                         if (d.memory.swap_used_bytes !== undefined) root.swapUsedBytes = d.memory.swap_used_bytes;
+                    }
+
+                    // Disk
+                    if (d.disk) {
+                        if (d.disk.usage !== undefined) root.diskUsage = d.disk.usage;
+                        if (d.disk.total_bytes !== undefined) root.diskTotalBytes = d.disk.total_bytes;
+                        if (d.disk.used_bytes !== undefined) root.diskUsedBytes = d.disk.used_bytes;
+                        if (d.disk.available_bytes !== undefined) root.diskAvailableBytes = d.disk.available_bytes;
                     }
 
                     // GPU(s)

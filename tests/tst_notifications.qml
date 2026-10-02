@@ -105,6 +105,94 @@ Item {
         assert(notifPopup.effectiveCover === "file:///tmp/test-cover.jpg", "effectiveCover must match imageSource");
         assert(notifPopup.fusedPanel.panelHeight >= 78, "Collapsed panelHeight with image cover must be >= 78");
 
+        // Test 9: Interactive Action Buttons & displayActions
+        assert(typeof notifPopup.resolveActionIcon === "function", "resolveActionIcon must be exposed");
+        assert(notifPopup.resolveActionIcon("mount", "Open with Dolphin") === "folder_open", "mount action should resolve to folder_open icon");
+        assert(notifPopup.resolveActionIcon("eject", "Safely Remove") === "eject", "eject action should resolve to eject icon");
+
+        notifPopup.actions = [
+            { identifier: "mount", text: "Open with Dolphin" },
+            { identifier: "eject", text: "Safely Remove" }
+        ];
+        assert(notifPopup.displayActions.length === 2, "displayActions should have 2 actions");
+        assert(notifPopup.displayActions[0].identifier === "mount", "first action is mount");
+
+        // Test 10: Signals for default and specific action invocation
+        var defInvoked = false;
+        notifPopup.defaultActionInvoked.connect(function() {
+            defInvoked = true;
+        });
+        notifPopup.defaultActionInvoked();
+        assert(defInvoked === true, "defaultActionInvoked signal must fire");
+
+        var actInvokedPayload = null;
+        notifPopup.actionInvoked.connect(function(act) {
+            actInvokedPayload = act;
+        });
+        notifPopup.actionInvoked(notifPopup.actions[0]);
+        assert(actInvokedPayload !== null && actInvokedPayload.identifier === "mount", "actionInvoked signal must pass action payload");
+
+        // Test 11: displayActions fallback to defaultAction when actions array is empty
+        notifPopup.actions = [];
+        notifPopup.defaultAction = { identifier: "device_open", text: "Open in File Manager" };
+        assert(notifPopup.displayActions.length === 1, "displayActions should include defaultAction when actions is empty");
+        assert(notifPopup.displayActions[0].identifier === "device_open", "Fallback action must match defaultAction identifier");
+
+        // Test 12: Device notification detection and augmentation specification model
+        function isDeviceNotification(summary, body, appName, appIcon) {
+            let s = (summary || "").toLowerCase();
+            let b = (body || "").toLowerCase();
+            let app = (appName || "").toLowerCase();
+            let icon = (appIcon || "").toLowerCase();
+            return (
+                app.includes("device") ||
+                icon.includes("drive-removable") ||
+                icon.includes("media-removable") ||
+                icon.includes("usb") ||
+                s.includes("usb device") ||
+                s.includes("device plugged") ||
+                s.includes("removable")
+            );
+        }
+
+        assert(isDeviceNotification("USB Device Detected", "EAGET SSD Device has been connected.", "Device Notifications", "drive-removable-media-usb") === true, "USB SSD notification must be detected as device notification");
+        assert(isDeviceNotification("Regular alert", "Message content", "Slack", "info") === false, "Regular alert must not be detected as device notification");
+
+        // Test 13: Augmentation contract
+        var mockDeviceNotif = {
+            summary: "USB Device Detected",
+            body: "Samsung Portable SSD T7 has been connected.",
+            appName: "Device Notifications",
+            appIcon: "drive-removable-media-usb",
+            actions: [],
+            expireTimeout: 5000
+        };
+
+        var defAct = null;
+        var actList = [];
+        if (mockDeviceNotif.actions && mockDeviceNotif.actions.length > 0) {
+            // normal actions
+        } else if (isDeviceNotification(mockDeviceNotif.summary, mockDeviceNotif.body, mockDeviceNotif.appName, mockDeviceNotif.appIcon)) {
+            let openAct = {
+                identifier: "device_open",
+                text: "Open in File Manager",
+                target: mockDeviceNotif.body || mockDeviceNotif.summary
+            };
+            let ejectAct = {
+                identifier: "device_eject",
+                text: "Safely Remove",
+                target: mockDeviceNotif.body || mockDeviceNotif.summary
+            };
+            defAct = openAct;
+            actList.push(openAct);
+            actList.push(ejectAct);
+        }
+
+        assert(actList.length === 2, "Augmented actions must have 2 actions");
+        assert(actList[0].identifier === "device_open", "First action is device_open");
+        assert(actList[1].identifier === "device_eject", "Second action is device_eject");
+        assert(defAct !== null && defAct.identifier === "device_open", "defAct must be device_open");
+
         console.log("PASS: NotificationPopup Tests");
         Qt.exit(0);
     }

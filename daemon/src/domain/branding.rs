@@ -109,6 +109,9 @@ pub const LAYER_NAMESPACE_WALLPAPER: &str = "astral-plasma-wallpaper";
 
 /// `1` disables every external side effect (systemctl, qdbus, plasma...).
 pub const ENV_TEST_MODE: &str = "ASTRAL_PLASMA_TEST_MODE";
+/// Overrides the boot id used to tell a previous session's claim from this
+/// session's (tests drive the reboot case with it; production reads the kernel).
+pub const ENV_BOOT_ID: &str = "ASTRAL_PLASMA_BOOT_ID";
 /// Overrides the extracted QML package directory.
 pub const ENV_PACKAGE_DIR: &str = "ASTRAL_PLASMA_PACKAGE_DIR";
 /// Overrides the theme (repo) directory used by the systemd unit.

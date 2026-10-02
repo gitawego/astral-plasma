@@ -57,6 +57,18 @@ if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || [ "${XDG_CURRENT_DESKTOP:-}" = "
     IS_HYPRLAND=1
 fi
 
+# Hand back a claim a previous boot left behind *before* taking a new one.
+#
+# The shell's desktop state lives in files (the KDE shortcut journal, the panel
+# marker, KWin's blur snapshot), so a machine that is switched off - or crashes -
+# while the shell runs never runs the exit trap below. The next login then starts
+# Plasma with the shell's keys still displaced and no shell serving them, which is
+# why bare Meta, Meta+W and Meta+D stay dead until something restores them. This
+# is a no-op when the claim on disk is this boot's.
+if [ "$IS_HYPRLAND" -eq 0 ] && [ -x "$DIR/bin/astral-plasma" ]; then
+    "$DIR/bin/astral-plasma" plasma release-stale || true
+fi
+
 # Ensure shortcuts are bound and original state is snapshotted (KWin only)
 if [ "$IS_HYPRLAND" -eq 0 ]; then
     bash "$DIR/scripts/bind_shortcuts.sh" meta-space || true
@@ -119,6 +131,12 @@ quickshell -n -p "$DIR" &
 QS_PID=$!
 
 # Disable Plasma panels and launch watchdog monitoring Quickshell (KDE only)
+#
+# Panels are hidden through the plasmashell *service lifecycle*: `plasma disable`
+# stops `plasma-plasmashell` through systemd (and sets `hiding = windowscover`
+# for a targeted panel). The user's applet configuration is never rewritten and no
+# containment is ever removed, so a crash cannot cost pinned tasks, custom
+# widgets or the panel layout itself.
 if [ "$IS_HYPRLAND" -eq 0 ] && [ -x "$DIR/bin/astral-plasma" ]; then
     "$DIR/bin/astral-plasma" plasma disable all "$QS_PID" >/dev/null 2>&1 || true
 fi

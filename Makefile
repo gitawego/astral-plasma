@@ -38,8 +38,24 @@ debug:
 
 test: test-rust test-qml
 
+# The Rust suite must not reach the live desktop. Port tests write real INI files
+# (kwinrc, kglobalshortcutsrc) and the X11 helpers open $DISPLAY; inheriting the
+# developer's session meant the suite edited the *running* desktop - a live
+# kwinrc ended up carrying [Xwayland] XwaylandEisNoPromptApps=<test binary>, and
+# the shell's keys were re-bound in the user's own config. Every XDG directory is
+# therefore redirected into a throwaway root and DISPLAY/WAYLAND_DISPLAY are
+# dropped, so a test can neither read nor write the session it runs beside.
+# ASTRAL_PLASMA_REQUIRE_ISOLATION makes tests/test_desktop_isolation.rs prove it.
 test-rust:
-	$(CARGO) test --manifest-path $(DAEMON_DIR)/Cargo.toml
+	@tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	env -u DISPLAY -u WAYLAND_DISPLAY \
+	    XDG_CONFIG_HOME="$$tmp/config" \
+	    XDG_DATA_HOME="$$tmp/data" \
+	    XDG_CACHE_HOME="$$tmp/cache" \
+	    XDG_STATE_HOME="$$tmp/state" \
+	    ASTRAL_PLASMA_REQUIRE_ISOLATION=1 \
+	    $(CARGO) test --manifest-path $(DAEMON_DIR)/Cargo.toml
 
 test-qml:
 	bash tests/run_qml_tests.sh

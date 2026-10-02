@@ -371,6 +371,21 @@ ColumnLayout {
         }
     }
 
+    // Media Companion / Mascot (Bongo Cat)
+    AvatarPathField {
+        Layout.fillWidth: true
+        title: "Media Companion / Bongo Cat"
+        description: "Custom companion image or animated GIF (e.g. Bongo Cat) playing alongside media"
+        placeholder: "Default (Bongo Cat)"
+        path: Config.bongoCatAvatar
+        interactive: !root.testMode
+        onPathPicked: p => {
+            if (!root.testMode && typeof Config !== "undefined" && Config.setBongoCatAvatar) {
+                Config.setBongoCatAvatar(p);
+            }
+        }
+    }
+
     // Loads the installed calendar-capable apps (with display names) from the
     // daemon: the picker stays data-driven - no application name is hardcoded.
     // The Process lives in its own Quickshell-importing file so this page

@@ -25,6 +25,8 @@ Item {
     property real elevation: 6
     property int paddingHorizontal: 22
     property int paddingVertical: 10
+    property int fontSize: 0
+    property int minWidth: 100
     property bool showSpecular: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
     property bool showCaustic: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.causticEnabled : true
 
@@ -32,7 +34,7 @@ Item {
     readonly property int radius: Math.round(height / 2)
     readonly property bool isCircular: root.text === "" && (Math.abs(root.width - root.height) <= 6)
     implicitHeight: 42
-    implicitWidth: Math.max(100, contentRow.implicitWidth + paddingHorizontal * 2)
+    implicitWidth: Math.max(minWidth, contentRow.implicitWidth + paddingHorizontal * 2)
 
     // Absolute vertical position helpers for 3D depth assertion
     readonly property real labelY: contentRow.y + labelText.y
@@ -191,7 +193,7 @@ Item {
             visible: root.text !== ""
             text: root.text
             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-            font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyLarge) ? Theme.fontBodyLarge : 14
+            font.pixelSize: root.fontSize > 0 ? root.fontSize : ((typeof Theme !== "undefined" && Theme.fontBodyLarge) ? Theme.fontBodyLarge : 14)
             font.weight: Font.DemiBold
             color: root.textShadowColor
             anchors.verticalCenter: parent.verticalCenter
@@ -220,7 +222,7 @@ Item {
             visible: root.text !== ""
             text: root.text
             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-            font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyLarge) ? Theme.fontBodyLarge : 14
+            font.pixelSize: root.fontSize > 0 ? root.fontSize : ((typeof Theme !== "undefined" && Theme.fontBodyLarge) ? Theme.fontBodyLarge : 14)
             font.weight: Font.DemiBold
             color: root.isPrimary ? "#FFFFFF" : root.textColor
             anchors.verticalCenter: parent.verticalCenter

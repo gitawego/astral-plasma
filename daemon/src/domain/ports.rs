@@ -102,6 +102,13 @@ pub trait PlasmaControlPort: Send + Sync {
     fn restore_config(&self) -> DynResult<bool>;
     fn get_status(&self) -> DynResult<PlasmaStatus>;
     fn stop_watchdog(&self);
+    /// What the panel claim's own record says about it.
+    ///
+    /// Default `Unclaimed` keeps a port that never takes a panel claim (a mock,
+    /// a compositor without panels) out of the hand-back path.
+    fn panel_claim(&self) -> crate::domain::desktop_integration::ClaimStamp {
+        crate::domain::desktop_integration::ClaimStamp::Unclaimed
+    }
 }
 
 pub trait SystemdControlPort: Send + Sync {
@@ -126,6 +133,21 @@ pub trait ShortcutControlPort: Send + Sync {
     fn restore_relevant_shortcuts(&self) -> DynResult<bool>;
     fn bind_shortcuts(&self, mode: &str) -> DynResult<()>;
     fn is_backup_active(&self) -> bool;
+    /// What the shortcut claim's own record says about it.
+    fn shortcut_claim(&self) -> crate::domain::desktop_integration::ClaimStamp {
+        crate::domain::desktop_integration::ClaimStamp::Unclaimed
+    }
+}
+
+/// KWin's blur override, which the shell tunes for its glass.
+pub trait BlurControlPort: Send + Sync {
+    /// What the blur claim's own record says about it: the snapshot written on
+    /// the first apply is its record.
+    fn blur_claim(&self) -> crate::domain::desktop_integration::ClaimStamp {
+        crate::domain::desktop_integration::ClaimStamp::Unclaimed
+    }
+    /// Hand KWin's blur back to the user.
+    fn restore(&self) -> DynResult<bool>;
 }
 
 pub trait DesktopSessionPort: Send + Sync {

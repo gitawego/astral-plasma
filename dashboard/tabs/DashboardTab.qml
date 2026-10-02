@@ -11,7 +11,7 @@ Item {
     id: root
 
     implicitWidth: 940
-    implicitHeight: 360
+    implicitHeight: 312
 
     readonly property alias mediaCardItem: mediaCard
     readonly property alias vizSwitcherItem: vizSwitchBtn
@@ -20,9 +20,24 @@ Item {
     readonly property alias mediaNextBtnItem: mediaNextBtn
     readonly property alias calendarCardItem: calendarCard
     readonly property alias calWidgetItem: calWidget
+    readonly property alias telemetryCardItem: telemetryCard
+    readonly property alias cpuBarItem: cpuMeter
+    readonly property alias ramBarItem: ramMeter
+    readonly property alias diskBarItem: diskMeter
+
+    /// Configurable mascot / companion for the media card ("" = default bongocat.gif).
+    readonly property string mascotSource: root.resolveMascotSource((typeof Config !== "undefined") ? Config.bongoCatAvatar : "")
+    property alias mascotItem: mascotImg
+
+    function resolveMascotSource(configured) {
+        const p = (configured || "").trim();
+        if (p === "") return "../../theme/assets/bongocat.gif";
+        if (p.startsWith("file://")) return p;
+        return "file://" + p;
+    }
 
     /// Durable avatar for the system-host card ("" = bundled default art).
-    readonly property string hostAvatarSource: root.resolveAvatarSource(Config.hostAvatar)
+    readonly property string hostAvatarSource: root.resolveAvatarSource((typeof Config !== "undefined") ? Config.hostAvatar : "")
     property alias hostAvatarImageItem: hostAvatarImg
     property alias hostAvatarCircle: avatarCircle
     property alias hostAvatarMaskItem: avatarMask
@@ -81,6 +96,22 @@ Item {
         onTriggered: root.currentDate = new Date()
     }
 
+    Component.onCompleted: {
+        if (!testMode && typeof SystemService !== "undefined" && SystemService.registerClient) {
+            SystemService.registerClient(root, root.isTargetVisible);
+        }
+    }
+    Component.onDestruction: {
+        if (!testMode && typeof SystemService !== "undefined" && SystemService.unregisterClient) {
+            SystemService.unregisterClient(root);
+        }
+    }
+    onIsTargetVisibleChanged: {
+        if (!testMode && typeof SystemService !== "undefined" && SystemService.registerClient) {
+            SystemService.registerClient(root, root.isTargetVisible);
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: Theme.spaceMedium
@@ -96,15 +127,15 @@ Item {
             // ROW 0: Weather + Host Profile
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 110
-                Layout.minimumHeight: 110
-                Layout.maximumHeight: 110
+                Layout.preferredHeight: 104
+                Layout.minimumHeight: 104
+                Layout.maximumHeight: 104
                 Layout.fillHeight: false
                 spacing: Theme.spaceMedium
 
-                // Card 1: Weather Widget (~280px)
+                // Card 1: Weather Widget (~260px)
                 Card {
-                    Layout.preferredWidth: 280
+                    Layout.preferredWidth: 260
                     Layout.fillHeight: true
                     radius: Theme.radiusGlassCard
 
@@ -238,15 +269,18 @@ Item {
                 }
             }
 
-            // ROW 1: DateTime Clock + Monthly Calendar + Resource Sliders
+            // ROW 1: DateTime Clock + Monthly Calendar + Hardware Telemetry
             RowLayout {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
+                Layout.preferredHeight: 196
+                Layout.minimumHeight: 196
+                Layout.maximumHeight: 196
+                Layout.fillHeight: false
                 spacing: Theme.spaceMedium
 
-                // Card 3: DateTime Clock (~110px)
+                // Card 3: DateTime Clock (~104px)
                 Card {
-                    Layout.preferredWidth: 110
+                    Layout.preferredWidth: 104
                     Layout.fillHeight: true
                     radius: Theme.radiusGlassCard
 
@@ -484,36 +518,102 @@ Item {
                     }
                 }
 
-                // Card 5: Resource Level Bars (~150px)
+                // Card 5: Hardware Resource Telemetry Meters (~100px)
                 Card {
-                    Layout.preferredWidth: 150
+                    id: telemetryCard
+                    Layout.preferredWidth: 100
                     Layout.fillHeight: true
                     radius: Theme.radiusGlassCard
+                    interactive: true
+                    hovered: teleHover.containsMouse
 
-                    Row {
-                        anchors.centerIn: parent
-                        spacing: 12
+                    MouseArea {
+                        id: teleHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (typeof Config !== "undefined") {
+                                Config.activeDashboardTab = "performance";
+                            }
+                        }
+                    }
 
-                        LevelBar {
-                            value: PipewireAudio.volume
-                            iconText: "volume_up"
-                            interactive: true
-                            onValueModified: val => PipewireAudio.setVolume(val)
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.topMargin: 12
+                        anchors.bottomMargin: 14
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 0
+
+                        // Hover stat badge
+                        Text {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: teleHover.containsMouse
+                                ? (Math.round(SystemService.cpuUsage * 100) + "% · " + Math.round(SystemService.ramUsage * 100) + "% · " + Math.round(SystemService.diskUsage * 100) + "%")
+                                : ""
+                            opacity: teleHover.containsMouse ? 1.0 : 0.0
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            font.weight: Font.Medium
+                            color: Colors.primary
+                            style: Text.Outline
+                            styleColor: Colors.glassTextHalo
+                            horizontalAlignment: Text.AlignHCenter
+
+                            Behavior on opacity {
+                                NumberAnimation { duration: Theme.animExpressiveFastEffects }
+                            }
                         }
-                        LevelBar {
-                            value: BrightnessService.normalized
-                            iconText: "brightness"
-                            interactive: true
-                            onValueModified: val => BrightnessService.setBrightness(val)
+
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
                         }
-                        LevelBar {
-                            value: PowerService.percentage
-                            iconText: "battery"
+
+                        // 3 Telemetry Pill Gauges (CPU, RAM, Disk)
+                        Row {
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 8
+
+                            TelemetryBar {
+                                id: cpuMeter
+                                value: SystemService.cpuUsage
+                                barWidth: 12
+                                nerdGlyph: "󰻠"
+                                iconText: "cpu"
+                                fillColor: SystemService.cpuUsage > 0.85 ? Colors.error : Colors.primary
+                                tooltipText: "CPU: " + Math.round(SystemService.cpuUsage * 100) + "%"
+                                height: 130
+                            }
+
+                            TelemetryBar {
+                                id: ramMeter
+                                value: SystemService.ramUsage
+                                barWidth: 12
+                                nerdGlyph: "󰍛"
+                                iconText: "memory"
+                                fillColor: SystemService.ramUsage > 0.85 ? Colors.error : Colors.secondary
+                                tooltipText: "RAM: " + Math.round(SystemService.ramUsage * 100) + "%"
+                                height: 130
+                            }
+
+                            TelemetryBar {
+                                id: diskMeter
+                                value: SystemService.diskUsage
+                                barWidth: 12
+                                nerdGlyph: "󰋊"
+                                iconText: "hard_drive"
+                                fillColor: SystemService.diskUsage > 0.85 ? Colors.error : (typeof Colors.tertiary !== "undefined" ? Colors.tertiary : Colors.primary)
+                                tooltipText: "Disk: " + Math.round(SystemService.diskUsage * 100) + "%"
+                                height: 130
+                            }
                         }
-                        LevelBar {
-                            value: SystemService.ramUsage
-                            iconText: "memory"
-                            fillColor: Colors.secondary
+
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
                         }
                     }
                 }
@@ -525,7 +625,7 @@ Item {
         // ========================================================
         Card {
             id: mediaCard
-            Layout.preferredWidth: 215
+            Layout.preferredWidth: 220
             Layout.fillHeight: true
             radius: Theme.radiusGlassCard
             clip: true
@@ -557,29 +657,23 @@ Item {
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.topMargin: 20
-                anchors.bottomMargin: 16
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
+                anchors.topMargin: 12
+                anchors.bottomMargin: 8
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
                 spacing: 0
-
-                // Top spacer: gently pushes down the circular cover and notes
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 12
-                }
 
                 // Circular album artwork with progress arc
                 Item {
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 120
-                    Layout.preferredHeight: 120
+                    Layout.preferredWidth: 104
+                    Layout.preferredHeight: 104
 
                     // 1. Dynamic Audio Heatmap Wave Ring & Thermal Aura (Speaker / Heatmap Style)
                     HeatmapCoverRing {
                         anchors.centerIn: parent
-                        innerRadius: 44
-                        outerRadius: 53
+                        innerRadius: 38
+                        outerRadius: 46
                         visible: mediaCard.isSpeakerStyle
                         isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "dashboard" && visible) : false
                     }
@@ -587,7 +681,7 @@ Item {
                     // 2. Radial Audio Spectrum Halo Ring (Radial Style)
                     RadialCoverRing {
                         anchors.centerIn: parent
-                        innerRadius: 58
+                        innerRadius: 50
                         visible: !mediaCard.isSpeakerStyle
                         isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "dashboard" && visible) : false
                     }
@@ -634,8 +728,8 @@ Item {
                     Item {
                         id: albumCenterCircle
                         anchors.centerIn: parent
-                        width: 86
-                        height: 86
+                        width: 74
+                        height: 74
                         scale: beatBounce.value
 
                         MotionValue {
@@ -725,7 +819,7 @@ Item {
                 // Spacer between Cover and Title
                 Item {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 26
+                    Layout.preferredHeight: 10
                 }
 
                 // Track Title
@@ -743,7 +837,28 @@ Item {
                     elide: Text.ElideRight
                 }
 
-                Item { Layout.preferredHeight: 4 }
+                Item { Layout.preferredHeight: 2 }
+
+                // Album
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: parent.width - 16
+                    visible: (typeof MprisMedia !== "undefined") && MprisMedia.album && MprisMedia.album.length > 0
+                    text: (typeof MprisMedia !== "undefined") ? (MprisMedia.album || "") : ""
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.Medium
+                    color: Colors.onSurfaceVariant
+                    style: Text.Outline
+                    styleColor: Colors.glassTextHalo
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
+                }
+
+                Item {
+                    visible: (typeof MprisMedia !== "undefined") && MprisMedia.album && MprisMedia.album.length > 0
+                    Layout.preferredHeight: 2
+                }
 
                 // Artist
                 Text {
@@ -752,7 +867,7 @@ Item {
                     text: MprisMedia.artist || "Unknown Artist"
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
-                    color: Colors.onSurfaceVariant
+                    color: Qt.alpha(Colors.onSurfaceVariant, 0.75)
                     style: Text.Outline
                     styleColor: Colors.glassTextHalo
                     horizontalAlignment: Text.AlignHCenter
@@ -762,7 +877,7 @@ Item {
                 // Spacer between Text and Controls
                 Item {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 12
+                    Layout.preferredHeight: 8
                 }
 
                 // Playback Controls Row
@@ -774,10 +889,10 @@ Item {
                         id: mediaPrevBtn
                         iconText: "skip_previous"
                         iconSize: 15
-                        implicitWidth: 34
-                        implicitHeight: 34
-                        paddingHorizontal: 8
-                        paddingVertical: 8
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        paddingHorizontal: 6
+                        paddingVertical: 6
                         elevation: 4
                         interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true
                         opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true) ? 1.0 : 0.45
@@ -788,10 +903,10 @@ Item {
                         iconText: (typeof MprisMedia !== "undefined" && MprisMedia.isPlaying) ? "pause" : "play_arrow"
                         iconSize: 18
                         isPrimary: true
-                        implicitWidth: 42
-                        implicitHeight: 42
-                        paddingHorizontal: 10
-                        paddingVertical: 10
+                        implicitWidth: 38
+                        implicitHeight: 38
+                        paddingHorizontal: 8
+                        paddingVertical: 8
                         elevation: 6
                         onClicked: MprisMedia.togglePlay()
                     }
@@ -799,10 +914,10 @@ Item {
                         id: mediaNextBtn
                         iconText: "skip_next"
                         iconSize: 15
-                        implicitWidth: 34
-                        implicitHeight: 34
-                        paddingHorizontal: 8
-                        paddingVertical: 8
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        paddingHorizontal: 6
+                        paddingVertical: 6
                         elevation: 4
                         interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true
                         opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true) ? 1.0 : 0.45
@@ -814,16 +929,17 @@ Item {
                 Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.minimumHeight: 8
+                    Layout.minimumHeight: 4
                 }
 
-                // Animated Bongo Cat
+                // Animated Mascot / Companion (Configurable Bongo Cat)
                 AnimatedImage {
+                    id: mascotImg
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 68
-                    Layout.preferredHeight: 38
-                    source: "../../theme/assets/bongocat.gif"
-                    playing: MprisMedia.isPlaying
+                    Layout.preferredWidth: 76
+                    Layout.preferredHeight: 44
+                    source: root.mascotSource
+                    playing: (typeof MprisMedia !== "undefined") ? MprisMedia.isPlaying : false
                     fillMode: Image.PreserveAspectFit
                 }
             }

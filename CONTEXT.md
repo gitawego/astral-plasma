@@ -80,6 +80,14 @@ The last known session projection retained after the compositor connection becom
 
 The explicit declaration of which shell or environment component is responsible for a desktop resource, such as a panel, notification daemon, lock screen, global shortcut, wallpaper provider, or system service.
 
+### Session Claim
+
+The set of desktop resources a running shell has taken ownership of: the KDE global shortcuts it displaced, the panel service it hid, the compositor blur it tuned. A claim is recorded on disk - a journal, a marker, a snapshot - because the resources outlive the process that took them.
+
+### Claim Stamp
+
+The boot identity recorded in a claim record. It is what makes a claim recognisable across logins: a claim stamped with the running boot belongs to this session, while a claim stamped with another boot - or carrying no stamp at all - cannot be proved to be ours and is handed back before a new claim is taken. Hand-back restores recorded values (a displaced global shortcut, a hidden panel, compositor blur); it never deletes user configuration.
+
 ## Supporting language
 
 ### Adapter

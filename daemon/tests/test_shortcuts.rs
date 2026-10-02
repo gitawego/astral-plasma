@@ -22,6 +22,7 @@ fn backup(
         displaced_action: displaced.clone(),
         displaced_actions: displaced.into_iter().collect(),
         mode: Some("meta-space".to_string()),
+        boot_id: None,
     }
 }
 
@@ -235,6 +236,7 @@ fn the_rearm_step_hands_the_recorded_codes_back() {
         displaced_action: None,
         displaced_actions: vec![displaced],
         mode: Some("meta-space".to_string()),
+        boot_id: None,
     };
 
     let snippet = rearm_snippet(&partial_journal);

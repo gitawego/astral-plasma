@@ -6,6 +6,7 @@ pub mod tray_adapter;
 pub mod kwin_adapter;
 pub mod preview_capture;
 pub mod plasma_adapter;
+pub mod session_identity;
 pub mod systemd_adapter;
 pub mod embedded_bundle;
 pub mod x11_input;
@@ -35,4 +36,5 @@ pub mod echo_cancel;
 pub mod noise_suppress;
 pub mod mic_check;
 pub mod desktop_entries_adapter;
+pub mod removable_devices_adapter;
 

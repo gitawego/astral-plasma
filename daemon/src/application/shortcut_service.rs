@@ -27,8 +27,17 @@ impl<P: ShortcutControlPort> ShortcutControlUseCase<P> {
     }
 
     /// Granularly snapshots only Astral-relevant shortcuts (merging into an
-    /// existing backup when present) and binds this shell's shortcuts
+    /// existing backup when present) and binds this shell's shortcuts.
+    ///
+    /// A journal left behind by a *previous boot* is handed back first, before
+    /// anything is claimed: the machine may have been switched off mid-session,
+    /// and binding over that journal would leave the user's own Meta keys
+    /// displaced with no shell serving the replacements. Releasing here (rather
+    /// than only at the caller) keeps the session's two concurrent claim calls -
+    /// the shell fires `plasma disable` and `shortcuts bind` together - order
+    /// independent: whichever runs second cannot resurrect the old claim.
     pub fn backup_and_bind(&self, mode: &str) -> DynResult<()> {
+        crate::application::stale_claim::release_stale_shortcuts(&self.port);
         self.snapshot(mode)?;
         self.port.bind_shortcuts(mode)?;
         Ok(())

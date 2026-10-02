@@ -1,7 +1,7 @@
-use crate::domain::model::{BatteryMetrics, CpuMetrics, GpuMetrics, SystemMetrics};
+use crate::domain::model::{BatteryMetrics, CpuMetrics, DiskMetrics, GpuMetrics, SystemMetrics};
 use crate::domain::ports::{DynResult, MetricsPort};
 use crate::domain::sys_parser::{
-    calculate_cpu_usage_with_state, parse_all_nvidia_gpus, parse_amdgpu_metrics, parse_battery_uevent,
+    calculate_cpu_usage_with_state, calculate_disk_metrics, parse_all_nvidia_gpus, parse_amdgpu_metrics, parse_battery_uevent,
     parse_cpu_freq_ghz, parse_cpu_model, parse_cpu_stat, parse_cpu_temp, parse_intel_gpu_freq,
     parse_loadavg, parse_lspci_vmm, parse_meminfo_detailed, parse_uptime_content,
 };
@@ -303,11 +303,29 @@ impl MetricsPort for ProcMetricsAdapter {
                 ..Default::default()
             });
 
+        let disk = {
+            use std::ffi::CString;
+            use std::mem::MaybeUninit;
+            let mut res = DiskMetrics::default();
+            if let Ok(c_path) = CString::new("/") {
+                let mut stat = MaybeUninit::<libc::statvfs>::uninit();
+                if unsafe { libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) } == 0 {
+                    let s = unsafe { stat.assume_init() };
+                    let block_size = s.f_frsize as u64;
+                    let total = s.f_blocks as u64 * block_size;
+                    let free = s.f_bavail as u64 * block_size;
+                    res = calculate_disk_metrics(total, free);
+                }
+            }
+            res
+        };
+
         Ok(SystemMetrics {
             uptime,
             ram,
             cpu,
             memory,
+            disk,
             gpu: primary_gpu,
             gpus: discovered_gpus,
             battery,

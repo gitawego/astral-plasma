@@ -23,3 +23,4 @@ pub mod assistant;
 pub mod downloads;
 pub mod voice;
 pub mod desktop_entries;
+pub mod removable_devices;

@@ -16,17 +16,46 @@ Item {
     property string iconSource: ""
     property string imageSource: ""
     property var actions: []
+    property var defaultAction: null
     property bool expanded: false
     property int timeoutMs: 5000
 
+    readonly property var displayActions: {
+        let list = [];
+        if (root.actions && root.actions.length > 0) {
+            for (let i = 0; i < root.actions.length; i++) {
+                let act = root.actions[i];
+                if (act) list.push(act);
+            }
+        } else if (root.defaultAction && root.defaultAction.text && root.defaultAction.text.length > 0 && root.defaultAction.text.toLowerCase() !== "default") {
+            list.push(root.defaultAction);
+        }
+        return list;
+    }
+
+    function resolveActionIcon(identifier, text) {
+        const s = ((identifier || "") + " " + (text || "")).toLowerCase();
+        if (s.includes("open") || s.includes("mount") || s.includes("folder") || s.includes("dolphin") || s.includes("browse") || s.includes("dir")) return "folder_open";
+        if (s.includes("eject") || s.includes("unmount") || s.includes("remove")) return "eject";
+        if (s.includes("play")) return "play_arrow";
+        if (s.includes("pause")) return "pause";
+        if (s.includes("reply")) return "reply";
+        if (s.includes("copy")) return "content_copy";
+        if (s.includes("view") || s.includes("show")) return "visibility";
+        if (s.includes("settings") || s.includes("configure")) return "settings";
+        if (s.includes("download")) return "download";
+        if (s.includes("cancel") || s.includes("dismiss")) return "close";
+        return "";
+    }
+
     readonly property bool isMediaNotification: {
         let app = (root.appName || "").toLowerCase();
-        return Boolean(app.includes("strawberry") || 
-                       app.includes("elisa") || 
-                       app.includes("cloudmusic") || 
-                       app.includes("netease") || 
-                       app.includes("music") || 
-                       app.includes("player") || 
+        return Boolean(app.includes("strawberry") ||
+                       app.includes("elisa") ||
+                       app.includes("cloudmusic") ||
+                       app.includes("netease") ||
+                       app.includes("music") ||
+                       app.includes("player") ||
                        app.includes("spotify") ||
                        root.materialIcon === "music_note");
     }
@@ -71,7 +100,8 @@ Item {
     readonly property alias cardItem: notifCard
 
     signal closed()
-    signal actionInvoked(string actionId)
+    signal defaultActionInvoked()
+    signal actionInvoked(var action)
 
     function toggleExpanded() {
         expanded = !expanded;
@@ -123,7 +153,11 @@ Item {
         id: panel
         attachEdge: "topRight"
         panelWidth: root.width
-        panelHeight: root.expanded ? (expandedContent.implicitHeight + 52) : (root.hasImageCover ? 84 : 78)
+        panelHeight: root.expanded
+            ? (expandedContent.implicitHeight + (root.displayActions.length > 0 ? Math.max(26, actionsRow.implicitHeight) + 62 : 52))
+            : ((root.displayActions.length > 0)
+                ? (root.hasImageCover ? Math.max(116, 76 + actionsRow.implicitHeight) : Math.max(108, 70 + actionsRow.implicitHeight))
+                : (root.hasImageCover ? 84 : 78))
         borderThickness: root.borderThickness
         borderRounding: root.borderRounding
         fillColor: (typeof Colors !== "undefined" && Colors.glassSurface) ? Colors.glassSurface : Qt.rgba(0.08, 0.07, 0.10, 1.0)
@@ -158,6 +192,18 @@ Item {
             // border plus the specular hairlines. A ring here drew a second,
             // smaller rounded box visibly inside the panel.
             showBorder: false
+        }
+
+        // Card-wide click area for default action (e.g. click notification to open USB folder)
+        MouseArea {
+            id: cardClickArea
+            anchors.fill: notifCard
+            z: 0
+            hoverEnabled: true
+            cursorShape: (root.defaultAction !== null || root.displayActions.length > 0) ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: {
+                root.defaultActionInvoked();
+            }
         }
 
         Item {
@@ -372,6 +418,8 @@ Item {
                     anchors.topMargin: 2
                     visible: !root.expanded && root.body.length > 0
                     text: root.body
+                    textFormat: Text.AutoText
+                    onLinkActivated: link => Qt.openUrlExternally(link)
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                     font.pixelSize: 12
                     renderType: Text.QtRendering
@@ -380,7 +428,7 @@ Item {
                     maximumLineCount: 1
                 }
 
-                // Expanded Content (Full body + Action Buttons)
+                // Expanded Content (Full body)
                 Column {
                     id: expandedContent
                     anchors.left: parent.left
@@ -389,44 +437,64 @@ Item {
                     anchors.topMargin: 4
                     visible: root.expanded
                     spacing: 8
+                    z: 5
 
                     Text {
                         width: parent.width
                         text: root.body
+                        textFormat: Text.AutoText
+                        onLinkActivated: link => Qt.openUrlExternally(link)
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                         font.pixelSize: 12
                         renderType: Text.QtRendering
                         color: (typeof Colors !== "undefined" && Colors.textMuted) ? Colors.textMuted : "#c7c6ca"
                         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                     }
+                }
 
-                    // Action Buttons Row
-                    Row {
-                        spacing: 8
+                // Action Buttons Row (Interactive system actions: e.g. USB mount/open, eject, reply, etc.)
+                Flow {
+                    id: actionsRow
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: root.expanded ? expandedContent.bottom : (bodyPreview.visible ? bodyPreview.bottom : summaryText.bottom)
+                    anchors.topMargin: 6
+                    spacing: 6
+                    visible: (root.displayActions && root.displayActions.length > 0) || root.expanded
+                    z: 10
 
-                        Rectangle {
-                            height: 26
-                            width: 62
-                            radius: 13
-                            color: closeHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.22)) : ((typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.12))
-                            border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.3)
-                            border.width: 1
-
-                            Row {
-                                anchors.centerIn: parent
-                                spacing: 4
-                                MaterialIcon { text: "close"; size: 13; color: (typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#FFFFFF" }
-                                Text { text: "Close"; font.pixelSize: 11; renderType: Text.QtRendering; color: (typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#FFFFFF" }
-                            }
-
-                            MouseArea {
-                                id: closeHover
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.close()
+                    Repeater {
+                        model: root.displayActions
+                        delegate: LiquidGlassButton {
+                            implicitHeight: 24
+                            paddingHorizontal: 8
+                            paddingVertical: 2
+                            fontSize: 11
+                            minWidth: 0
+                            isPrimary: index === 0
+                            text: modelData.text || modelData.identifier || "Action"
+                            iconText: root.resolveActionIcon(modelData.identifier, modelData.text)
+                            iconSize: 13
+                            elevation: 2
+                            onClicked: {
+                                root.actionInvoked(modelData);
                             }
                         }
+                    }
+
+                    // Close Button when expanded or if no specific actions were sent
+                    LiquidGlassButton {
+                        visible: root.expanded || (root.displayActions.length === 0)
+                        implicitHeight: 24
+                        paddingHorizontal: 8
+                        paddingVertical: 2
+                        fontSize: 11
+                        minWidth: 0
+                        iconText: "close"
+                        iconSize: 13
+                        text: "Close"
+                        elevation: 2
+                        onClicked: root.close()
                     }
                 }
             }

@@ -80,6 +80,7 @@ Singleton {
             "hostAvatar": "",
             "hostAvatarBg": "#ffffff",
             "hostAvatarBgOpacity": 0.2,
+            "bongoCatAvatar": "",
             "tabs": [
                 { "id": "dashboard", "label": "Dashboard", "enabled": true },
                 { "id": "media", "label": "Media", "enabled": true },
@@ -175,6 +176,9 @@ Singleton {
         const v = root.settings.dashboard ? Number(root.settings.dashboard.hostAvatarBgOpacity) : NaN;
         return isNaN(v) ? 0.2 : Math.max(0, Math.min(1, v));
     }
+    // Dashboard mascot / Bongo Cat avatar ("" = bundled default art).
+    readonly property string bongoCatAvatar: (root.settings.dashboard && typeof root.settings.dashboard.bongoCatAvatar === "string")
+        ? root.settings.dashboard.bongoCatAvatar : ""
     readonly property var disablePlasmaPanels: {
         if (!root.settings.plasma) return "all";
         if (root.settings.plasma.disablePanels !== undefined) return root.settings.plasma.disablePanels;
@@ -653,7 +657,8 @@ Singleton {
     /// [{ key, kind }] of dashboard settings holding a durable-imported image.
     readonly property var dashboardAvatarFields: [
         { "key": "mediaAvatar", "kind": "media" },
-        { "key": "hostAvatar", "kind": "host" }
+        { "key": "hostAvatar", "kind": "host" },
+        { "key": "bongoCatAvatar", "kind": "mascot" }
     ]
 
     /// Guards the one-time load-time migration (applySettings can re-run).
@@ -751,6 +756,11 @@ Singleton {
     /// Dashboard system-host card avatar (Settings > Dashboard & Widgets).
     function setHostAvatar(pathValue) {
         root.setDashboardAvatar("hostAvatar", "host", pathValue);
+    }
+
+    /// Dashboard mascot / Bongo Cat avatar (Settings > Dashboard & Widgets).
+    function setBongoCatAvatar(pathValue) {
+        root.setDashboardAvatar("bongoCatAvatar", "mascot", pathValue);
     }
 
     /// Circle background color (#rrggbb) for the system-host avatar.

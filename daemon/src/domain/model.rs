@@ -139,6 +139,14 @@ pub struct BatteryMetrics {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct DiskMetrics {
+    pub usage: f64,               // 0.0 - 1.0
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub available_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SystemMetrics {
     pub uptime: String,
     pub ram: f64,
@@ -146,6 +154,8 @@ pub struct SystemMetrics {
     pub cpu: CpuMetrics,
     #[serde(default)]
     pub memory: MemoryMetrics,
+    #[serde(default)]
+    pub disk: DiskMetrics,
     #[serde(default)]
     pub gpu: GpuMetrics,
     #[serde(default)]

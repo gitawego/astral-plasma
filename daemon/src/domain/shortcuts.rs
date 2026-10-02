@@ -40,6 +40,16 @@ pub struct AstralShortcutSessionBackup {
     /// reads as "claimed, mode unknown".
     #[serde(default)]
     pub mode: Option<String>,
+    /// Boot the claim was made in.
+    ///
+    /// The journal outlives the process: after a reboot nothing ran the
+    /// hand-back, and the recorded values are the only thing that can give the
+    /// keys back. Stamping the boot is what lets the next session tell
+    /// "my claim" from "a claim a previous boot left behind" and release the
+    /// latter (`desktop_integration::claim_is_stale`). Absent in journals written
+    /// before stamping existed, which reads as stale.
+    #[serde(default)]
+    pub boot_id: Option<String>,
 }
 
 /// Display label the KDE shortcuts editor shows for the launcher action.
@@ -159,6 +169,42 @@ pub fn merge_missing_entries_multi(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn journal(boot_id: Option<&str>) -> AstralShortcutSessionBackup {
+        AstralShortcutSessionBackup {
+            timestamp: 0,
+            affected_entries: Vec::new(),
+            previous_kwin_plugin_enabled: false,
+            displaced_action: None,
+            displaced_actions: Vec::new(),
+            mode: Some("meta-space".to_string()),
+            boot_id: boot_id.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_merge_never_restamps_the_claim_with_this_boot() {
+        // The journal records where the claim *came from*; a later bind in a
+        // newer boot must not rewrite its origin, or the claim would look like
+        // this boot's and never be handed back.
+        let (merged, _) = merge_missing_entries_multi(
+            journal(Some("boot-a")),
+            vec![GranularShortcutSnapshot {
+                group: "kwin".to_string(),
+                key: "AstralLauncher".to_string(),
+                previous_value: Some("none,none".to_string()),
+                keys: Vec::new(),
+            }],
+            Vec::new(),
+        );
+        assert_eq!(merged.boot_id.as_deref(), Some("boot-a"));
+    }
+
+    #[test]
+    fn an_unstamped_journal_stays_unstamped_through_a_merge() {
+        let (merged, _) = merge_missing_entries(journal(None), Vec::new(), None);
+        assert_eq!(merged.boot_id, None);
+    }
 
     #[test]
     fn bindings_follow_the_mode() {

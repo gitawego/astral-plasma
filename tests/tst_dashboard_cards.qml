@@ -70,6 +70,27 @@ Item {
         assert(calWidget.colSpacing === calWidget.headerColSpacing, "Calendar header and day column spacing must be identical for alignment");
         assert(calWidget.fontSize >= 12, "Calendar font size must be at least 12px for readability");
 
+        // Hardware Resource Telemetry Gauges (Replaces duplicate volume/brightness)
+        let teleCard = dashTab.telemetryCardItem;
+        assert(teleCard !== undefined && teleCard !== null, "dashTab must expose telemetryCardItem");
+        assert(teleCard.showShadow === true, "telemetryCard must be a liquid glass card with showShadow");
+        let cpuBar = dashTab.cpuBarItem;
+        let ramBar = dashTab.ramBarItem;
+        let diskBar = dashTab.diskBarItem;
+        assert(cpuBar !== undefined && cpuBar !== null, "dashTab must expose cpuBarItem");
+        assert(ramBar !== undefined && ramBar !== null, "dashTab must expose ramBarItem");
+        assert(diskBar !== undefined && diskBar !== null, "dashTab must expose diskBarItem");
+        assert(cpuBar.trackRectItem !== undefined, "cpuBar must be a TelemetryBar with trackRectItem");
+        assert(cpuBar.fillPillItem !== undefined, "cpuBar must be a TelemetryBar with fillPillItem");
+
+        // Configurable Mascot / Bongo Cat verification
+        assert(dashTab.mascotItem !== undefined && dashTab.mascotItem !== null, "dashTab must expose mascotItem");
+        assert(typeof dashTab.resolveMascotSource === "function", "dashTab must expose resolveMascotSource");
+        assert(dashTab.resolveMascotSource("").endsWith("bongocat.gif"), "empty mascot config must default to bongocat.gif");
+        assert(dashTab.resolveMascotSource("  ").endsWith("bongocat.gif"), "blank mascot config must default to bongocat.gif");
+        assert(dashTab.resolveMascotSource("/tmp/mycat.gif") === "file:///tmp/mycat.gif", "local path must resolve to file:// URL");
+        assert(dashTab.resolveMascotSource("file:///tmp/mycat.gif") === "file:///tmp/mycat.gif", "file:// URL must remain unchanged");
+
         // ========================================================
         // 2. WorkspacesTab Liquid Glass Cards
         // ========================================================

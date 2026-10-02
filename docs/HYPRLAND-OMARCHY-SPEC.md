@@ -447,6 +447,20 @@ Exact CLI spelling may be aligned with existing command conventions during Phase
 
 Plasma takeover shall be performed only by the KDE profile. In hosted Omarchy mode, `omarchy-shell` remains the owner of notifications, lock, polkit, idle, OSD, and menu services. The current unconditional Plasma lifecycle calls in `shell.qml`, `run.sh`, and CLI entry points shall move behind the lifecycle coordinator.
 
+### Claim hand-back across logins
+
+A claim on the desktop is recorded on disk, so it outlives the process that made it. A session that ends without running its shutdown sequence - a power cut, a crash, a forced reboot - therefore leaves the desktop claimed with nothing serving it: displaced global shortcuts stay displaced, and the user's own actions stay dead until something restores them.
+
+Every session start shall therefore release a claim that cannot be proved to belong to the running boot, *before* it claims anything:
+
+- Each claim record (shortcut journal, panel marker, compositor-effect snapshot) carries the boot identity it was written in.
+- A record stamped with a different boot, or carrying no stamp, belongs to nobody and is handed back; a record stamped with the running boot is left untouched, so a live session is never disturbed.
+- Hand-back runs in dependency order - shortcuts, then compositor effects, then the panel service - so the desktop is never observed half handed back.
+- Release restores recorded values and clears its own records. It never deletes, rewrites or reorganises user configuration; hiding a panel remains a service-lifecycle operation (stop `plasma-plasmashell`, or set `hiding = windowscover`), not a containment edit.
+- Every claim entry point performs this hand-back, so the order in which a session's concurrent claim calls arrive cannot matter.
+
+The exit path remains the primary hand-back. The boot stamp exists because the exit path cannot run for a machine that was switched off, and because a claim that cannot be accounted for must never be inherited by the next login.
+
 ### Reconnection
 
 When an event source disconnects:

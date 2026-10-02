@@ -1498,6 +1498,15 @@ PanelWindow {
         materialIcon: NotificationService.currentIcon
         iconSource: (NotificationService.currentIcon && (NotificationService.currentIcon.indexOf("/") !== -1 || NotificationService.currentIcon.indexOf("file:") !== -1)) ? NotificationService.currentIcon : ""
         imageSource: (NotificationService.currentImage && NotificationService.currentImage.length > 0) ? NotificationService.currentImage : ((NotificationService.currentIcon && (NotificationService.currentIcon.indexOf("/") !== -1 || NotificationService.currentIcon.indexOf("file:") !== -1)) ? NotificationService.currentIcon : "")
+        actions: NotificationService.currentActions
+        defaultAction: NotificationService.defaultAction
+        timeoutMs: NotificationService.timeoutMs
+        onDefaultActionInvoked: {
+            NotificationService.invokeDefaultAction();
+        }
+        onActionInvoked: action => {
+            NotificationService.invokeAction(action);
+        }
         onClosed: {
             NotificationService.dismiss();
         }

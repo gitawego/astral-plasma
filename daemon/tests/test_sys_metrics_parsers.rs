@@ -166,3 +166,24 @@ fn test_calculate_cpu_usage_with_state() {
     let _ = std::fs::remove_file(state_file);
 }
 
+#[test]
+fn test_calculate_disk_metrics() {
+    use astral_plasma::domain::sys_parser::calculate_disk_metrics;
+    let total = 100_000_000_000; // 100 GB
+    let free = 60_000_000_000;   // 60 GB free
+    let m = calculate_disk_metrics(total, free);
+    assert_eq!(m.total_bytes, total);
+    assert_eq!(m.available_bytes, free);
+    assert_eq!(m.used_bytes, 40_000_000_000);
+    assert!((m.usage - 0.40).abs() < 0.001);
+
+    // Edge case: total is 0
+    let zero = calculate_disk_metrics(0, 0);
+    assert_eq!(zero.usage, 0.0);
+    assert_eq!(zero.used_bytes, 0);
+
+    // Edge case: free > total
+    let clamp = calculate_disk_metrics(50, 100);
+    assert_eq!(clamp.usage, 0.0);
+    assert_eq!(clamp.used_bytes, 0);
+}

@@ -18,7 +18,7 @@
 
 /// Avatar slots that participate in the durable import. Doubles as the
 /// allowlist for the path-influencing `kind` argument.
-pub const AVATAR_KINDS: &[&str] = &["host", "media"];
+pub const AVATAR_KINDS: &[&str] = &["host", "media", "mascot"];
 
 /// Trim whitespace and strip a `file://` scheme so QML URLs, file-dialog
 /// picks, and pasted shell paths all compare and store as plain paths.

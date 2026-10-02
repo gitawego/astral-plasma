@@ -1,4 +1,4 @@
-use crate::domain::model::{BatteryMetrics, Desktop, GpuMetrics, MemoryMetrics};
+use crate::domain::model::{BatteryMetrics, Desktop, DiskMetrics, GpuMetrics, MemoryMetrics};
 use regex::Regex;
 
 pub fn parse_uptime_content(content: &str) -> String {
@@ -562,4 +562,19 @@ pub fn parse_kwin_desktops(output: &str, current_id: &str) -> Vec<Desktop> {
     }
 
     desktops
+}
+
+pub fn calculate_disk_metrics(total_bytes: u64, free_bytes: u64) -> DiskMetrics {
+    let used_bytes = total_bytes.saturating_sub(free_bytes);
+    let usage = if total_bytes > 0 {
+        ((used_bytes as f64) / (total_bytes as f64)).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    DiskMetrics {
+        usage,
+        total_bytes,
+        used_bytes,
+        available_bytes: free_bytes,
+    }
 }

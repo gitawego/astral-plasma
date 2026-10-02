@@ -8,7 +8,8 @@
 //! applies the user's configured strength to kwinrc and nudges KWin to reload
 //! the effect, so the value is no longer dead config.
 
-use crate::domain::ports::DynResult;
+use crate::domain::desktop_integration::ClaimStamp;
+use crate::domain::ports::{BlurControlPort, DynResult};
 use crate::infrastructure::kwin_shortcuts::{KWinShortcutsAdapter, KdeIniFile};
 use std::fs;
 
@@ -62,6 +63,13 @@ impl BlurSettings {
 struct BlurSnapshot {
     strength: Option<u32>,
     noise_strength: Option<u32>,
+    /// Boot the override was applied in.
+    ///
+    /// Absent in snapshots written before stamping existed, which the hand-back
+    /// must treat as a previous boot's: an override with no provable owner is
+    /// handed back rather than kept.
+    #[serde(default)]
+    boot_id: Option<String>,
 }
 
 pub struct KWinBlurAdapter {
@@ -111,6 +119,7 @@ impl KWinBlurAdapter {
             noise_strength: ini
                 .get("Effect-blur", "NoiseStrength")
                 .and_then(|v| v.trim().parse::<u32>().ok()),
+            boot_id: crate::application::stale_claim::current_claim_boot_id(),
         };
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -177,6 +186,13 @@ impl KWinBlurAdapter {
     /// Ask the running compositor to re-read the blur effect configuration.
     /// Best-effort: a headless or non-KWin session has no such service.
     pub fn reconfigure(&self) {
+        // Test mode disables every external side effect (`systemctl`, `qdbus`,
+        // `plasma`...). Without this guard a port test asks the *live* KWin to
+        // re-read its configuration, which is the class of side effect the test
+        // runner's isolation exists to prevent.
+        if crate::domain::branding::test_mode() {
+            return;
+        }
         let _ = std::process::Command::new("qdbus6")
             .args([
                 "org.kde.KWin",
@@ -209,5 +225,27 @@ impl KWinBlurAdapter {
 impl Default for KWinBlurAdapter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl BlurControlPort for KWinBlurAdapter {
+    /// What the snapshot says about the live override.
+    fn blur_claim(&self) -> ClaimStamp {
+        let Ok(content) = fs::read_to_string(self.blur_backup_path()) else {
+            return ClaimStamp::Unclaimed;
+        };
+        match serde_json::from_str::<BlurSnapshot>(&content) {
+            Ok(snapshot) => match snapshot.boot_id {
+                Some(boot_id) => ClaimStamp::Boot(boot_id),
+                None => ClaimStamp::Unstamped,
+            },
+            // An unreadable snapshot still holds the user's original values.
+            Err(_) => ClaimStamp::Unstamped,
+        }
+    }
+
+    /// Delegates to the inherent restore (which is also what the wire-up calls).
+    fn restore(&self) -> DynResult<bool> {
+        KWinBlurAdapter::restore(self)
     }
 }

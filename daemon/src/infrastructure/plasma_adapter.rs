@@ -1,4 +1,5 @@
 use crate::domain::branding;
+use crate::domain::desktop_integration::ClaimStamp;
 use crate::domain::plasma::{PlasmaPanelInfo, PlasmaStatus};
 use crate::domain::ports::{DynResult, PlasmaControlPort};
 use std::fs;
@@ -74,6 +75,18 @@ pub fn should_replay_layout(panel_count: usize, has_layout_backup: bool) -> bool
     panel_count == 0 && has_layout_backup
 }
 
+/// What the panel marker says about the live claim.
+///
+/// The marker's content is the boot the claim was taken in. A marker written
+/// before that stamping existed is an empty file - `Unstamped`, which the
+/// hand-back releases because it cannot be proved to belong to this boot.
+pub fn session_claim_from_marker(content: &str) -> ClaimStamp {
+    match content.trim() {
+        "" => ClaimStamp::Unstamped,
+        boot_id => ClaimStamp::Boot(boot_id.to_string()),
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct PlasmaAdapter;
 
@@ -91,6 +104,17 @@ impl PlasmaAdapter {
 
     pub fn resolve_config_dir(&self) -> PathBuf {
         branding::config_home()
+    }
+
+    /// Write the panel-claim marker, stamped with the boot that took it.
+    ///
+    /// The stamp is what a later boot reads to tell its own claim from one a
+    /// reboot left behind; the marker's existence stays the "a claim is live"
+    /// signal that `PlasmaStatus.session_active` reports.
+    fn write_session_marker(&self, marker: &Path) -> DynResult<()> {
+        let stamp = crate::application::stale_claim::current_claim_boot_id().unwrap_or_default();
+        fs::write(marker, stamp)?;
+        Ok(())
     }
 
     pub fn stop_watchdog(&self) {
@@ -298,7 +322,7 @@ impl PlasmaControlPort for PlasmaAdapter {
         if current_panels.is_empty() && backed_appletsrc.exists() {
             if let Ok(content) = fs::read_to_string(&backed_appletsrc) {
                 if content.contains("[Containments][") {
-                    fs::write(&session_flag, "")?;
+                    self.write_session_marker(&session_flag)?;
                     return Ok(false);
                 }
             }
@@ -334,7 +358,7 @@ impl PlasmaControlPort for PlasmaAdapter {
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs();
         fs::write(backup_dir.join("backup_timestamp"), ts.to_string())?;
-        fs::write(session_flag, "")?;
+        self.write_session_marker(&session_flag)?;
 
         Ok(true)
     }
@@ -532,5 +556,35 @@ impl PlasmaControlPort for PlasmaAdapter {
 
     fn stop_watchdog(&self) {
         self.stop_watchdog();
+    }
+
+    /// What the panel marker says about the live claim.
+    fn panel_claim(&self) -> ClaimStamp {
+        let marker = self.resolve_backup_dir().join("session_active");
+        let Ok(content) = fs::read_to_string(&marker) else {
+            return ClaimStamp::Unclaimed;
+        };
+        session_claim_from_marker(&content)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stamped_marker_names_the_boot_that_took_the_claim() {
+        assert_eq!(
+            session_claim_from_marker("19b856cd-3601-443d-a12f-dbaef4533265\n"),
+            ClaimStamp::Boot("19b856cd-3601-443d-a12f-dbaef4533265".to_string())
+        );
+    }
+
+    #[test]
+    fn a_marker_written_before_stamping_is_unstamped() {
+        // The marker used to be an empty file, and an empty marker cannot be
+        // proved to belong to this boot - so it is handed back, not kept.
+        assert_eq!(session_claim_from_marker(""), ClaimStamp::Unstamped);
+        assert_eq!(session_claim_from_marker("  \n"), ClaimStamp::Unstamped);
     }
 }

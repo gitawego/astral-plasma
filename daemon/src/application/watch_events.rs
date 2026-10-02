@@ -1036,6 +1036,18 @@ pub async fn run_event_daemon() -> DynResult<()> {
             crate::application::plasma_service::RESTORE_HANDOVER_TIMEOUT,
         )
         .await;
+        // A claim the machine left behind when it was switched off belongs to
+        // nobody. Hand it back before this session takes the desktop: otherwise
+        // the keys stay displaced for a shell that is not running, and the user's
+        // own Meta actions stay dead. Idempotent, and a no-op when the claim on
+        // disk is this boot's.
+        let released = blocking(|| {
+            crate::application::stale_claim::StaleClaimRelease::for_desktop().release_if_stale()
+        })
+        .await;
+        if !released.is_empty() {
+            eprintln!("[astral-plasma] released a desktop claim from a previous boot: {released:?}");
+        }
         let claim_mode = mode.clone();
         let _ = blocking(move || claim.backup_and_bind(&claim_mode)).await;
 

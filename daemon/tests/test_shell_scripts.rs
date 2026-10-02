@@ -360,3 +360,50 @@ fn the_fallback_restore_rearms_the_recorded_live_keys() {
         "displaced actions must be re-armed too"
     );
 }
+
+#[test]
+fn run_sh_hands_back_a_previous_boots_claim_before_it_claims_the_desktop() {
+    // The claim lives in files, so a machine switched off (or crashed) while the
+    // shell ran never runs the exit trap. Without this step the next login starts
+    // with the shell's keys still displaced and nothing to serve them, which is
+    // how bare Meta, Meta+W and Meta+D stayed dead after the user's reboot.
+    let run = read("run.sh");
+    let release = run
+        .find("plasma release-stale")
+        .expect("run.sh must hand back a claim a previous boot left behind");
+    let bind = run
+        .find("bind_shortcuts.sh")
+        .expect("run.sh binds the shortcuts");
+    let claim = run
+        .find("\"$DIR/bin/astral-plasma\" plasma disable")
+        .expect("run.sh claims the panels");
+
+    assert!(
+        release < bind && release < claim,
+        "the release has to run before anything is bound or claimed, or the new \
+         claim is reverted by the old one's hand-back"
+    );
+}
+
+#[test]
+fn run_sh_hides_the_plasma_desktop_without_rewriting_it() {
+    // Panels are hidden through the plasmashell service lifecycle (systemd stop,
+    // or `hiding = windowscover` for a targeted panel). The applet configuration
+    // is never rewritten and no containment is ever removed, so a crash can never
+    // cost the user's pinned tasks, widgets or panel layout.
+    let run = read("run.sh");
+    assert!(
+        run.contains("\"$DIR/bin/astral-plasma\" plasma disable"),
+        "run.sh must hide Plasma through the daemon's non-destructive path"
+    );
+    for destructive in [
+        "plasma-org.kde.plasma.desktop-appletsrc",
+        "plasmashellrc",
+        "rm -f \"$HOME/.config/plasma",
+    ] {
+        assert!(
+            !run.contains(destructive),
+            "run.sh must never touch the user's Plasma configuration directly ({destructive})"
+        );
+    }
+}

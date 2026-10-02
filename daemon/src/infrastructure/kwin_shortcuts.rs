@@ -1,4 +1,5 @@
 use crate::domain::branding;
+use crate::domain::desktop_integration::ClaimStamp;
 use crate::domain::ports::{DynResult, ShortcutControlPort};
 use crate::domain::shortcuts::{AstralShortcutSessionBackup, DisplacedShortcut, GranularShortcutSnapshot};
 use std::collections::{BTreeMap, HashMap};
@@ -544,6 +545,9 @@ impl ShortcutControlPort for KWinShortcutsAdapter {
             // The journal records the *mode*, not the key sequence: it is what a
             // restart resumes and what the reconciler re-claims.
             mode: Some(mode.to_string()),
+            // ...and the boot it was written in, which is how a later session
+            // tells its own claim from one a reboot left behind.
+            boot_id: crate::application::stale_claim::current_claim_boot_id(),
         };
 
         fs::write(&backup_path, serde_json::to_string_pretty(&backup)?)?;
@@ -752,5 +756,26 @@ except Exception:
 
     fn is_backup_active(&self) -> bool {
         self.backup_file_path().exists()
+    }
+
+    /// What the journal says about the live claim.
+    ///
+    /// A journal without a boot stamp was written before stamping existed (or by
+    /// a build that could not read this boot's id): `Unstamped`, which the
+    /// hand-back treats as belonging to a previous boot because it cannot be
+    /// proved to be this one's.
+    fn shortcut_claim(&self) -> ClaimStamp {
+        let Ok(content) = fs::read_to_string(self.backup_file_path()) else {
+            return ClaimStamp::Unclaimed;
+        };
+        match serde_json::from_str::<AstralShortcutSessionBackup>(&content) {
+            Ok(backup) => match backup.boot_id {
+                Some(boot_id) => ClaimStamp::Boot(boot_id),
+                None => ClaimStamp::Unstamped,
+            },
+            // An unreadable journal still held the user's keys: never report it
+            // as unclaimed, or the release path would skip it.
+            Err(_) => ClaimStamp::Unstamped,
+        }
     }
 }

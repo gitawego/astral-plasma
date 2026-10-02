@@ -80,8 +80,27 @@ pub async fn run_cli() -> DynResult<()> {
                             #[cfg(not(unix))]
                             None
                         });
+                    // A claim a previous boot left behind belongs to nobody: hand
+                    // it back before this session takes the desktop, or the user
+                    // is left with dead Meta keys and a hidden panel that no shell
+                    // is serving.
+                    release_previous_boot_claim();
                     let removed = plasma.backup_and_disable(target, pid)?;
                     println!(r#"{{"success":true,"removed":{}}}"#, removed);
+                }
+                // Handing a previous boot's claim back explicitly: `run.sh` calls
+                // this before it binds anything, and it is what recovers a desktop
+                // left claimed by a machine that was switched off mid-session.
+                "release-stale" => {
+                    let released = release_previous_boot_claim()
+                        .iter()
+                        .map(|step| match step {
+                            crate::domain::desktop_integration::HandBack::Shortcuts => "shortcuts",
+                            crate::domain::desktop_integration::HandBack::Blur => "blur",
+                            crate::domain::desktop_integration::HandBack::Panels => "panels",
+                        })
+                        .collect::<Vec<_>>();
+                    println!(r#"{{"success":true,"released":{}}}"#, serde_json::to_string(&released)?);
                 }
                 "restore" => {
                     let restored = plasma.restore()?;
@@ -99,7 +118,7 @@ pub async fn run_cli() -> DynResult<()> {
                     println!("{}", serde_json::to_string(&st)?);
                 }
                 _ => {
-                    eprintln!("Usage: astral-plasma plasma <disable|restore|status|watchdog> [args...]");
+                    eprintln!("Usage: astral-plasma plasma <disable|restore|release-stale|status|watchdog> [args...]");
                 }
             }
         }
@@ -199,6 +218,27 @@ pub async fn run_cli() -> DynResult<()> {
 
         "notifs" => {
             crate::application::notif_monitor::run_notif_monitor().await?;
+        }
+        "device" => {
+            use crate::infrastructure::removable_devices_adapter::RemovableDevicesAdapter;
+            let adapter = RemovableDevicesAdapter::new();
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("list");
+            let target = args.get(3).map(|s| s.as_str());
+            match sub {
+                "list" => {
+                    let devices = adapter.list_devices()?;
+                    println!("{}", serde_json::to_string(&devices)?);
+                }
+                "mount-open" | "open" => {
+                    let mp = adapter.mount_and_open(target)?;
+                    println!(r#"{{"success":true,"mountpoint":"{}"}}"#, mp);
+                }
+                "eject" | "remove" => {
+                    adapter.safely_remove(target)?;
+                    println!(r#"{{"success":true}}"#);
+                }
+                _ => eprintln!("Usage: astral-plasma device <list|mount-open|eject> [target]"),
+            }
         }
         "visualizer" | "audio-vis" => {
             crate::application::audio_visualizer::run_audio_visualizer(None)?;
@@ -1692,6 +1732,26 @@ fn print_usage() {
     eprintln!("  doctor [--json]         - Diagnose and report versions of all system dependencies");
 }
 
+/// Hand back any desktop claim a previous boot left behind.
+///
+/// The claim lives in files (the shortcut journal, the panel marker, KWin's blur
+/// snapshot), so a machine switched off - or crashed - while the shell ran never
+/// released it: the next login starts Plasma with the shell's keys still claimed
+/// and no shell serving them. Every session start calls this first; a session
+/// whose claim is its own gets an empty list and no side effect.
+fn release_previous_boot_claim() -> Vec<crate::domain::desktop_integration::HandBack> {
+    use crate::application::stale_claim::StaleClaimRelease;
+    let steps = StaleClaimRelease::for_desktop().release_if_stale();
+    if !steps.is_empty() {
+        eprintln!(
+            "[{}] Released a desktop claim from a previous boot: {:?}",
+            branding::APP_NAME,
+            steps
+        );
+    }
+    steps
+}
+
 async fn run_self_contained_app() -> DynResult<()> {
     // 0. Guard against running standalone Quickshell root beside omarchy-shell
     if crate::infrastructure::desktop_factory::detect_profile() == crate::infrastructure::desktop_factory::EnvironmentProfile::Omarchy {
@@ -1725,6 +1785,8 @@ async fn run_self_contained_app() -> DynResult<()> {
     // 3. Backup and disable KDE Plasma panels (only under KDE) and bind shortcuts
     if is_kwin {
         let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
+        // A previous boot's claim comes back before this session takes one.
+        release_previous_boot_claim();
         let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
         let _ = plasma.backup_and_disable("all", Some(std::process::id()));
         let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
