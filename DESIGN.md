@@ -215,6 +215,46 @@ PillButton {
 
 ---
 
+### 3.5. Settings Pages: Pinned Identity & Zone Rail (`SettingsPage.qml`)
+
+Every settings page roots in [`settings_gui/pages/SettingsPage.qml`](settings_gui/pages/SettingsPage.qml)
+and *declares* its identity and its sections; it never draws its own page header:
+
+```qml
+SettingsPage {
+    title: "Network & Internet"
+    subtitle: "Wi-Fi connections, signal strength & network interfaces"
+    zones: [
+        { id: "wifi", label: "Wi-Fi", anchor: masterPowerCard },
+        { id: "networks", label: "Networks", anchor: networksSection }
+    ]
+
+    ColumnLayout { /* the page body; SectionHeader marks the zones */ }
+}
+```
+
+- **Pinned identity**: the hub renders the scaffold's `stickyHeader` *above* the
+  scroll area, so the page title, its one-line purpose and the zone rail stay put
+  while the content moves. A page therefore repeats its title nowhere in the body.
+- **Zone rail**: two or more zones render as `PillButton`s, and the zone the
+  reader is in is highlighted. One zone is a title, not navigation - it renders
+  no rail.
+- **Zones are live state**: a page may compute its `zones` list, so a section
+  that is hidden (Wi-Fi off, no app streams) leaves the rail with it. A pill
+  never scrolls to a section that is not there.
+- **Section headings**: [`components/SectionHeader.qml`](components/SectionHeader.qml)
+  marks a zone anchor. Its eyebrow carries the section's live state (counts,
+  active preset, install status) - never a decorative index.
+- **Section jump**: pressing a pill is a *request to the host*. The page emits
+  `zoneRequested(zoneId)`; the hub owns the scroll area, so the hub scrolls -
+  smoothly, with the `animExpressive*Spatial` tokens from `Theme`, damped by
+  distance (`settings_gui/ScrollMotion.js`), and yielding to the reader the
+  instant they wheel or drag. A page never writes a shell global to navigate
+  itself: a control that depends on an identifier its own file did not import is
+  dead without an error (see `docs/LESSONS.md` §36).
+
+---
+
 ## 4. Color & Theming System (Material You)
 
 Astral Plasma uses Material Design 3 color tokens mapped in [`theme/Colors.qml`](theme/Colors.qml):

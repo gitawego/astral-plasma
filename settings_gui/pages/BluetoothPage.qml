@@ -4,10 +4,23 @@ import "../../theme"
 import "../../components"
 import "../../services"
 
-ColumnLayout {
+SettingsPage {
     id: root
     spacing: Theme.spaceLarge
     width: parent ? parent.width : 600
+
+    title: "Bluetooth"
+    subtitle: "Manage wireless peripherals, keyboards, audio devices & pairing"
+    // The devices zone exists only while Bluetooth is on: there is no device list
+    // to scroll to on a powered-off adapter.
+    function zoneList() {
+        const zones = [{ id: "power", label: "Power", anchor: masterPowerCard }];
+        if (root.powered) {
+            zones.push({ id: "devices", label: "Devices", anchor: devicesHeader });
+        }
+        return zones;
+    }
+    zones: root.zoneList()
 
     property bool testMode: false
     property bool testPowered: true
@@ -20,24 +33,6 @@ ColumnLayout {
             return BluetoothService.devices;
         }
         return [];
-    }
-
-    // Title & Header
-    ColumnLayout {
-        spacing: 4
-        Text {
-            text: "Bluetooth"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleMedium
-            font.weight: Font.Bold
-            color: Colors.m3onSurface
-        }
-        Text {
-            text: "Manage wireless peripherals, keyboards, audio devices & pairing"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontLabelSmall
-            color: Colors.m3onSurfaceVariant
-        }
     }
 
     // Bluetooth Master Power Card
@@ -124,12 +119,12 @@ ColumnLayout {
         spacing: 8
         visible: root.powered
 
-        Text {
-            text: "Paired Devices"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleSmall
-            font.weight: Font.DemiBold
-            color: Colors.m3onSurface
+        SectionHeader {
+            id: devicesHeader
+            title: "Paired Devices"
+            eyebrow: root.devicesList.length === 0
+                ? "nothing paired yet"
+                : (root.devicesList.length + (root.devicesList.length === 1 ? " device" : " devices"))
         }
 
         Column {

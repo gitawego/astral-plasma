@@ -6,8 +6,19 @@ import "../../theme"
 import "../../components"
 import "../../services"
 
-ColumnLayout {
+SettingsPage {
     id: root
+
+    title: "System & Services"
+    subtitle: "User services, desktop integration, session exit, diagnostics and display"
+    zones: [
+        { id: "services", label: "Services", anchor: servicesHeader },
+        { id: "desktop", label: "Desktop", anchor: desktopHeader },
+        { id: "session", label: "Session", anchor: sessionHeader },
+        { id: "developer", label: "Developer", anchor: developerHeader },
+        { id: "logging", label: "Logging", anchor: loggingHeader },
+        { id: "display", label: "Display", anchor: displayHeader }
+    ]
 
     property bool testMode: false
     property bool testInstalled: false
@@ -15,12 +26,36 @@ ColumnLayout {
     property bool testDesktopInstalled: false
     property string testDesktopStatusText: ""
     property bool testDebugMode: false
+    // Verbosity of the diagnostic log. In test mode the page reports the value
+    // the harness injected (the mock cannot write to Config).
+    property string testLogLevel: "info"
 
     readonly property alias exitButton: exitShellButton
 
     readonly property bool debugModeActive: testMode
         ? testDebugMode
         : ((typeof Config !== "undefined" && Config.debugMode !== undefined) ? Config.debugMode : false)
+
+    /// The level the picker shows and the logger applies ("off" ... "trace").
+    readonly property string logLevelActive: testMode
+        ? testLogLevel
+        : ((typeof Config !== "undefined" && Config.logLevel !== undefined) ? Config.logLevel : "info")
+
+    /// The levels a user can choose, quietest first. The same ladder lives in
+    /// `services/Logging.js`; this is only the presentation order.
+    readonly property var logLevelOptions: ["off", "error", "warn", "info", "debug", "trace"]
+
+    /// The picker's write path. One function the pills call, so the behaviour is
+    /// verifiable without clicking through rendered buttons.
+    function selectLogLevel(level) {
+        if (testMode) {
+            testLogLevel = level;
+            return;
+        }
+        if (typeof Config !== "undefined" && Config.setLogLevel) {
+            Config.setLogLevel(level);
+        }
+    }
 
     readonly property bool isInstalled: testMode
         ? testInstalled
@@ -39,6 +74,14 @@ ColumnLayout {
         : ((typeof Config !== "undefined" && Config.desktopIntegrationStatusText !== undefined) ? Config.desktopIntegrationStatusText : "Not Installed")
 
     readonly property bool isHyprland: (typeof DesktopSessionFacade !== "undefined" && DesktopSessionFacade.profile === "hyprland")
+
+    /// The chosen refresh rate, in the same words the pills use.
+    readonly property string refreshChoiceText: {
+        if (typeof Config === "undefined" || Config.displayRefreshRate === undefined) return "";
+        return (typeof Config.displayRefreshLabel === "function")
+            ? Config.displayRefreshLabel(Config.displayRefreshRate)
+            : ("" + Config.displayRefreshRate);
+    }
 
     readonly property bool isDark: (typeof Colors !== "undefined" && Colors.isDarkMode !== undefined)
         ? Colors.isDarkMode
@@ -60,12 +103,10 @@ ColumnLayout {
 
     spacing: root.spaceMediumVal
 
-    Text {
-        text: "System & Services"
-        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
-        font.weight: Font.Bold
-        color: root.onSurfaceColor
+    SectionHeader {
+        id: servicesHeader
+        title: "System & Services"
+        eyebrow: "service · " + root.statusText
     }
 
     Text {
@@ -171,12 +212,10 @@ ColumnLayout {
 
     Item { height: root.spaceMediumVal }
 
-    Text {
-        text: "Desktop & Session Integration"
-        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
-        font.weight: Font.Bold
-        color: root.onSurfaceColor
+    SectionHeader {
+        id: desktopHeader
+        title: "Desktop & Session Integration"
+        eyebrow: "integration · " + root.desktopStatusText
     }
 
     Text {
@@ -295,12 +334,10 @@ ColumnLayout {
 
     Item { height: root.spaceMediumVal }
 
-    Text {
-        text: "Session"
-        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
-        font.weight: Font.Bold
-        color: root.onSurfaceColor
+    SectionHeader {
+        id: sessionHeader
+        title: "Session"
+        eyebrow: root.isHyprland ? "hyprland session" : "plasma session"
     }
 
     Text {
@@ -337,19 +374,17 @@ ColumnLayout {
 
     Item { height: root.spaceMediumVal }
 
-    Text {
-        text: "Developer & Diagnostics"
-        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
-        font.weight: Font.Bold
-        color: root.onSurfaceColor
+    SectionHeader {
+        id: developerHeader
+        title: "Developer & Diagnostics"
+        eyebrow: root.debugModeActive ? "debug mode on" : "debug mode off"
     }
 
     SettingToggle {
         id: debugSettingToggle
         Layout.fillWidth: true
         title: "Debug Mode"
-        description: "Freeze drawer auto-close on mouse exit and enable diagnostic inspection"
+        description: "Freeze drawer auto-close on mouse exit so the shell can be inspected while it is open"
         checked: root.debugModeActive
         onToggled: val => {
             if (root.testMode) {
@@ -362,6 +397,49 @@ ColumnLayout {
 
     Item { height: root.spaceMediumVal }
 
+    // === Log verbosity ====================================================
+    // One level for the whole shell, per-category overrides underneath it. The
+    // shipped default is "info": lifecycle events, warnings and errors are
+    // visible, while the per-frame trails are off until somebody asks for them.
+    SectionHeader {
+        id: loggingHeader
+        title: "Log Verbosity"
+        eyebrow: "level: " + root.logLevelActive
+    }
+
+    Text {
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        text: "Messages at this level or louder are printed: off < error < warn < info < debug < trace. "
+            + "\"info\" keeps lifecycle events, warnings and errors; per-frame traces (blur regions, commit pump) "
+            + "belong to \"debug\". A single category can be raised on its own via \"logging.categories\" "
+            + "in settings.json, or for one run with ASTRAL_PLASMA_LOG_CATEGORIES=blur=debug."
+        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+        font.pixelSize: 13
+        color: root.onSurfaceVariantColor
+        opacity: 0.85
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: root.spaceSmallVal
+
+        Repeater {
+            model: root.logLevelOptions
+
+            PillButton {
+                required property var modelData
+                label: modelData
+                active: root.logLevelActive === modelData
+                onClicked: root.selectLogLevel(modelData)
+            }
+        }
+
+        Item { Layout.fillWidth: true }
+    }
+
+    Item { height: root.spaceMediumVal }
+
     // =========================================================================
     // Display refresh
     // =========================================================================
@@ -369,12 +447,12 @@ ColumnLayout {
     // power and heat choice: every client's per-frame work - including the
     // compositor's blend and blur of this shell's glass - scales with it. 60 Hz
     // is the shipped default; "Max" leaves the session exactly as it was found.
-    Text {
-        text: "Display Refresh"
-        font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
-        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontTitleMedium) ? Theme.fontTitleMedium : 21
-        font.weight: Font.Bold
-        color: root.onSurfaceColor
+    SectionHeader {
+        id: displayHeader
+        title: "Display Refresh"
+        eyebrow: root.refreshChoiceText === ""
+            ? "session default"
+            : ("chosen: " + root.refreshChoiceText)
     }
 
     Text {

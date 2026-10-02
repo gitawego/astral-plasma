@@ -4,13 +4,96 @@ import "../controls"
 import "../../config"
 import "../../theme"
 import "../../components"
+import "../../services"
+import "../../dashboard/tabs/DashboardTabs.js" as DashboardTabs
 
-ColumnLayout {
+SettingsPage {
     id: root
+
+    title: "Dashboard & Widgets"
+    subtitle: "The central dropdown, its tabs, the calendar target, and the avatars it shows"
+    zones: [
+        { id: "tabs", label: "Tabs", anchor: tabsHeader },
+        { id: "calendar", label: "Calendar", anchor: calendarSection },
+        { id: "visualizer", label: "Visualizer", anchor: visualizerSection },
+        { id: "avatars", label: "Avatars", anchor: avatarsHeader }
+    ]
 
     // Suppresses the real daemon resolve / settings write in offscreen tests;
     // the picker model and pick plumbing remain fully testable.
     property bool testMode: false
+
+    // --- Downloads tab gate (injected in tests) ---
+    // The Downloads tab needs the aria2 engine. It is hidden without it, and
+    // switching it on is refused with an explanation plus the two ways to get the
+    // engine - never a toggle that silently does nothing.
+    property bool testAriaAvailable: true
+    property bool testAriaInstallable: true
+    property string testAriaInstallCommand: "sudo pacman -S aria2"
+
+    readonly property bool ariaAvailable: testMode
+        ? testAriaAvailable
+        : ((typeof DownloadService !== "undefined" && DownloadService) ? DownloadService.ariaAvailable : true)
+    readonly property bool ariaInstallable: testMode
+        ? testAriaInstallable
+        : ((typeof DownloadService !== "undefined" && DownloadService) ? DownloadService.ariaInstallable : false)
+    readonly property string ariaInstallCommand: testMode
+        ? testAriaInstallCommand
+        : ((typeof DownloadService !== "undefined" && DownloadService && DownloadService.ariaInstallCommand)
+            ? DownloadService.ariaInstallCommand : "sudo pacman -S aria2")
+
+    /// Why a dashboard tab cannot be switched on here, or `null`.
+    function tabGateReason(tabId) {
+        return DashboardTabs.enableBlockedReason(tabId, root.ariaAvailable);
+    }
+
+    /// The one write path for tab visibility: a tab whose dependency is missing
+    /// is never written as enabled - the engine has to exist first.
+    function requestTabEnabled(tabId, enabled) {
+        if (enabled && root.tabGateReason(tabId) !== null) {
+            root.lastRefusedTabId = tabId;
+            return false;
+        }
+        root.lastRefusedTabId = "";
+        if (!root.testMode && typeof Config !== "undefined" && Config.setDashboardTabEnabled) {
+            Config.setDashboardTabEnabled(tabId, enabled);
+        }
+        return true;
+    }
+
+    /// The last tab switch that was refused (test plumbing).
+    property string lastRefusedTabId: ""
+
+    /// Install the engine from the refused-toggle card.
+    function installEngineFromGate() {
+        if (root.testMode) {
+            root.lastGateInstallRequests += 1;
+            return;
+        }
+        if (typeof DownloadService !== "undefined" && DownloadService
+                && typeof DownloadService.installEngine === "function") {
+            DownloadService.installEngine();
+        }
+    }
+
+    function copyInstallCommandFromGate() {
+        if (root.testMode) {
+            root.lastGateCopyRequests += 1;
+            return;
+        }
+        if (typeof DownloadService !== "undefined" && DownloadService
+                && typeof DownloadService.copyToClipboard === "function") {
+            DownloadService.copyToClipboard(root.ariaInstallCommand);
+        }
+    }
+
+    property int lastGateInstallRequests: 0
+    property int lastGateCopyRequests: 0
+
+    /// Test surface for the refused-toggle card.
+    /// `true` when the engine the Downloads tab needs is missing here.
+    readonly property bool ariaMissing: !root.ariaAvailable
+
 
     /// `[{ id, name }]` of installed calendar-capable apps (from the daemon).
     property var calendarOptions: []
@@ -48,12 +131,39 @@ ColumnLayout {
 
     spacing: Theme.spaceMedium
 
-    Text {
-        text: "Dashboard & Widgets"
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontTitleMedium
-        font.weight: Font.Bold
-        color: Colors.m3onSurface
+    /// The configured tabs, read once so the header's count and the Repeater
+    /// below cannot disagree.
+    readonly property var dashboardTabs: (typeof Config !== "undefined" && Config.settings
+            && Config.settings.dashboard && Config.settings.dashboard.tabs)
+        ? Config.settings.dashboard.tabs : []
+
+    /// Tabs the dashboard actually renders: enabled *and* not gated by a missing
+    /// engine. A blocked tab reads as off, so it is not counted as shown.
+    readonly property int shownTabCount: {
+        let n = 0;
+        for (let i = 0; i < root.dashboardTabs.length; ++i) {
+            const t = root.dashboardTabs[i];
+            if (t && t.enabled === true && root.tabGateReason(t.id) === null) ++n;
+        }
+        return n;
+    }
+
+    /// How many of the three avatar slots carry a custom picture.
+    readonly property int customAvatarCount: {
+        if (typeof Config === "undefined") return 0;
+        let n = 0;
+        if (Config.hostAvatar) ++n;
+        if (Config.mediaAvatar) ++n;
+        if (Config.bongoCatAvatar) ++n;
+        return n;
+    }
+
+    SectionHeader {
+        id: tabsHeader
+        title: "Dashboard Tabs"
+        eyebrow: root.dashboardTabs.length === 0
+            ? "no tabs configured"
+            : (root.shownTabCount + " of " + root.dashboardTabs.length + " shown")
     }
 
     SettingToggle {
@@ -65,19 +175,51 @@ ColumnLayout {
     }
 
     Repeater {
-        model: Config.settings.dashboard && Config.settings.dashboard.tabs ? Config.settings.dashboard.tabs : []
+        model: root.dashboardTabs
 
-        delegate: SettingToggle {
+        delegate: ColumnLayout {
+            required property var modelData
             Layout.fillWidth: true
-            title: modelData.label + " Tab"
-            description: "Show " + modelData.label + " tab inside the Central Dashboard"
-            checked: modelData.enabled
-            onToggled: val => Config.setDashboardTabEnabled(modelData.id, val)
+            spacing: 8
+
+            /// A tab whose dependency is missing stays off and explains itself.
+            ///
+            /// Typed `var`, not `string`: a `string` property coerces the JS
+            /// `null` ("no reason") into `""`, and `"" !== null` is true - which
+            /// rendered the refusal card on *every* tab, labelled with whichever
+            /// tab happened to be in view.
+            readonly property var gateReason: root.tabGateReason(modelData.id)
+
+            SettingToggle {
+                Layout.fillWidth: true
+                title: modelData.label + " Tab"
+                description: gateReason === null
+                    ? ("Show " + modelData.label + " tab inside the Central Dashboard")
+                    : (modelData.label + " needs the aria2 download engine")
+                // Blocked tabs read as off: the dashboard does not render them,
+                // whatever the stored preference says.
+                checked: modelData.enabled === true && gateReason === null
+                onToggled: val => root.requestTabEnabled(modelData.id, val)
+            }
+
+            // The refusal, with both ways to fix it: install with the system
+            // password dialog, or copy the command for a terminal. A shared
+            // control, so it can be rendered (and asserted) on its own.
+            DownloadsGateCard {
+                visible: gateReason !== null
+                message: "aria2 is not installed, so the " + modelData.label
+                    + " tab stays hidden. Install the engine to use it:"
+                installable: root.ariaInstallable
+                installCommand: root.ariaInstallCommand
+                onInstallRequested: root.installEngineFromGate()
+                onCopyRequested: root.copyInstallCommandFromGate()
+            }
         }
     }
 
     // Calendar App picker (dashboard date click target)
     Rectangle {
+        id: calendarSection
         Layout.fillWidth: true
         radius: Theme.radiusMedium
         color: Colors.surfaceContainer
@@ -191,6 +333,7 @@ ColumnLayout {
 
     // Media Visualizer Style setting card
     Rectangle {
+        id: visualizerSection
         Layout.fillWidth: true
         radius: Theme.radiusMedium
         color: Colors.surfaceContainer
@@ -328,6 +471,14 @@ ColumnLayout {
                 }
             }
         }
+    }
+
+    SectionHeader {
+        id: avatarsHeader
+        title: "Avatars & Companion"
+        eyebrow: root.customAvatarCount === 0
+            ? "default art in use"
+            : (root.customAvatarCount + " of 3 replaced")
     }
 
     // System Host Card avatar (dashboard info card). The picked file is

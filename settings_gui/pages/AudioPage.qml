@@ -1,16 +1,30 @@
 import QtQuick
 import QtQuick.Layouts
-import Quickshell
-import Quickshell.Io
 import "../../theme"
 import "../../components"
 import "../../config"
 import "../../services"
 
-ColumnLayout {
+SettingsPage {
     id: root
     spacing: Theme.spaceLarge
     width: parent ? parent.width : 600
+
+    title: "Sound & Audio"
+    subtitle: "PipeWire output devices, master volume & per-application audio streams"
+    // The apps zone exists only while there is an app stream to show: a rail
+    // segment that can only scroll to a hidden section is not navigation.
+    function zoneList() {
+        const zones = [
+            { id: "output", label: "Output", anchor: masterVolumeCard },
+            { id: "visualizer", label: "Visualizer", anchor: visualizerCard }
+        ];
+        if (root.currentAppStreams.length > 0) {
+            zones.push({ id: "apps", label: "Apps", anchor: appsSection });
+        }
+        return zones;
+    }
+    zones: root.zoneList()
 
     property bool testMode: false
     property real testVolume: 0.5
@@ -28,26 +42,9 @@ ColumnLayout {
         return appStreams;
     }
 
-    // Title & Header
-    ColumnLayout {
-        spacing: 4
-        Text {
-            text: "Sound & Audio"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleMedium
-            font.weight: Font.Bold
-            color: Colors.m3onSurface
-        }
-        Text {
-            text: "PipeWire output devices, master volume & per-application audio streams"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontLabelSmall
-            color: Colors.m3onSurfaceVariant
-        }
-    }
-
     // Master Volume Card
     Rectangle {
+        id: masterVolumeCard
         Layout.fillWidth: true
         height: 110
         radius: Theme.radiusMedium
@@ -175,6 +172,7 @@ ColumnLayout {
 
     // Media Visualizer Style Card
     Rectangle {
+        id: visualizerCard
         Layout.fillWidth: true
         radius: Theme.radiusMedium
         color: Colors.surfaceContainer
@@ -327,16 +325,16 @@ ColumnLayout {
 
     // Per-Application Audio Streams
     ColumnLayout {
+        id: appsSection
         Layout.fillWidth: true
         spacing: 8
         visible: root.currentAppStreams.length > 0
 
-        Text {
-            text: "Application Volume"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleSmall
-            font.weight: Font.DemiBold
-            color: Colors.m3onSurface
+        SectionHeader {
+            title: "Application Volume"
+            eyebrow: root.currentAppStreams.length === 0
+                ? "nothing playing"
+                : (root.currentAppStreams.length + (root.currentAppStreams.length === 1 ? " stream" : " streams"))
         }
 
         Column {
@@ -417,9 +415,12 @@ ColumnLayout {
 
                                 function setAppVolumeByPos(x) {
                                     const val = Math.max(0.0, Math.min(1.0, x / width));
-                                    if (!root.testMode && typeof Config !== "undefined") {
-                                        Quickshell.execDetached([Config.daemonBin, "settings", "audio", "app-volume", "" + modelData.id, val.toFixed(2)]);
-                                        root.refreshStreams();
+                                    if (!root.testMode) {
+                                        const resolver = streamResolverLoader.item;
+                                        if (resolver) {
+                                            resolver.setAppVolume(modelData.id, val);
+                                            resolver.refresh();
+                                        }
                                     }
                                 }
                             }
@@ -439,25 +440,23 @@ ColumnLayout {
         }
     }
 
-    // Process to poll audio app streams from daemon
-    Process {
-        id: audioStatusProc
-        command: [(typeof Config !== "undefined" && Config.daemonBin) ? Config.daemonBin : "./bin/astral-plasma", "settings", "audio", "status"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const parsed = JSON.parse(this.text.trim());
-                    if (parsed && Array.isArray(parsed.apps)) {
-                        root.appStreams = parsed.apps;
-                    }
-                } catch (e) {}
-            }
+    // The daemon probe lives in its own Quickshell-importing file (the same
+    // split DashboardPage uses for its calendar resolver), so this page carries
+    // no Quickshell types and stays instantiable in the offscreen test harness.
+    // In test mode nothing is spawned and the injected streams are the truth.
+    Loader {
+        id: streamResolverLoader
+        source: root.testMode ? "" : "AudioAppStreamResolver.qml"
+        onLoaded: {
+            item.streamsLoaded.connect(function (apps) { root.appStreams = apps; });
+            root.refreshStreams();
         }
     }
 
     function refreshStreams() {
-        if (!root.testMode && audioStatusProc.command && !audioStatusProc.running) {
-            audioStatusProc.running = true;
+        const resolver = streamResolverLoader.item;
+        if (resolver && !root.testMode) {
+            resolver.refresh();
         }
     }
 

@@ -3,18 +3,35 @@ import QtQuick.Layouts
 import "../controls"
 import "../../config"
 import "../../theme"
+import "../../components"
 
-ColumnLayout {
+SettingsPage {
     id: root
+
+    title: "Dock & Layout"
+    subtitle: "The left dock, its system tray, and the top bar it lives beside"
+    // Three groups, three zones: dock geometry, the tray it hosts, and the bar
+    // along the top edge.
+    zones: [
+        { id: "dock", label: "Dock", anchor: dockHeader },
+        { id: "tray", label: "Tray", anchor: trayHeader },
+        { id: "topbar", label: "Top Bar", anchor: topBarHeader }
+    ]
 
     spacing: Theme.spaceMedium
 
-    Text {
-        text: "Dock Configuration"
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontTitleMedium
-        font.weight: Font.Bold
-        color: Colors.m3onSurface
+    /// Tray visibility, read from the same place the toggle writes, so the
+    /// header's line and the switch cannot disagree.
+    readonly property bool trayEnabled: (typeof Config !== "undefined" && Config.settings
+            && Config.settings.dock && Config.settings.dock.tray)
+        ? (Config.settings.dock.tray.enabled ?? true) : true
+
+    SectionHeader {
+        id: dockHeader
+        title: "Dock"
+        eyebrow: (typeof Config !== "undefined" && Config.dockEnabled)
+            ? "shown on the left edge"
+            : "hidden"
     }
 
     SettingToggle {
@@ -29,7 +46,7 @@ ColumnLayout {
         Layout.fillWidth: true
         title: "Exclusive Screen Zone"
         description: "Reserve screen edge space so maximized/fullscreen windows dock cleanly beside the bar"
-        checked: Config.settings.dock ? (Config.settings.dock.exclusiveZone ?? true) : true
+        checked: (typeof Config !== "undefined" && Config.settings && Config.settings.dock) ? (Config.settings.dock.exclusiveZone ?? true) : true
         onToggled: val => Config.setDockExclusiveZone(val)
     }
 
@@ -59,16 +76,30 @@ ColumnLayout {
         min: 0
         max: 32
         suffix: "px"
-        value: Config.settings.dock ? (Config.settings.dock.margin ?? 12) : 12
+        value: (typeof Config !== "undefined" && Config.settings && Config.settings.dock) ? (Config.settings.dock.margin ?? 12) : 12
         onValueModified: val => Config.setDockMargin(Math.round(val))
+    }
+
+    SectionHeader {
+        id: trayHeader
+        title: "System Tray"
+        eyebrow: root.trayEnabled ? "icons shown" : "icons hidden"
     }
 
     SettingToggle {
         Layout.fillWidth: true
         title: "System Tray"
         description: "Display icons for running background apps (Discord, Steam, etc.)"
-        checked: Config.settings.dock && Config.settings.dock.tray ? (Config.settings.dock.tray.enabled ?? true) : true
+        checked: root.trayEnabled
         onToggled: val => Config.setDockTrayEnabled(val)
+    }
+
+    SectionHeader {
+        id: topBarHeader
+        title: "Top Bar"
+        eyebrow: (typeof Config !== "undefined" && Config.topBarEnabled)
+            ? ("shown · " + ((typeof Config !== "undefined" && Config.topBarHeight) ? Config.topBarHeight : 28) + "px")
+            : "hidden"
     }
 
     SettingToggle {

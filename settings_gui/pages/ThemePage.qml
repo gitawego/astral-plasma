@@ -5,8 +5,18 @@ import "../../config"
 import "../../theme"
 import "../../components"
 
-ColumnLayout {
+SettingsPage {
     id: root
+
+    title: "Theming & Appearance"
+    subtitle: "Customize desktop aesthetics, switch between Light and Dark mode, and choose dynamic or preset color palettes."
+    // Zones in document order: mode, palette, shape, the live preview.
+    zones: [
+        { id: "style", label: "Style", anchor: styleSection },
+        { id: "colors", label: "Colors", anchor: colorsSection },
+        { id: "shape", label: "Shape", anchor: shapeSection },
+        { id: "preview", label: "Preview", anchor: previewSection }
+    ]
 
     property bool testMode: false
     property bool testDarkMode: true
@@ -65,31 +75,9 @@ ColumnLayout {
 
     spacing: Theme.spaceMedium
 
-    // Header Title & Description
-    ColumnLayout {
-        Layout.fillWidth: true
-        spacing: 4
-
-        Text {
-            text: "Theming & Appearance"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleMedium
-            font.weight: Font.Bold
-            color: Colors.m3onSurface
-        }
-
-        Text {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            text: "Customize desktop aesthetics, switch between Light and Dark mode, and choose dynamic or preset color palettes."
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBodySmall
-            color: Colors.m3onSurfaceVariant
-        }
-    }
-
     // Row 1: Theme Style Segmented Pill Card
     Rectangle {
+        id: styleSection
         Layout.fillWidth: true
         implicitHeight: 62
         radius: Theme.radiusMedium
@@ -244,6 +232,7 @@ ColumnLayout {
 
     // Row 2: Dynamic Wallpaper Colors Toggle
     SettingToggle {
+        id: colorsSection
         Layout.fillWidth: true
         title: "Dynamic Wallpaper Colors (Material You)"
         description: "Extract soft harmonic color palettes dynamically from your active wallpaper"
@@ -352,6 +341,7 @@ ColumnLayout {
 
     // Row 4: Corner Radius Slider
     SettingSlider {
+        id: shapeSection
         Layout.fillWidth: true
         title: "Corner Radius"
         min: 12
@@ -363,6 +353,7 @@ ColumnLayout {
 
     // Row 5: Live Theme Palette Preview
     Rectangle {
+        id: previewSection
         Layout.fillWidth: true
         implicitHeight: 56
         radius: Theme.radiusMedium

@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 import "../../theme"
 import "../../components"
+import "../../components/QuotaMath.js" as QuotaMath
+import "../controls"
 import "../../services"
 import "../../config"
 
@@ -31,6 +33,74 @@ ColumnLayout {
     property var testProviders: null
     property bool testIsAuthenticating: false
     property string testAuthenticatingEmail: ""
+
+    // --- Pi harness update card (injected in offscreen tests) ---
+    // The Copilot runs on the user's own `pi` installation. Updating it is one
+    // button instead of "leave the shell and remember a command", and the result
+    // reports the real version movement (or pi's own output for its packages).
+    property string testHarnessVersion: "1.0.0"
+    property bool testHarnessInstalled: true
+    property string testHarnessUpdateState: "idle"
+    property string testHarnessUpdateMessage: ""
+    property string testHarnessUpdateDetail: ""
+    property int testUpdatePiRequests: 0
+    property int testUpdatePackagesRequests: 0
+    property int testRefreshCatalogsRequests: 0
+    property int testCopyCommandRequests: 0
+
+    readonly property string harnessVersion: testMode
+        ? testHarnessVersion
+        : ((typeof AssistantService !== "undefined" && AssistantService) ? AssistantService.harnessVersion : "")
+    readonly property bool harnessInstalled: testMode
+        ? testHarnessInstalled
+        : ((typeof AssistantService !== "undefined" && AssistantService) ? AssistantService.harnessInstalled : false)
+    readonly property string harnessUpdateState: testMode
+        ? testHarnessUpdateState
+        : ((typeof AssistantService !== "undefined" && AssistantService) ? AssistantService.harnessUpdateState : "idle")
+    readonly property string harnessUpdateMessage: testMode
+        ? testHarnessUpdateMessage
+        : ((typeof AssistantService !== "undefined" && AssistantService) ? AssistantService.harnessUpdateMessage : "")
+    readonly property string harnessUpdateDetail: testMode
+        ? testHarnessUpdateDetail
+        : ((typeof AssistantService !== "undefined" && AssistantService) ? AssistantService.harnessUpdateDetail : "")
+    readonly property bool harnessUpdating: root.harnessUpdateState === "running"
+    readonly property string harnessStatusText: root.harnessInstalled
+        ? (root.harnessVersion !== "" ? ("pi " + root.harnessVersion + " installed") : "pi installed")
+        : "pi is not installed"
+    readonly property string harnessInstallCommand: "npm install -g @earendil-works/pi-coding-agent"
+
+    /// One write path per button, so the page is testable without a daemon.
+    function updatePi() {
+        if (testMode) { testUpdatePiRequests += 1; return; }
+        if (typeof AssistantService !== "undefined" && AssistantService) AssistantService.updatePi();
+    }
+
+    function updatePiPackages() {
+        if (testMode) { testUpdatePackagesRequests += 1; return; }
+        if (typeof AssistantService !== "undefined" && AssistantService) AssistantService.updatePiPackages();
+    }
+
+    function refreshPiModelCatalogs() {
+        if (testMode) { testRefreshCatalogsRequests += 1; return; }
+        if (typeof AssistantService !== "undefined" && AssistantService) AssistantService.refreshPiModelCatalogs();
+    }
+
+    function copyHarnessInstallCommand() {
+        if (testMode) { testCopyCommandRequests += 1; return; }
+        if (typeof AssistantService !== "undefined" && AssistantService) {
+            AssistantService.copyToClipboard(root.harnessInstallCommand);
+        }
+    }
+
+    /// Test / introspection surface for the card.
+    property alias harnessStatusItem: harnessStatus
+    property alias harnessHintItem: harnessHint
+    property alias harnessResultItem: harnessResult
+    property alias harnessDetailItem: harnessDetail
+    property alias updatePiButtonItem: updatePiButton
+    property alias updatePackagesButtonItem: updatePackagesButton
+    property alias refreshCatalogsButtonItem: refreshCatalogsButton
+    property alias harnessInstallButtonItem: harnessInstallButton
 
     readonly property bool isAuthenticating: testMode ? testIsAuthenticating : ((typeof AiTokenService !== "undefined") ? AiTokenService.isAuthenticating : false)
     readonly property string authenticatingEmail: testMode ? testAuthenticatingEmail : ((typeof AiTokenService !== "undefined") ? AiTokenService.authenticatingEmail : "")
@@ -123,11 +193,61 @@ ColumnLayout {
     /// "Settings > AI > Voice input" and must land on the voice section instead
     /// of leaving the reader at the top of the page.
     function sectionY(name) {
-        // The voice panel is nested inside its own card, so its own `y` is
-        // relative to that card: map it into the page's space, which is what the
-        // settings hub scrolls.
-        if (name === "voice") return voicePanel.mapToItem(root, 0, 0).y;
+        // The panel is nested inside its card, so its own `y` is relative to that
+        // card: map it into the page's space, which is what the settings hub
+        // scrolls. `voice` predates the zones and stays a valid deep link.
+        if (name === "voice" || name === "setup") return setupHeader.mapToItem(root, 0, 0).y;
+        if (name === "quotas" || name === "providers" || name === "quota") return quotasHeader.mapToItem(root, 0, 0).y;
+        if (name === "copilot" || name === "harness" || name === "model") return copilotHeader.mapToItem(root, 0, 0).y;
         return undefined;
+    }
+
+    // --- Zone rail: what this page answers, with each zone's live state -----
+    // Built from the same rules the runways render (`components/QuotaMath.js`), so
+    // a summary and a bar cannot disagree.
+    readonly property var quotaSummary: QuotaMath.summarize(
+        root.providersList || [], root.warningThreshold, root.criticalThreshold, Date.now())
+    /// The model the Copilot will use: the service's live selection when it is
+    /// available, else the configured default. Never "undefined" - the rail is a
+    /// status line, and a status line that prints a JavaScript artefact is a bug.
+    readonly property string activeModelName: {
+        const fromService = (typeof AssistantService !== "undefined" && AssistantService
+            && AssistantService.selectedModelId) ? String(AssistantService.selectedModelId) : "";
+        if (fromService !== "") return fromService;
+        const configured = (typeof Config !== "undefined" && Config.assistantDefaultModel)
+            ? String(Config.assistantDefaultModel) : "";
+        return configured;
+    }
+    readonly property string copilotSummaryText: (root.harnessInstalled
+            ? ("pi " + (root.harnessVersion !== "" ? root.harnessVersion : "installed"))
+            : "pi missing")
+        + " · " + (root.activeModelName !== "" ? root.activeModelName : "no model chosen")
+    readonly property string voiceSummaryText: {
+        if (!root.voiceEnabled) return "voice off";
+        if (root.voiceReady) return "voice ready";
+        if (root.voiceModelPresent) return "voice needs setup";
+        return "voice needs a model";
+    }
+    /// The quota posture in words (the rail's line and the zone eyebrow share it).
+    readonly property string quotaSummaryStateWord: {
+        switch (root.quotaSummary.state) {
+            case "critical": return "needs attention";
+            case "watch": return "getting tight";
+            case "exhausted": return "windows spent";
+            case "unknown": return "not reported yet";
+            default: return "healthy";
+        }
+    }
+    /// A rail pill was pressed: ask the host (the settings hub) to bring that
+    /// zone into view. The page does not scroll itself - the scroll area and its
+    /// motion belong to the hub - and it does not broadcast through a global
+    /// either: `SettingsPage` pages use the same signal, and a signal the host
+    /// ignores fails a test instead of silently doing nothing.
+    signal zoneRequested(string zoneId)
+
+    /// Ask the settings hub to bring a zone into view.
+    function jumpToZone(zone) {
+        root.zoneRequested(zone);
     }
 
     // --- Voice input test seams (mirroring the existing pattern) -----------
@@ -356,25 +476,77 @@ ColumnLayout {
         }
     }
 
-    // Header & Description
-    ColumnLayout {
-        Layout.fillWidth: true
-        spacing: 2
+    // The page's identity and its state rail are rendered by the settings hub as a
+    // *sticky* header (`stickyHeader`), so they stay visible while the zones scroll
+    // - and the hub tells this page which zone is current (`currentSection`), so
+    // the rail can highlight it.
+    property string currentSection: ""
 
-        Text {
-            text: "AI Token Plans"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleLarge
-            font.weight: Font.Bold
-            color: Colors.m3onSurface
-        }
+    /// Is a zone the one the reader is in? The hub's scroll-spy sets
+    /// `currentSection`; the rail renders it. One rule, so a pill cannot disagree
+    /// with the spy that drives it.
+    function isZoneCurrent(zoneId) {
+        return root.currentSection === zoneId;
+    }
+    readonly property var zones: [
+        { id: "quotas", label: "Quotas" },
+        { id: "copilot", label: "Copilot" },
+        { id: "setup", label: "Setup" }
+    ]
 
-        Text {
-            text: "Auto-discovered coding plans, quotas, and theme warning thresholds"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBodySmall
-            color: Colors.m3onSurfaceVariant
+    property Component stickyHeader: Component {
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spaceSmall
+
+            Text {
+                text: "AI Token Plans"
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontTitleLarge
+                font.weight: Font.Bold
+                color: Colors.m3onSurface
+            }
+
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Auto-discovered coding plans, quotas, and theme warning thresholds"
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBodySmall
+                color: Colors.m3onSurfaceVariant
+            }
+
+            // The rail: each zone's live state, and which one you are in.
+            Flow {
+                Layout.fillWidth: true
+                spacing: Theme.spaceSmall
+
+                Repeater {
+                    id: zoneRail
+                    model: [
+                        { id: "quotas", icon: "data_usage", label: root.quotaSummary.text },
+                        { id: "copilot", icon: "psychology", label: root.copilotSummaryText },
+                        { id: "setup", icon: "mic", label: root.voiceSummaryText }
+                    ]
+
+                    delegate: PillButton {
+                        required property var modelData
+                        iconText: modelData.icon
+                        label: modelData.label
+                        active: root.isZoneCurrent(modelData.id)
+                        onClicked: root.jumpToZone(modelData.id)
+                    }
+                }
+            }
         }
+    }
+
+    // --- QUOTAS ------------------------------------------------------------
+    SectionHeader {
+        id: quotasHeader
+        Layout.topMargin: Theme.spaceSmall
+        eyebrow: root.quotaSummary.count + " configured · " + root.quotaSummaryStateWord
+        title: "Quotas"
     }
 
     // Master Integration Toggle Card
@@ -451,6 +623,339 @@ ColumnLayout {
                 }
             }
         }
+    }
+
+    // Detected Providers & Quotas
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 10
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            Text {
+                text: "Configured Providers & Quotas"
+                font.family: Theme.fontFamily
+                font.pixelSize: 13
+                font.weight: Font.Bold
+                color: Colors.m3onSurface
+            }
+
+            Item { Layout.fillWidth: true }
+
+            PillButton {
+                label: "Rescan All Models"
+                iconText: "refresh"
+                onClicked: {
+                    if (typeof AiTokenService !== "undefined") {
+                        AiTokenService.refresh(true);
+                    }
+                }
+            }
+        }
+
+        GridLayout {
+            Layout.fillWidth: true
+            // Two cards side by side when there is room, one when the settings
+            // window is narrow: a quota row squeezed to 300px is unreadable.
+            columns: width > 760 ? 2 : 1
+            columnSpacing: Theme.spaceSmall
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                ThresholdRange {
+                    id: thresholdRange
+                    Layout.fillWidth: true
+                    warning: root.warningThreshold
+                    critical: root.criticalThreshold
+                    onRangeModified: (warning, critical) => root.setThresholds(warning, critical)
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: "The dock pill turns amber at " + Math.round(root.warningThreshold)
+                        + "% used and rose at " + Math.round(root.criticalThreshold)
+                        + "%. Drag a handle, or focus the control and press ←/→ (Shift for 5% steps)."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    color: Colors.m3onSurfaceVariant
+                }
+            }
+            rowSpacing: Theme.spaceSmall
+            Repeater {
+                model: root.providersList
+                delegate: ProviderQuotaCard {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    provider: modelData
+                    warningThreshold: root.warningThreshold
+                    criticalThreshold: root.criticalThreshold
+
+                    // Accounts and sign-in belong to their provider, and stay collapsed
+                    // until that provider needs the user (unavailable, or a new sign-in).
+                    SetupGroup {
+                        Layout.fillWidth: true
+                        flat: true
+                        title: "Accounts & sign-in"
+                        summary: (modelData.accounts ? modelData.accounts.length : 0)
+                            + ((modelData.accounts && modelData.accounts.length === 1) ? " account" : " accounts")
+                            + (modelData.account_email ? " · active " + modelData.account_email : "")
+                        state: modelData.is_available === false ? "attention" : "ok"
+                        needsAttention: modelData.is_available === false
+
+                                    // Configured Accounts Management (Gemini & Multi-Account Providers)
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        visible: (modelData.provider_id === "gemini" || modelData.provider === "gemini")
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            height: 1
+                                            color: Theme.borderSubtle
+                                            opacity: 0.4
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 8
+
+                                            Text {
+                                                text: "Configured Accounts"
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 12
+                                                font.weight: Font.DemiBold
+                                                color: Colors.m3onSurface
+                                            }
+
+                                            Item { Layout.fillWidth: true }
+
+                                            // Sign In with Google Button
+                                            Rectangle {
+                                                height: 28
+                                                implicitWidth: addBtnRow.implicitWidth + 20
+                                                radius: 14
+                                                color: (!root.isAuthenticating && addMouse.containsMouse) ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.primary, 0.1)
+                                                border.color: (!root.isAuthenticating && addMouse.containsMouse) ? Colors.primary : Qt.alpha(Colors.primary, 0.3)
+                                                border.width: 1
+
+                                                RowLayout {
+                                                    id: addBtnRow
+                                                    anchors.centerIn: parent
+                                                    spacing: 6
+
+                                                    MaterialIcon {
+                                                        text: root.isAuthenticating ? "sync" : "add"
+                                                        size: 15
+                                                        color: Colors.primary
+
+                                                        RotationAnimation on rotation {
+                                                            running: root.isAuthenticating
+                                                            from: 0
+                                                            to: 360
+                                                            duration: 1000
+                                                            loops: Animation.Infinite
+                                                        }
+                                                    }
+
+                                                    Text {
+                                                        text: root.isAuthenticating ? "Signing in..." : "Sign in with Google"
+                                                        font.family: Theme.fontFamily
+                                                        font.pixelSize: 12
+                                                        font.weight: Font.DemiBold
+                                                        color: Colors.primary
+                                                    }
+                                                }
+
+                                                MouseArea {
+                                                    id: addMouse
+                                                    anchors.fill: parent
+                                                    cursorShape: root.isAuthenticating ? Qt.ArrowCursor : Qt.PointingHandCursor
+                                                    hoverEnabled: !root.isAuthenticating
+                                                    onClicked: {
+                                                        if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
+                                                            AiTokenService.loginGemini("");
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Prominent Cancel Button when authenticating
+                                            ActionPill {
+                                                id: headerCancelBtn
+                                                visible: root.isAuthenticating
+                                                text: "Cancel"
+                                                icon: "close"
+                                                iconSize: 13
+                                                variant: "danger"
+                                                fixedHeight: 28
+                                                pill: true
+                                                fontPixelSize: 11
+                                                fontWeight: Font.DemiBold
+                                                paddingHorizontal: 12
+                                                onClicked: {
+                                                    root.cancelAuth();
+                                                }
+                                            }
+                                        }
+
+                                        // Account Items Repeater
+                                        Repeater {
+                                            model: modelData.accounts || []
+                                            delegate: Rectangle {
+                                                id: accDelegate
+                                                required property var modelData
+                                                Layout.fillWidth: true
+                                                height: 46
+                                                radius: Theme.radiusSmall
+                                                color: modelData.is_active ? Qt.alpha(Colors.primary, 0.08) : (accRowHover.containsMouse ? Colors.pillHover : Colors.surfaceContainerHighest)
+                                                border.color: modelData.is_active ? Qt.alpha(Colors.primary, 0.3) : Theme.borderSubtle
+                                                border.width: 1
+
+                                                MouseArea {
+                                                    id: accRowHover
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                }
+
+                                                RowLayout {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 12
+                                                    anchors.rightMargin: 12
+                                                    spacing: 10
+
+                                                    MaterialIcon {
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                        text: modelData.is_active ? "check_circle" : "account_circle"
+                                                        size: 18
+                                                        color: modelData.is_active ? "#10B981" : Colors.m3onSurfaceVariant
+                                                    }
+
+                                                    ColumnLayout {
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                        Layout.fillWidth: true
+                                                        Layout.minimumWidth: 120
+                                                        Layout.maximumWidth: 99999
+                                                        spacing: 2
+
+                                                        Text {
+                                                            Layout.fillWidth: true
+                                                            text: modelData.identity || modelData.label
+                                                            font.family: Theme.fontFamily
+                                                            font.pixelSize: 12
+                                                            font.weight: modelData.is_active ? Font.DemiBold : Font.Normal
+                                                            color: Colors.m3onSurface
+                                                            elide: Text.ElideRight
+                                                        }
+
+                                                        Text {
+                                                            Layout.fillWidth: true
+                                                            visible: modelData.label && modelData.label !== modelData.identity
+                                                            text: modelData.label || ""
+                                                            font.family: Theme.fontFamily
+                                                            font.pixelSize: 10
+                                                            color: Colors.m3onSurfaceVariant
+                                                            elide: Text.ElideRight
+                                                        }
+                                                    }
+
+                                                    // Flexible spacer ensuring rightmost button columns lock to consistent positions
+                                                    Item {
+                                                        Layout.fillWidth: true
+                                                    }
+
+                                                    // Column 1: Active Badge / Switch Button (Uniform 64px width)
+                                                    ActionPill {
+                                                        Layout.preferredWidth: 64
+                                                        Layout.preferredHeight: 26
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                        fixedWidth: 64
+                                                        fixedHeight: 26
+                                                        pill: true
+                                                        variant: modelData.is_active ? "active" : "secondary"
+                                                        text: modelData.is_active ? "Active" : "Switch"
+                                                        interactive: !modelData.is_active && !root.isAuthenticating
+                                                        opacity: (!modelData.is_active && root.isAuthenticating) ? 0.45 : 1.0
+                                                        fontPixelSize: 11
+                                                        fontWeight: Font.DemiBold
+                                                        onClicked: {
+                                                            if (!modelData.is_active && !root.isAuthenticating && typeof AiTokenService !== "undefined") {
+                                                                AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Column 2: Re-auth / Cancel Button (Uniform 80px width)
+                                                    ActionPill {
+                                                        readonly property bool isThisAccountAuthenticating: root.isAuthenticating && (root.authenticatingEmail && (root.authenticatingEmail.toLowerCase() === (modelData.identity || "").toLowerCase() || root.authenticatingEmail === modelData.id))
+
+                                                        Layout.preferredWidth: 80
+                                                        Layout.preferredHeight: 26
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                        fixedWidth: 80
+                                                        fixedHeight: 26
+                                                        pill: true
+                                                        icon: isThisAccountAuthenticating ? "close" : "vpn_key"
+                                                        iconSize: isThisAccountAuthenticating ? 13 : 12
+                                                        text: isThisAccountAuthenticating ? "Cancel" : "Re-auth"
+                                                        variant: isThisAccountAuthenticating ? "danger" : "info"
+                                                        fontPixelSize: 11
+                                                        fontWeight: Font.DemiBold
+                                                        opacity: (root.isAuthenticating && !isThisAccountAuthenticating) ? 0.45 : 1.0
+                                                        interactive: !root.isAuthenticating || isThisAccountAuthenticating
+                                                        onClicked: {
+                                                            if (isThisAccountAuthenticating) {
+                                                                root.cancelAuth();
+                                                            } else if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
+                                                                AiTokenService.loginGemini(modelData.identity);
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Column 3: Remove Button (Uniform 82px width)
+                                                    ActionPill {
+                                                        Layout.preferredWidth: 82
+                                                        Layout.preferredHeight: 26
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                        fixedWidth: 82
+                                                        fixedHeight: 26
+                                                        pill: true
+                                                        icon: "delete_outline"
+                                                        iconSize: 13
+                                                        text: "Remove"
+                                                        variant: "danger"
+                                                        fontPixelSize: 11
+                                                        fontWeight: Font.DemiBold
+                                                        opacity: root.isAuthenticating ? 0.45 : 1.0
+                                                        interactive: !root.isAuthenticating
+                                                        onClicked: {
+                                                            if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
+                                                                AiTokenService.removeAccount("gemini", modelData.id || modelData.identity);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                    }
+                }
+            }
+        }
+
+    }
+
+
+    // --- COPILOT -----------------------------------------------------------
+    SectionHeader {
+        id: copilotHeader
+        Layout.topMargin: Theme.spaceSmall
+        eyebrow: root.copilotSummaryText
+        title: "Copilot"
     }
 
     // AI Copilot & Chat Configuration Card
@@ -693,7 +1198,8 @@ ColumnLayout {
             spacing: 16
 
             Text {
-                text: "Theme & Warning Configuration"
+                text: "Dock indicator & polling"
+
                 font.family: Theme.fontFamily
                 font.pixelSize: 13
                 font.weight: Font.Bold
@@ -701,57 +1207,6 @@ ColumnLayout {
             }
 
             // Dock Pill Display Mode
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 6
-
-                Text {
-                    text: "Left Dock Indicator"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                    color: Colors.m3onSurface
-                }
-
-                RowLayout {
-                    spacing: 8
-
-                    Repeater {
-                        model: [
-                            { id: "dynamic", label: "Dynamic (Active / Warning)" },
-                            { id: "always", label: "Always Visible" },
-                            { id: "never", label: "Hidden" }
-                        ]
-                        delegate: Rectangle {
-                            required property var modelData
-                            height: 32
-                            implicitWidth: modeLabel.implicitWidth + 20
-                            radius: 16
-                            color: root.dockPillMode === modelData.id ? Colors.primary : Colors.surfaceContainerHighest
-                            border.color: root.dockPillMode === modelData.id ? Colors.primary : Theme.borderSubtle
-                            border.width: 1
-
-                            Text {
-                                id: modeLabel
-                                anchors.centerIn: parent
-                                text: modelData.label
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11
-                                font.weight: root.dockPillMode === modelData.id ? Font.Bold : Font.Normal
-                                color: root.dockPillMode === modelData.id ? Colors.textOnPrimary : Colors.m3onSurface
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.setDockPillMode(modelData.id);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
 
             Rectangle {
                 Layout.fillWidth: true
@@ -760,125 +1215,9 @@ ColumnLayout {
                 opacity: 0.4
             }
 
-            // Warning Thresholds
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 16
-
-                // Warning Threshold (Amber)
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    RowLayout {
-                        Text {
-                            text: "Amber Warning Threshold"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            color: Colors.m3onSurface
-                        }
-                        Item { Layout.fillWidth: true }
-                        Text {
-                            text: Math.round(root.warningThreshold) + "% used"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.Bold
-                            color: "#F59E0B"
-                        }
-                    }
-
-                    RowLayout {
-                        spacing: 6
-                        Repeater {
-                            model: [70, 75, 80, 85]
-                            delegate: Rectangle {
-                                required property int modelData
-                                height: 28
-                                Layout.fillWidth: true
-                                radius: 14
-                                color: root.warningThreshold === modelData ? Qt.alpha("#F59E0B", 0.25) : Colors.surfaceContainerHighest
-                                border.color: root.warningThreshold === modelData ? "#F59E0B" : Theme.borderSubtle
-                                border.width: 1
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData + "%"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    font.weight: root.warningThreshold === modelData ? Font.Bold : Font.Normal
-                                    color: root.warningThreshold === modelData ? "#F59E0B" : Colors.m3onSurface
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        root.setThresholds(modelData, root.criticalThreshold);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Critical Threshold (Rose)
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    RowLayout {
-                        Text {
-                            text: "Rose Critical Threshold"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            color: Colors.m3onSurface
-                        }
-                        Item { Layout.fillWidth: true }
-                        Text {
-                            text: Math.round(root.criticalThreshold) + "% used"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.Bold
-                            color: "#E05353"
-                        }
-                    }
-
-                    RowLayout {
-                        spacing: 6
-                        Repeater {
-                            model: [90, 93, 95, 98]
-                            delegate: Rectangle {
-                                required property int modelData
-                                height: 28
-                                Layout.fillWidth: true
-                                radius: 14
-                                color: root.criticalThreshold === modelData ? Qt.alpha("#E05353", 0.25) : Colors.surfaceContainerHighest
-                                border.color: root.criticalThreshold === modelData ? "#E05353" : Theme.borderSubtle
-                                border.width: 1
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData + "%"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    font.weight: root.criticalThreshold === modelData ? Font.Bold : Font.Normal
-                                    color: root.criticalThreshold === modelData ? "#E05353" : Colors.m3onSurface
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        root.setThresholds(root.warningThreshold, modelData);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // Warning thresholds: ONE control, because the relationship between
+            // amber and rose is the information - two separate sliders can be
+            // crossed without anything saying so.
 
             Rectangle {
                 Layout.fillWidth: true
@@ -906,6 +1245,58 @@ ColumnLayout {
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
                         color: Colors.m3onSurfaceVariant
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Text {
+                        text: "Left Dock Indicator"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        color: Colors.m3onSurface
+                    }
+
+                    RowLayout {
+                        spacing: 8
+
+                        Repeater {
+                            model: [
+                                { id: "dynamic", label: "Dynamic (Active / Warning)" },
+                                { id: "always", label: "Always Visible" },
+                                { id: "never", label: "Hidden" }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                height: 32
+                                implicitWidth: modeLabel.implicitWidth + 20
+                                radius: 16
+                                color: root.dockPillMode === modelData.id ? Colors.primary : Colors.surfaceContainerHighest
+                                border.color: root.dockPillMode === modelData.id ? Colors.primary : Theme.borderSubtle
+                                border.width: 1
+
+                                Text {
+                                    id: modeLabel
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: root.dockPillMode === modelData.id ? Font.Bold : Font.Normal
+                                    color: root.dockPillMode === modelData.id ? Colors.textOnPrimary : Colors.m3onSurface
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.setDockPillMode(modelData.id);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -946,419 +1337,162 @@ ColumnLayout {
         }
     }
 
-    // Detected Providers & Quotas
-    ColumnLayout {
-        Layout.fillWidth: true
-        spacing: 10
+
+    // --- SETUP -------------------------------------------------------------
+    SectionHeader {
+        id: setupHeader
+        Layout.topMargin: Theme.spaceSmall
+        eyebrow: (root.harnessInstalled ? "engine ready" : "engine missing")
+            + " · " + root.voiceSummaryText
+        title: "Setup"
+    }
+
+    // Where authentication stands, with a pointer to the controls that stay next
+    // to their provider (a sign-in happens where the provider is).
+    SetupGroup {
+        id: signInSetupGroup
+        title: "Sign-ins"
+        summary: root.quotaSummary.count === 0
+            ? "no providers signed in"
+            : (root.quotaSummary.count + (root.quotaSummary.count === 1 ? " provider · " : " providers · ")
+                + (root.quotaSummary.state === "critical" ? "one needs attention" : "signed in"))
+        state: root.quotaSummary.severity
+        needsAttention: root.quotaSummary.state === "critical"
 
         RowLayout {
             Layout.fillWidth: true
-
-            Text {
-                text: "Configured Providers & Quotas"
-                font.family: Theme.fontFamily
-                font.pixelSize: 13
-                font.weight: Font.Bold
-                color: Colors.m3onSurface
-            }
-
-            Item { Layout.fillWidth: true }
-
             PillButton {
-                label: "Rescan All Models"
-                iconText: "refresh"
-                onClicked: {
-                    if (typeof AiTokenService !== "undefined") {
-                        AiTokenService.refresh(true);
-                    }
-                }
+                label: "Open quotas"
+                iconText: "arrow_upward"
+                onClicked: root.jumpToZone("quotas")
             }
         }
+    }
 
-        Repeater {
-            model: root.providersList
-            delegate: Rectangle {
-                required property var modelData
+
+    // Pi harness - the engine behind the Copilot. A setup group: it states its own
+    // condition in the header and opens itself only when it needs the user, so a
+    // healthy machine does not show a permanently expanded update panel.
+    SetupGroup {
+        id: piSetupGroup
+        title: "Pi harness"
+        summary: root.harnessStatusText
+        state: root.harnessInstalled ? "ok" : "attention"
+        needsAttention: !root.harnessInstalled
+
+        ColumnLayout {
+            id: harnessCol
+            Layout.fillWidth: true
+            spacing: 8
+
+            RowLayout {
                 Layout.fillWidth: true
-                radius: Theme.radiusMedium
-                color: Colors.surfaceContainer
-                border.color: Theme.borderSubtle
-                border.width: 1
-                implicitHeight: cardContent.implicitHeight + 24
+                spacing: Theme.spaceSmall
 
-                ColumnLayout {
-                    id: cardContent
-                    anchors.fill: parent
-                    anchors.margins: Theme.padLarge
-                    spacing: 12
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        ThemedIcon {
-                            source: (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function") ? Config.providerIconUrl(modelData.provider_id || modelData.provider) : ""
-                            materialIcon: modelData.icon || "auto_awesome"
-                            size: 20
-                            color: Colors.primary
-                        }
-
-                        Text {
-                            text: modelData.display_name
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 14
-                            font.weight: Font.Bold
-                            color: Colors.m3onSurface
-                        }
-
-                        Rectangle {
-                            visible: modelData.plan_type !== null && modelData.plan_type !== ""
-                            height: 18
-                            implicitWidth: planBadge.implicitWidth + 10
-                            radius: 9
-                            color: Qt.alpha(Colors.primary, 0.15)
-                            border.color: Qt.alpha(Colors.primary, 0.3)
-                            border.width: 1
-
-                            Text {
-                                id: planBadge
-                                anchors.centerIn: parent
-                                text: modelData.plan_type || ""
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
-                                color: Colors.primary
-                            }
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        // Health badge
-                        Rectangle {
-                            height: 20
-                            implicitWidth: stText.implicitWidth + 12
-                            radius: 10
-                            color: modelData.is_available ? Qt.alpha("#10B981", 0.15) : Qt.alpha("#E05353", 0.15)
-                            border.color: modelData.is_available ? "#10B981" : "#E05353"
-                            border.width: 1
-
-                            Text {
-                                id: stText
-                                anchors.centerIn: parent
-                                text: modelData.is_available ? "Active" : "Unavailable"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                                color: modelData.is_available ? "#10B981" : "#E05353"
-                            }
-                        }
-                    }
-
-                    // Account identity
-                    Text {
-                        visible: modelData.account_email !== null && modelData.account_email !== ""
-                        text: "Active in CLI: " + (modelData.account_email || "")
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        color: Colors.m3onSurfaceVariant
-                    }
-
-                    // Configured Accounts Management (Gemini & Multi-Account Providers)
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: (modelData.provider_id === "gemini" || modelData.provider === "gemini")
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 1
-                            color: Theme.borderSubtle
-                            opacity: 0.4
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            Text {
-                                text: "Configured Accounts"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
-                                color: Colors.m3onSurface
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            // Sign In with Google Button
-                            Rectangle {
-                                height: 28
-                                implicitWidth: addBtnRow.implicitWidth + 20
-                                radius: 14
-                                color: (!root.isAuthenticating && addMouse.containsMouse) ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.primary, 0.1)
-                                border.color: (!root.isAuthenticating && addMouse.containsMouse) ? Colors.primary : Qt.alpha(Colors.primary, 0.3)
-                                border.width: 1
-
-                                RowLayout {
-                                    id: addBtnRow
-                                    anchors.centerIn: parent
-                                    spacing: 6
-
-                                    MaterialIcon {
-                                        text: root.isAuthenticating ? "sync" : "add"
-                                        size: 15
-                                        color: Colors.primary
-
-                                        RotationAnimation on rotation {
-                                            running: root.isAuthenticating
-                                            from: 0
-                                            to: 360
-                                            duration: 1000
-                                            loops: Animation.Infinite
-                                        }
-                                    }
-
-                                    Text {
-                                        text: root.isAuthenticating ? "Signing in..." : "Sign in with Google"
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
-                                        color: Colors.primary
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: addMouse
-                                    anchors.fill: parent
-                                    cursorShape: root.isAuthenticating ? Qt.ArrowCursor : Qt.PointingHandCursor
-                                    hoverEnabled: !root.isAuthenticating
-                                    onClicked: {
-                                        if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
-                                            AiTokenService.loginGemini("");
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Prominent Cancel Button when authenticating
-                            ActionPill {
-                                id: headerCancelBtn
-                                visible: root.isAuthenticating
-                                text: "Cancel"
-                                icon: "close"
-                                iconSize: 13
-                                variant: "danger"
-                                fixedHeight: 28
-                                pill: true
-                                fontPixelSize: 11
-                                fontWeight: Font.DemiBold
-                                paddingHorizontal: 12
-                                onClicked: {
-                                    root.cancelAuth();
-                                }
-                            }
-                        }
-
-                        // Account Items Repeater
-                        Repeater {
-                            model: modelData.accounts || []
-                            delegate: Rectangle {
-                                id: accDelegate
-                                required property var modelData
-                                Layout.fillWidth: true
-                                height: 46
-                                radius: Theme.radiusSmall
-                                color: modelData.is_active ? Qt.alpha(Colors.primary, 0.08) : (accRowHover.containsMouse ? Colors.pillHover : Colors.surfaceContainerHighest)
-                                border.color: modelData.is_active ? Qt.alpha(Colors.primary, 0.3) : Theme.borderSubtle
-                                border.width: 1
-
-                                MouseArea {
-                                    id: accRowHover
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                }
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 12
-                                    anchors.rightMargin: 12
-                                    spacing: 10
-
-                                    MaterialIcon {
-                                        Layout.alignment: Qt.AlignVCenter
-                                        text: modelData.is_active ? "check_circle" : "account_circle"
-                                        size: 18
-                                        color: modelData.is_active ? "#10B981" : Colors.m3onSurfaceVariant
-                                    }
-
-                                    ColumnLayout {
-                                        Layout.alignment: Qt.AlignVCenter
-                                        Layout.fillWidth: true
-                                        Layout.minimumWidth: 120
-                                        Layout.maximumWidth: 99999
-                                        spacing: 2
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: modelData.identity || modelData.label
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 12
-                                            font.weight: modelData.is_active ? Font.DemiBold : Font.Normal
-                                            color: Colors.m3onSurface
-                                            elide: Text.ElideRight
-                                        }
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            visible: modelData.label && modelData.label !== modelData.identity
-                                            text: modelData.label || ""
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 10
-                                            color: Colors.m3onSurfaceVariant
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-
-                                    // Flexible spacer ensuring rightmost button columns lock to consistent positions
-                                    Item {
-                                        Layout.fillWidth: true
-                                    }
-
-                                    // Column 1: Active Badge / Switch Button (Uniform 64px width)
-                                    ActionPill {
-                                        Layout.preferredWidth: 64
-                                        Layout.preferredHeight: 26
-                                        Layout.alignment: Qt.AlignVCenter
-                                        fixedWidth: 64
-                                        fixedHeight: 26
-                                        pill: true
-                                        variant: modelData.is_active ? "active" : "secondary"
-                                        text: modelData.is_active ? "Active" : "Switch"
-                                        interactive: !modelData.is_active && !root.isAuthenticating
-                                        opacity: (!modelData.is_active && root.isAuthenticating) ? 0.45 : 1.0
-                                        fontPixelSize: 11
-                                        fontWeight: Font.DemiBold
-                                        onClicked: {
-                                            if (!modelData.is_active && !root.isAuthenticating && typeof AiTokenService !== "undefined") {
-                                                AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
-                                            }
-                                        }
-                                    }
-
-                                    // Column 2: Re-auth / Cancel Button (Uniform 80px width)
-                                    ActionPill {
-                                        readonly property bool isThisAccountAuthenticating: root.isAuthenticating && (root.authenticatingEmail && (root.authenticatingEmail.toLowerCase() === (modelData.identity || "").toLowerCase() || root.authenticatingEmail === modelData.id))
-
-                                        Layout.preferredWidth: 80
-                                        Layout.preferredHeight: 26
-                                        Layout.alignment: Qt.AlignVCenter
-                                        fixedWidth: 80
-                                        fixedHeight: 26
-                                        pill: true
-                                        icon: isThisAccountAuthenticating ? "close" : "vpn_key"
-                                        iconSize: isThisAccountAuthenticating ? 13 : 12
-                                        text: isThisAccountAuthenticating ? "Cancel" : "Re-auth"
-                                        variant: isThisAccountAuthenticating ? "danger" : "info"
-                                        fontPixelSize: 11
-                                        fontWeight: Font.DemiBold
-                                        opacity: (root.isAuthenticating && !isThisAccountAuthenticating) ? 0.45 : 1.0
-                                        interactive: !root.isAuthenticating || isThisAccountAuthenticating
-                                        onClicked: {
-                                            if (isThisAccountAuthenticating) {
-                                                root.cancelAuth();
-                                            } else if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
-                                                AiTokenService.loginGemini(modelData.identity);
-                                            }
-                                        }
-                                    }
-
-                                    // Column 3: Remove Button (Uniform 82px width)
-                                    ActionPill {
-                                        Layout.preferredWidth: 82
-                                        Layout.preferredHeight: 26
-                                        Layout.alignment: Qt.AlignVCenter
-                                        fixedWidth: 82
-                                        fixedHeight: 26
-                                        pill: true
-                                        icon: "delete_outline"
-                                        iconSize: 13
-                                        text: "Remove"
-                                        variant: "danger"
-                                        fontPixelSize: 11
-                                        fontWeight: Font.DemiBold
-                                        opacity: root.isAuthenticating ? 0.45 : 1.0
-                                        interactive: !root.isAuthenticating
-                                        onClicked: {
-                                            if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
-                                                AiTokenService.removeAccount("gemini", modelData.id || modelData.identity);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Windows progress list
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: modelData.windows && modelData.windows.length > 0
-
-                        Repeater {
-                            model: modelData.windows || []
-                            delegate: ColumnLayout {
-                                required property var modelData
-                                Layout.fillWidth: true
-                                spacing: 2
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text {
-                                        text: {
-                                            switch (modelData.label) {
-                                                case "5h": return "5-Hour Rolling Limit";
-                                                case "weekly": return "Weekly Limit";
-                                                case "monthly": return "Monthly Limit";
-                                                default: return modelData.label;
-                                            }
-                                        }
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: 11
-                                        font.weight: Font.DemiBold
-                                        color: Colors.m3onSurface
-                                    }
-                                    Item { Layout.fillWidth: true }
-                                    Text {
-                                        text: Math.round(modelData.remaining_percent) + "% remaining (" + Math.round(modelData.used_percent) + "% used)"
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: 11
-                                        font.weight: Font.Bold
-                                        color: (modelData.used_percent >= root.criticalThreshold)
-                                            ? "#E05353"
-                                            : ((modelData.used_percent >= root.warningThreshold) ? "#F59E0B" : Colors.primary)
-                                    }
-                                }
-
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    height: 6
-                                    radius: 3
-                                    color: Colors.surfaceContainerHighest
-
-                                    Rectangle {
-                                        width: Math.max(0, parent.width * (modelData.used_percent / 100.0))
-                                        height: parent.height
-                                        radius: 3
-                                        color: (modelData.used_percent >= root.criticalThreshold)
-                                            ? "#E05353"
-                                            : ((modelData.used_percent >= root.warningThreshold) ? "#F59E0B" : Colors.primary)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                MaterialIcon {
+                    text: root.harnessInstalled ? "smart_toy" : "extension_off"
+                    size: 20
+                    color: root.harnessInstalled ? Colors.primary : Colors.m3onSurfaceVariant
                 }
+
+                Text {
+                    id: harnessStatus
+                    Layout.fillWidth: true
+                    text: root.harnessStatusText
+                        + (root.harnessPath !== "" ? "  ·  " + root.harnessPath : "")
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontBodyMedium
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+            }
+
+            Text {
+                id: harnessHint
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: root.harnessInstalled
+                    ? "The Copilot runs your own pi installation. Astral reports the version it finds; updating runs the same `pi update` your terminal would."
+                    : "The Copilot needs the pi harness. Install it, then update it from here whenever a new version ships."
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                color: Colors.m3onSurfaceVariant
+                opacity: 0.85
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceSmall
+
+                PillButton {
+                    id: updatePiButton
+                    visible: root.harnessInstalled
+                    label: root.harnessUpdating ? "Updating…" : "Update Pi"
+                    variant: "filled"
+                    // One update at a time: the daemon runs real commands.
+                    enabled: !root.harnessUpdating
+                    onClicked: root.updatePi()
+                }
+
+                PillButton {
+                    id: updatePackagesButton
+                    visible: root.harnessInstalled
+                    label: "Update packages"
+                    enabled: !root.harnessUpdating
+                    onClicked: root.updatePiPackages()
+                }
+
+                PillButton {
+                    id: refreshCatalogsButton
+                    visible: root.harnessInstalled
+                    label: "Refresh model catalogs"
+                    enabled: !root.harnessUpdating
+                    onClicked: root.refreshPiModelCatalogs()
+                }
+
+                PillButton {
+                    id: harnessInstallButton
+                    visible: !root.harnessInstalled
+                    label: "Copy install command"
+                    variant: "filled"
+                    onClicked: root.copyHarnessInstallCommand()
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    visible: !root.harnessInstalled
+                    text: root.harnessInstallCommand
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    color: Colors.m3onSurfaceVariant
+                    opacity: 0.85
+                }
+            }
+
+            Text {
+                id: harnessResult
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                visible: root.harnessUpdateMessage !== ""
+                text: root.harnessUpdateMessage
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                color: root.harnessUpdateState === "failed"
+                    ? Colors.error
+                    : (root.harnessUpdating ? Colors.m3onSurfaceVariant : Colors.primary)
+            }
+
+            Text {
+                id: harnessDetail
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                visible: root.harnessUpdateDetail !== ""
+                text: root.harnessUpdateDetail
+                font.family: Theme.fontFamily
+                font.pixelSize: 11
+                color: Colors.m3onSurfaceVariant
+                opacity: 0.75
             }
         }
     }
@@ -1378,213 +1512,581 @@ ColumnLayout {
         Layout.preferredHeight: 1
     }
 
-    Text {
-        text: "Voice Input"
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontTitleLarge
-        font.weight: Font.Bold
-        color: Colors.m3onSurface
-        Layout.leftMargin: Theme.padSmall
-        Layout.topMargin: Theme.spaceSmall
-    }
+    // Voice input - a setup group like the harness: ready when it is ready, open
+    // when it is not. Nothing is installed or downloaded without an explicit click.
+    SetupGroup {
+        id: voiceSetupGroup
+        title: "Voice input"
+        summary: root.voiceSummaryText
+        state: root.voiceEnabled ? (root.voiceReady ? "ok" : "attention") : "idle"
+        needsAttention: root.voiceEnabled && !root.voiceReady
 
-    Text {
-        Layout.fillWidth: true
-        Layout.leftMargin: Theme.padSmall
-        text: "Dictate prompts in the assistant composer. Transcription runs locally on this machine; audio never leaves it."
-        font.family: Theme.fontFamily
-        font.pixelSize: 11
-        color: Colors.m3onSurfaceVariant
-        wrapMode: Text.WordWrap
-    }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spaceSmall
 
     // Master toggle
-    Rectangle {
-        Layout.fillWidth: true
-        height: 64
-        radius: Theme.radiusMedium
-        color: Colors.surfaceContainer
-        border.color: Theme.borderSubtle
-        border.width: 1
+        Rectangle {
+            Layout.fillWidth: true
+            height: 64
+            radius: Theme.radiusMedium
+            color: Colors.surfaceContainer
+            border.color: Theme.borderSubtle
+            border.width: 1
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: Theme.padLarge
-            anchors.rightMargin: Theme.padLarge
-            spacing: Theme.spaceMedium
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.padLarge
+                anchors.rightMargin: Theme.padLarge
+                spacing: Theme.spaceMedium
 
-            MaterialIcon {
-                text: "mic"
-                size: 26
-                color: root.voiceEnabled ? Colors.primary : Colors.m3onSurfaceVariant
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-
-                Text {
-                    text: "Voice Dictation"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 14
-                    font.weight: Font.DemiBold
-                    color: Colors.m3onSurface
+                MaterialIcon {
+                    text: "mic"
+                    size: 26
+                    color: root.voiceEnabled ? Colors.primary : Colors.m3onSurfaceVariant
                 }
 
-                Text {
-                    text: root.voiceStatusSummary
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    color: Colors.m3onSurfaceVariant
-                    elide: Text.ElideRight
+                ColumnLayout {
                     Layout.fillWidth: true
-                }
-            }
+                    spacing: 2
 
-            Rectangle {
-                width: 48
-                height: 26
-                radius: 13
-                color: root.voiceEnabled ? Colors.primary : Colors.surfaceContainerHighest
-                border.color: root.voiceEnabled ? Colors.primary : Theme.borderSubtle
-                border.width: 1
+                    Text {
+                        text: "Voice Dictation"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                        color: Colors.m3onSurface
+                    }
 
-                Behavior on color { ColorAnimation { duration: 150 } }
-
-                Rectangle {
-                    width: 20
-                    height: 20
-                    radius: 10
-                    color: root.voiceEnabled ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: root.voiceEnabled ? parent.width - width - 3 : 3
-
-                    Behavior on x {
-                        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                    Text {
+                        text: root.voiceStatusSummary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.m3onSurfaceVariant
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
                     }
                 }
 
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (root.testMode) {
-                            root.testVoiceEnabled = !root.testVoiceEnabled;
-                        } else if (typeof Config !== "undefined") {
-                            Config.setVoiceEnabled(!root.voiceEnabled);
+                Rectangle {
+                    width: 48
+                    height: 26
+                    radius: 13
+                    color: root.voiceEnabled ? Colors.primary : Colors.surfaceContainerHighest
+                    border.color: root.voiceEnabled ? Colors.primary : Theme.borderSubtle
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                    Rectangle {
+                        width: 20
+                        height: 20
+                        radius: 10
+                        color: root.voiceEnabled ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: root.voiceEnabled ? parent.width - width - 3 : 3
+
+                        Behavior on x {
+                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
                         }
-                        if (typeof AssistantService !== "undefined") AssistantService.refreshVoiceStatus();
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (root.testMode) {
+                                root.testVoiceEnabled = !root.testVoiceEnabled;
+                            } else if (typeof Config !== "undefined") {
+                                Config.setVoiceEnabled(!root.voiceEnabled);
+                            }
+                            if (typeof AssistantService !== "undefined") AssistantService.refreshVoiceStatus();
+                        }
                     }
                 }
             }
         }
-    }
 
-    // Setup panel: engine, model, languages, endpointing.
-    Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: voicePanel.implicitHeight + Theme.padLarge * 2
-        radius: Theme.radiusMedium
-        color: Colors.surfaceContainer
-        border.color: Theme.borderSubtle
-        border.width: 1
-        visible: root.voiceEnabled
+        // Setup panel: engine, model, languages, endpointing.
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: voicePanel.implicitHeight + Theme.padLarge * 2
+            radius: Theme.radiusMedium
+            color: Colors.surfaceContainer
+            border.color: Theme.borderSubtle
+            border.width: 1
+            visible: root.voiceEnabled
 
-        ColumnLayout {
-            id: voicePanel
-            anchors.fill: parent
-            anchors.margins: Theme.padLarge
-            spacing: Theme.spaceMedium
+            ColumnLayout {
+                id: voicePanel
+                anchors.fill: parent
+                anchors.margins: Theme.padLarge
+                spacing: Theme.spaceMedium
 
-            // --- Engine + model readiness -------------------------------
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spaceSmall
-
-                MaterialIcon {
-                    text: root.voiceReady ? "check_circle" : "info"
-                    size: 16
-                    color: root.voiceReady ? Colors.primary : Colors.m3onSurfaceVariant
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: root.voiceStatusSummary
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 12
-                    color: Colors.m3onSurface
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            // --- Install engine (only when missing) -----------------------
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 40
-                radius: Theme.radiusSmall
-                color: Qt.alpha(Colors.m3error, 0.10)
-                border.color: Qt.alpha(Colors.m3error, 0.35)
-                border.width: 1
-                visible: root.voiceEnabled && !root.voiceEngineAvailable
-
+                // --- Engine + model readiness -------------------------------
                 RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: Theme.padMedium
-                    anchors.rightMargin: Theme.padSmall
+                    Layout.fillWidth: true
                     spacing: Theme.spaceSmall
+
+                    MaterialIcon {
+                        text: root.voiceReady ? "check_circle" : "info"
+                        size: 16
+                        color: root.voiceReady ? Colors.primary : Colors.m3onSurfaceVariant
+                    }
 
                     Text {
                         Layout.fillWidth: true
-                        text: root.voiceEngineNotice
-                        font.family: Theme.fontMonospace
-                        font.pixelSize: 10
+                        text: root.voiceStatusSummary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
                         color: Colors.m3onSurface
-                        elide: Text.ElideRight
+                        wrapMode: Text.WordWrap
                     }
                 }
-            }
 
-            // --- Model picker --------------------------------------------
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spaceExtraSmall
+                // --- Install engine (only when missing) -----------------------
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 40
+                    radius: Theme.radiusSmall
+                    color: Qt.alpha(Colors.m3error, 0.10)
+                    border.color: Qt.alpha(Colors.m3error, 0.35)
+                    border.width: 1
+                    visible: root.voiceEnabled && !root.voiceEngineAvailable
 
-                Text {
-                    text: "Speech model"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontLabelSmall
-                    color: Colors.m3onSurfaceVariant
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.padMedium
+                        anchors.rightMargin: Theme.padSmall
+                        spacing: Theme.spaceSmall
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.voiceEngineNotice
+                            font.family: Theme.fontMonospace
+                            font.pixelSize: 10
+                            color: Colors.m3onSurface
+                            elide: Text.ElideRight
+                        }
+                    }
                 }
 
-                RowLayout {
+                // --- Model picker --------------------------------------------
+                ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: Theme.spaceSmall
+                    spacing: Theme.spaceExtraSmall
 
-                    // Dropdown built from the project's own idiom (a rounded
-                    // trigger plus a list that expands the panel inline), because
-                    // QtQuick.Controls is not imported anywhere in this shell.
-                    Item {
-                        id: modelDropdown
+                    Text {
+                        text: "Speech model"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurfaceVariant
+                    }
+
+                    RowLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 32
+                        spacing: Theme.spaceSmall
 
-                        readonly property var currentLabel: {
-                            for (let i = 0; i < root.voiceModelOptions.length; i++) {
-                                if (root.voiceModelOptions[i].id === root.voiceModel) {
-                                    return root.voiceModelOptions[i].label;
+                        // Dropdown built from the project's own idiom (a rounded
+                        // trigger plus a list that expands the panel inline), because
+                        // QtQuick.Controls is not imported anywhere in this shell.
+                        Item {
+                            id: modelDropdown
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 32
+
+                            readonly property var currentLabel: {
+                                for (let i = 0; i < root.voiceModelOptions.length; i++) {
+                                    if (root.voiceModelOptions[i].id === root.voiceModel) {
+                                        return root.voiceModelOptions[i].label;
+                                    }
+                                }
+                                return root.voiceModel;
+                            }
+
+                            Rectangle {
+                                id: modelTrigger
+                                objectName: "voiceModelTrigger"
+                                anchors.fill: parent
+                                radius: Theme.radiusSmall
+                                color: modelTriggerHover.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainer
+                                border.width: 1
+                                border.color: root.modelMenuOpen ? Colors.primary : Theme.borderSubtle
+
+                                Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Theme.padSmall
+                                    anchors.rightMargin: Theme.padSmall
+                                    spacing: Theme.spaceExtraSmall
+
+                                    MaterialIcon {
+                                        text: "memory"
+                                        size: 14
+                                        color: Colors.secondary
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelDropdown.currentLabel
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        color: Colors.m3onSurface
+                                        elide: Text.ElideRight
+                                    }
+
+                                    MaterialIcon {
+                                        text: "expand_more"
+                                        size: 14
+                                        color: Colors.m3onSurfaceVariant
+                                        rotation: root.modelMenuOpen ? 180 : 0
+                                        Behavior on rotation { NumberAnimation { duration: Theme.animExpressiveFastEffects } }
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: modelTriggerHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    enabled: root.voiceEnabled
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.languageMenuOpen = false;
+                                        root.modelMenuOpen = !root.modelMenuOpen;
+                                    }
                                 }
                             }
-                            return root.voiceModel;
+
                         }
 
                         Rectangle {
-                            id: modelTrigger
-                            objectName: "voiceModelTrigger"
+                            Layout.preferredWidth: 132
+                            Layout.preferredHeight: 32
+                            radius: Theme.radiusSmall
+                            color: root.voiceModelPresent ? Qt.alpha(Colors.primary, 0.14) : Qt.alpha(Colors.primary, 0.20)
+                            border.color: Qt.alpha(Colors.primary, 0.40)
+                            border.width: 1
+                            enabled: root.voiceEnabled && !root.voiceModelPresent && !root.voiceModelInstalling
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.voiceModelInstalling
+                                    ? Math.round(root.voiceModelInstallProgress * 100) + "%"
+                                    : (root.voiceModelPresent ? "Downloaded" : "Download (" + root.voiceModelSizeLabel + ")")
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: root.voiceModelPresent ? Colors.primary : Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: parent.enabled
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: {
+                                    if (typeof AssistantService !== "undefined") {
+                                        AssistantService.installVoiceModel(root.voiceModel);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Remove: only offered once a model is actually on disk, so
+                        // the row never shows a destructive control for a download
+                        // that has not happened.
+                        Rectangle {
+                            id: voiceModelRemove
+                            visible: root.voiceModelPresent
+                            Layout.preferredWidth: 32
+                            Layout.preferredHeight: 32
+                            radius: Theme.radiusSmall
+                            color: removeHover.containsMouse ? Qt.alpha(Colors.m3error, 0.18) : "transparent"
+                            border.width: 1
+                            border.color: removeHover.containsMouse ? Qt.alpha(Colors.m3error, 0.45) : Colors.glassBorderSpecular
+                            enabled: root.voiceEnabled && root.voiceModelPresent && !root.voiceModelInstalling
+
+                            MaterialIcon {
+                                anchors.centerIn: parent
+                                iconName: "delete"
+                                size: 16
+                                color: removeHover.containsMouse ? Colors.m3error : Colors.m3onSurfaceVariant
+                            }
+
+                            MouseArea {
+                                id: removeHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                enabled: parent.enabled
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: {
+                                    if (typeof AssistantService !== "undefined") {
+                                        AssistantService.removeVoiceModel(root.voiceModel);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Neural voice detection (Silero): gates inference on phoneme
+                    // probability rather than volume, so fan noise stops costing
+                    // hallucinations. An accuracy upgrade, never a requirement —
+                    // absence falls back to energy endpointing.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceSmall
+
+                        MaterialIcon {
+                            text: "graphic_eq"
+                            size: 14
+                            color: Colors.secondary
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.voiceVadModelPresent
+                                ? "Neural voice detection ready (Silero)"
+                                : "Neural voice detection not installed — energy fallback active"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            color: Colors.m3onSurface
+                            elide: Text.ElideRight
+                        }
+
+                        Rectangle {
+                            objectName: "voiceVadInstallButton"
+                            Layout.preferredWidth: 132
+                            Layout.preferredHeight: 32
+                            radius: Theme.radiusSmall
+                            color: root.voiceVadModelPresent ? Qt.alpha(Colors.primary, 0.14) : Qt.alpha(Colors.primary, 0.20)
+                            border.color: Qt.alpha(Colors.primary, 0.40)
+                            border.width: 1
+                            enabled: root.voiceEnabled && !root.voiceVadModelPresent && !root.voiceVadInstalling
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.voiceVadInstalling
+                                    ? Math.round(root.voiceVadInstallProgress * 100) + "%"
+                                    : (root.voiceVadModelPresent ? "Ready" : "Install (1 MB)")
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: root.voiceVadModelPresent ? Colors.primary : Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: parent.enabled
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: {
+                                    if (typeof AssistantService !== "undefined") {
+                                        AssistantService.installVoiceVadModel();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Device-only microphone check: three seconds, on-device, with
+                    // actionable feedback. Catches a dead or saturated mic in setup
+                    // instead of behind a frozen meter mid-dictation.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceSmall
+
+                        MaterialIcon {
+                            text: "graphic_eq"
+                            size: 14
+                            color: Colors.secondary
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Microphone: " + root.voiceMicCheckSummary
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            color: Colors.m3onSurface
+                            elide: Text.ElideRight
+                        }
+
+                        Rectangle {
+                            objectName: "voiceMicCheckButton"
+                            Layout.preferredWidth: 132
+                            Layout.preferredHeight: 32
+                            radius: Theme.radiusSmall
+                            color: Qt.alpha(Colors.primary, 0.20)
+                            border.color: Qt.alpha(Colors.primary, 0.40)
+                            border.width: 1
+                            enabled: root.voiceEnabled && !root.voiceMicChecking
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.voiceMicChecking ? "Listening…" : "Test (3 s)"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: parent.enabled
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: {
+                                    if (typeof AssistantService !== "undefined") {
+                                        AssistantService.runMicCheck();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Expands INLINE rather than overlaying.
+                    //
+                    // As an absolutely positioned popup this painted straight over the
+                    // sections below it -- the Language picker and the auto-finalize
+                    // switch were covered by the model list. Growing the panel instead
+                    // makes overlap structurally impossible, and follows the
+                    // content-driven-height rule in docs/LESSONS.md 7.1.
+                    Rectangle {
+                        id: modelList
+                        objectName: "voiceModelList"
+                        Layout.fillWidth: true
+                        Layout.topMargin: Theme.spaceExtraSmall
+                        Layout.preferredHeight: root.modelMenuOpen
+                            ? Math.min(240, modelListCol.implicitHeight + 12) : 0
+                        visible: root.modelMenuOpen
+                        clip: true
+                        radius: Theme.radiusSmall
+                        color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.12, 0.17, 0.95) : Qt.rgba(0.96, 0.97, 1.0, 0.95)
+                        border.width: 1
+                        border.color: Colors.glassBorderSpecular
+
+                        Behavior on Layout.preferredHeight {
+                            NumberAnimation {
+                                duration: Theme.animExpressiveFastSpatial
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Theme.curveExpressiveFastSpatial
+                            }
+                        }
+
+                        Flickable {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            contentHeight: modelListCol.implicitHeight
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+
+                            Column {
+                                id: modelListCol
+                                width: parent.width
+                                spacing: 2
+
+                                Repeater {
+                                    model: root.voiceModelOptions
+
+                                    delegate: Rectangle {
+                                        width: modelListCol.width
+                                        height: 28
+                                        radius: Theme.radiusSmall
+                                        color: modelItemHover.containsMouse ? Qt.alpha(Colors.primary, 0.12) : "transparent"
+                                        border.width: modelData.id === root.voiceModel ? 1 : 0
+                                        border.color: Colors.primary
+
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: Theme.padSmall
+                                            anchors.rightMargin: Theme.padSmall
+                                            spacing: Theme.spaceExtraSmall
+
+                                            MaterialIcon {
+                                                text: modelData.id === root.voiceModel ? "check" : "memory"
+                                                size: 14
+                                                color: modelData.id === root.voiceModel ? Colors.primary : Colors.secondary
+                                            }
+
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.label
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 11
+                                                font.weight: modelData.id === root.voiceModel ? Font.DemiBold : Font.Normal
+                                                color: Colors.m3onSurface
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: modelItemHover
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            enabled: root.voiceEnabled
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.testMode) {
+                                                    root.testVoiceModel = modelData.id;
+                                                } else if (typeof Config !== "undefined") {
+                                                    Config.setVoiceModel(modelData.id);
+                                                }
+                                                root.modelMenuOpen = false;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // --- Language picker -----------------------------------------
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceExtraSmall
+
+                    Text {
+                        text: "Language"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurfaceVariant
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Auto-detect is unreliable on short clips, so the default is your system's language and the reading is shown while it transcribes. Pick Auto-detect only if you switch languages while dictating."
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Colors.m3onSurfaceVariant
+                        wrapMode: Text.WordWrap
+                    }
+
+                    // Language dropdown, same idiom as the model picker. ~20
+                    // locales is far too many for a segmented control, and this
+                    // keeps the page free of QtQuick.Controls. The list is capped
+                    // and scrolls; see languageList below.
+                    Item {
+                        id: languageDropdown
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 32
+
+                        readonly property string currentLabel: {
+                            for (let i = 0; i < root.voiceLanguageOptions.length; i++) {
+                                if (root.voiceLanguageOptions[i].code === root.voiceLanguage) {
+                                    return root.voiceLanguageOptions[i].label;
+                                }
+                            }
+                            // A value the daemon stored but the picker does not offer
+                            // must still be readable, not rendered as a blank field.
+                            return root.voiceLanguage.length > 0 ? root.voiceLanguage : "?";
+                        }
+
+                        Rectangle {
+                            id: languageTrigger
+                            objectName: "voiceLanguageTrigger"
                             anchors.fill: parent
                             radius: Theme.radiusSmall
-                            color: modelTriggerHover.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainer
+                            color: languageTriggerHover.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainer
                             border.width: 1
-                            border.color: root.modelMenuOpen ? Colors.primary : Theme.borderSubtle
+                            border.color: root.languageMenuOpen ? Colors.primary : Theme.borderSubtle
 
                             Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
 
@@ -1595,14 +2097,14 @@ ColumnLayout {
                                 spacing: Theme.spaceExtraSmall
 
                                 MaterialIcon {
-                                    text: "memory"
+                                    text: "translate"
                                     size: 14
-                                    color: Colors.secondary
+                                    color: Colors.primary
                                 }
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: modelDropdown.currentLabel
+                                    text: languageDropdown.currentLabel
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 11
                                     color: Colors.m3onSurface
@@ -1613,690 +2115,318 @@ ColumnLayout {
                                     text: "expand_more"
                                     size: 14
                                     color: Colors.m3onSurfaceVariant
-                                    rotation: root.modelMenuOpen ? 180 : 0
+                                    rotation: root.languageMenuOpen ? 180 : 0
                                     Behavior on rotation { NumberAnimation { duration: Theme.animExpressiveFastEffects } }
                                 }
                             }
 
                             MouseArea {
-                                id: modelTriggerHover
+                                id: languageTriggerHover
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 enabled: root.voiceEnabled
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    root.languageMenuOpen = false;
-                                    root.modelMenuOpen = !root.modelMenuOpen;
+                                    root.modelMenuOpen = false;
+                                    root.languageMenuOpen = !root.languageMenuOpen;
                                 }
                             }
                         }
 
                     }
 
+                    // Inline expansion, same reason as the model list above.
                     Rectangle {
-                        Layout.preferredWidth: 132
-                        Layout.preferredHeight: 32
+                        id: languageList
+                        objectName: "voiceLanguageList"
+                        Layout.fillWidth: true
+                        Layout.topMargin: Theme.spaceExtraSmall
+                        Layout.preferredHeight: root.languageMenuOpen
+                            ? Math.min(280, languageListCol.implicitHeight + 12) : 0
+                        visible: root.languageMenuOpen
+                        clip: true
                         radius: Theme.radiusSmall
-                        color: root.voiceModelPresent ? Qt.alpha(Colors.primary, 0.14) : Qt.alpha(Colors.primary, 0.20)
-                        border.color: Qt.alpha(Colors.primary, 0.40)
+                        color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.12, 0.17, 0.95) : Qt.rgba(0.96, 0.97, 1.0, 0.95)
                         border.width: 1
-                        enabled: root.voiceEnabled && !root.voiceModelPresent && !root.voiceModelInstalling
+                        border.color: Colors.glassBorderSpecular
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.voiceModelInstalling
-                                ? Math.round(root.voiceModelInstallProgress * 100) + "%"
-                                : (root.voiceModelPresent ? "Downloaded" : "Download (" + root.voiceModelSizeLabel + ")")
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 11
-                            font.weight: Font.Medium
-                            color: root.voiceModelPresent ? Colors.primary : Colors.m3onSurface
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: parent.enabled
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: {
-                                if (typeof AssistantService !== "undefined") {
-                                    AssistantService.installVoiceModel(root.voiceModel);
-                                }
+                        Behavior on Layout.preferredHeight {
+                            NumberAnimation {
+                                duration: Theme.animExpressiveFastSpatial
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Theme.curveExpressiveFastSpatial
                             }
                         }
-                    }
 
-                    // Remove: only offered once a model is actually on disk, so
-                    // the row never shows a destructive control for a download
-                    // that has not happened.
-                    Rectangle {
-                        id: voiceModelRemove
-                        visible: root.voiceModelPresent
-                        Layout.preferredWidth: 32
-                        Layout.preferredHeight: 32
-                        radius: Theme.radiusSmall
-                        color: removeHover.containsMouse ? Qt.alpha(Colors.m3error, 0.18) : "transparent"
-                        border.width: 1
-                        border.color: removeHover.containsMouse ? Qt.alpha(Colors.m3error, 0.45) : Colors.glassBorderSpecular
-                        enabled: root.voiceEnabled && root.voiceModelPresent && !root.voiceModelInstalling
-
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            iconName: "delete"
-                            size: 16
-                            color: removeHover.containsMouse ? Colors.m3error : Colors.m3onSurfaceVariant
-                        }
-
-                        MouseArea {
-                            id: removeHover
+                        Flickable {
                             anchors.fill: parent
-                            hoverEnabled: true
-                            enabled: parent.enabled
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: {
-                                if (typeof AssistantService !== "undefined") {
-                                    AssistantService.removeVoiceModel(root.voiceModel);
+                            anchors.margins: 6
+                            contentHeight: languageListCol.implicitHeight
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+
+                            Column {
+                                id: languageListCol
+                                width: parent.width
+                                spacing: 2
+
+                                Repeater {
+                                    model: root.voiceLanguageOptions
+
+                                    delegate: Rectangle {
+                                        width: languageListCol.width
+                                        height: 28
+                                        radius: Theme.radiusSmall
+                                        color: languageItemHover.containsMouse ? Qt.alpha(Colors.primary, 0.12) : "transparent"
+                                        border.width: modelData.code === root.voiceLanguage ? 1 : 0
+                                        border.color: Colors.primary
+
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: Theme.padSmall
+                                            anchors.rightMargin: Theme.padSmall
+                                            spacing: Theme.spaceExtraSmall
+
+                                            MaterialIcon {
+                                                text: modelData.code === root.voiceLanguage ? "check" : "translate"
+                                                size: 14
+                                                color: modelData.code === root.voiceLanguage ? Colors.primary : Colors.m3onSurfaceVariant
+                                            }
+
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.label
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 11
+                                                font.weight: modelData.code === root.voiceLanguage ? Font.DemiBold : Font.Normal
+                                                color: Colors.m3onSurface
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: languageItemHover
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            enabled: root.voiceEnabled
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.testMode) {
+                                                    root.testVoiceLanguage = modelData.code;
+                                                } else if (typeof Config !== "undefined") {
+                                                    Config.setVoiceLanguage(modelData.code);
+                                                }
+                                                root.languageMenuOpen = false;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // Neural voice detection (Silero): gates inference on phoneme
-                // probability rather than volume, so fan noise stops costing
-                // hallucinations. An accuracy upgrade, never a requirement —
-                // absence falls back to energy endpointing.
-                RowLayout {
+
+                // --- Endpointing ---------------------------------------------
+                ColumnLayout {
                     Layout.fillWidth: true
                     spacing: Theme.spaceSmall
 
-                    MaterialIcon {
-                        text: "graphic_eq"
-                        size: 14
-                        color: Colors.secondary
-                    }
-
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: root.voiceVadModelPresent
-                            ? "Neural voice detection ready (Silero)"
-                            : "Neural voice detection not installed — energy fallback active"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        color: Colors.m3onSurface
-                        elide: Text.ElideRight
-                    }
-
-                    Rectangle {
-                        objectName: "voiceVadInstallButton"
-                        Layout.preferredWidth: 132
-                        Layout.preferredHeight: 32
-                        radius: Theme.radiusSmall
-                        color: root.voiceVadModelPresent ? Qt.alpha(Colors.primary, 0.14) : Qt.alpha(Colors.primary, 0.20)
-                        border.color: Qt.alpha(Colors.primary, 0.40)
-                        border.width: 1
-                        enabled: root.voiceEnabled && !root.voiceVadModelPresent && !root.voiceVadInstalling
+                        spacing: Theme.spaceSmall
 
                         Text {
-                            anchors.centerIn: parent
-                            text: root.voiceVadInstalling
-                                ? Math.round(root.voiceVadInstallProgress * 100) + "%"
-                                : (root.voiceVadModelPresent ? "Ready" : "Install (1 MB)")
+                            Layout.fillWidth: true
+                            text: "Stop automatically after a pause"
                             font.family: Theme.fontFamily
-                            font.pixelSize: 11
-                            font.weight: Font.Medium
-                            color: root.voiceVadModelPresent ? Colors.primary : Colors.m3onSurface
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: parent.enabled
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: {
-                                if (typeof AssistantService !== "undefined") {
-                                    AssistantService.installVoiceVadModel();
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Device-only microphone check: three seconds, on-device, with
-                // actionable feedback. Catches a dead or saturated mic in setup
-                // instead of behind a frozen meter mid-dictation.
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spaceSmall
-
-                    MaterialIcon {
-                        text: "graphic_eq"
-                        size: 14
-                        color: Colors.secondary
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Microphone: " + root.voiceMicCheckSummary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        color: Colors.m3onSurface
-                        elide: Text.ElideRight
-                    }
-
-                    Rectangle {
-                        objectName: "voiceMicCheckButton"
-                        Layout.preferredWidth: 132
-                        Layout.preferredHeight: 32
-                        radius: Theme.radiusSmall
-                        color: Qt.alpha(Colors.primary, 0.20)
-                        border.color: Qt.alpha(Colors.primary, 0.40)
-                        border.width: 1
-                        enabled: root.voiceEnabled && !root.voiceMicChecking
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.voiceMicChecking ? "Listening…" : "Test (3 s)"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 11
-                            font.weight: Font.Medium
+                            font.pixelSize: 12
                             color: Colors.m3onSurface
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: parent.enabled
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: {
-                                if (typeof AssistantService !== "undefined") {
-                                    AssistantService.runMicCheck();
+                        Rectangle {
+                            width: 40
+                            height: 22
+                            radius: 11
+                            color: root.voiceAutoFinalize ? Colors.primary : Colors.surfaceContainerHighest
+                            border.color: root.voiceAutoFinalize ? Colors.primary : Theme.borderSubtle
+                            border.width: 1
+
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            Rectangle {
+                                width: 16
+                                height: 16
+                                radius: 8
+                                color: root.voiceAutoFinalize ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: root.voiceAutoFinalize ? parent.width - width - 3 : 3
+
+                                Behavior on x {
+                                    NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveFastSpatial }
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (root.testMode) {
+                                        root.testVoiceAutoFinalize = !root.testVoiceAutoFinalize;
+                                    } else if (typeof Config !== "undefined") {
+                                        Config.setVoiceAutoFinalize(!root.voiceAutoFinalize);
+                                    }
                                 }
                             }
                         }
                     }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.voiceAutoFinalize
+                            ? "Finishes after " + root.voiceSilenceHangoverMs + " ms of silence, or at " + root.voiceMaxUtteranceSeconds + " s, whichever comes first. Stopping manually always works."
+                            : "Only the stop button ends a recording. Maximum " + root.voiceMaxUtteranceSeconds + " s."
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Colors.m3onSurfaceVariant
+                        wrapMode: Text.WordWrap
+                    }
                 }
 
-                // Expands INLINE rather than overlaying.
+                // --- Input cleanup ---------------------------------------------
                 //
-                // As an absolutely positioned popup this painted straight over the
-                // sections below it -- the Language picker and the auto-finalize
-                // switch were covered by the model list. Growing the panel instead
-                // makes overlap structurally impossible, and follows the
-                // content-driven-height rule in docs/LESSONS.md 7.1.
-                Rectangle {
-                    id: modelList
-                    objectName: "voiceModelList"
-                    Layout.fillWidth: true
-                    Layout.topMargin: Theme.spaceExtraSmall
-                    Layout.preferredHeight: root.modelMenuOpen
-                        ? Math.min(240, modelListCol.implicitHeight + 12) : 0
-                    visible: root.modelMenuOpen
-                    clip: true
-                    radius: Theme.radiusSmall
-                    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.12, 0.17, 0.95) : Qt.rgba(0.96, 0.97, 1.0, 0.95)
-                    border.width: 1
-                    border.color: Colors.glassBorderSpecular
-
-                    Behavior on Layout.preferredHeight {
-                        NumberAnimation {
-                            duration: Theme.animExpressiveFastSpatial
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: Theme.curveExpressiveFastSpatial
-                        }
-                    }
-
-                    Flickable {
-                        anchors.fill: parent
-                        anchors.margins: 6
-                        contentHeight: modelListCol.implicitHeight
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-
-                        Column {
-                            id: modelListCol
-                            width: parent.width
-                            spacing: 2
-
-                            Repeater {
-                                model: root.voiceModelOptions
-
-                                delegate: Rectangle {
-                                    width: modelListCol.width
-                                    height: 28
-                                    radius: Theme.radiusSmall
-                                    color: modelItemHover.containsMouse ? Qt.alpha(Colors.primary, 0.12) : "transparent"
-                                    border.width: modelData.id === root.voiceModel ? 1 : 0
-                                    border.color: Colors.primary
-
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: Theme.padSmall
-                                        anchors.rightMargin: Theme.padSmall
-                                        spacing: Theme.spaceExtraSmall
-
-                                        MaterialIcon {
-                                            text: modelData.id === root.voiceModel ? "check" : "memory"
-                                            size: 14
-                                            color: modelData.id === root.voiceModel ? Colors.primary : Colors.secondary
-                                        }
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: modelData.label
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 11
-                                            font.weight: modelData.id === root.voiceModel ? Font.DemiBold : Font.Normal
-                                            color: Colors.m3onSurface
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        id: modelItemHover
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        enabled: root.voiceEnabled
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (root.testMode) {
-                                                root.testVoiceModel = modelData.id;
-                                            } else if (typeof Config !== "undefined") {
-                                                Config.setVoiceModel(modelData.id);
-                                            }
-                                            root.modelMenuOpen = false;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- Language picker -----------------------------------------
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spaceExtraSmall
-
-                Text {
-                    text: "Language"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontLabelSmall
-                    color: Colors.m3onSurfaceVariant
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: "Auto-detect is unreliable on short clips, so the default is your system's language and the reading is shown while it transcribes. Pick Auto-detect only if you switch languages while dictating."
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10
-                    color: Colors.m3onSurfaceVariant
-                    wrapMode: Text.WordWrap
-                }
-
-                // Language dropdown, same idiom as the model picker. ~20
-                // locales is far too many for a segmented control, and this
-                // keeps the page free of QtQuick.Controls. The list is capped
-                // and scrolls; see languageList below.
-                Item {
-                    id: languageDropdown
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 32
-
-                    readonly property string currentLabel: {
-                        for (let i = 0; i < root.voiceLanguageOptions.length; i++) {
-                            if (root.voiceLanguageOptions[i].code === root.voiceLanguage) {
-                                return root.voiceLanguageOptions[i].label;
-                            }
-                        }
-                        // A value the daemon stored but the picker does not offer
-                        // must still be readable, not rendered as a blank field.
-                        return root.voiceLanguage.length > 0 ? root.voiceLanguage : "?";
-                    }
-
-                    Rectangle {
-                        id: languageTrigger
-                        objectName: "voiceLanguageTrigger"
-                        anchors.fill: parent
-                        radius: Theme.radiusSmall
-                        color: languageTriggerHover.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainer
-                        border.width: 1
-                        border.color: root.languageMenuOpen ? Colors.primary : Theme.borderSubtle
-
-                        Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: Theme.padSmall
-                            anchors.rightMargin: Theme.padSmall
-                            spacing: Theme.spaceExtraSmall
-
-                            MaterialIcon {
-                                text: "translate"
-                                size: 14
-                                color: Colors.primary
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: languageDropdown.currentLabel
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11
-                                color: Colors.m3onSurface
-                                elide: Text.ElideRight
-                            }
-
-                            MaterialIcon {
-                                text: "expand_more"
-                                size: 14
-                                color: Colors.m3onSurfaceVariant
-                                rotation: root.languageMenuOpen ? 180 : 0
-                                Behavior on rotation { NumberAnimation { duration: Theme.animExpressiveFastEffects } }
-                            }
-                        }
-
-                        MouseArea {
-                            id: languageTriggerHover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            enabled: root.voiceEnabled
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                root.modelMenuOpen = false;
-                                root.languageMenuOpen = !root.languageMenuOpen;
-                            }
-                        }
-                    }
-
-                }
-
-                // Inline expansion, same reason as the model list above.
-                Rectangle {
-                    id: languageList
-                    objectName: "voiceLanguageList"
-                    Layout.fillWidth: true
-                    Layout.topMargin: Theme.spaceExtraSmall
-                    Layout.preferredHeight: root.languageMenuOpen
-                        ? Math.min(280, languageListCol.implicitHeight + 12) : 0
-                    visible: root.languageMenuOpen
-                    clip: true
-                    radius: Theme.radiusSmall
-                    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0.10, 0.12, 0.17, 0.95) : Qt.rgba(0.96, 0.97, 1.0, 0.95)
-                    border.width: 1
-                    border.color: Colors.glassBorderSpecular
-
-                    Behavior on Layout.preferredHeight {
-                        NumberAnimation {
-                            duration: Theme.animExpressiveFastSpatial
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: Theme.curveExpressiveFastSpatial
-                        }
-                    }
-
-                    Flickable {
-                        anchors.fill: parent
-                        anchors.margins: 6
-                        contentHeight: languageListCol.implicitHeight
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-
-                        Column {
-                            id: languageListCol
-                            width: parent.width
-                            spacing: 2
-
-                            Repeater {
-                                model: root.voiceLanguageOptions
-
-                                delegate: Rectangle {
-                                    width: languageListCol.width
-                                    height: 28
-                                    radius: Theme.radiusSmall
-                                    color: languageItemHover.containsMouse ? Qt.alpha(Colors.primary, 0.12) : "transparent"
-                                    border.width: modelData.code === root.voiceLanguage ? 1 : 0
-                                    border.color: Colors.primary
-
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: Theme.padSmall
-                                        anchors.rightMargin: Theme.padSmall
-                                        spacing: Theme.spaceExtraSmall
-
-                                        MaterialIcon {
-                                            text: modelData.code === root.voiceLanguage ? "check" : "translate"
-                                            size: 14
-                                            color: modelData.code === root.voiceLanguage ? Colors.primary : Colors.m3onSurfaceVariant
-                                        }
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: modelData.label
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 11
-                                            font.weight: modelData.code === root.voiceLanguage ? Font.DemiBold : Font.Normal
-                                            color: Colors.m3onSurface
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        id: languageItemHover
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        enabled: root.voiceEnabled
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (root.testMode) {
-                                                root.testVoiceLanguage = modelData.code;
-                                            } else if (typeof Config !== "undefined") {
-                                                Config.setVoiceLanguage(modelData.code);
-                                            }
-                                            root.languageMenuOpen = false;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-
-            // --- Endpointing ---------------------------------------------
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spaceSmall
-
-                RowLayout {
+                // A desktop microphone hears the machine's own speakers, and the
+                // engine then transcribes the playback - wrong language,
+                // hallucinated words - or, once VAD filters it, nothing at all.
+                // The legacy echo-cancellation module is deprecated: without
+                // playback routed through its sink it receives zero reference
+                // samples and distorts the mic, so it defaults off (audit §3.3).
+                // The evaluated replacement is a capture-only noise filter
+                // (rnnoise), which needs no playback reference to work.
+                ColumnLayout {
                     Layout.fillWidth: true
                     spacing: Theme.spaceSmall
 
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: "Stop automatically after a pause"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        color: Colors.m3onSurface
-                    }
+                        spacing: Theme.spaceSmall
 
-                    Rectangle {
-                        width: 40
-                        height: 22
-                        radius: 11
-                        color: root.voiceAutoFinalize ? Colors.primary : Colors.surfaceContainerHighest
-                        border.color: root.voiceAutoFinalize ? Colors.primary : Theme.borderSubtle
-                        border.width: 1
-
-                        Behavior on color { ColorAnimation { duration: 150 } }
-
-                        Rectangle {
-                            width: 16
-                            height: 16
-                            radius: 8
-                            color: root.voiceAutoFinalize ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: root.voiceAutoFinalize ? parent.width - width - 3 : 3
-
-                            Behavior on x {
-                                NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveFastSpatial }
-                            }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Echo cancellation"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            color: Colors.m3onSurface
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (root.testMode) {
-                                    root.testVoiceAutoFinalize = !root.testVoiceAutoFinalize;
-                                } else if (typeof Config !== "undefined") {
-                                    Config.setVoiceAutoFinalize(!root.voiceAutoFinalize);
+                        Rectangle {
+                            width: 40
+                            height: 22
+                            radius: 11
+                            color: root.voiceEchoCancel ? Colors.primary : Colors.surfaceContainerHighest
+                            border.color: root.voiceEchoCancel ? Colors.primary : Theme.borderSubtle
+                            border.width: 1
+
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            Rectangle {
+                                width: 16
+                                height: 16
+                                radius: 8
+                                color: root.voiceEchoCancel ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: root.voiceEchoCancel ? parent.width - width - 3 : 3
+
+                                Behavior on x {
+                                    NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveFastSpatial }
                                 }
                             }
+
+                            MouseArea {
+                                objectName: "voiceEchoCancelToggle"
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.setVoiceEchoCancel(!root.voiceEchoCancel)
+                            }
                         }
                     }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: root.voiceAutoFinalize
-                        ? "Finishes after " + root.voiceSilenceHangoverMs + " ms of silence, or at " + root.voiceMaxUtteranceSeconds + " s, whichever comes first. Stopping manually always works."
-                        : "Only the stop button ends a recording. Maximum " + root.voiceMaxUtteranceSeconds + " s."
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10
-                    color: Colors.m3onSurfaceVariant
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            // --- Input cleanup ---------------------------------------------
-            //
-            // A desktop microphone hears the machine's own speakers, and the
-            // engine then transcribes the playback - wrong language,
-            // hallucinated words - or, once VAD filters it, nothing at all.
-            // The legacy echo-cancellation module is deprecated: without
-            // playback routed through its sink it receives zero reference
-            // samples and distorts the mic, so it defaults off (audit §3.3).
-            // The evaluated replacement is a capture-only noise filter
-            // (rnnoise), which needs no playback reference to work.
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spaceSmall
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spaceSmall
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Echo cancellation"
+                        text: "Legacy path, off by default: without playback routed through its sink the canceller hears no reference and distorts the mic. Prefer noise suppression below."
                         font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        color: Colors.m3onSurface
-                    }
-
-                    Rectangle {
-                        width: 40
-                        height: 22
-                        radius: 11
-                        color: root.voiceEchoCancel ? Colors.primary : Colors.surfaceContainerHighest
-                        border.color: root.voiceEchoCancel ? Colors.primary : Theme.borderSubtle
-                        border.width: 1
-
-                        Behavior on color { ColorAnimation { duration: 150 } }
-
-                        Rectangle {
-                            width: 16
-                            height: 16
-                            radius: 8
-                            color: root.voiceEchoCancel ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: root.voiceEchoCancel ? parent.width - width - 3 : 3
-
-                            Behavior on x {
-                                NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveFastSpatial }
-                            }
-                        }
-
-                        MouseArea {
-                            objectName: "voiceEchoCancelToggle"
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.setVoiceEchoCancel(!root.voiceEchoCancel)
-                        }
+                        font.pixelSize: 10
+                        color: Colors.m3onSurfaceVariant
+                        wrapMode: Text.WordWrap
                     }
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: "Legacy path, off by default: without playback routed through its sink the canceller hears no reference and distorts the mic. Prefer noise suppression below."
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10
-                    color: Colors.m3onSurfaceVariant
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spaceSmall
-
-                RowLayout {
+                ColumnLayout {
                     Layout.fillWidth: true
                     spacing: Theme.spaceSmall
 
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: "Noise suppression"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        color: Colors.m3onSurface
-                    }
+                        spacing: Theme.spaceSmall
 
-                    Rectangle {
-                        width: 40
-                        height: 22
-                        radius: 11
-                        color: root.voiceNoiseSuppress ? Colors.primary : Colors.surfaceContainerHighest
-                        border.color: root.voiceNoiseSuppress ? Colors.primary : Theme.borderSubtle
-                        border.width: 1
-
-                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Noise suppression"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            color: Colors.m3onSurface
+                        }
 
                         Rectangle {
-                            width: 16
-                            height: 16
-                            radius: 8
-                            color: root.voiceNoiseSuppress ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: root.voiceNoiseSuppress ? parent.width - width - 3 : 3
+                            width: 40
+                            height: 22
+                            radius: 11
+                            color: root.voiceNoiseSuppress ? Colors.primary : Colors.surfaceContainerHighest
+                            border.color: root.voiceNoiseSuppress ? Colors.primary : Theme.borderSubtle
+                            border.width: 1
 
-                            Behavior on x {
-                                NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveFastSpatial }
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            Rectangle {
+                                width: 16
+                                height: 16
+                                radius: 8
+                                color: root.voiceNoiseSuppress ? Colors.textOnPrimary : Colors.m3onSurfaceVariant
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: root.voiceNoiseSuppress ? parent.width - width - 3 : 3
+
+                                Behavior on x {
+                                    NumberAnimation { duration: Theme.animExpressiveFastSpatial; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.curveExpressiveFastSpatial }
+                                }
+                            }
+
+                            MouseArea {
+                                objectName: "voiceNoiseSuppressToggle"
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.setVoiceNoiseSuppress(!root.voiceNoiseSuppress)
                             }
                         }
+                    }
 
-                        MouseArea {
-                            objectName: "voiceNoiseSuppressToggle"
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.setVoiceNoiseSuppress(!root.voiceNoiseSuppress)
-                        }
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.voiceNoiseSuppressActive
+                            ? "Capturing through the noise-suppressed source."
+                            : (root.voiceRnnoiseAvailable
+                                ? "Captures through your noise-suppression source when one is present; otherwise the default microphone. Needs an operator-provisioned rnnoise node."
+                                : "Needs an operator-provisioned suppression source (rnnoise plugin not detected here); falls back to the default microphone.")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Colors.m3onSurfaceVariant
+                        wrapMode: Text.WordWrap
                     }
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: root.voiceNoiseSuppressActive
-                        ? "Capturing through the noise-suppressed source."
-                        : (root.voiceRnnoiseAvailable
-                            ? "Captures through your noise-suppression source when one is present; otherwise the default microphone. Needs an operator-provisioned rnnoise node."
-                            : "Needs an operator-provisioned suppression source (rnnoise plugin not detected here); falls back to the default microphone.")
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10
-                    color: Colors.m3onSurfaceVariant
-                    wrapMode: Text.WordWrap
-                }
+                Item { Layout.preferredHeight: 1 }
             }
+        }
 
-            Item { Layout.preferredHeight: 1 }
         }
     }
 

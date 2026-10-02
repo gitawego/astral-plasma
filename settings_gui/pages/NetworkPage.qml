@@ -4,10 +4,23 @@ import "../../theme"
 import "../../components"
 import "../../services"
 
-ColumnLayout {
+SettingsPage {
     id: root
     spacing: Theme.spaceMedium
     width: parent ? parent.width : 600
+
+    title: "Network & Internet"
+    subtitle: "Wi-Fi connections, signal strength & network interfaces"
+    // The networks zone exists only while Wi-Fi is on: a Wi-Fi-off page has no
+    // scan list to scroll to.
+    function zoneList() {
+        const zones = [{ id: "wifi", label: "Wi-Fi", anchor: masterPowerCard }];
+        if (root.wifiEnabled) {
+            zones.push({ id: "networks", label: "Networks", anchor: networksSection });
+        }
+        return zones;
+    }
+    zones: root.zoneList()
 
     property bool testMode: false
     property bool testWifiEnabled: true
@@ -22,24 +35,6 @@ ColumnLayout {
             return NetworkService.wifiNetworks;
         }
         return [];
-    }
-
-    // Title & Header
-    ColumnLayout {
-        spacing: 4
-        Text {
-            text: "Network & Internet"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleMedium
-            font.weight: Font.Bold
-            color: Colors.m3onSurface
-        }
-        Text {
-            text: "Wi-Fi connections, signal strength & network interfaces"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontLabelSmall
-            color: Colors.m3onSurfaceVariant
-        }
     }
 
     // Wi-Fi Master Power Card
@@ -122,23 +117,17 @@ ColumnLayout {
 
     // Scanned Wi-Fi Networks List
     ColumnLayout {
+        id: networksSection
         Layout.fillWidth: true
         spacing: 12
         visible: root.wifiEnabled
 
         // Available Networks Header with Rescan Button
-        RowLayout {
-            Layout.fillWidth: true
-
-            Text {
-                text: "Available Networks"
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontTitleSmall
-                font.weight: Font.DemiBold
-                color: Colors.m3onSurface
-            }
-
-            Item { Layout.fillWidth: true }
+        SectionHeader {
+            title: "Available Networks"
+            eyebrow: root.networksList.length === 0
+                ? "nothing in range"
+                : (root.networksList.length + (root.networksList.length === 1 ? " network" : " networks") + " in range")
 
             PillButton {
                 label: "Rescan"

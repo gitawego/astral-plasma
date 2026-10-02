@@ -1376,3 +1376,179 @@ Tests: `daemon/tests/test_display_modes.rs` (parsing, the ≤-target choice, the
 resolution invariant, no-op suppression, snapshot resolution preferring mode names
 over ids), `tests/tst_display_refresh_setting.qml` (setting default, service
 apply-on-start/on-change, settings UI wiring, run.sh apply-then-restore ordering).
+
+---
+
+## 25. Settings Pages: A Pinned Identity, A Zone Rail, And A Jump That Actually Moves
+
+Reported: *"on section headers clicking a section does not smooth-scroll; improve
+the design, then apply it to all relevant settings pages."*
+
+All three were real, and the middle one hid the worst bug of the round.
+
+**Where the pages were.** Every page drew its own header inside its own scrolling
+column, so the moment you scrolled, the page no longer told you what you were
+looking at. Only the AI page had a section rail, hand-written; the other ten
+pages had sections that were private (no rail, no deep link target). Clicking a
+rail pill assigned `contentY` directly - a teleport.
+
+**What changed.**
+
+- **One page contract.** Every page now roots in
+  [`settings_gui/pages/SettingsPage.qml`](settings_gui/pages/SettingsPage.qml)
+  and declares its identity and its zones:
+  `title`, `subtitle`, and `zones: [{ id, label, anchor }]`. The hub renders that
+  declaration's `stickyHeader` above the scroll area, so the title, its one-line
+  purpose and the rail stay pinned while the content moves. Pages no longer repeat
+  their title in the body (a test asserts it).
+- **A rail where there is navigation.** Two or more zones render as pills in the
+  pinned header, with the zone the reader is in highlighted. One zone renders no
+  rail - a single pill is decoration. `zones` may be computed, so a hidden section
+  (Wi-Fi off, no app streams, adapter off) leaves the rail with it.
+- **Section headers carry state.** `components/SectionHeader.qml` now marks every
+  zone: eyebrow = live telemetry ("13 networks in range", "6 of 6 shown",
+  "service · not installed", "chosen: 60 Hz"), title = the section's name. The
+  eyebrow is never a decorative index.
+- **The jump is a spatial transition.** `settings_gui/ScrollMotion.js`: the
+  `animExpressive*Spatial` tokens, the fast/default rung picked by distance, and
+  the spring overshoot damped by distance (a 1000 px jump on the raw curve would
+  fling ~200 px past the section). It yields to the reader the instant they wheel
+  or drag.
+- **The scroll spy's input was stale - the actual bug.** The hub computed each
+  zone's offset once, before the page was laid out; a pre-layout page reports
+  every anchor at `y = 0`, so the spy (whose own tests were green) reported the
+  *last* zone as current, and every jump target was `0`. The offsets are now
+  recomputed after every event that can move an anchor, deferred a turn past the
+  layout pass. See `docs/LESSONS.md` §36.
+- **A trailing section now lights up.** A section shorter than the viewport can
+  never reach the top of the screen; the spy now treats the end of a scrollable
+  page as its last zone - while a page that fits entirely stays on its first
+  (that is the same rule that used to lie on the short pages).
+
+### Visual proof
+
+The pinned header and the zone rail, live, on the System page (six zones, state
+eyebrows) and the Dock page (three sections, hatched from a flat list of
+switches):
+
+![System & Services: pinned header, six-zone rail, live eyebrows](docs/proof/settings-pages/system-section-rail.png)
+![Dock & Layout: three sections with state eyebrows](docs/proof/settings-pages/dock-sections.png)
+
+The scroll spy's input is live per page: the audio page (short, fits the window)
+sits on "Output" instead of lighting the last pill, and the trailing-zone rule
+lands "Display" after a deep link to the end of the System page:
+
+![Audio: a short page stays on its first zone](docs/proof/settings-pages/audio-top-zone.png)
+![System: deep link to the trailing Display zone](docs/proof/settings-pages/system-jump-to-trailing-zone.png)
+
+The same contract on the other surfaces - section headers with live state, the
+rail on pages with more than one zone, no rail where there is nothing to
+navigate:
+
+![Network: "13 networks in range" with the Rescan action in the header](docs/proof/settings-pages/network-networks-section.png)
+![Dashboard: "6 of 6 shown" over the tab switches](docs/proof/settings-pages/dashboard-tabs.png)
+![Wallpaper & Style: four zones, live eyebrow per section](docs/proof/settings-pages/wallpaper-zone-rail.png)
+![Status Icons: one zone means a title, not a rail](docs/proof/settings-pages/status-single-zone.png)
+
+### Tests
+
+- `tests/tst_settings_pages_contract.qml` (new) - every page roots in
+  `SettingsPage`, names itself, declares zones whose anchors resolve in document
+  order, answers the hub's four members, and drops a zone when its section is
+  hidden. The harness-instantiability rule (no direct `Quickshell` import in a
+  page) is enforced by the fact that it instantiates all of them.
+- `tests/tst_settings_hub_rail.qml` (new) - the live hub: a short page stays on
+  its first zone (the regression), a long page's zones ascend, a token-less jump
+  lands on the target and lights the trailing zone, and with tokens the jump is a
+  tween that starts, is mid-flight one tick in, arrives at the clamped target and
+  uses the default spatial rung.
+- `tests/tst_settings_sticky_header.qml` (extended) - the trailing-zone rule and
+  `motionFor` (ladder, damping, no tokens ⇒ no invented motion), plus the hub's
+  source contracts.
+- `tests/tst_settings_page_scaffold.qml` (path update) - the scaffold's own
+  contract.
+- `tests/tst_settings_hub_rail.qml` caught the bug the unit tests could not:
+  the spy was pure and correct, its *input* was a photograph.
+- `make test` green: 796 Rust tests + 116 QML suites (including the four
+  settings suites above).
+
+### Follow-up: the rail was there and dead
+
+The first live check of this round found pills that hovered, highlighted, and did
+nothing when pressed. Root cause, proven with a two-file probe: `jumpToZone()`
+wrote `Config.settingsSection` behind a `typeof Config !== "undefined"` guard, and
+`SettingsPage.qml` never imported `config/` - an unimported singleton is not in a
+component's scope, so the guard was permanently false and **every press was a
+silent no-op** (the guard existed precisely to avoid the error that would have
+revealed it). This is the failure mode of a control talking to a global instead of
+an interface.
+
+The rail now asks its host: the page emits `zoneRequested(zoneId)` and the hub -
+which owns the scroll area - answers through the same `scrollToSection` it uses
+for external deep links. A request that arrives before the page is loaded or laid
+out is parked and retried from the recalculated offsets, and a request for a zone
+the page does not declare is dropped rather than kept alive.
+
+Verification: `tests/tst_settings_hub_rail.qml` walks the instantiated sticky
+header, presses the **rendered** "Display" and "Desktop" pills, and asserts the
+view moves, arrives on the anchor, uses the token rung the distance earns, and
+that the spy follows. `tst_settings_pages_contract.qml` asserts every page emits
+the request; `tst_settings_page_scaffold.qml` asserts the scaffold carries no
+`Config` write. Live, the parked path was exercised end-to-end from the AI page:
+`settings openSection system display` switches page and lands at the trailing zone
+with its pill lit (`docs/proof/settings-pages/system-jump-to-trailing-zone.png`).
+`make test` green: 796 Rust tests + 116 QML suites.
+
+---
+
+## 26. The Harness Was Passing Suites That Failed
+
+While verifying the rail fix I ran the suites' raw output instead of trusting the
+summary line, and `make test` - which had been reporting *"ALL QML TESTS PASSED!
+No regressions detected."* - was hiding ten failing suites. They all fail
+identically in a clean worktree at `HEAD`, so this had been true for real work,
+not just for this round.
+
+The mechanism: the runner accepted a suite that **exited 0 and printed `PASS:`**,
+and these suites' `assert()` did
+
+```qml
+    if (!cond) { console.error("FAIL: " + msg); Qt.exit(1); }   // does not stop JS
+```
+
+`Qt.exit(1)` schedules an exit; JavaScript keeps running, the suite reaches its
+final `PASS:` line and `Qt.exit(0)`, and the exit code is overwritten. A failing
+suite reported green - the worst possible test bug, because it converts "we
+broke something" into silence.
+
+**The fix, in three parts.**
+
+- `tests/run_qml_tests.sh` now requires exit 0 **and** `PASS:` **and** the absence
+  of any failure marker (`FAIL:`, `✗`), prints the raw output of a failed suite,
+  and a probe suite that prints `FAIL:` then `PASS:` and exits 0 is now reported
+  as `✗ FAILED (Exit 0)` (verified by running one).
+- Every repaired suite's `assert()` now `throw`s after `Qt.exit(1)`, so the first
+  failed assertion stops the suite. The rule is recorded in `AGENTS.md` §3.4 and
+  `docs/LESSONS.md` §37.
+- The 16 masked assertions were repaired for their real causes, not to fit the
+  harness:
+  - **Impossible comparisons** (5): `item.color === "#1c1b1f"`,
+    `iconColor === Colors.primary` - a colour value is an object, never the string
+    it was written as, and two colour objects are never `===`. These now use
+    `Qt.colorEqual`, which is already the repository's idiom.
+  - **Stale design expectations** (7): MenuCard's radius/border (the card now
+    takes `Theme.radiusGlassCard` and draws its fused edge with a `Shape`), the
+    Card's edge policy (a `LiquidGlassCard` shows one hairline ring; nested cards
+    drop it), the fused panel's morphing (the card *is* the envelope, and the
+    assertion must wait for the `Behavior` tween), and a dock-pill mode
+    (`"warning"`) that never existed in the always/never/dynamic ladder.
+  - **Tests fighting their own subject** (4): one broke the reactive binding it
+    existed to verify by assigning `dropdown.isOpen` directly; the token
+    assertions compared values the offscreen harness cannot resolve, so they now
+    assert the *token binding* where it lives (the popout's source) and the
+    component's plumbing with literal colours - `ActionToggleItem` gained a
+    documented `iconItem` alias for that.
+
+**Verification.** The ten suites pass with no `FAIL:` lines; the whole run is
+green: `make test` = 796 Rust tests + 116 QML suites, now with a harness that
+cannot report a failing suite as passing.

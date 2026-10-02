@@ -3054,3 +3054,212 @@ smoothness, resolution, latency - ship the default that is safe and give them th
 dial. The disciplined version of that is: the choice is data, the *journal* makes
 it reversible, and the switch is applied by the component that owns the session
 (not the one that happened to trigger it).
+
+---
+
+## 36. The Scroll Spy Was Right, The Offsets Were A Photograph
+
+Clicking a section in the settings rail was supposed to bring that section into
+view smoothly. What happened instead: it teleported, and on some pages it did not
+move at all. The teleport was easy - the hub assigned `contentY` directly instead
+of animating - but the deeper bug had nothing to do with the scroll: **the rail's
+idea of *where* each section was had gone stale before the reader ever clicked.**
+
+### The contract, so this cannot be re-derived per page
+
+Every settings page now roots in `settings_gui/pages/SettingsPage.qml` and
+*declares* its identity and its sections:
+
+```qml
+SettingsPage {
+    title: "Network & Internet"
+    subtitle: "Wi-Fi connections, signal strength & network interfaces"
+    zones: [
+        { id: "wifi",     label: "Wi-Fi",    anchor: masterPowerCard },
+        { id: "networks", label: "Networks", anchor: networksSection }
+    ]
+}
+```
+
+The hub renders that declaration's `stickyHeader` *above* the scroll area, so the
+title, its one-line purpose and the zone rail stay pinned while the content moves
+(the page no longer draws its own title, and a page that repeats it in the body
+is now a test failure). Two or more zones render as pills; one zone is a title,
+not a navigation bar. `zones` may be computed, so a section that is hidden (Wi-Fi
+off, no app streams) leaves the rail with it - a pill must never scroll to a
+section that is not there.
+
+### Lesson 1: the spy is pure, its input is the state
+
+`SectionSpy.sectionAt(zones, offsets, offset)` was always correct, and its tests
+were green. The bug was one line up: the hub computed the offsets **once** -
+everything the spy saw was a photograph of a page that had not been laid out yet.
+A page that has not run its layout pass reports **every anchor at y = 0**, and
+all-zero offsets make "the last zone whose anchor passed the top" report the
+*last* zone. That is why the audio page - whose content fits the window, so it
+never changes `contentHeight` - lit "Apps" while sitting at the top, and why the
+same page could not scroll anywhere: its target was always 0.
+
+The first fix attempt ("re-run the binding when `contentHeight` changes") was
+wrong for short pages: their `contentHeight` never changes again. The offsets are
+now **recomputed** after every event that can move an anchor - a page being
+installed, its zones changing with its live state, its own `implicitHeight`
+settling, the flickable's `contentHeight` changing - and the recompute is pushed
+one event-loop turn later (`Qt.callLater`), because the layout pass that assigns
+the anchor positions runs *after* the height that announces it. A test supplies a
+short page, switches to it, and asserts the first zone lights and the last one
+does not, so the photograph cannot come back.
+
+### Lesson 2: a trailing section can never reach the top
+
+A section shorter than the viewport cannot have its anchor at the top of the
+screen; the page runs out of content first. Without an extra rule, the pill the
+reader just clicked stays dark forever: the anchor rule keeps reporting whichever
+earlier zone did pass the top. The rule added to the spy is narrow and stated:
+
+- at the end of a page that **actually scrolls**, the last zone is current - the
+  reader is looking at it, wherever its anchor sits;
+- a page that **fits** the viewport does not scroll (`endOffset` is 0) and stays
+  on its first zone, which is exactly the trap from Lesson 1.
+
+The hub passes `contentHeight - height` as that `endOffset`, so the two halves of
+the rule are one implementation, not a page convention.
+
+### Lesson 3: never invent a motion token to paper over a missing one
+
+A section jump is a *spatial* transition, so it takes the `animExpressive*Spatial`
+tokens - but the raw spatial curves carry a 21-67 % spring overshoot, and applied
+to a 1000 px jump that spring flings the view past the section it was asked to
+show. `settings_gui/ScrollMotion.js` therefore damps **only the spring controls**
+as distance grows (the x controls, the rhythm, stay exactly as the token defines
+them) and picks the fast/default rung of the ladder by distance.
+
+The offscreen harness loads no Quickshell, so no `Theme` - and there the hub
+silently did nothing, because `duration` was assigned `undefined`. The honest fix
+is not a hardcoded fallback duration: `ScrollMotion.motionFor(theme, distance)`
+returns `null` when there are no tokens, and the hub then *jumps*. Motion is
+either the design's or absent - never a second source of truth. The hub reads the
+tokens through one property (`motionTokens`), which is also what lets the test
+hand it tokens and assert the tween itself: it starts, is mid-flight one tick in,
+arrives on the clamped target, and uses the 500 ms default rung.
+
+### Lesson 4: a control that writes a global it never imported is a dead control
+
+With the pages on the scaffold, the rail looked finished - pills rendered, the
+active one highlighted, hover states live - and **every press did nothing**.
+`SettingsPage.jumpToZone()` wrote `Config.settingsSection`, guarded by
+`typeof Config !== "undefined"` so an absent singleton would not throw. Written
+before the scaffold moved into `settings_gui/pages/`, that guard was a fiction:
+`Config` is a singleton from `config/`, and this file never imported it. An
+unimported singleton is simply *not in a component's scope*, so `typeof Config`
+was `"undefined"` forever and the write was skipped - silently, because the whole
+point of the guard was to avoid an error. (Proved with a two-file probe: a
+component that does not import the singleton reports `typeof Config ===
+"undefined"` even though the importing test file sees the object.)
+
+The fix is not "add the import". Navigation belongs to the component that owns the
+scroll area: the page now **asks its host** with a signal, and the hub - which
+already knows how to scroll, how far, and with which motion - answers it.
+
+```qml
+// SettingsPage.qml
+signal zoneRequested(string zoneId)
+function jumpToZone(zoneId) { root.zoneRequested(zoneId); }
+
+// NexusHub.qml
+page.zoneRequested.connect(root.scrollToSection)
+```
+
+A signal cannot be ignored by accident: `make test` presses the rendered pill and
+asserts the view moves, so a dead rail is a red test rather than a broken feature.
+The rule generalises: **a control must talk to an interface in its own scope, not
+to a global that may or may not be there.** Exporting a `zoneRequested` signal
+costs one line; discovering three weeks later that a third of the UI is inert
+because a `typeof` guard swallowed every request costs a design round.
+
+### Lesson 5: a page the harness cannot build is a page nobody tests
+
+The offscreen suite instantiates every page. One page could never be loaded:
+`AudioPage` imported `Quickshell` and `Quickshell.Io` directly for its daemon
+stream probe, and the qml6 runner cannot resolve the optional Quickshell plugin -
+the *type* fails to load, taking the whole test file with it. The probe now lives
+in `AudioAppStreamResolver.qml`, loaded only outside test mode - the same split
+`DashboardPage` already used for its calendar resolver. The rule is now enforced
+by the contract test: every page must be buildable by the harness, which is how
+the rail's "hidden section leaves the rail" behaviour for the audio and network
+pages got a real test instead of a promise.
+
+### Verification
+
+- `tests/tst_settings_pages_contract.qml` - every page roots in `SettingsPage`,
+  names itself, declares zones whose anchors resolve in document order, answers
+  the hub's four members, and drops a zone when its section is hidden.
+- `tests/tst_settings_hub_rail.qml` - live hub: a short page stays on its first
+  zone; a long page's six zones ascend; **the rendered pills are pressed** (the
+  real `clicked` signal, found by walking the instantiated header) and the view
+  must move, with the token rung its distance earns; a token-less jump lands on
+  the target and lights the trailing zone.
+- `tests/tst_settings_sticky_header.qml` - the pure rules (the spy, the ladder,
+  the damping), the AI page's forwarded rail signal, plus the source contracts of
+  the hub and the page.
+- `tests/tst_settings_page_scaffold.qml` - the scaffold itself, including that a
+  press emits `zoneRequested` and that the scaffold carries no `Config` write.
+- `tests/tst_settings_pages_contract.qml` - the per-page contract, including
+  "a rail press asks the host for that zone" for every page.
+- Live proof: `docs/proof/settings-pages/` (each page's pinned header and rail,
+  the trailing-zone jump, and the audio page whose rail used to lie).
+
+---
+
+## 37. A Harness That Only Looks For PASS Is A Harness That Lies
+
+`make test` said **"ALL QML TESTS PASSED! No regressions detected."** while ten
+suites printed a `FAIL:` line. The runner accepted a suite when it *exited 0* and
+its output contained `"PASS:"` - and ten suites' `assert()` did this:
+
+```qml
+    function assert(cond, msg) {
+        if (!cond) { console.error("FAIL: " + msg); Qt.exit(1); }   // does not stop JS
+    }
+```
+
+`Qt.exit(1)` schedules an application exit; it does not abort the JavaScript
+call. The suite kept running, reached its final
+`console.log("PASS: ...")` and `Qt.exit(0)`, and the last call won. Every one of
+those suites was green as far as CI was concerned - and had been at least since
+the last commits (all ten fail identically at `HEAD`, in a clean worktree).
+
+The ten failures were a mix of three things, which is why the harness hiding them
+mattered:
+
+1. **Comparisons that cannot be true.** `item.color === "#1c1b1f"` - a colour
+   value is an object, never the string it was written as; `iconColor ===
+   Colors.primary` - two colour *objects* are never `===`. The repository already
+   uses `Qt.colorEqual` elsewhere; these five assertions had simply never run to
+   completion visibly.
+2. **Stale design expectations.** "MenuCard radius must be 14" and "border.width
+   must be 1" (the card now takes `Theme.radiusGlassCard` and draws a `Shape`
+   perimeter for its fused edge, see §15/§3.3), "Card default border.width must
+   be 0" (a `LiquidGlassCard` shows one hairline ring and lets nested cards opt
+   out), "`card.height` must stay 560" (the card *is* the morphing envelope), and
+   a pill mode (`"warning"`) that the always/never/dynamic ladder never had.
+3. **Tests fighting their own harness.** A suite that asserted reactive binding
+   broke the binding first (`dropdown.isOpen = false` - in QML that *destroys*
+   the binding), and a suite that measured the animated geometry read it in the
+   same tick as the assignment, before the `Behavior` tween had moved anything.
+
+**Lesson.** A test suite's pass condition has to include a *failure marker*, not
+just the absence of a crash:
+
+- the harness now fails a suite that prints `FAIL:` (or `✗`) even when it exits
+  0, and prints the full output for it;
+- `assert()` still calls `Qt.exit(1)` **and throws**, so a failed assertion stops
+  the suite instead of letting a later `PASS:` overwrite it;
+- a suite that cannot observe what it wants to assert must say so and assert the
+  binding where it lives (source) plus the plumbing where it is observable - not
+  compare two values it cannot resolve and call it green.
+
+**Verification.** A temporary probe suite (`FAIL:` + `PASS:` + `Qt.exit(0)`) is
+now reported as `✗ FAILED (Exit 0)`; the ten repaired suites and the whole
+116-suite run are green with the strict harness; `make test` is 796 Rust tests +
+116 QML suites.

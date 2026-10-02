@@ -5,10 +5,20 @@ import "../../components"
 import "../../config"
 import "../../services"
 
-ColumnLayout {
+SettingsPage {
     id: root
     spacing: Theme.spaceLarge
     width: parent ? parent.width : 600
+
+    title: "Wallpaper & Style"
+    subtitle: "Material 3 Expressive palettes, live previews & motion wallpapers"
+    // Zones in document order: the showcase, the palette, the mode, the gallery.
+    zones: [
+        { id: "wallpaper", label: "Wallpaper", anchor: showcaseSection },
+        { id: "palette", label: "Accent", anchor: paletteSection },
+        { id: "mode", label: "Mode", anchor: modeSection },
+        { id: "gallery", label: "Gallery", anchor: gallerySection }
+    ]
 
     property bool testMode: false
     property var testWallpapers: []
@@ -33,26 +43,9 @@ ColumnLayout {
         return false;
     }
 
-    // Title & Header
-    ColumnLayout {
-        spacing: 4
-        Text {
-            text: "Wallpaper & Style"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleMedium
-            font.weight: Font.Bold
-            color: Colors.m3onSurface
-        }
-        Text {
-            text: "Material 3 Expressive dynamic palettes, live previews & motion wallpapers"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontLabelSmall
-            color: Colors.m3onSurfaceVariant
-        }
-    }
-
     // Active Wallpaper Showcase Card
     Rectangle {
+        id: showcaseSection
         Layout.fillWidth: true
         Layout.preferredHeight: 180
         radius: Theme.radiusMedium
@@ -178,15 +171,15 @@ ColumnLayout {
 
     // Color Scheme Presets Row
     ColumnLayout {
+        id: paletteSection
         Layout.fillWidth: true
         spacing: 8
 
-        Text {
-            text: "Accent Color Scheme"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleSmall
-            font.weight: Font.DemiBold
-            color: Colors.m3onSurface
+        SectionHeader {
+            title: "Accent Color Scheme"
+            eyebrow: (typeof Config !== "undefined" && Config.dynamicColors)
+                ? "dynamic · derived from the wallpaper"
+                : "preset · " + ((typeof Config !== "undefined" && Config.themePreset) ? Config.themePreset : "iris")
         }
 
         Row {
@@ -274,15 +267,13 @@ ColumnLayout {
 
     // Dark Mode / Light Mode Chooser
     ColumnLayout {
+        id: modeSection
         Layout.fillWidth: true
         spacing: 8
 
-        Text {
-            text: "Appearance Mode"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontTitleSmall
-            font.weight: Font.DemiBold
-            color: Colors.m3onSurface
+        SectionHeader {
+            title: "Appearance Mode"
+            eyebrow: ((typeof Config !== "undefined" ? Config.isDarkMode : true) ? "dark" : "light") + " mode active"
         }
 
         Row {
@@ -366,25 +357,13 @@ ColumnLayout {
 
     // Quick Wallpapers Grid
     ColumnLayout {
+        id: gallerySection
         Layout.fillWidth: true
         spacing: 8
 
-        RowLayout {
-            Layout.fillWidth: true
-            Text {
-                text: "Quick Wallpapers"
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontTitleSmall
-                font.weight: Font.DemiBold
-                color: Colors.m3onSurface
-            }
-            Item { Layout.fillWidth: true }
-            Text {
-                text: root.wallpapersList.length + " available"
-                font.family: Theme.fontFamily
-                font.pixelSize: 11
-                color: Colors.m3onSurfaceVariant
-            }
+        SectionHeader {
+            title: "Quick Wallpapers"
+            eyebrow: root.wallpapersList.length + " available"
         }
 
         Flow {
