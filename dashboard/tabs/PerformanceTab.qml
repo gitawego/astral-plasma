@@ -129,6 +129,18 @@ Item {
         return val.toFixed(1) + " " + units[p];
     }
 
+    function openSystemMonitor() {
+        if (root.testMode) return;
+        if (typeof WindowService !== "undefined" && WindowService && typeof WindowService.openSystemMonitor === "function") {
+            WindowService.openSystemMonitor();
+            return;
+        }
+        if (typeof SystemService !== "undefined" && SystemService && typeof SystemService.openSystemMonitor === "function") {
+            SystemService.openSystemMonitor();
+            return;
+        }
+    }
+
     // Device telemetry active dataset
     readonly property var activeHistory: {
         let hist = [];
@@ -1213,11 +1225,8 @@ Item {
                             id: sysMonMa
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: {
-                                if (typeof Quickshell !== "undefined" && typeof Quickshell.execDetached === "function") {
-                                    Quickshell.execDetached(["plasma-systemmonitor"]);
-                                }
-                            }
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.openSystemMonitor()
                         }
 
                         RowLayout {

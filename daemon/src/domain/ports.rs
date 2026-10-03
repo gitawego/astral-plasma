@@ -280,6 +280,13 @@ pub trait CalendarPort: Send + Sync {
     fn open(&self, date: Option<&str>) -> DynResult<crate::domain::calendar::CalendarOpenResult>;
 }
 
+/// Domain Port for System Monitor application resolution and launching.
+pub trait SystemMonitorPort: Send + Sync {
+    fn override_id(&self) -> Option<&str>;
+    fn resolve(&self) -> Vec<String>;
+    fn open(&self) -> DynResult<crate::domain::system_monitor::SystemMonitorOpenResult>;
+}
+
 /// Domain Port for AI Quotas tracking, OAuth, and account management.
 pub trait AiQuotaPort: Send + Sync {
     fn get_snapshot(&self, warning_thr: f64, critical_thr: f64, force_refresh: bool) -> crate::domain::ai_quota::AiQuotaSnapshot;

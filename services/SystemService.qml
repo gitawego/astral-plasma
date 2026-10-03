@@ -311,4 +311,18 @@ Singleton {
             sysInfoProc.running = true;
         }
     }
+
+    Process {
+        id: sysMonProc
+    }
+
+    /// Open the system monitor application
+    function openSystemMonitor() {
+        if (typeof WindowService !== "undefined" && WindowService && typeof WindowService.openSystemMonitor === "function") {
+            WindowService.openSystemMonitor();
+            return;
+        }
+        sysMonProc.command = [root.daemonBin, "system-monitor", "open"];
+        sysMonProc.running = true;
+    }
 }

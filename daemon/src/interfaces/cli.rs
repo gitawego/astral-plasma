@@ -593,6 +593,32 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "system-monitor" | "monitor" => {
+            use crate::application::open_system_monitor::OpenSystemMonitorUseCase;
+            let use_case = OpenSystemMonitorUseCase::new();
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("open");
+            match sub {
+                "resolve" => {
+                    let candidates = use_case.resolve();
+                    let res = serde_json::json!({
+                        "override": use_case.override_id(),
+                        "candidates": candidates,
+                    });
+                    println!("{}", serde_json::to_string(&res)?);
+                }
+                "open" => {
+                    let res = use_case.execute()?;
+                    println!("{}", serde_json::to_string(&res)?);
+                    if !res.success {
+                        std::process::exit(3);
+                    }
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma system-monitor <resolve|open>");
+                    std::process::exit(2);
+                }
+            }
+        }
         "session" => {
             let session_port = crate::infrastructure::desktop_factory::create_desktop_session_port();
             let coordinator = crate::application::desktop_session_coordinator::DesktopSessionCoordinator::new(session_port);

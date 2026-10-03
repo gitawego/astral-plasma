@@ -6,6 +6,7 @@ pub mod window_control;
 pub mod workspace_control;
 pub mod launch_app;
 pub mod open_calendar;
+pub mod open_system_monitor;
 pub mod get_metrics;
 pub mod notif_monitor;
 pub mod plasma_service;

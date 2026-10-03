@@ -107,6 +107,41 @@ impl AppLauncherPort for DesktopLauncherAdapter {
                 let with_suffix = format!("{bare}.desktop");
                 let mut candidates = vec![id.clone(), bare.clone(), with_suffix];
                 candidates.dedup();
+
+                // 1. Try resolving desktop file directly for KDE kioclient or parsed Exec execution
+                let dirs = Self::search_dirs();
+                for dir in &dirs {
+                    for candidate in &candidates {
+                        let path = if candidate.ends_with(".desktop") {
+                            dir.join(candidate)
+                        } else {
+                            dir.join(format!("{candidate}.desktop"))
+                        };
+                        if path.is_file() {
+                            if crate::infrastructure::system_monitor::SystemMonitorAdapter::is_binary_on_path("kioclient") {
+                                if Command::new("kioclient").args(["exec", &path.to_string_lossy()]).spawn().is_ok() {
+                                    return Ok(());
+                                }
+                            }
+                            if let Ok(content) = std::fs::read_to_string(&path) {
+                                for line in content.lines() {
+                                    let trimmed = line.trim();
+                                    if trimmed.starts_with("Exec=") {
+                                        let raw_exec = trimmed.strip_prefix("Exec=").unwrap_or("").trim();
+                                        if let Some((prog, args)) = crate::domain::system_monitor::parse_exec_command(raw_exec) {
+                                            if Command::new(&prog).args(&args).spawn().is_ok() {
+                                                return Ok(());
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Standard gtk-launch
                 for candidate in &candidates {
                     if let Ok(mut child) = Command::new("gtk-launch").arg(candidate).spawn() {
                         if let Ok(status) = child.wait() {
@@ -116,7 +151,7 @@ impl AppLauncherPort for DesktopLauncherAdapter {
                         }
                     }
                 }
-                // Direct execution fallback for bare commands.
+                // 3. Direct execution fallback for bare commands.
                 for cmd in [id.as_str(), bare.as_str(), &id.to_lowercase()] {
                     if !cmd.is_empty() && Command::new(cmd).spawn().is_ok() {
                         return Ok(());

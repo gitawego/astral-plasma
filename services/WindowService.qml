@@ -147,6 +147,18 @@ Singleton {
         calendarProc.running = true;
     }
 
+    // Dedicated process for system monitor launches: sharing activateProc meant a
+    // busy activation silently dropped the monitor open request.
+    Process {
+        id: systemMonitorProc
+    }
+
+    /// Open the system's monitor application (data-driven resolution via daemon)
+    function openSystemMonitor() {
+        systemMonitorProc.command = [root.daemonBin, "system-monitor", "open"];
+        systemMonitorProc.running = true;
+    }
+
     Process {
         id: trayActivateProc
     }
