@@ -611,22 +611,25 @@ SettingsPage {
 
                 Repeater {
                     model: [
-                        { id: "astral-ai", name: "Astral AI", darkColor: "#818CF8", lightColor: "#4F46E5" },
-                        { id: "tokyo-night", name: "Tokyo Night", darkColor: "#7AA2F7", lightColor: "#34548A" },
-                        { id: "catppuccin", name: "Catppuccin", darkColor: "#CBA6F7", lightColor: "#8839EF" },
-                        { id: "nord", name: "Nord", darkColor: "#88C0D0", lightColor: "#5E81AC" },
-                        { id: "everforest", name: "Everforest", darkColor: "#A7C080", lightColor: "#4F704A" },
-                        { id: "gruvbox", name: "Gruvbox", darkColor: "#FABD2F", lightColor: "#B57614" },
-                        { id: "rose-pine", name: "Rosé Pine", darkColor: "#EBBCBA", lightColor: "#D7827E" },
-                        { id: "iris", name: "Iris", darkColor: "#CFBCFF", lightColor: "#6750A4" },
-                        { id: "ocean", name: "Ocean", darkColor: "#9ECAFF", lightColor: "#12609A" },
-                        { id: "emerald", name: "Emerald", darkColor: "#81D99C", lightColor: "#1E6B42" },
-                        { id: "coral", name: "Coral", darkColor: "#FFB4A8", lightColor: "#B32810" }
+                        { id: "dynamic", name: "Dynamic", isDynamic: true, darkColor: "#CFBCFF", lightColor: "#6750A4" },
+                        { id: "astral-ai", name: "Astral AI", isDynamic: false, darkColor: "#818CF8", lightColor: "#4F46E5" },
+                        { id: "tokyo-night", name: "Tokyo Night", isDynamic: false, darkColor: "#7AA2F7", lightColor: "#34548A" },
+                        { id: "catppuccin", name: "Catppuccin", isDynamic: false, darkColor: "#CBA6F7", lightColor: "#8839EF" },
+                        { id: "nord", name: "Nord", isDynamic: false, darkColor: "#88C0D0", lightColor: "#5E81AC" },
+                        { id: "everforest", name: "Everforest", isDynamic: false, darkColor: "#A7C080", lightColor: "#4F704A" },
+                        { id: "gruvbox", name: "Gruvbox", isDynamic: false, darkColor: "#FABD2F", lightColor: "#B57614" },
+                        { id: "rose-pine", name: "Rosé Pine", isDynamic: false, darkColor: "#EBBCBA", lightColor: "#D7827E" },
+                        { id: "iris", name: "Iris", isDynamic: false, darkColor: "#CFBCFF", lightColor: "#6750A4" },
+                        { id: "ocean", name: "Ocean", isDynamic: false, darkColor: "#9ECAFF", lightColor: "#12609A" },
+                        { id: "emerald", name: "Emerald", isDynamic: false, darkColor: "#81D99C", lightColor: "#1E6B42" },
+                        { id: "coral", name: "Coral", isDynamic: false, darkColor: "#FFB4A8", lightColor: "#B32810" }
                     ]
 
                     delegate: Item {
                         id: swatchItem
-                        readonly property bool isSelected: !root.isDynamic && (root.presetName === modelData.id)
+                        readonly property bool isSelected: modelData.isDynamic
+                            ? root.isDynamic
+                            : (!root.isDynamic && root.presetName === modelData.id)
                         readonly property color accentHue: root.isDark ? modelData.darkColor : modelData.lightColor
 
                         width: 36
@@ -649,17 +652,26 @@ SettingsPage {
                             width: swatchItem.isSelected ? 24 : 28
                             height: swatchItem.isSelected ? 24 : 28
                             radius: root.valRadiusFull
-                            color: swatchItem.accentHue
+                            color: modelData.isDynamic ? "transparent" : swatchItem.accentHue
+                            gradient: modelData.isDynamic ? dynamicGradient : null
+
+                            Gradient {
+                                id: dynamicGradient
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: "#f38ba8" }
+                                GradientStop { position: 0.5; color: "#89b4fa" }
+                                GradientStop { position: 1.0; color: "#a6e3a1" }
+                            }
 
                             Behavior on width { NumberAnimation { duration: root.valAnimFast } }
                             Behavior on height { NumberAnimation { duration: root.valAnimFast } }
 
                             MaterialIcon {
                                 anchors.centerIn: parent
-                                text: "check"
+                                text: modelData.isDynamic ? (swatchItem.isSelected ? "check" : "auto_awesome") : (swatchItem.isSelected ? "check" : "")
                                 size: 14
                                 color: root.isDark ? "#121318" : "#FFFFFF"
-                                visible: swatchItem.isSelected
+                                visible: swatchItem.isSelected || modelData.isDynamic
                             }
                         }
 
@@ -668,7 +680,13 @@ SettingsPage {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.setThemePreset(modelData.id)
+                            onClicked: {
+                                if (modelData.isDynamic) {
+                                    root.setDynamicColors(true);
+                                } else {
+                                    root.setThemePreset(modelData.id);
+                                }
+                            }
                         }
                     }
                 }

@@ -274,6 +274,7 @@ fn fake_updatable_pi(before: &str, after: &str, update_exit: i32) -> (PathBuf, P
         let mut perms = std::fs::metadata(&bin).expect("stat").permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(&bin, perms).expect("chmod");
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
     (bin, dir)
 }

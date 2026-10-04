@@ -594,15 +594,7 @@ Singleton {
         : root.activeThemeDefinition.light
 
     function getColor(key, lightFallback, darkFallback) {
-        // 0. Archetype-level strict palette overrides (Domain-Driven Design: Cyberpunk Neon, etc.)
-        if (typeof Theme !== "undefined" && Theme.activeArchetype) {
-            const archPalette = root.isDarkMode ? Theme.activeArchetype.paletteDark : Theme.activeArchetype.paletteLight;
-            if (archPalette && archPalette[key] !== undefined) {
-                return archPalette[key];
-            }
-        }
-
-        // 1. If dynamic colors is explicitly enabled, use dynamic matugen palette from wallpaper
+        // 1. If dynamic colors is explicitly enabled, use dynamic matugen palette from wallpaper for chromatic accents
         if (root.dynamicColorsEnabled && root.dynamicPalette && root.dynamicPalette[key]) {
             const entry = root.dynamicPalette[key];
             if (root.isDarkMode) {
@@ -613,23 +605,43 @@ Singleton {
             if (entry.default && entry.default.color) return entry.default.color;
         }
 
-        // 2. Otherwise use the active chromatic preset theme
+        // 2. Archetype-level surface and substrate overrides (Domain-Driven Design: Cyberpunk OLED black, Nordic matte)
+        // Archetypes define surface/substrate roles (surface, surface_container*, on_surface*).
+        // They do NOT lock out user-selected chromatic accents unless no preset is active.
+        const isAccentRole = (
+            key.startsWith("primary") || key.startsWith("on_primary") ||
+            key.startsWith("secondary") || key.startsWith("on_secondary") ||
+            key.startsWith("tertiary") || key.startsWith("on_tertiary") ||
+            key.startsWith("error") || key.startsWith("warning") ||
+            key.startsWith("info") || key.startsWith("success")
+        );
+
+        if (!isAccentRole && typeof Theme !== "undefined" && Theme.activeArchetype) {
+            const archPalette = root.isDarkMode ? Theme.activeArchetype.paletteDark : Theme.activeArchetype.paletteLight;
+            if (archPalette && archPalette[key] !== undefined) {
+                return archPalette[key];
+            }
+        }
+
+        // 3. Otherwise use the active chromatic preset theme
         if (root.currentThemeTokens && root.currentThemeTokens[key]) {
             return root.currentThemeTokens[key];
         }
 
-        // 3. Fallback to provided light/dark fallback
+        // 4. Archetype fallback for accents if preset tokens don't specify it
+        if (typeof Theme !== "undefined" && Theme.activeArchetype) {
+            const archPalette = root.isDarkMode ? Theme.activeArchetype.paletteDark : Theme.activeArchetype.paletteLight;
+            if (archPalette && archPalette[key] !== undefined) {
+                return archPalette[key];
+            }
+        }
+
+        // 5. Fallback to provided light/dark fallback
         return root.isDarkMode ? darkFallback : lightFallback;
     }
 
-    // Presets definitions for Accents (directly connected to activeThemeDefinition or active archetype)
-    readonly property color presetPrimary: {
-        if (typeof Theme !== "undefined" && Theme.activeArchetype) {
-            const archPalette = root.isDarkMode ? Theme.activeArchetype.paletteDark : Theme.activeArchetype.paletteLight;
-            if (archPalette && archPalette.primary !== undefined) return archPalette.primary;
-        }
-        return root.currentThemeTokens.primary;
-    }
+    // Presets definitions for Accents (directly connected to activeThemeDefinition)
+    readonly property color presetPrimary: root.currentThemeTokens.primary
     readonly property color presetPrimaryContainer: root.currentThemeTokens.primary_container
     readonly property color presetOnPrimary: root.currentThemeTokens.on_primary
     readonly property color presetOnPrimaryContainer: root.currentThemeTokens.on_primary_container
@@ -697,8 +709,9 @@ Singleton {
     readonly property color surfaceContainer: root.bgSurfaceContainer
     readonly property color surfaceContainerHigh: root.bgSurfaceContainerHigh
     readonly property color surfaceContainerLowest: root.bgSurfaceContainerLowest
-    readonly property color surfaceVariant: root.bgSurfaceVariant
-    readonly property color outline: root.outlineColor
+    readonly property color outline: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber")
+        ? root.primary
+        : root.outlineColor
     readonly property color outlineVariant: root.outlineVariantColor
 
     readonly property color primary: root.accentPrimary
@@ -903,9 +916,13 @@ Singleton {
         return root.isDarkMode ? (p.dark || root.glassParams.dark) : (p.light || root.glassParams.light);
     }
 
+    readonly property real blurStrength: (typeof Config !== "undefined" && Config.themeBlurStrength !== undefined) ? Config.themeBlurStrength : 0.85
+    readonly property real blurStrengthScale: Math.max(0.1, root.blurStrength / 0.85)
+
     function glassTinted(baseVec, alpha, tintAmount) {
+        const effectiveAlpha = Math.min(1.0, Math.max(0.05, alpha * root.blurStrengthScale));
         return Qt.tint(
-            Qt.rgba(baseVec[0], baseVec[1], baseVec[2], alpha),
+            Qt.rgba(baseVec[0], baseVec[1], baseVec[2], effectiveAlpha),
             Qt.alpha(root.primary, tintAmount)
         );
     }

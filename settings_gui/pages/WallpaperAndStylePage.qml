@@ -263,6 +263,47 @@ SettingsPage {
                 }
             }
         }
+
+        // Quick Navigation to Full Appearance Settings
+        Rectangle {
+            implicitHeight: 28
+            implicitWidth: moreThemeText.implicitWidth + 24
+            radius: 14
+            color: moreHover.containsMouse ? Qt.alpha(Colors.primary, 0.15) : "transparent"
+            border.color: moreHover.containsMouse ? Colors.primary : Theme.borderSubtle
+            border.width: 1
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 6
+                MaterialIcon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "palette"
+                    size: 14
+                    color: Colors.primary
+                }
+                Text {
+                    id: moreThemeText
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "More Themes, Archetypes & Sliders in Appearance →"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    color: Colors.primary
+                }
+            }
+
+            MouseArea {
+                id: moreHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (typeof Config !== "undefined") {
+                        Config.activeSettingsPage = "theme";
+                    }
+                }
+            }
+        }
     }
 
     // Dark Mode / Light Mode Chooser

@@ -70,50 +70,24 @@ ThemeArchetype {
         }
     })
 
-    // Archetype-driven palette overrides (Domain-Driven Design: Electric Neon Cyan & Hot Pink)
+    // Archetype-driven palette overrides (Domain-Driven Design: Deep OLED Void Black substrates)
     paletteDark: ({
-        primary: "#00F0FF",
-        on_primary: "#000000",
-        primary_container: "#003840",
-        on_primary_container: "#80F7FF",
-        secondary: "#FF007F",
-        on_secondary: "#000000",
-        secondary_container: "#4D0026",
-        on_secondary_container: "#FFB3D9",
-        tertiary: "#00FF66",
-        on_tertiary: "#000000",
-        tertiary_container: "#003D17",
-        on_tertiary_container: "#85FFAE",
         surface: "#05070D",
         surface_container: "#090C15",
         surface_container_high: "#0F1320",
         surface_container_lowest: "#020305",
         surface_variant: "#141824",
-        outline: "#00F0FF",
         outline_variant: "#007A82",
         on_surface: "#E0F8FF",
         on_surface_variant: "#80C8D8",
         glassTint: "#00F0FF"
     })
     paletteLight: ({
-        primary: "#008899",
-        on_primary: "#FFFFFF",
-        primary_container: "#A6F2FF",
-        on_primary_container: "#001F24",
-        secondary: "#D10065",
-        on_secondary: "#FFFFFF",
-        secondary_container: "#FFD8E6",
-        on_secondary_container: "#3D001B",
-        tertiary: "#008A33",
-        on_tertiary: "#FFFFFF",
-        tertiary_container: "#98F8AC",
-        on_tertiary_container: "#002107",
         surface: "#F4F7FC",
         surface_container: "#E8ECF4",
         surface_container_high: "#DCE1EC",
         surface_container_lowest: "#FFFFFF",
         surface_variant: "#D0D6E4",
-        outline: "#008899",
         outline_variant: "#7090A0",
         on_surface: "#101822",
         on_surface_variant: "#3A4554",

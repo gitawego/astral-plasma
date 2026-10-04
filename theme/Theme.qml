@@ -60,15 +60,29 @@ Singleton {
         readonly property real shadowElevationScale: root.activeArchetype ? root.activeArchetype.shadowElevationScale : 1.0
     }
 
+    // Corner radius multiplier from user configuration (default 20px -> scale 1.0)
+    readonly property int userCornerRadius: (typeof Config !== "undefined" && Config.themeCornerRadius !== undefined) ? Config.themeCornerRadius : 20
+    readonly property real cornerRadiusScale: Math.max(0.2, root.userCornerRadius / 20.0)
+
+    // Blur & Specular intensity multiplier from user configuration (default 0.85 -> scale 1.0)
+    readonly property real blurStrength: (typeof Config !== "undefined" && Config.themeBlurStrength !== undefined) ? Config.themeBlurStrength : 0.85
+    readonly property real blurStrengthScale: Math.max(0.1, root.blurStrength / 0.85)
+
     // =========================================================================
-    // 1. Corner Radii (Dynamically Delegated to Active Archetype)
+    // 1. Corner Radii (Dynamically Delegated to Active Archetype & Config)
     // =========================================================================
-    readonly property int filletRounding: root.activeArchetype ? root.activeArchetype.filletRounding : 20
+    readonly property int filletRounding: {
+        if (!root.activeArchetype) return root.userCornerRadius;
+        if (root.activeArchetype.filletRounding === 0) {
+            return Math.max(0, root.userCornerRadius - 20);
+        }
+        return Math.max(0, Math.round(root.activeArchetype.filletRounding * root.cornerRadiusScale));
+    }
     readonly property int radiusFull: root.activeArchetype ? root.activeArchetype.radiusFull : 9999
-    readonly property int radiusLarge: root.activeArchetype ? root.activeArchetype.radiusLarge : 24
-    readonly property int radiusMedium: root.activeArchetype ? root.activeArchetype.radiusMedium : 16
-    readonly property int radiusSmall: root.activeArchetype ? root.activeArchetype.radiusSmall : 10
-    readonly property int radiusExtraSmall: root.activeArchetype ? root.activeArchetype.radiusExtraSmall : 6
+    readonly property int radiusLarge: root.activeArchetype ? Math.round(root.activeArchetype.radiusLarge * root.cornerRadiusScale) : Math.round(24 * root.cornerRadiusScale)
+    readonly property int radiusMedium: root.activeArchetype ? Math.round(root.activeArchetype.radiusMedium * root.cornerRadiusScale) : Math.round(16 * root.cornerRadiusScale)
+    readonly property int radiusSmall: root.activeArchetype ? Math.round(root.activeArchetype.radiusSmall * root.cornerRadiusScale) : Math.round(10 * root.cornerRadiusScale)
+    readonly property int radiusExtraSmall: root.activeArchetype ? Math.round(root.activeArchetype.radiusExtraSmall * root.cornerRadiusScale) : Math.round(6 * root.cornerRadiusScale)
 
     // =========================================================================
     // 2. Spacing and Margins
@@ -142,14 +156,26 @@ Singleton {
     // =========================================================================
     // 6. Surface & Component Tokens
     // =========================================================================
-    readonly property int radiusGlassModal: root.activeArchetype ? root.activeArchetype.radiusGlassModal : 32
-    readonly property int radiusGlassCard: root.activeArchetype ? root.activeArchetype.radiusGlassCard : 18
-    readonly property int radiusGlassItem: root.activeArchetype ? root.activeArchetype.radiusGlassItem : 12
+    readonly property int radiusGlassModal: {
+        if (!root.activeArchetype) return root.userCornerRadius;
+        if (root.activeArchetype.radiusGlassModal === 0) return Math.max(0, root.userCornerRadius - 20);
+        return Math.max(0, Math.round(root.activeArchetype.radiusGlassModal * root.cornerRadiusScale));
+    }
+    readonly property int radiusGlassCard: {
+        if (!root.activeArchetype) return Math.max(0, root.userCornerRadius - 2);
+        if (root.activeArchetype.radiusGlassCard === 0) return Math.max(0, root.userCornerRadius - 20);
+        return Math.max(0, Math.round(root.activeArchetype.radiusGlassCard * root.cornerRadiusScale));
+    }
+    readonly property int radiusGlassItem: {
+        if (!root.activeArchetype) return Math.max(0, root.userCornerRadius - 8);
+        if (root.activeArchetype.radiusGlassItem === 0) return Math.max(0, Math.round((root.userCornerRadius - 20) / 2));
+        return Math.max(0, Math.round(root.activeArchetype.radiusGlassItem * root.cornerRadiusScale));
+    }
     readonly property int radiusGlassPill: root.activeArchetype ? root.activeArchetype.radiusGlassPill : 9999
 
     readonly property real glassSpecularWidth: root.activeArchetype ? root.activeArchetype.glassSpecularWidth : 1.0
     readonly property real glassBorderWidth: root.activeArchetype ? root.activeArchetype.glassBorderWidth : 1.0
-    readonly property real glassCausticIntensity: root.activeArchetype ? root.activeArchetype.glassCausticIntensity : 0.06
+    readonly property real glassCausticIntensity: root.activeArchetype ? (root.activeArchetype.glassCausticIntensity * root.blurStrengthScale) : 0.06
 
     // Interactive scale bounce & liquid compression physics
     readonly property real glassScaleBounce: root.activeArchetype ? root.activeArchetype.glassScaleBounce : 0.985
