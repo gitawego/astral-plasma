@@ -1,3 +1,178 @@
+# Astral Plasma — Cyberpunk Radial Cover Visualizer & Multi-Archetype Presentation
+
+> [!NOTE]
+> **Issue**: 
+> 1. The user requested that the song cover visualizer be based on the radial equalizer ring effect (radial frequency bars around the circular album cover), but styled in an authentic Cyberpunk aesthetic.
+> 2. Previously, the radial visualizer had cartoonish yellow/green/pink orbiting emojis (`♪ ♫ ♬`) or soft pastel rounded pills that did not fit the high-tech sci-fi theme.
+>
+> **Solution**:
+> 1. **High-Tech Cyberpunk Radial Visualizer ([`components/RadialCoverVisualiser.qml`](file:///mnt/data/workspace/astral-plasma/components/RadialCoverVisualiser.qml) & [`components/RadialCoverRing.qml`](file:///mnt/data/workspace/astral-plasma/components/RadialCoverRing.qml))**:
+>    - **Laser Sharp Geometry**: Replaced rounded ends with razor-sharp laser cuts (`ctx.lineCap = "butt"`).
+>    - **Inner Laser Track & Cardinal Reticle**: Added a continuous circular laser track (`Colors.primary` at base) with 4 cardinal reticle ticks / crosshairs at 0°, 90°, 180°, and 270°.
+>    - **Dual-Color Cyber Gradient**: Frequency bars smoothly gradient from Laser Cyan (`#00F0FF` / `Colors.primary`) to Hot Neon Magenta (`#FF007F` / `Colors.secondary`) at peak amplitude.
+>    - **Floating Peak Caps**: Active high-energy frequencies project floating neon magenta peak caps at transient bursts.
+>    - **Cyber HUD Enclosure**: Framed the visualizer with 4 sharp laser cyan corner brackets (`⌜ ⌝ ⌞ ⌟`) and micro-telemetry tags (`RADIAL // 48K`, `EQ // [20Hz - 20kHz]`).
+> 2. **Dashboard Tab Presentation ([`dashboard/tabs/DashboardTab.qml`](file:///mnt/data/workspace/astral-plasma/dashboard/tabs/DashboardTab.qml))**:
+>    - Enabled `RadialCoverRing` in Cyberpunk mode with `innerRadius: 42` framing the circular album art.
+>    - Framed the artwork container with 4 Cyber HUD Corner Brackets (`⌜ ⌝ ⌞ ⌟`).
+>    - Gated `HeatmapCoverRing` and `vizSwitchBtn` to prevent accidental switching to cartoon rainbow notes in Cyberpunk.
+>    - Clean linear seek bar with laser cyan track and neon magenta playhead thumb.
+> 3. **Media Tab Presentation ([`dashboard/tabs/MediaTab.qml`](file:///mnt/data/workspace/astral-plasma/dashboard/tabs/MediaTab.qml))**:
+>    - `RadialCoverVisualiser` serves as the primary visualizer in Cyberpunk mode with full 240x240 dimensions.
+>    - Zero regressions in Liquid Glass and Nordic Minimal modes.
+> 4. **Automated Verification**:
+>    - Full test suite verification across [`tests/tst_cyberpunk_media_cover.qml`](file:///mnt/data/workspace/astral-plasma/tests/tst_cyberpunk_media_cover.qml) and [`tests/tst_theme_archetype_architecture.qml`](file:///mnt/data/workspace/astral-plasma/tests/tst_theme_archetype_architecture.qml).
+>    - 100% pass across Rust tests and all 121 QML test suites (`make test`).
+>
+> ## Visual Proof of Work
+> ````carousel
+> ![Dashboard Tab: Cyberpunk Radial Equalizer Cover Ring](screen_dashboard_cyber_radial_final.png)
+> <!-- slide -->
+> ![Media Tab: 240px Cyberpunk Radial Cover Visualizer with Reticle & Peak Caps](screen_media_cyber_radial_final.png)
+> <!-- slide -->
+> ![Liquid Glass: Circular Media Player (Zero Regressions)](screen_liquid_media_final.png)
+> ````
+
+
+---
+
+# Astral Plasma — Design Archetype Consistency Resolution Across Buttons, Window Edges & Controls
+
+> [!NOTE]
+> **Issue**: When switching design archetypes (Liquid Glass, Nordic Minimal, Cyberpunk Neon), visual glitches appeared (e.g. detached specular hairline glint at the top of windows, orphaned caustic glow), while buttons (`PillButton`, `LiquidGlassButton`, segmented mode pills, navigation rail pills) and internal controls remained locked in round stadium pills (`radius: 9999`) and ignored archetype geometry, borders, and typography.
+>
+> **Root Cause**:
+> 1. **Hardcoded Stadium Pill Radius in `PillButton.qml` & `LiquidGlassButton.qml`**: `PillButton.qml` computed `radius` as `(typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : Math.round(height / 2)`. Because `radiusFull` was `9999` across archetypes, every `PillButton` across the shell and settings remained an immutable stadium pill, ignoring `Theme.radiusGlassPill` (`4` in Cyberpunk Neon, `6` in Nordic Minimal).
+> 2. **Unconformed Nordic Minimal Pill Radius**: In [`theme/archetypes/NordicMinimalArchetype.qml`](file:///mnt/data/workspace/astral-plasma/theme/archetypes/NordicMinimalArchetype.qml), `radiusGlassPill` was set to `9999` instead of disciplined compact Scandinavian `6`.
+> 3. **Ungated & Misaligned Specular / Caustic Optics in `SettingsWindow.qml`**: Top specular hairline glint and inner caustic ambient glow in `SettingsWindow.qml` lacked visibility gates (`Theme.material.specularEnabled` and `Theme.material.causticEnabled`), rendering an orphaned floating line across the top edge in Nordic Minimal. Furthermore, margins were hardcoded to `24px` instead of tracking `parent.radius + 2`, causing misaligned glints in low-radius modes like Cyberpunk (4px).
+> 4. **Hardcoded Control & Pill Geometry in `SettingsWindow.qml`, `NexusHub.qml`, `ThemePage.qml`, and `CommandLauncher.qml`**:
+>    - Close button and breadcrumb Back button hardcoded `radius: 16`.
+>    - Appearance mode segmented pill and archetype selection cards hardcoded `valRadiusFull: 9999` or fixed radii.
+>    - Command Launcher search bar and modal sheet hardcoded `radius: 23` and un-gated specular/caustic effects.
+>
+> **Solution**:
+> 1. **Dynamically Bound `PillButton.qml` & `LiquidGlassButton.qml`**:
+>    - Added `customRadius` and bound default radius to `Theme.radiusGlassPill` (4 in Cyberpunk Neon, 6 in Nordic Minimal, 9999 pill in Liquid Glass).
+>    - Gated drop shadow (`showShadow`), top specular glare (`topGlare`), and bottom caustic rim (`bottomRim`) by `Theme.material.shadowsEnabled`, `Theme.material.specularEnabled`, and `Theme.material.causticEnabled`.
+>    - Enabled neon outline borders (`border.width: Theme.glassBorderWidth`) and monospace typography (`Theme.fontMonospace`) in Cyberpunk Neon (`neon_cyber`).
+> 2. **Refined `NordicMinimalArchetype.qml`**:
+>    - Set `radiusGlassPill: 6`, establishing a disciplined geometric hierarchy: Modal (12px) -> Medium (8px) -> Card/Pill (6px) -> Item (4px).
+> 3. **Fixed Window Glints & Margins in `SettingsWindow.qml`**:
+>    - Gated top specular glint by `Theme.material.specularEnabled` and caustic glow by `Theme.material.causticEnabled`.
+>    - Dynamically bound glint horizontal margins to `Math.max(parent.radius + 2, 8)`, perfectly conforming to window corners across all archetypes.
+>    - Bound window close button to `Math.min(Theme.radiusGlassPill, 16)` with neon perimeter styling in Cyberpunk mode.
+> 4. **Unified Settings, Dock Popouts & Command Launcher**:
+>    - Updated `NexusHub.qml` back button and navigation rail items.
+>    - Updated `ThemePage.qml` segmented appearance pill, archetype cards, and sample chip.
+>    - Updated `CommandLauncher.qml` modal sheet and search bar to respect archetype radius, borders, and typography.
+>    - Updated `GlassPill.qml`, `LiquidGlassCard.qml`, `LevelBar.qml`, and `TabBar.qml`.
+> 5. **Comprehensive Verification**:
+>    - Extended [`tests/tst_theme_archetype_architecture.qml`](file:///mnt/data/workspace/astral-plasma/tests/tst_theme_archetype_architecture.qml) to assert `radiusGlassPill`, `samplePillButton.radius`, `showShadow`, and `sampleGlassPill`.
+>    - Passed all Rust unit tests and all 120 QML test suites (100% pass rate).
+>    - Visually verified live shell and settings across all three archetypes using Spectacle and `view_file`.
+>
+> ## Visual Proof of Work Across Archetypes
+>
+> ````carousel
+> ![Cyberpunk Neon: Sharp 4px rect buttons, monospace typography, neon perimeter borders, zero glint glitches](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_cyberpunk5.png)
+> <!-- slide -->
+> ![Nordic Minimal: Disciplined 6px rounded rect buttons, flat matte substrate, zero specular/caustic glare](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_nordic5.png)
+> <!-- slide -->
+> ![Liquid Glass: Fluid capsule buttons, 24px concentric rounds, luminous specular hairlines & caustics](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_liquid5.png)
+> <!-- slide -->
+> ![Command Launcher in Cyberpunk Neon: 6px modal, 4px sharp search bar, monospace font & neon borders](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_launcher_cyberpunk.png)
+> ````
+>
+> ---
+>
+> # Astral Plasma — Theming & Appearance Section Navigation Resolution
+
+> [!NOTE]
+> **Issue**: In the Settings "Theming & Appearance" view, clicking the section navigation pills (`Style`, `Colors`, `Shape`, `Preview`) highlighted the pill but did nothing to the page content.
+>
+> **Root Cause**:
+> 1. **Insufficient Scroll Content Height**: `ThemePage.qml` was a minimal 290px stub containing only 5 raw items without explicit `SectionHeader` items or bottom scroll runway. Because `pageFlickable.contentHeight` was clamped to `pageFlickable.height` (~500px), `contentMaxOffset` evaluated to `0`, making scrolling physically impossible (`scrollTo` clamped any target offset to `0`).
+> 2. **Missing Architectural Headers & Archetype Controls**: Unlike `SystemPage` or `DockPage`, `ThemePage` lacked `SectionHeader` anchors matching the declared zones (`styleHeader`, `colorsHeader`, `shapeHeader`, `previewHeader`), and omitted registered settings from `Theme.archetypes` (Liquid Glass, Nordic Minimal, Cyberpunk Neon) and `blurStrength`.
+> 3. **Absence of Focus Feedback**: When a section zone was requested or active, no visual transition or border highlight reflected which section was currently targeted.
+>
+> **Solution**:
+> 1. **Upgraded `ThemePage.qml` with Rich Material 3 Sections**:
+>    - **Style**: Added `SectionHeader` ("Theme Style"), Dark/Light segmented switch, and full **Design Archetype** selector cards (Liquid Glass, Nordic Minimal, Cyberpunk Neon).
+>    - **Colors**: Added `SectionHeader` ("Colors & Palettes"), Dynamic Wallpaper Colors toggle, and 11 chromatic swatches.
+>    - **Shape**: Added `SectionHeader` ("Shape & Geometry"), Corner Radius slider (12–32px), and Blur & Specular intensity slider (30–100%).
+>    - **Preview**: Added `SectionHeader` ("Live Theme Preview") with live palette swatches and sample interactive components (Filled, Tonal, Chips).
+> 2. **Added Bottom Scroll Runway**: Added bottom overscroll spacing so trailing sections (`Shape`, `Preview`) can smoothly scroll to the top of the viewport.
+> 3. **Reactive Focus Accent Highlights**: Bound card border colors to `root.isZoneCurrent(zoneId)`, giving instant visual feedback when navigating to any section.
+> 4. **Config Integration**: Added `themeBlurStrength` and `setThemeBlurStrength` to [`config/Config.qml`](file:///mnt/data/workspace/astral-plasma/config/Config.qml).
+> 5. **Automated Verification**: Wrote [`tests/tst_theme_page_navigation.qml`](file:///mnt/data/workspace/astral-plasma/tests/tst_theme_page_navigation.qml) asserting zones, anchor monotonicity, scroll runway height, archetype selection, and reactivity. 100% pass across all 120 QML suites and Rust suites (`make test`).
+
+## Visual Proof of Work
+
+````carousel
+![Theme Page - Initial View (Style active)](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_settings.png)
+<!-- slide -->
+![Theme Page - Scrolled to Shape & Geometry](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_shape_scrolled2.png)
+<!-- slide -->
+![Theme Page - Scrolled to Live Theme Preview](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_preview_scrolled.png)
+<!-- slide -->
+![Theme Page - Scrolled back to Theme Style](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_style_scrolled.png)
+<!-- slide -->
+![Theme Page - Cyberpunk Neon Archetype Active](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_cyberpunk.png)
+<!-- slide -->
+![Theme Page - Nordic Minimal Archetype Active](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_nordic.png)
+````
+
+---
+
+# Astral Plasma — Design Archetype Selection Resolution
+
+> [!NOTE]
+> **Issue**: Clicking the **Design Archetype** selector cards (**Liquid Glass**, **Nordic Minimal**, **Cyberpunk Neon**) in the Settings window had no effect.
+>
+> **Root Cause**:
+> 1. **Undefined Function `root.updateSetting`**: In [`config/Config.qml`](file:///mnt/data/workspace/astral-plasma/config/Config.qml), `setThemeArchetype` called `root.updateSetting("theme", "archetype", archetypeId);`. However, `updateSetting` was never defined on `Config` (all other settings methods call `updateSettings(callback)`). When clicked, QML threw `TypeError: root.updateSetting is not a function`, silently halting execution and leaving the configuration unchanged.
+> 2. **Missing `archetype` Default**: `Config.defaultSettings.theme` omitted `"archetype": "liquid_glass"`.
+> 3. **Missing IPC Endpoint**: `IpcHandler { target: "theme" }` in `shell.qml` lacked `setArchetype(archetype)`.
+> 4. **Missing Import in `Theme.qml`**: In [`theme/Theme.qml`](file:///mnt/data/workspace/astral-plasma/theme/Theme.qml), `import "../config"` was omitted. `typeof Config` silently evaluated to `"undefined"`, so `Theme.archetypeName` remained permanently stuck on `"liquid_glass"`, never reacting when `Config.themeArchetype` changed.
+> 5. **Unconnected Glass & Border Tokens in `Colors.qml`**: [`theme/Colors.qml`](file:///mnt/data/workspace/astral-plasma/theme/Colors.qml) hardcoded `glassParams` and `glassBorderSpecular` rather than binding to `Theme.activeArchetype.glassParams` and `Theme.material.surfaceStyle`. As a result, surface alphas and border glints never adapted to the active archetype.
+>
+> **Solution**:
+> 1. **Implemented `Config.setThemeArchetype` & `updateSetting`**: Updated `setThemeArchetype` to mutate `cfg.theme.archetype` through `updateSettings(cfg => ...)`, and added generic `updateSetting(section, key, value)` on `Config`.
+> 2. **Added `defaultSettings.theme.archetype: "liquid_glass"`**: Ensures deep merges retain the canonical default archetype.
+> 3. **Exposed IPC Target**: Added `setArchetype(archetype: string): void` to `IpcHandler { target: "theme" }` in [`shell.qml`](file:///mnt/data/workspace/astral-plasma/shell.qml).
+> 4. **Connected `Theme.qml` to `Config`**: Added `import "../config"` to [`theme/Theme.qml`](file:///mnt/data/workspace/astral-plasma/theme/Theme.qml). `Theme.activeArchetype` now reactively switches between `LiquidGlassArchetype`, `NordicMinimalArchetype`, and `CyberpunkNeonArchetype`, dynamically driving `Theme.radiusLarge`, `Theme.radiusMedium`, `Theme.fontFamily`, and `Theme.material`.
+> 5. **Connected `Colors.qml` to Dynamic Archetype Optical Parameters**:
+>    - Bound `Colors.glassActive` to `Theme.activeArchetype.glassParams` (high matte alpha for Nordic Minimal, deep OLED black for Cyberpunk Neon, crystalline transparency for Liquid Glass).
+>    - Bound `Colors.glassBorderSpecular` to `Theme.material.surfaceStyle`: glowing laser neon for Cyberpunk, understated hairline outline for Nordic Minimal, and white/accent specular glint for Liquid Glass.
+> 6. **Resilient Card Binding**: Added `archetypeId` fallback and bound `archId` on `archCard` in [`settings_gui/pages/ThemePage.qml`](file:///mnt/data/workspace/astral-plasma/settings_gui/pages/ThemePage.qml).
+> 7. **Automated Verification**: Updated [`tests/tst_theme_archetype_architecture.qml`](file:///mnt/data/workspace/astral-plasma/tests/tst_theme_archetype_architecture.qml) asserting `setThemeArchetype`, `updateSetting`, and `archetype` settings mutation contracts. 100% pass across all 120 QML test suites and Rust suites.
+
+## Live Archetype Comparison
+
+````carousel
+![Cyberpunk Neon: Monospace fonts, 4px sharp corners, glowing neon perimeter border](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_cyberpunk4.png)
+<!-- slide -->
+![Nordic Minimal: Clean sans fonts, 12px disciplined corners, matte subtle border](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_nordic4.png)
+<!-- slide -->
+![Liquid Glass: Fluid sans fonts, 24px concentric rounds, specular top glint](/home/hlu/.gemini/antigravity/brain/32363dec-5dab-44d7-9c38-6db78b60757d/screen_theme_liquid4.png)
+````
+
+---
+
+# Astral Plasma — Omarchy Features & AI-Centric Theme Integration
+
+> Complete architectural report and proof of work: see [`REPORT.md`](file:///mnt/data/workspace/astral-plasma/REPORT.md).
+
+We have implemented curated workflow patterns and developer aesthetics from Omarchy (`omacom/omarchy`), centering the theme on an **AI-first architecture**:
+1. **Curated Developer & Signature AI Palettes**: Added 7 Material 3 schemes (`astral-ai`, `catppuccin`, `tokyo-night`, `nord`, `everforest`, `gruvbox`, `rose-pine`) in [`theme/Colors.qml`](file:///mnt/data/workspace/astral-plasma/theme/Colors.qml), 100% WCAG AA 4.5:1 contrast certified.
+2. **AI-Centric Reactive System**: Dynamic aura tokens (`Colors.aiActive`, `Colors.aiActivityColor`, `Colors.aiActivityIntensity`, `Colors.aiGlowColor`) reacting to live agent activity.
+3. **AI-First Command Launcher Prompt Dispatch**: `>ai <prompt>`, `>ask`, and `>agent` dispatch mode in [`shell/CommandLauncher.qml`](file:///mnt/data/workspace/astral-plasma/shell/CommandLauncher.qml) with interactive card preview and instant terminal summon.
+4. **System-Wide Palette Broadcasting**: [`services/ThemeExportService.qml`](file:///mnt/data/workspace/astral-plasma/services/ThemeExportService.qml) exporting `colors.toml`, `current-palette.json`, and `agent-theme.env` with user hook execution.
+5. **Multi-Action Mouse Gestures**: Left/right/middle click support across dock pills (Terminal, Command Launcher, 12h/24h Clock, Audio volume/mute, Bluetooth power, Power profile cycle, AI agent launch).
+6. **Zero Regressions**: 100% Rust unit tests passed; all 119 QML test suites passed ([`tests/tst_omarchy_borrowed_features.qml`](file:///mnt/data/workspace/astral-plasma/tests/tst_omarchy_borrowed_features.qml)).
+
+---
+
 # Astral Plasma — AI Assistant Copilot & Global Shortcuts Resolution
 
 We have resolved all reported issues regarding the AI Copilot chat streaming, brand styling, provider/model configuration discovery, and KWin global shortcut conflicts.

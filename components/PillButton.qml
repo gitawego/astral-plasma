@@ -5,6 +5,8 @@ Rectangle {
     id: root
 
     signal clicked()
+    signal rightClicked()
+    signal middleClicked()
 
     // Semantic Design System Properties
     property string accent: "primary" // "primary" | "secondary" | "error" | "danger" | "destructive" | "warning" | "info" | "success" | "neutral" | "surface"
@@ -147,11 +149,16 @@ Rectangle {
     property int iconSize: 18
 
     // Liquid Glass elevation & optics
-    property bool showShadow: true
+    property bool showShadow: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true
     property real elevation: 5
 
     // Sizing & Geometry
-    radius: (typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : Math.round(height / 2)
+    property int customRadius: -1
+    radius: customRadius >= 0 
+        ? customRadius 
+        : ((typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) 
+            ? Math.min(Theme.radiusGlassPill, Math.round(height / 2)) 
+            : ((typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : Math.round(height / 2)))
     implicitWidth: label 
         ? labelText.implicitWidth + (iconText ? icon.width + ((typeof Theme !== "undefined" && Theme.spaceSmall) ? Theme.spaceSmall : 6) : 0) + ((typeof Theme !== "undefined" && Theme.padLarge) ? Theme.padLarge : 16) * 2 
         : 40
@@ -206,10 +213,15 @@ Rectangle {
             return (typeof Colors !== "undefined" && Colors.glassBorderSpecular) 
                 ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.65);
         }
+        if (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber") {
+            return Qt.alpha(root.accentPalette.base, 0.40);
+        }
         return (typeof Colors !== "undefined" && Colors.glassBorderSubtle) 
             ? Colors.glassBorderSubtle : Qt.rgba(1, 1, 1, 0.14);
     }
-    border.width: active ? 1.2 : 1.0
+    border.width: active 
+        ? ((typeof Theme !== "undefined" && Theme.glassBorderWidth) ? Math.max(1.2, Theme.glassBorderWidth) : 1.2)
+        : ((typeof Theme !== "undefined" && Theme.glassBorderWidth) ? Theme.glassBorderWidth : 1.0)
 
     // Tactile Spring Micro-Physics (Depression compression on press; no boundary expansion on hover to prevent clipping)
     property bool hoverScale: false
@@ -262,10 +274,10 @@ Rectangle {
     }
 
     // 2. Dual Specular Hairline Glare (Horizontal light catch along flat top edge)
-    // Anti-overhang: only visible when parent has flat top edge (width > radius * 2 + 8)
+    // Anti-overhang: only visible when parent has flat top edge (width > radius * 2 + 8) and specular enabled
     Rectangle {
         id: topGlare
-        visible: parent.width > (root.radius * 2 + 8)
+        visible: ((typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true) && (parent.width > (root.radius * 2 + 8))
         anchors.top: parent.top
         anchors.topMargin: 0.5
         anchors.left: parent.left
@@ -288,7 +300,7 @@ Rectangle {
     // 3. Bottom Caustic Reflection Rim
     Rectangle {
         id: bottomRim
-        visible: parent.width > (root.radius * 2 + 8)
+        visible: ((typeof Theme !== "undefined" && Theme.material) ? Theme.material.causticEnabled : true) && (parent.width > (root.radius * 2 + 8))
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 0.5
         anchors.left: parent.left
@@ -309,6 +321,7 @@ Rectangle {
     // 4. Floating Content with 3D Depth Shadow
     Row {
         id: shadowRow
+        visible: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true
         anchors.centerIn: parent
         anchors.verticalCenterOffset: 2.0
         spacing: (typeof Theme !== "undefined" && Theme.spaceSmall) ? Theme.spaceSmall : 6
@@ -327,7 +340,9 @@ Rectangle {
             id: labelShadow
             visible: root.label !== ""
             text: root.label
-            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+            font.family: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber" && Theme.fontMonospace)
+                ? Theme.fontMonospace
+                : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
             font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 13
             font.weight: root.active ? Font.DemiBold : Font.Normal
             color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.5) : Qt.rgba(0, 0, 0, 0.2)
@@ -354,7 +369,9 @@ Rectangle {
             id: labelText
             visible: root.label !== ""
             text: root.label
-            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+            font.family: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber" && Theme.fontMonospace)
+                ? Theme.fontMonospace
+                : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
             font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 13
             font.weight: root.active ? Font.DemiBold : Font.Normal
             color: root.active ? root.activeTextColor : root.inactiveTextColor
@@ -368,6 +385,15 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.clicked()
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        onClicked: mouse => {
+            if (mouse.button === Qt.RightButton) {
+                root.rightClicked();
+            } else if (mouse.button === Qt.MiddleButton) {
+                root.middleClicked();
+            } else {
+                root.clicked();
+            }
+        }
     }
 }

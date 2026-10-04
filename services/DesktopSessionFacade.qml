@@ -69,6 +69,18 @@ Singleton {
         }
     }
 
+    function togglePopout(name) {
+        if (typeof Config === "undefined") return;
+        const norm = (name || "default").toLowerCase();
+        Config.toggleBottomPopout(norm, 300);
+    }
+
+    function launchAgent(prompt) {
+        if (typeof AiTokenService !== "undefined" && AiTokenService.launchAgent) {
+            AiTokenService.launchAgent(prompt);
+        }
+    }
+
     function isCapabilityAvailable(name) {
         if (!capabilities || !capabilities[name]) return false;
         return Boolean(capabilities[name].available);

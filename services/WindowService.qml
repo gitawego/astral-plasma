@@ -64,6 +64,15 @@ Singleton {
         activateProc.running = true;
     }
 
+    function launchTerminal(cmd) {
+        const term = (typeof Config !== "undefined" && Config.aiTerminal) ? Config.aiTerminal : "ghostty";
+        if (cmd) {
+            Quickshell.execDetached([term, "-e", cmd]);
+        } else {
+            root.launchApp(term, { appName: "Terminal", materialIcon: "terminal" });
+        }
+    }
+
     function launchApp(target, meta) {
         if (!target) return;
         activateProc.command = [root.daemonBin, "launch", target];

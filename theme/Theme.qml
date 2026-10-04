@@ -2,6 +2,7 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import "../config"
 import "./archetypes"
 
 Singleton {
@@ -62,6 +63,7 @@ Singleton {
     // =========================================================================
     // 1. Corner Radii (Dynamically Delegated to Active Archetype)
     // =========================================================================
+    readonly property int filletRounding: root.activeArchetype ? root.activeArchetype.filletRounding : 20
     readonly property int radiusFull: root.activeArchetype ? root.activeArchetype.radiusFull : 9999
     readonly property int radiusLarge: root.activeArchetype ? root.activeArchetype.radiusLarge : 24
     readonly property int radiusMedium: root.activeArchetype ? root.activeArchetype.radiusMedium : 16
@@ -154,4 +156,15 @@ Singleton {
     readonly property int animGlassPress: root.activeArchetype ? root.activeArchetype.animGlassPress : 120
     readonly property int animGlassRelease: root.activeArchetype ? root.activeArchetype.animGlassRelease : 240
     readonly property var curveGlassElastic: root.activeArchetype ? root.activeArchetype.curveGlassElastic : [0.34, 1.35, 0.30, 1.0, 1.0, 1.0]
+
+    // =========================================================================
+    // 7. Media & Visualizer Archetype Tokens
+    // =========================================================================
+    readonly property bool mediaCircularCover: root.activeArchetype ? root.activeArchetype.mediaCircularCover : true
+    readonly property bool mediaOrbitalRing: root.activeArchetype ? root.activeArchetype.mediaOrbitalRing : true
+    readonly property bool mediaVinylSpin: root.activeArchetype ? root.activeArchetype.mediaVinylSpin : true
+    readonly property string mediaCoverStyle: root.activeArchetype ? root.activeArchetype.mediaCoverStyle : "circular"
+    readonly property string surfaceStyle: root.activeArchetype ? root.activeArchetype.surfaceStyle : "liquid_glass"
+    readonly property bool isCyberpunk: surfaceStyle === "neon_cyber"
 }
+

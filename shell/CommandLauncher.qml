@@ -76,7 +76,17 @@ PanelWindow {
     readonly property bool isSchemeMode: activeMode === "scheme" || commandName === "scheme" || commandName === "color"
     readonly property bool isModeMode: activeMode === "mode" || commandName === "mode" || commandName === "dark" || commandName === "light"
     readonly property bool isSettingsMode: activeMode === "settings" || commandName === "settings" || commandName === "set"
-    readonly property bool hasActiveCommandPage: isWallpaperMode || isSchemeMode || isModeMode || isSettingsMode
+    readonly property bool isAiMode: activeMode === "ai" || commandName === "ai" || commandName === "ask" || commandName === "agent" || commandName === "prompt"
+    readonly property string aiPromptText: {
+        if (!isCommandMode) return "";
+        const raw = queryText.slice(1).trim();
+        const firstSpace = raw.indexOf(" ");
+        if (firstSpace !== -1) {
+            return raw.slice(firstSpace + 1).trim();
+        }
+        return "";
+    }
+    readonly property bool hasActiveCommandPage: isWallpaperMode || isSchemeMode || isModeMode || isSettingsMode || isAiMode
 
     onIsWallpaperModeChanged: {
         if (isWallpaperMode && typeof WallpaperEngine !== "undefined" && WallpaperEngine.reloadWallpapers) {
@@ -185,6 +195,13 @@ PanelWindow {
             aliases: ["settings", "set", "config", "preferences"]
         },
         {
+            id: "ai",
+            name: "Ask AI Agent",
+            description: "Dispatch prompt to default AI coding agent",
+            icon: "auto_awesome",
+            aliases: ["ai", "ask", "agent", "prompt"]
+        },
+        {
             id: "exit",
             name: "Exit Astral Plasma",
             description: "Leave the shell and restore the Plasma desktop",
@@ -235,9 +252,10 @@ PanelWindow {
             if (root.isCommandMode && !root.hasActiveCommandPage) {
                 return Math.min(root.filteredSuggestions.length * 56 + 104, 310);
             }
-            if (root.isSchemeMode) return 170;
+            if (root.isSchemeMode) return 220;
             if (root.isModeMode) return 160;
             if (root.isSettingsMode) return 160;
+            if (root.isAiMode) return 180;
             return Math.min(root.filteredApps.length * 50 + 104, 500);
         }
         radius: Theme.radiusGlassModal
@@ -245,10 +263,10 @@ PanelWindow {
         specularColor: Colors.glassBorderSpecular
         subtleBorderColor: Colors.glassBorderSubtle
         causticColor: Colors.glassCausticGlow
-        showSpecular: true
-        showCaustic: true
-        showShadow: true
-        enableCursorGlint: true
+        showSpecular: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
+        showCaustic: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.causticEnabled : true
+        showShadow: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true
+        enableCursorGlint: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
         clipContent: false
 
         Behavior on width {
@@ -427,9 +445,17 @@ PanelWindow {
                     color: root.colTextMuted
                 }
 
-                Row {
-                    spacing: 10
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 8
                     readonly property var presets: [
+                        { name: "Astral AI", key: "astral-ai", col: "#818cf8" },
+                        { name: "Tokyo Night", key: "tokyo-night", col: "#7aa2f7" },
+                        { name: "Catppuccin", key: "catppuccin", col: "#cba6f7" },
+                        { name: "Nord", key: "nord", col: "#88c0d0" },
+                        { name: "Everforest", key: "everforest", col: "#a7c080" },
+                        { name: "Gruvbox", key: "gruvbox", col: "#fabd2f" },
+                        { name: "Rosé Pine", key: "rose-pine", col: "#ebbcba" },
                         { name: "Iris", key: "iris", col: "#cba6f7" },
                         { name: "Ocean", key: "ocean", col: "#89b4fa" },
                         { name: "Coral", key: "coral", col: "#fab387" },
@@ -586,7 +612,75 @@ PanelWindow {
                 }
             }
 
-            // 6. App Results List (Frame 45) - High-Performance Virtual Scroll
+            // 6. AI Agent Prompt View (>ai / >ask)
+            ColumnLayout {
+                visible: root.isAiMode
+                anchors.fill: parent
+                spacing: 8
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    MaterialIcon {
+                        text: "auto_awesome"
+                        size: 20
+                        color: (typeof Colors !== "undefined" && Colors.aiActivityColor) ? Colors.aiActivityColor : root.colPrimary
+                    }
+                    Text {
+                        text: "AI Agent: " + ((typeof Config !== "undefined" && Config.aiDefaultAgent) ? Config.aiDefaultAgent : "agy")
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        color: root.colTextOnSurface
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: "Press [Enter] to dispatch prompt"
+                        font.pixelSize: 11
+                        color: root.colTextMuted
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: 12
+                    color: root.colSurfaceContainer
+                    border.color: Theme.borderSubtle
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 12
+
+                        MaterialIcon {
+                            text: "terminal"
+                            size: 24
+                            color: root.colPrimary
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Text {
+                                text: root.aiPromptText.length > 0 ? root.aiPromptText : "Type your prompt after '>ai ' or '>ask '..."
+                                font.pixelSize: 13
+                                font.italic: root.aiPromptText.length === 0
+                                color: root.aiPromptText.length > 0 ? root.colTextOnSurface : root.colTextMuted
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                text: "Runs in " + ((typeof Config !== "undefined" && Config.aiTerminal) ? Config.aiTerminal : "ghostty") + " with active AI agent session"
+                                font.pixelSize: 11
+                                color: root.colTextMuted
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 7. App Results List (Frame 45) - High-Performance Virtual Scroll
             ListView {
                 id: appsList
                 visible: !root.isCommandMode
@@ -750,17 +844,17 @@ PanelWindow {
             anchors.right: parent.right
             anchors.rightMargin: 18
             height: 46
-            radius: 23
+            radius: Math.min(Theme.radiusGlassPill, 23)
             interactive: false
-            // Focus must REFINE the glass, not replace it (LESSONS 9.1). The field
-            // is focused as soon as the launcher opens, so taking the `active`
-            // fill would paint it in `glassPillActive` - a saturated 65%-alpha
-            // primary tint - permanently. The specular ring carries the focus.
             active: false
             baseColor: Colors.glassPill
             hoverColor: Colors.glassPillHover
             borderColor: searchInput.activeFocus ? Colors.glassBorderSpecular : Colors.glassBorderSubtle
             borderWidth: searchInput.activeFocus ? 1.4 : 1.0
+            // Focus must REFINE the glass, not replace it (LESSONS 9.1). The field
+            // is focused as soon as the launcher opens, so taking the `active`
+            // fill would paint it in `glassPillActive` - a saturated 65%-alpha
+            // primary tint - permanently. The specular ring carries the focus.
 
             RowLayout {
                 anchors.fill: parent
@@ -777,7 +871,9 @@ PanelWindow {
                 TextInput {
                     id: searchInput
                     Layout.fillWidth: true
-                    font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+                    font.family: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber" && Theme.fontMonospace) 
+                        ? Theme.fontMonospace 
+                        : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
                     font.pixelSize: 15
                     color: "#FFFFFF"
                     selectByMouse: true
@@ -960,6 +1056,12 @@ PanelWindow {
         } else if (root.isSettingsMode) {
             const page = root.commandArg || "dock";
             if (typeof Config !== "undefined") Config.openSettings(page);
+            root.closeLauncher();
+        } else if (root.isAiMode) {
+            const prompt = root.aiPromptText;
+            if (typeof AiTokenService !== "undefined" && AiTokenService.launchAgent) {
+                AiTokenService.launchAgent(prompt);
+            }
             root.closeLauncher();
         } else if (root.filteredApps.length > 0 && root.selectedAppIndex < root.filteredApps.length) {
             root.launchApp(root.filteredApps[root.selectedAppIndex]);

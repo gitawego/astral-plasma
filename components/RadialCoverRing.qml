@@ -68,6 +68,8 @@ Item {
         return Math.max(0.0, Math.min(1.0, boosted));
     }
 
+    readonly property bool isCyberStyle: (typeof Theme !== "undefined" && (Theme.isCyberpunk || Theme.mediaCoverStyle === "cyber_radial"))
+
     Canvas {
         id: ring
         anchors.fill: parent
@@ -86,13 +88,38 @@ Item {
             const cx = w / 2;
             const cy = h / 2;
             const inner = root.innerRadius + root.barSpacing;
-            const col = (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#a8c7fa";
+            const col = (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : Qt.color("#a8c7fa");
+            const secCol = (typeof Colors !== "undefined" && Colors.secondary) ? Colors.secondary : Qt.color("#ff007f");
             const levels = root.barLevels;
             const alphas = root.barAlphas;
             const next = [];
             const nextAlphas = [];
+            const cyber = root.isCyberStyle;
 
-            ctx.lineCap = "round";
+            // Cyberpunk HUD inner laser track & cardinal reticle ticks
+            if (cyber) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, inner - 1.5, 0, 2 * Math.PI);
+                ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 0.40 + root.audioEnergy * 0.40);
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // 4 cardinal reticle ticks
+                const tickLen = 3;
+                for (let k = 0; k < 4; ++k) {
+                    const tAngle = (k * Math.PI) / 2;
+                    const cosT = Math.cos(tAngle);
+                    const sinT = Math.sin(tAngle);
+                    ctx.beginPath();
+                    ctx.moveTo(cx + cosT * (inner - tickLen), cy + sinT * (inner - tickLen));
+                    ctx.lineTo(cx + cosT * (inner + 1), cy + sinT * (inner + 1));
+                    ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 0.75);
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                }
+            }
+
+            ctx.lineCap = cyber ? "butt" : "round";
             ctx.lineWidth = root.barWidth;
 
             for (let i = 0; i < count; ++i) {
@@ -105,7 +132,7 @@ Item {
 
                 // Brightness eases slower than the bar grows, as the 200 ms
                 // opacity Behavior did against the 75 ms height Behavior.
-                const targetAlpha = root.isPlaying ? (0.7 + level * 0.3) : 0.25;
+                const targetAlpha = root.isPlaying ? (0.7 + level * 0.3) : (cyber ? 0.4 : 0.25);
                 const previousAlpha = (alphas[i] !== undefined) ? alphas[i] : targetAlpha;
                 const alpha = (root.isPlaying && root.isTargetVisible)
                     ? previousAlpha + (targetAlpha - previousAlpha) * root.alphaEase
@@ -117,12 +144,47 @@ Item {
                 const sinA = Math.sin(angle);
                 const length = root.baseBarHeight + level * root.maxBarHeight;
 
+                const x0 = cx + cosA * inner;
+                const y0 = cy + sinA * inner;
+                const x1 = cx + cosA * (inner + length);
+                const y1 = cy + sinA * (inner + length);
+
                 ctx.globalAlpha = alpha;
-                ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 1.0);
-                ctx.beginPath();
-                ctx.moveTo(cx + cosA * inner, cy + sinA * inner);
-                ctx.lineTo(cx + cosA * (inner + length), cy + sinA * (inner + length));
-                ctx.stroke();
+
+                if (cyber) {
+                    // Dual-color cyber gradient: Cyan (#00F0FF) to Neon Magenta (#FF007F) at peak
+                    const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+                    grad.addColorStop(0, Qt.rgba(col.r, col.g, col.b, 1.0));
+                    const tipMix = Math.min(1.0, level * 1.5);
+                    const tipR = col.r + (secCol.r - col.r) * tipMix;
+                    const tipG = col.g + (secCol.g - col.g) * tipMix;
+                    const tipB = col.b + (secCol.b - col.b) * tipMix;
+                    grad.addColorStop(1, Qt.rgba(tipR, tipG, tipB, 1.0));
+
+                    ctx.strokeStyle = grad;
+                    ctx.beginPath();
+                    ctx.moveTo(x0, y0);
+                    ctx.lineTo(x1, y1);
+                    ctx.stroke();
+
+                    // Floating neon peak cap tick for high-energy bursts
+                    if (level > 0.35 && root.isPlaying) {
+                        const peakDist = inner + length + 2;
+                        const capLen = 1.2;
+                        ctx.beginPath();
+                        ctx.moveTo(cx + cosA * peakDist, cy + sinA * peakDist);
+                        ctx.lineTo(cx + cosA * (peakDist + capLen), cy + sinA * (peakDist + capLen));
+                        ctx.strokeStyle = Qt.rgba(secCol.r, secCol.g, secCol.b, Math.min(1.0, level * 1.3));
+                        ctx.lineWidth = root.barWidth;
+                        ctx.stroke();
+                    }
+                } else {
+                    ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 1.0);
+                    ctx.beginPath();
+                    ctx.moveTo(x0, y0);
+                    ctx.lineTo(x1, y1);
+                    ctx.stroke();
+                }
             }
 
             ctx.globalAlpha = 1.0;

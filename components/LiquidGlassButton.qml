@@ -31,7 +31,16 @@ Item {
     property bool showCaustic: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.causticEnabled : true
 
     // Stadium Pill Geometry
-    readonly property int radius: Math.round(height / 2)
+    property int customRadius: -1
+    readonly property int radius: customRadius >= 0 
+        ? customRadius 
+        : ((typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber")
+            ? 0
+            : (root.isCircular 
+                ? Math.round(height / 2) 
+                : ((typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) 
+                    ? Math.min(Theme.radiusGlassPill, Math.round(height / 2)) 
+                    : Math.round(height / 2))))
     readonly property bool isCircular: root.text === "" && (Math.abs(root.width - root.height) <= 6)
     implicitHeight: 42
     implicitWidth: Math.max(minWidth, contentRow.implicitWidth + paddingHorizontal * 2)
@@ -65,7 +74,7 @@ Item {
     // 0. Ambient Contact Drop Shadow (Physical surface separation, fully translucent contour)
     Rectangle {
         id: contactShadow
-        visible: true
+        visible: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true
         z: -1
         anchors.fill: glassBody
         anchors.topMargin: Math.max(2, Math.round(root.elevation * 0.35))
@@ -88,16 +97,20 @@ Item {
             ? (root.pressed 
                 ? Qt.alpha(root.accentColor, 0.45) 
                 : (root.hovered ? Qt.alpha(root.accentColor, 0.35) : Qt.alpha(root.accentColor, 0.24)))
-            : ((typeof Colors !== "undefined" && Colors.isDarkMode)
-                ? (root.pressed ? Qt.rgba(1.0, 1.0, 1.0, 0.18) : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.12) : Qt.rgba(1.0, 1.0, 1.0, 0.06)))
-                : (root.pressed ? Qt.rgba(1.0, 1.0, 1.0, 0.70) : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.60) : Qt.rgba(1.0, 1.0, 1.0, 0.42))))
+            : ((typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber")
+                ? (root.pressed ? Qt.alpha(Colors.primary, 0.30) : (root.hovered ? Qt.alpha(Colors.primary, 0.18) : Qt.rgba(0.04, 0.05, 0.08, 0.90)))
+                : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+                    ? (root.pressed ? Qt.rgba(1.0, 1.0, 1.0, 0.18) : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.12) : Qt.rgba(1.0, 1.0, 1.0, 0.06)))
+                    : (root.pressed ? Qt.rgba(1.0, 1.0, 1.0, 0.70) : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.60) : Qt.rgba(1.0, 1.0, 1.0, 0.42)))))
 
         border.color: root.isPrimary
             ? (root.hovered ? Qt.alpha(root.accentColor, 0.90) : Qt.alpha(root.accentColor, 0.55))
-            : ((typeof Colors !== "undefined" && Colors.isDarkMode)
-                ? (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.32) : Qt.rgba(1.0, 1.0, 1.0, 0.12))
-                : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.85) : Qt.rgba(1.0, 1.0, 1.0, 0.55)))
-        border.width: 1
+            : ((typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber")
+                ? (root.hovered ? Colors.primary : Qt.alpha(Colors.primary, 0.60))
+                : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+                    ? (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.32) : Qt.rgba(1.0, 1.0, 1.0, 0.12))
+                    : (root.hovered ? Qt.rgba(1.0, 1.0, 1.0, 0.85) : Qt.rgba(1.0, 1.0, 1.0, 0.55))))
+        border.width: (typeof Theme !== "undefined" && Theme.glassBorderWidth) ? Theme.glassBorderWidth : 1
 
         Behavior on color { ColorAnimation { duration: 150 } }
         Behavior on border.color { ColorAnimation { duration: 150 } }
@@ -106,6 +119,7 @@ Item {
     // 2. Fresnel Refraction Cushion (Soft continuous vertical depth sheen)
     Rectangle {
         id: refractionCushion
+        visible: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
         anchors.fill: parent
         radius: root.radius
         color: "transparent"
@@ -190,9 +204,11 @@ Item {
 
         Text {
             id: labelShadow
-            visible: root.text !== ""
+            visible: root.text !== "" && ((typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true)
             text: root.text
-            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+            font.family: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber" && Theme.fontMonospace)
+                ? Theme.fontMonospace
+                : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
             font.pixelSize: root.fontSize > 0 ? root.fontSize : ((typeof Theme !== "undefined" && Theme.fontBodyLarge) ? Theme.fontBodyLarge : 14)
             font.weight: Font.DemiBold
             color: root.textShadowColor
@@ -221,7 +237,9 @@ Item {
             id: labelText
             visible: root.text !== ""
             text: root.text
-            font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
+            font.family: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber" && Theme.fontMonospace)
+                ? Theme.fontMonospace
+                : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
             font.pixelSize: root.fontSize > 0 ? root.fontSize : ((typeof Theme !== "undefined" && Theme.fontBodyLarge) ? Theme.fontBodyLarge : 14)
             font.weight: Font.DemiBold
             color: root.isPrimary ? "#FFFFFF" : root.textColor

@@ -10,7 +10,7 @@ Rectangle {
     property bool showSpecular: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
     property bool showCaustic: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.causticEnabled : true
     property bool showBottomRim: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
-    property bool showRefraction: (typeof Theme !== "undefined" && Theme.material) ? (Theme.material.surfaceStyle !== "flat_minimal") : true
+    property bool showRefraction: (typeof Theme !== "undefined" && Theme.material) ? (Theme.material.surfaceStyle !== "flat_minimal" && Theme.material.surfaceStyle !== "neon_cyber") : true
     property bool showShadow: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true
     property real elevation: 6
     property bool interactive: false
@@ -36,13 +36,17 @@ Rectangle {
     readonly property alias causticItem: causticGlow
 
     // Standard geometry and styling
-    radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard) ? Theme.radiusGlassCard : 16
-    border.width: root.showBorder && !root.bare ? (selected ? 1.5 : 1) : 0
+    radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard !== undefined) ? Theme.radiusGlassCard : 16
+    border.width: root.showBorder && !root.bare 
+        ? (selected ? Math.max(1.5, (typeof Theme !== "undefined" && Theme.glassBorderWidth ? Theme.glassBorderWidth : 1.0)) : (typeof Theme !== "undefined" && Theme.glassBorderWidth ? Theme.glassBorderWidth : 1.0)) 
+        : 0
     border.color: selected 
         ? root.accentGlint
         : (hovered 
             ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.70))
-            : ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Qt.alpha(Colors.glassBorderSpecular, Colors.isDarkMode ? 0.45 : 0.60) : Qt.rgba(1, 1, 1, 0.25)))
+            : ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) 
+                ? Qt.alpha(Colors.glassBorderSpecular, (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0.95 : (Colors.isDarkMode ? 0.45 : 0.60)) 
+                : Qt.rgba(1, 1, 1, 0.25)))
 
     // Base liquid glass substrate tint (crystalline translucent glass plate matching Colors.glassCard, letting background content shine through)
     color: root.bare ? "transparent"
@@ -142,8 +146,8 @@ Rectangle {
         anchors.topMargin: 0.5
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: Math.max(parent.radius + 2, 12)
-        anchors.rightMargin: Math.max(parent.radius + 2, 12)
+        anchors.leftMargin: Math.max(parent.radius + 2, 4)
+        anchors.rightMargin: Math.max(parent.radius + 2, 4)
         height: 1
         opacity: root.hovered ? 1.0 : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.78 : 0.90)
 
@@ -174,8 +178,8 @@ Rectangle {
         anchors.topMargin: 1.5
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: Math.max(parent.radius + 4, 16)
-        anchors.rightMargin: Math.max(parent.radius + 4, 16)
+        anchors.leftMargin: Math.max(parent.radius + 4, 6)
+        anchors.rightMargin: Math.max(parent.radius + 4, 6)
         height: 0.5
         opacity: root.hovered ? 0.65 : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.35 : 0.50)
 
@@ -195,8 +199,8 @@ Rectangle {
         anchors.bottomMargin: 0.5
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: Math.max(parent.radius + 2, 12)
-        anchors.rightMargin: Math.max(parent.radius + 2, 12)
+        anchors.leftMargin: Math.max(parent.radius + 2, 4)
+        anchors.rightMargin: Math.max(parent.radius + 2, 4)
         height: 1
         opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.25 : 0.40
 

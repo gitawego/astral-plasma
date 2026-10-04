@@ -36,14 +36,15 @@ Item {
 
                 readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
                     (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
+                readonly property bool isCyberpunk: (typeof Theme !== "undefined" && Theme.isCyberpunk)
 
-                // Radial Visualizer (Spectrum halo around circular album art)
+                // Radial Visualizer (Spectrum halo around circular album art - Cyberpunk or Radial style)
                 RadialCoverVisualiser {
                     id: radialViz
                     anchors.centerIn: parent
                     width: 240
                     height: 240
-                    visible: !visualizerSlot.isSpeakerStyle
+                    visible: visualizerSlot.isCyberpunk || !visualizerSlot.isSpeakerStyle
                     isPlaying: MprisMedia.isPlaying
                     artUrl: MprisMedia.artUrl
                     title: MprisMedia.title
@@ -57,7 +58,7 @@ Item {
                     anchors.centerIn: parent
                     width: 240
                     height: 240
-                    visible: visualizerSlot.isSpeakerStyle
+                    visible: !visualizerSlot.isCyberpunk && visualizerSlot.isSpeakerStyle
                     isPlaying: MprisMedia.isPlaying
                     artUrl: MprisMedia.artUrl
                     title: MprisMedia.title
@@ -65,7 +66,7 @@ Item {
                     isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "media" && visible) : false
                 }
 
-                // Visualizer Switcher Pill Button (Floating subtle toggle)
+                // Visualizer Switcher Pill Button (Floating subtle toggle - hidden in Cyberpunk)
                 LiquidGlassButton {
                     id: vizSwitchBtn
                     anchors.top: parent.top
@@ -80,6 +81,7 @@ Item {
                     iconText: "equalizer"
                     iconSize: 16
                     elevation: 4
+                    visible: !visualizerSlot.isCyberpunk
                     onClicked: {
                         if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
                             Config.setMediaVisualizerStyle(visualizerSlot.isSpeakerStyle ? "radial" : "speaker");
@@ -319,7 +321,7 @@ Item {
                     Rectangle {
                         width: 32
                         height: 32
-                        radius: 16
+                        radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, 16) : 16
                         color: (typeof MprisMedia !== "undefined" && MprisMedia.shuffle)
                             ? Qt.alpha(Colors.primary, 0.22)
                             : (shufHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : "transparent")
@@ -354,7 +356,7 @@ Item {
                         implicitHeight: 28
                         Layout.preferredWidth: implicitWidth
                         Layout.preferredHeight: implicitHeight
-                        radius: 14
+                        radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, 14) : 14
                         color: (playerBadgeMouse.containsMouse || playerDropdownOverlay.visible)
                             ? Qt.alpha(Colors.primary, 0.20)
                             : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1.0, 1.0, 1.0, 0.06) : Qt.rgba(1.0, 1.0, 1.0, 0.45))
@@ -423,7 +425,7 @@ Item {
                     Rectangle {
                         width: 32
                         height: 32
-                        radius: 16
+                        radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, 16) : 16
                         color: (typeof MprisMedia !== "undefined" && MprisMedia.loopState !== 0)
                             ? Qt.alpha(Colors.primary, 0.22)
                             : (loopHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : "transparent")

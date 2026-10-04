@@ -10,6 +10,7 @@ ThemeArchetype {
     version: "1.0.0"
 
     // Liquid Glass uses large concentric rounds
+    filletRounding: 20
     radiusFull: 9999
     radiusLarge: 24
     radiusMedium: 16

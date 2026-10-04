@@ -2,6 +2,7 @@ import QtQuick
 import "../../theme"
 import "../../components"
 import "../../config"
+import "../../services"
 
 Item {
     id: root
@@ -15,5 +16,11 @@ Item {
         iconSize: 20
         active: Config.dashboardVisible
         onClicked: Config.toggleDashboard()
+        onRightClicked: WindowService.launchTerminal()
+        onMiddleClicked: {
+            if (typeof Config !== "undefined" && Config.toggleCommandLauncher) {
+                Config.toggleCommandLauncher();
+            }
+        }
     }
 }

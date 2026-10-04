@@ -120,12 +120,75 @@ LiquidGlassCard {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Config.openBottomPopout("bluetooth", btItem.mapToItem(null, 0, btItem.height / 2).y)
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton) {
+                            BluetoothService.togglePower();
+                        } else {
+                            Config.openBottomPopout("bluetooth", btItem.mapToItem(null, 0, btItem.height / 2).y);
+                        }
+                    }
                 }
             }
         }
 
-        // 3. Power Profile / Rocket
+        // 3. Audio / Master Volume
+        Item {
+            id: audioItem
+            implicitWidth: root.btnSize
+            implicitHeight: root.btnSize
+            width: root.btnSize
+            height: root.btnSize
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusFull
+                color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "audio") 
+                    ? Colors.primary 
+                    : (audioHover.hovered ? Colors.surfaceContainerHigh : "transparent")
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: (typeof PipewireAudio !== "undefined" && PipewireAudio.getVolumeIcon) ? PipewireAudio.getVolumeIcon() : "volume_up"
+                    size: root.iconSize
+                    color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "audio") 
+                        ? Colors.textOnPrimary 
+                        : ((typeof PipewireAudio !== "undefined" && PipewireAudio.muted) ? Colors.outline : Colors.textOnSurfaceVariant)
+                }
+
+                HoverHandler {
+                    id: audioHover
+                    onHoveredChanged: {
+                        if (hovered) Config.openBottomPopout("audio", audioItem.mapToItem(null, 0, audioItem.height / 2).y);
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton) {
+                            if (typeof PipewireAudio !== "undefined") PipewireAudio.toggleMute();
+                        } else {
+                            Config.openBottomPopout("audio", audioItem.mapToItem(null, 0, audioItem.height / 2).y);
+                        }
+                    }
+                    onWheel: wheel => {
+                        if (typeof PipewireAudio !== "undefined") {
+                            const delta = wheel.angleDelta.y > 0 ? 0.05 : -0.05;
+                            const newVol = Math.max(0.0, Math.min(1.5, PipewireAudio.volume + delta));
+                            PipewireAudio.setVolume(newVol);
+                            if (typeof Config !== "undefined" && Config.showVolumeOsd) {
+                                Config.showVolumeOsd(newVol, PipewireAudio.muted);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Power Profile / Rocket
         Item {
             id: profileItem
             implicitWidth: root.btnSize
@@ -165,7 +228,14 @@ LiquidGlassCard {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Config.openBottomPopout("default", profileItem.mapToItem(null, 0, profileItem.height / 2).y)
+                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.MiddleButton) {
+                            PowerService.cycleProfile();
+                        } else {
+                            Config.openBottomPopout("default", profileItem.mapToItem(null, 0, profileItem.height / 2).y);
+                        }
+                    }
                 }
             }
         }
@@ -245,9 +315,16 @@ LiquidGlassCard {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        AiTokenService.refresh(false);
-                        Config.openBottomPopout("ai", aiItem.mapToItem(null, 0, aiItem.height / 2).y);
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton) {
+                            if (typeof AiTokenService !== "undefined" && AiTokenService.launchAgent) {
+                                AiTokenService.launchAgent();
+                            }
+                        } else {
+                            if (typeof AiTokenService !== "undefined") AiTokenService.refresh(false);
+                            Config.openBottomPopout("ai", aiItem.mapToItem(null, 0, aiItem.height / 2).y);
+                        }
                     }
                 }
             }

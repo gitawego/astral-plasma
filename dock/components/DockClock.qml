@@ -13,19 +13,22 @@ Item {
     property string minute: "00"
     property string day: "Sat"
     property string dateNum: "1"
+    property bool is24Hour: true
+
+    function updateTime() {
+        const now = new Date();
+        root.hour = Qt.formatDateTime(now, root.is24Hour ? "HH" : "hh");
+        root.minute = Qt.formatDateTime(now, "mm");
+        root.day = Qt.formatDateTime(now, "ddd");
+        root.dateNum = Qt.formatDateTime(now, "d");
+    }
 
     Timer {
         interval: 1000
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: {
-            const now = new Date();
-            root.hour = Qt.formatDateTime(now, "HH");
-            root.minute = Qt.formatDateTime(now, "mm");
-            root.day = Qt.formatDateTime(now, "ddd");
-            root.dateNum = Qt.formatDateTime(now, "d");
-        }
+        onTriggered: root.updateTime()
     }
 
     Column {
@@ -81,6 +84,16 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: Config.toggleDashboard()
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        onClicked: mouse => {
+            if (mouse.button === Qt.RightButton) {
+                root.is24Hour = !root.is24Hour;
+                root.updateTime();
+            } else if (mouse.button === Qt.MiddleButton) {
+                Config.toggleBottomPopout("clock", root.mapToItem(null, 0, root.height / 2).y);
+            } else {
+                Config.toggleDashboard();
+            }
+        }
     }
 }

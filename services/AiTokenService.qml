@@ -36,6 +36,16 @@ Singleton {
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
     readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
 
+    function launchAgent(prompt) {
+        const agent = (typeof Config !== "undefined" && Config.aiDefaultAgent) ? Config.aiDefaultAgent : "agy";
+        const term = (typeof Config !== "undefined" && Config.aiTerminal) ? Config.aiTerminal : "ghostty";
+        if (prompt && prompt.length > 0) {
+            Quickshell.execDetached([term, "-e", agent, prompt]);
+        } else {
+            Quickshell.execDetached([term, "-e", agent]);
+        }
+    }
+
     readonly property bool shouldShowPill: {
         if (typeof Config === "undefined" || !Config.aiEnabled) return false;
         if (Config.aiDockPillMode === "always") return true;

@@ -119,6 +119,10 @@ Item {
         assert(/id:\s*contentPane[\s\S]{0,200}?color:\s*"transparent"/.test(hubSrc),
             "the content pane must be part of the plate, not a second panel");
         assert(/id:\s*railSeam/.test(hubSrc), "one hairline must divide the rail from the content");
+        assert(/id:\s*pageLoader[\s\S]{0,100}?width:\s*parent\.width\s*-\s*14/.test(hubSrc),
+            "pageLoader must reserve a 14px scrollbar gutter to prevent content overlap");
+        assert(/id:\s*scrollBarIndicator[\s\S]{0,300}?thumbTravelRange/.test(hubSrc),
+            "scrollBarIndicator must use bounded thumbTravelRange math");
 
         console.log("PASS: NexusHub Hierarchical Navigation & Back Stack Unit Tests");
         Qt.exit(0);

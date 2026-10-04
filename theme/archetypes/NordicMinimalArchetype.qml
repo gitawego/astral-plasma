@@ -10,6 +10,7 @@ ThemeArchetype {
     version: "1.0.0"
 
     // Geometry: Subtle, disciplined radii
+    filletRounding: 6
     radiusFull: 9999
     radiusLarge: 12
     radiusMedium: 8
@@ -19,7 +20,7 @@ ThemeArchetype {
     radiusGlassModal: 12
     radiusGlassCard: 6
     radiusGlassItem: 4
-    radiusGlassPill: 9999
+    radiusGlassPill: 6
 
     // Optical surfaces: Flat matte surfaces, NO specular or caustics
     surfaceStyle: "flat_minimal"

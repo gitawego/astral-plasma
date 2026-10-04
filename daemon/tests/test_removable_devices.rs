@@ -125,3 +125,19 @@ fn test_resolve_device_for_query() {
     assert!(res.is_some());
     assert_eq!(res.unwrap().device, "/dev/sda");
 }
+
+#[test]
+fn test_match_storage_device_for_notification_is_strict() {
+    use astral_plasma::domain::removable_devices::match_storage_device_for_notification;
+    let devices = parse_lsblk_removable_devices(LSBLK_SAMPLE);
+
+    // The notification names the attached storage device.
+    let hit = match_storage_device_for_notification("EAGET SSD Device has been connected.", &devices);
+    assert_eq!(hit.map(|d| d.device.as_str()), Some("/dev/sda"));
+
+    // A mouse is not storage: there is no block device for it, so there must be
+    // no match, and in particular no fallback to "the first removable device".
+    assert!(match_storage_device_for_notification("RealTek MCHOSE A7 Pro has been connected.", &devices).is_none());
+    assert!(match_storage_device_for_notification("", &devices).is_none());
+    assert!(match_storage_device_for_notification("anything", &[]).is_none());
+}

@@ -23,7 +23,7 @@ Item {
             id: barContainer
             width: root.width
             height: root.height - iconItem.height - Theme.spaceSmall
-            radius: Theme.radiusFull
+            radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, width / 2) : width / 2
             color: root.trackColor
             clip: true
 
@@ -33,7 +33,7 @@ Item {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 height: Math.max(width, parent.height * Math.min(1.0, Math.max(0.0, root.value)))
-                radius: Theme.radiusFull
+                radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, width / 2) : width / 2
                 color: root.fillColor
 
                 Behavior on height {

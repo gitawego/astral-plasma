@@ -780,7 +780,7 @@ PanelWindow {
 
     // Configuration and Tokens
     readonly property real borderT: Config.borderThickness
-    readonly property real filletR: Config.borderRounding
+    readonly property real filletR: (typeof Theme !== "undefined" && Theme.filletRounding !== undefined) ? Theme.filletRounding : Config.borderRounding
     readonly property bool hasMaximizedWindow: (typeof WindowService !== "undefined" && WindowService && (WindowService.hasMaximizedWindow || WindowService.hasActiveMaximized)) ? true : false
     readonly property real cornerFilletR: root.filletR
     readonly property real dockW: Config.dockWidth + 6

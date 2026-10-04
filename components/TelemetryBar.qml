@@ -32,7 +32,7 @@ Item {
             width: root.barWidth
             height: Math.max(10, root.height - iconLabel.height - 6)
             anchors.horizontalCenter: parent.horizontalCenter
-            radius: width / 2
+            radius: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0 : width / 2
             color: root.trackColor
             clip: true
 
@@ -49,7 +49,7 @@ Item {
                 anchors.bottom: parent.bottom
                 height: root.value > 0.005 ? Math.max(width, parent.height * Math.min(1.0, root.value)) : 0
                 visible: height > 0
-                radius: width / 2
+                radius: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0 : width / 2
                 color: root.fillColor
 
                 Behavior on height {

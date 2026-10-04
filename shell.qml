@@ -287,6 +287,9 @@ ShellRoot {
         function setPreset(preset: string): void {
             Config.setThemePreset(preset);
         }
+        function setArchetype(archetype: string): void {
+            Config.setThemeArchetype(archetype);
+        }
     }
 
     IpcHandler {
@@ -469,6 +472,9 @@ ShellRoot {
     }
 
     Component.onCompleted: {
+        // Singletons load lazily: touch the exporter so palette broadcasting
+        // (colors.toml / current-palette.json / agent-theme.env) really runs.
+        ThemeExportService.scheduleExport();
         if (Log.debugEnabled("shell")) {
             Log.debug("shell", "onCompleted, disablePlasmaPanels: " + Config.disablePlasmaPanels
                 + ", daemonBin: " + Config.daemonBin + ", pid: " + Quickshell.processId);

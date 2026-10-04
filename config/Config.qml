@@ -109,6 +109,7 @@ Singleton {
         "theme": {
             "mode": "dynamic",
             "preset": "iris",
+            "archetype": "liquid_glass",
             "blurStrength": 0.85,
             "cornerRadius": 20
         },
@@ -236,6 +237,9 @@ Singleton {
     readonly property real aiWarningThreshold: (root.settings && root.settings.ai && root.settings.ai.warningThresholdPercent !== undefined) ? root.settings.ai.warningThresholdPercent : 80.0
     readonly property real aiCriticalThreshold: (root.settings && root.settings.ai && root.settings.ai.criticalThresholdPercent !== undefined) ? root.settings.ai.criticalThresholdPercent : 95.0
     readonly property string aiDockPillMode: (root.settings && root.settings.ai && root.settings.ai.dockPillMode) ? root.settings.ai.dockPillMode : "dynamic"
+    readonly property string aiDefaultAgent: (root.settings && root.settings.ai && root.settings.ai.defaultAgent) ? root.settings.ai.defaultAgent : "agy"
+    readonly property string aiTerminal: (root.settings && root.settings.ai && root.settings.ai.terminal) ? root.settings.ai.terminal : "ghostty"
+    readonly property bool aiThemeSyncEnabled: (root.settings && root.settings.ai && root.settings.ai.themeSyncEnabled !== undefined) ? root.settings.ai.themeSyncEnabled : true
     readonly property bool aiPrivacyMode: (root.settings && root.settings.ai && root.settings.ai.privacyMode !== undefined) ? root.settings.ai.privacyMode : false
     // Download manager defaults (D6/D7): global split parts + destination.
     readonly property string downloadsDir: (root.settings && root.settings.downloads && typeof root.settings.downloads.dir === "string" && root.settings.downloads.dir.length > 0)
@@ -287,9 +291,28 @@ Singleton {
     readonly property string themePreset: root.settings.theme ? (root.settings.theme.preset ?? "iris") : "iris"
     readonly property string themeArchetype: root.settings.theme ? (root.settings.theme.archetype ?? "liquid_glass") : "liquid_glass"
     readonly property int themeCornerRadius: root.settings.theme ? (root.settings.theme.cornerRadius ?? 20) : 20
+    readonly property real themeBlurStrength: root.settings.theme ? (root.settings.theme.blurStrength ?? 0.85) : 0.85
 
     function setThemeArchetype(archetypeId) {
-        root.updateSetting("theme", "archetype", archetypeId);
+        if (!archetypeId) return;
+        updateSettings(cfg => {
+            if (!cfg.theme) cfg.theme = {};
+            cfg.theme.archetype = archetypeId;
+        });
+    }
+
+    function updateSetting(section, key, value) {
+        updateSettings(cfg => {
+            if (!cfg[section]) cfg[section] = {};
+            cfg[section][key] = value;
+        });
+    }
+
+    function setThemeBlurStrength(strength) {
+        updateSettings(cfg => {
+            if (!cfg.theme) cfg.theme = {};
+            cfg.theme.blurStrength = strength;
+        });
     }
 
     // Dynamic script path resolution (config-driven, agnostic, zero hardcoded paths)
@@ -1072,6 +1095,14 @@ Singleton {
 
     function keepBottomPopout() {
         popoutCloseTimer.stop();
+    }
+
+    function toggleBottomPopout(mode, targetY) {
+        if (bottomPopoutVisible && bottomPopoutMode === mode) {
+            closeBottomPopout();
+        } else {
+            openBottomPopout(mode, targetY);
+        }
     }
 
     function scheduleCloseBottomPopout() {

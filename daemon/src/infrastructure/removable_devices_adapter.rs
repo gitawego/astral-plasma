@@ -1,6 +1,6 @@
 use crate::domain::ports::DynResult;
 use crate::domain::removable_devices::{
-    parse_lsblk_removable_devices, resolve_device_for_query, select_primary_partition,
+    match_storage_device_for_notification, parse_lsblk_removable_devices, resolve_device_for_query, select_primary_partition,
     RemovableDevice,
 };
 use regex::Regex;
@@ -26,6 +26,13 @@ impl RemovableDevicesAdapter {
 
         let json_str = String::from_utf8_lossy(&output.stdout);
         Ok(parse_lsblk_removable_devices(&json_str))
+    }
+
+    /// The attached storage device a notification text refers to, or `None` when
+    /// it refers to non-storage hardware (mouse, keyboard, headset...).
+    pub fn match_storage(&self, text: &str) -> DynResult<Option<RemovableDevice>> {
+        let devices = self.list_devices()?;
+        Ok(match_storage_device_for_notification(text, &devices).cloned())
     }
 
     /// Mounts the primary partition of the targeted (or first available) removable device

@@ -40,7 +40,9 @@ Rectangle {
 
                     Text {
                         text: modelData.label
-                        font.family: Theme.fontFamily
+                        font.family: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber" && Theme.fontMonospace)
+                            ? Theme.fontMonospace
+                            : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
                         font.pixelSize: Theme.fontBodyMedium
                         font.weight: tabItem.isSelected ? Font.DemiBold : Font.Normal
                         color: tabItem.isSelected ? Colors.primary : Colors.m3onSurfaceVariant
@@ -54,7 +56,7 @@ Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: tabItem.isSelected ? parent.width : 0
                     height: 3
-                    radius: Theme.radiusFull
+                    radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, 2) : 2
                     color: Colors.primary
                     opacity: tabItem.isSelected ? 1.0 : 0.0
 

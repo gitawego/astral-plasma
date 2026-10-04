@@ -191,7 +191,10 @@
     "modelActivityEffect": true,
     "geminiMonthlyEnabled": true,
     "geminiMonthlyRemainingPercent": 85.0,
-    "geminiMonthlyResetDay": 1
+    "geminiMonthlyResetDay": 1,
+    "defaultAgent": "agy",
+    "terminal": "ghostty",
+    "themeSyncEnabled": true
   },
   "media": {
     "visualizerStyle": "radial"

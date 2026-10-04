@@ -1122,6 +1122,7 @@ Singleton {
             splitMarker: "\n"
             onRead: chunk => {
                 if (streamProc.discardOutput) return;   // cancelled: output is truncated
+                streamWatchdog.restart();                // any event proves the stream is alive
                 let line = chunk.trim();
                 if (!line) return;
                 try {
@@ -1546,17 +1547,24 @@ Singleton {
         root.crashesRevision++;
     }
 
+    // Idle timeout, not a wall-clock budget. An agent turn legitimately runs
+    // many tool calls over minutes; what signals a dead stream is silence.
+    // Every event from the stream re-arms this timer. The interval must
+    // outlast one slow silent tool run (the harness reports a tool when it
+    // starts, not while it runs).
     Timer {
         id: streamWatchdog
-        interval: 60000 // 60s timeout
+        interval: 180000 // 180s without any stream event
         repeat: false
         onTriggered: {
             if (root.isStreaming) {
-                console.warn("[AssistantService] Stream timed out after 60s. Forcing finalize.");
+                console.warn("[AssistantService] Stream silent for 180s. Forcing finalize.");
                 cancelProc(streamProc);
-                if (!root.activeStreamingContent) {
-                    root.activeStreamingContent = "⚠️ Request timed out. Please check your network connection or model settings.";
-                }
+                const notice = "⚠️ Request timed out: no response for 3 minutes. Check your network connection or model settings.";
+                root.activeStreamingContent = root.activeStreamingContent
+                    ? root.activeStreamingContent + "\n\n" + notice
+                    : notice;
+                root.updateAssistantStreamContent(root.activeStreamingContent);
                 root.finalizeAssistantTurn();
             }
         }

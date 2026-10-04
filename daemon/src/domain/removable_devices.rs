@@ -208,3 +208,30 @@ pub fn resolve_device_for_query<'a>(
 
     devices.first()
 }
+
+/// Strictly matches a device-connected notification against the attached
+/// removable *storage* devices.
+///
+/// Unlike [`resolve_device_for_query`] there is no fallback to the first
+/// device: a "USB Device Detected" notification for a mouse or keyboard names
+/// hardware with no block device, and must resolve to nothing so that no
+/// storage actions (open in file manager, safely remove) are offered for it.
+/// The kernel's block layer, not the notification wording, is the ground truth.
+pub fn match_storage_device_for_notification<'a>(
+    text: &str,
+    devices: &'a [RemovableDevice],
+) -> Option<&'a RemovableDevice> {
+    let q = text.trim().to_lowercase();
+    if q.is_empty() {
+        return None;
+    }
+    devices.iter().find(|dev| {
+        let named = |s: &str| {
+            let s = s.trim().to_lowercase();
+            !s.is_empty() && q.contains(&s)
+        };
+        dev.model.as_deref().is_some_and(named)
+            || named(&dev.device)
+            || dev.partitions.iter().any(|p| p.label.as_deref().is_some_and(named))
+    })
+}

@@ -32,6 +32,16 @@ Singleton {
         Quickshell.execDetached(["powerprofilesctl", "set", profile]);
     }
 
+    function cycleProfile() {
+        if (currentProfile === "power-saver") {
+            setProfile("balanced");
+        } else if (currentProfile === "balanced") {
+            setProfile("performance");
+        } else {
+            setProfile("power-saver");
+        }
+    }
+
     function lock() {
         Quickshell.execDetached(["loginctl", "lock-session"]);
     }

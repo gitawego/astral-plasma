@@ -165,7 +165,7 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     implicitWidth: settingsTipText.implicitWidth + 16
                     implicitHeight: settingsTipText.implicitHeight + 8
-                    radius: 6
+                    radius: (typeof Theme !== "undefined" && Theme.radiusExtraSmall !== undefined) ? Theme.radiusExtraSmall : 6
                     color: Colors.glassModalSurface
                     border.color: Colors.glassBorderSubtle
                     border.width: 1
@@ -261,7 +261,7 @@ Item {
                 id: tabSlidingIndicator
                 anchors.bottom: parent.bottom
                 height: 3
-                radius: 1.5
+                radius: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0 : 1.5
                 color: Colors.primary
 
                 // Position within the *rendered* bar: the indicator has to sit

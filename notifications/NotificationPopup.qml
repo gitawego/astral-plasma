@@ -71,7 +71,7 @@ Item {
     readonly property bool hasImageCover: effectiveCover.length > 0
 
     property real borderThickness: (typeof Config !== "undefined" && Config.borderThickness) ? Config.borderThickness : 14
-    property real borderRounding: (typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 20
+    property real borderRounding: (typeof Theme !== "undefined" && Theme.filletRounding !== undefined) ? Theme.filletRounding : ((typeof Config !== "undefined" && Config.borderRounding) ? Config.borderRounding : 20)
 
     property bool isDismissed: false
 
@@ -98,6 +98,7 @@ Item {
     readonly property alias fusedPanel: panel
     readonly property alias autoCloseTimer: autoCloseTimer
     readonly property alias cardItem: notifCard
+    readonly property alias iconBadgeItem: iconBadge
 
     signal closed()
     signal defaultActionInvoked()
@@ -185,7 +186,7 @@ Item {
             anchors.rightMargin: 8 + root.borderThickness
             anchors.topMargin: root.borderThickness + 2
             anchors.bottomMargin: 6
-            radius: 14
+            radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard !== undefined) ? Theme.radiusGlassCard : 14
             elevation: 4
             // No perimeter ring: the notification is a resting container, and its
             // full-bleed silhouette is already defined by the panel's own fused
@@ -226,11 +227,21 @@ Item {
                 width: root.hasImageCover ? 42 : 36
                 height: width
 
+                readonly property int badgeRadius: {
+                    if (typeof Theme !== "undefined" && Theme.isCyberpunk) {
+                        return 0; // Strictly square in Cyberpunk Neon
+                    }
+                    if (root.hasImageCover) {
+                        return width / 2;
+                    }
+                    return (typeof Theme !== "undefined" && Theme.radiusSmall !== undefined) ? Theme.radiusSmall : 10;
+                }
+
                 // Round / squircle mask geometry
                 Rectangle {
                     id: badgeCircleMask
                     anchors.fill: parent
-                    radius: root.hasImageCover ? (width / 2) : 10
+                    radius: iconBadge.badgeRadius
                     color: "white"
                     visible: false
                     layer.enabled: true
@@ -239,9 +250,11 @@ Item {
                 // Frosted glass icon plate
                 Rectangle {
                     anchors.fill: parent
-                    radius: root.hasImageCover ? (width / 2) : 10
+                    radius: iconBadge.badgeRadius
                     color: (typeof Colors !== "undefined" && Colors.glassCard) ? Colors.glassCard : Qt.rgba(1, 1, 1, 0.12)
-                    border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.25)
+                    border.color: (typeof Theme !== "undefined" && Theme.isCyberpunk)
+                        ? Colors.primary
+                        : ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.25))
                     border.width: 1
 
                     MaterialIcon {
@@ -266,9 +279,9 @@ Item {
                         asynchronous: true
                     }
 
-                    layer.enabled: true
+                    layer.enabled: iconBadge.badgeRadius > 0
                     layer.effect: MultiEffect {
-                        maskEnabled: true
+                        maskEnabled: iconBadge.badgeRadius > 0
                         maskSource: badgeCircleMask
                     }
                 }
@@ -276,10 +289,12 @@ Item {
                 // Specular border ring
                 Rectangle {
                     anchors.fill: parent
-                    radius: root.hasImageCover ? (width / 2) : 10
+                    radius: iconBadge.badgeRadius
                     color: "transparent"
-                    border.color: root.hasImageCover ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.4)) : Qt.rgba(1, 1, 1, 0.2)
-                    border.width: root.hasImageCover ? 1.5 : 1
+                    border.color: (typeof Theme !== "undefined" && Theme.isCyberpunk)
+                        ? Colors.primary
+                        : (root.hasImageCover ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.4)) : Qt.rgba(1, 1, 1, 0.2))
+                    border.width: (typeof Theme !== "undefined" && Theme.isCyberpunk) ? 1.0 : (root.hasImageCover ? 1.5 : 1)
                 }
             }
 
@@ -372,7 +387,7 @@ Item {
                         id: headerCloseBtn
                         width: 22
                         height: 22
-                        radius: 11
+                        radius: (typeof Theme !== "undefined" && Theme.radiusSmall !== undefined) ? Theme.radiusSmall : 11
                         color: closeBtnHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.glassCardHover) ? Colors.glassCardHover : Qt.rgba(1, 1, 1, 0.18)) : "transparent"
 
                         MaterialIcon {

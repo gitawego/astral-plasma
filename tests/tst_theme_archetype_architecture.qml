@@ -40,6 +40,17 @@ Item {
         text: "Test Action"
     }
 
+    PillButton {
+        id: samplePillButton
+        label: "Pill Action"
+    }
+
+    GlassPill {
+        id: sampleGlassPill
+        width: 100
+        height: 36
+    }
+
     Timer {
         interval: 50
         running: true
@@ -79,9 +90,14 @@ Item {
         assert(lgArchetype.radiusGlassModal === 32, "Liquid glass radiusGlassModal must be 32");
         assert(lgArchetype.radiusGlassCard === 18, "Liquid glass radiusGlassCard must be 18");
         assert(lgArchetype.radiusGlassItem === 12, "Liquid glass radiusGlassItem must be 12");
+        assert(lgArchetype.radiusGlassPill === 9999, "Liquid glass radiusGlassPill must be 9999");
         assert(lgArchetype.glassScaleBounce === 0.985, "Liquid glass glassScaleBounce must be 0.985");
         assert(lgArchetype.glassSpecularWidth === 1.0, "Liquid glass specular width must be 1.0");
         assert(lgArchetype.fontFamily.indexOf("Google Sans") !== -1, "Liquid glass font family must contain Google Sans");
+        assert(lgArchetype.mediaCircularCover === true, "Liquid glass mediaCircularCover must be true");
+        assert(lgArchetype.mediaOrbitalRing === true, "Liquid glass mediaOrbitalRing must be true");
+        assert(lgArchetype.mediaVinylSpin === true, "Liquid glass mediaVinylSpin must be true");
+        assert(lgArchetype.mediaCoverStyle === "circular", "Liquid glass mediaCoverStyle must be circular");
 
         // =====================================================================
         // 2. Built-in Archetype Conformance (Nordic Minimal)
@@ -95,8 +111,12 @@ Item {
         assert(nmArchetype.radiusLarge === 12, "Nordic minimal radiusLarge must be 12");
         assert(nmArchetype.radiusGlassModal === 12, "Nordic minimal radiusGlassModal must be 12");
         assert(nmArchetype.radiusGlassCard === 6, "Nordic minimal radiusGlassCard must be 6");
+        assert(nmArchetype.radiusGlassPill === 6, "Nordic minimal radiusGlassPill must be 6");
         assert(nmArchetype.glassScaleBounce === 1.0, "Nordic minimal scale bounce must be 1.0 (flat)");
         assert(nmArchetype.fontFamily.indexOf("Inter") !== -1, "Nordic minimal font must contain Inter");
+        assert(nmArchetype.mediaCircularCover === true, "Nordic minimal mediaCircularCover must be true");
+        assert(nmArchetype.mediaOrbitalRing === true, "Nordic minimal mediaOrbitalRing must be true");
+        assert(nmArchetype.mediaVinylSpin === true, "Nordic minimal mediaVinylSpin must be true");
 
         // =====================================================================
         // 3. Built-in Archetype Conformance (Cyberpunk Neon)
@@ -104,13 +124,23 @@ Item {
         assert(cpArchetype.archetypeId === "cyberpunk_neon", "cpArchetype.archetypeId must be 'cyberpunk_neon'");
         assert(cpArchetype.name === "Cyberpunk Neon", "cpArchetype name must be 'Cyberpunk Neon'");
         assert(cpArchetype.surfaceStyle === "neon_cyber", "Cyberpunk neon surfaceStyle must be 'neon_cyber'");
-        assert(cpArchetype.specularEnabled === true, "Cyberpunk neon specularEnabled must be true");
-        assert(cpArchetype.glassCausticIntensity === 0.18, "Cyberpunk neon glassCausticIntensity must be 0.18");
-        assert(cpArchetype.glassBorderWidth === 1.5, "Cyberpunk neon glassBorderWidth must be 1.5");
-        assert(cpArchetype.radiusLarge === 4, "Cyberpunk neon radiusLarge must be 4");
-        assert(cpArchetype.radiusGlassModal === 6, "Cyberpunk neon radiusGlassModal must be 6");
-        assert(cpArchetype.radiusGlassCard === 2, "Cyberpunk neon radiusGlassCard must be 2");
+        assert(cpArchetype.specularEnabled === false, "Cyberpunk neon specularEnabled must be false (no glare domes)");
+        assert(cpArchetype.causticEnabled === false, "Cyberpunk neon causticEnabled must be false");
+        assert(cpArchetype.glassCausticIntensity === 0.0, "Cyberpunk neon glassCausticIntensity must be 0.0");
+        assert(cpArchetype.glassBorderWidth === 1.0, "Cyberpunk neon glassBorderWidth must be 1.0");
+        assert(cpArchetype.radiusLarge === 0, "Cyberpunk neon radiusLarge must be 0 (sharp rectangular)");
+        assert(cpArchetype.radiusGlassModal === 0, "Cyberpunk neon radiusGlassModal must be 0");
+        assert(cpArchetype.radiusGlassCard === 0, "Cyberpunk neon radiusGlassCard must be 0");
+        assert(cpArchetype.radiusGlassPill === 0, "Cyberpunk neon radiusGlassPill must be 0");
+        assert(cpArchetype.filletRounding === 0, "Cyberpunk neon filletRounding must be 0");
         assert(cpArchetype.fontFamily.indexOf("JetBrains Mono") !== -1, "Cyberpunk neon font must be JetBrains Mono");
+        assert(cpArchetype.mediaCircularCover === true, "Cyberpunk neon mediaCircularCover must be true (circular cover with cyber radial visualizer)");
+        assert(cpArchetype.mediaOrbitalRing === true, "Cyberpunk neon mediaOrbitalRing must be true (cyber radial spectrum ring)");
+        assert(cpArchetype.mediaVinylSpin === false, "Cyberpunk neon mediaVinylSpin must be false (zero vinyl spinning)");
+        assert(cpArchetype.mediaCoverStyle === "cyber_radial", "Cyberpunk neon mediaCoverStyle must be 'cyber_radial'");
+        assert(lgArchetype.filletRounding === 20, "Liquid glass filletRounding must be 20");
+        assert(nmArchetype.filletRounding === 6, "Nordic minimal filletRounding must be 6");
+
 
         // =====================================================================
         // 4. Custom 3rd-Party Archetype Extensibility Contract
@@ -168,6 +198,8 @@ Item {
         const configSrc = readLocalFile("../config/Config.qml");
         assert(/themeArchetype/.test(configSrc), "Config.qml must expose themeArchetype");
         assert(/function\s+setThemeArchetype/.test(configSrc), "Config.qml must provide setThemeArchetype helper");
+        assert(/function\s+updateSetting\s*\(/.test(configSrc), "Config.qml must provide updateSetting helper");
+        assert(/cfg\.theme\.archetype\s*=\s*archetypeId/.test(configSrc), "Config.qml setThemeArchetype must write archetype to settings");
 
         const settingsJson = readLocalFile("../config/settings.json");
         assert(/"archetype"\s*:\s*"liquid_glass"/.test(settingsJson), 
@@ -180,6 +212,10 @@ Item {
         assert(sampleCard.showCaustic !== undefined, "Sample card must expose showCaustic property");
         assert(sampleButton.showSpecular !== undefined, "Sample button must expose showSpecular property");
         assert(sampleButton.showCaustic !== undefined, "Sample button must expose showCaustic property");
+        assert(samplePillButton.radius !== undefined, "samplePillButton must expose radius");
+        assert(samplePillButton.showShadow !== undefined, "samplePillButton must expose showShadow");
+        assert(sampleGlassPill.radius !== undefined, "sampleGlassPill must expose radius");
+        assert(sampleGlassPill.showShadow !== undefined, "sampleGlassPill must expose showShadow");
 
         console.log("PASS: All Theme Archetype Architecture & Modularity Tests Passed!");
         Qt.exit(0);

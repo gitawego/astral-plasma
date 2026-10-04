@@ -20,6 +20,9 @@ QtObject {
     property int radiusSmall: 10
     property int radiusExtraSmall: 6
 
+    // Frame and Shell Fillet Radii (0 in Cyberpunk, 6 in Nordic, 20 in Liquid Glass)
+    property int filletRounding: 20
+
     // Liquid Glass / Modal Radii
     property int radiusGlassModal: 32
     property int radiusGlassCard: 18
@@ -94,6 +97,10 @@ QtObject {
         }
     })
 
+    // Archetype-driven palette overrides (optional, e.g. for cyberpunk OLED black & neon cyan)
+    property var paletteDark: null
+    property var paletteLight: null
+
     // =========================================================================
     // 3. Motion & Physics Tokens
     // =========================================================================
@@ -143,4 +150,13 @@ QtObject {
     property int fontBodyMedium: 15
     property int fontBodySmall: 13
     property int fontLabelSmall: 12
+
+    // =========================================================================
+    // 5. Media & Visualizer Presentation Tokens
+    // =========================================================================
+    property bool mediaCircularCover: true
+    property bool mediaOrbitalRing: true
+    property bool mediaVinylSpin: true
+    property string mediaCoverStyle: "circular"
 }
+

@@ -58,14 +58,18 @@ Item {
         }
     }
 
+    readonly property bool isCyberpunk: (typeof Theme !== "undefined" && Theme.isCyberpunk)
+
     // Inner Liquid Glass Substrate Card Layer (Elevated frosted glass plate behind sliders)
     LiquidGlassCard {
         id: sliderCard
         anchors.centerIn: parent
         width: 48
         height: 256
-        radius: 24
-        elevation: 4
+        radius: root.isCyberpunk ? 0 : 24
+        elevation: root.isCyberpunk ? 0 : 4
+        border.color: root.isCyberpunk ? Colors.primary : Colors.glassBorderSpecular
+        border.width: 1
     }
 
     Column {
@@ -87,22 +91,27 @@ Item {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.horizontalCenter: parent.horizontalCenter
-                radius: 6
+                radius: root.isCyberpunk ? 0 : 6
                 clip: true
 
                 // Recessed frosted groove trough background
-                color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.rgba(0.0, 0.0, 0.0, 0.42)
-                    : Qt.rgba(0.0, 0.0, 0.0, 0.12)
+                color: root.isCyberpunk
+                    ? Qt.rgba(0.01, 0.01, 0.03, 0.90)
+                    : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+                        ? Qt.rgba(0.0, 0.0, 0.0, 0.42)
+                        : Qt.rgba(0.0, 0.0, 0.0, 0.12))
                 border.width: 1
-                border.color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.rgba(1.0, 1.0, 1.0, 0.10)
-                    : Qt.rgba(1.0, 1.0, 1.0, 0.28)
+                border.color: root.isCyberpunk
+                    ? Qt.alpha(Colors.primary, 0.40)
+                    : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+                        ? Qt.rgba(1.0, 1.0, 1.0, 0.10)
+                        : Qt.rgba(1.0, 1.0, 1.0, 0.28))
 
                 // Groove depth shading
                 Rectangle {
                     anchors.fill: parent
                     radius: parent.radius
+                    visible: !root.isCyberpunk
                     color: "transparent"
                     gradient: Gradient {
                         GradientStop {
@@ -128,19 +137,22 @@ Item {
                         if (root.isMuted || root.currentVolume <= 0.005) return 0;
                         return Math.max(0, volumeSlider.height - (volumeKnob.y + volumeKnob.height / 2));
                     }
-                    radius: 6
+                    radius: root.isCyberpunk ? 0 : 6
 
-                    gradient: Gradient {
+                    color: root.isCyberpunk ? (root.isMuted ? Colors.outline : Colors.primary) : "transparent"
+
+                    gradient: root.isCyberpunk ? null : volumeGradient
+
+                    Gradient {
+                        id: volumeGradient
                         GradientStop {
                             position: 0.0
-                            // Glowing liquid meniscus highlight at the top
                             color: root.isMuted
                                 ? (typeof Colors !== "undefined" && Colors.outline ? Qt.alpha(Colors.outline, 0.45) : Qt.rgba(0.6, 0.6, 0.6, 0.45))
                                 : Qt.tint(root.activePrimary, Qt.rgba(1.0, 1.0, 1.0, 0.35))
                         }
                         GradientStop {
                             position: 1.0
-                            // Rich liquid volume base at the bottom
                             color: root.isMuted
                                 ? (typeof Colors !== "undefined" && Colors.outline ? Qt.alpha(Colors.outline, 0.20) : Qt.rgba(0.5, 0.5, 0.5, 0.20))
                                 : Qt.alpha(root.activePrimary, 0.85)
@@ -149,12 +161,12 @@ Item {
                 }
             }
 
-            // Floating Circular Liquid Glass Disc Controller (Diameter: 34px)
+            // Floating Disc/Block Controller (Diameter: 34px)
             Rectangle {
                 id: volumeKnob
                 width: 34
                 height: 34
-                radius: 17
+                radius: root.isCyberpunk ? 0 : 17
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: {
                     const v = Math.min(1.0, Math.max(0.0, root.currentVolume));
@@ -184,17 +196,30 @@ Item {
                     }
                 }
 
-                // Base foundation to cleanly occlude underlying track seam while preserving frosted glass aesthetics
+                // Base foundation to cleanly occlude underlying track seam in Liquid Glass
                 Rectangle {
                     anchors.fill: parent
                     radius: parent.radius
+                    visible: !root.isCyberpunk
                     color: (typeof Colors !== "undefined" && Colors.isDarkMode)
                         ? Qt.rgba(0.13, 0.14, 0.17, 0.96)
                         : Qt.rgba(0.95, 0.95, 0.97, 0.96)
                 }
 
-                // Crystalline translucent glass disc substrate tint
+                // High-contrast plate substrate tint
                 color: {
+                    if (root.isCyberpunk) {
+                        if (root.isMuted) {
+                            return isDragging ? Qt.rgba(0.20, 0.08, 0.10, 0.98) : (isHovered ? Qt.rgba(0.16, 0.07, 0.09, 0.98) : Qt.rgba(0.12, 0.05, 0.07, 0.96));
+                        }
+                        if (isDragging) {
+                            return Qt.rgba(0.12, 0.24, 0.34, 1.0);
+                        }
+                        if (isHovered) {
+                            return Qt.rgba(0.09, 0.18, 0.26, 1.0);
+                        }
+                        return Qt.rgba(0.06, 0.12, 0.18, 0.98);
+                    }
                     if (root.isMuted) {
                         return (typeof Colors !== "undefined" && Colors.isDarkMode)
                             ? Qt.rgba(0.20, 0.20, 0.22, 0.60)
@@ -209,9 +234,13 @@ Item {
                     return Qt.alpha(root.activePrimary, 0.18);
                 }
 
-                // Specular perimeter ring
-                border.width: 1
+                // Specular / laser perimeter ring
+                border.width: root.isCyberpunk ? 1.5 : 1
                 border.color: {
+                    if (root.isCyberpunk) {
+                        if (root.isMuted) return Colors.outline;
+                        return Colors.primary;
+                    }
                     if (isDragging) return Qt.rgba(1.0, 1.0, 1.0, 0.90);
                     if (isHovered) return Qt.rgba(1.0, 1.0, 1.0, 0.70);
                     return (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1.0, 1.0, 1.0, 0.45) : Qt.rgba(1.0, 1.0, 1.0, 0.75);
@@ -220,10 +249,22 @@ Item {
                 Behavior on color { ColorAnimation { duration: 150 } }
                 Behavior on border.color { ColorAnimation { duration: 150 } }
 
+                // Dedicated topmost glowing laser perimeter ring (guarantees border visibility)
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    color: "transparent"
+                    z: 5
+                    border.width: root.isCyberpunk ? 1.5 : 1
+                    border.color: parent.border.color
+                    visible: root.isCyberpunk
+                }
+
                 // Optical glass lens refraction cushion
                 Rectangle {
                     anchors.fill: parent
                     radius: parent.radius
+                    visible: !root.isCyberpunk
                     color: "transparent"
                     gradient: Gradient {
                         GradientStop {
@@ -241,11 +282,10 @@ Item {
                     }
                 }
 
-
-                // Floating glass elevation drop shadow
-                layer.enabled: true
+                // Floating glass elevation drop shadow (disabled in Cyberpunk to prevent subpixel text fringing)
+                layer.enabled: !root.isCyberpunk
                 layer.effect: MultiEffect {
-                    shadowEnabled: true
+                    shadowEnabled: !root.isCyberpunk
                     shadowBlur: volumeKnob.isDragging ? 0.55 : (volumeKnob.isHovered ? 0.45 : 0.35)
                     shadowVerticalOffset: volumeKnob.isDragging ? 2.5 : 1.5
                     shadowHorizontalOffset: 0
@@ -255,9 +295,15 @@ Item {
                 // Centered Volume Glyphs
                 MaterialIcon {
                     anchors.centerIn: parent
+                    z: 6
                     text: root.volumeIcon
                     size: 17
                     color: {
+                        if (root.isCyberpunk) {
+                            if (root.isMuted) return Colors.outline;
+                            if (volumeKnob.isDragging || volumeKnob.isHovered) return "#FFFFFF";
+                            return Colors.primary;
+                        }
                         if (root.isMuted) return (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : "#888888";
                         if (typeof Colors !== "undefined" && Colors.isDarkMode) return "#FFFFFF";
                         return (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#111111";
@@ -349,22 +395,27 @@ Item {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.horizontalCenter: parent.horizontalCenter
-                radius: 6
+                radius: root.isCyberpunk ? 0 : 6
                 clip: true
 
                 // Recessed frosted groove trough background
-                color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.rgba(0.0, 0.0, 0.0, 0.42)
-                    : Qt.rgba(0.0, 0.0, 0.0, 0.12)
+                color: root.isCyberpunk
+                    ? Qt.rgba(0.01, 0.01, 0.03, 0.90)
+                    : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+                        ? Qt.rgba(0.0, 0.0, 0.0, 0.42)
+                        : Qt.rgba(0.0, 0.0, 0.0, 0.12))
                 border.width: 1
-                border.color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                    ? Qt.rgba(1.0, 1.0, 1.0, 0.10)
-                    : Qt.rgba(1.0, 1.0, 1.0, 0.28)
+                border.color: root.isCyberpunk
+                    ? Qt.alpha(Colors.primary, 0.40)
+                    : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+                        ? Qt.rgba(1.0, 1.0, 1.0, 0.10)
+                        : Qt.rgba(1.0, 1.0, 1.0, 0.28))
 
                 // Groove depth shading
                 Rectangle {
                     anchors.fill: parent
                     radius: parent.radius
+                    visible: !root.isCyberpunk
                     color: "transparent"
                     gradient: Gradient {
                         GradientStop {
@@ -387,9 +438,14 @@ Item {
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
                     height: Math.max(0, brightnessSlider.height - (brightnessKnob.y + brightnessKnob.height / 2))
-                    radius: 6
+                    radius: root.isCyberpunk ? 0 : 6
 
-                    gradient: Gradient {
+                    color: root.isCyberpunk ? Colors.primary : "transparent"
+
+                    gradient: root.isCyberpunk ? null : brightnessGradient
+
+                    Gradient {
+                        id: brightnessGradient
                         GradientStop {
                             position: 0.0
                             // Radiant warm meniscus highlight
@@ -404,12 +460,12 @@ Item {
                 }
             }
 
-            // Floating Circular Liquid Glass Disc Controller (Diameter: 34px)
+            // Floating Disc/Block Controller (Diameter: 34px)
             Rectangle {
                 id: brightnessKnob
                 width: 34
                 height: 34
-                radius: 17
+                radius: root.isCyberpunk ? 0 : 17
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: {
                     const b = Math.min(1.0, Math.max(0.0, root.currentBrightness));
@@ -439,17 +495,27 @@ Item {
                     }
                 }
 
-                // Base foundation to cleanly occlude underlying track seam while preserving frosted glass aesthetics
+                // Base foundation to cleanly occlude underlying track seam in Liquid Glass
                 Rectangle {
                     anchors.fill: parent
                     radius: parent.radius
+                    visible: !root.isCyberpunk
                     color: (typeof Colors !== "undefined" && Colors.isDarkMode)
                         ? Qt.rgba(0.13, 0.14, 0.17, 0.96)
                         : Qt.rgba(0.95, 0.95, 0.97, 0.96)
                 }
 
-                // Crystalline translucent glass disc substrate tint
+                // High-contrast plate substrate tint
                 color: {
+                    if (root.isCyberpunk) {
+                        if (isDragging) {
+                            return Qt.rgba(0.12, 0.24, 0.34, 1.0);
+                        }
+                        if (isHovered) {
+                            return Qt.rgba(0.09, 0.18, 0.26, 1.0);
+                        }
+                        return Qt.rgba(0.06, 0.12, 0.18, 0.98);
+                    }
                     if (isDragging) {
                         return Qt.alpha(root.activePrimary, 0.40);
                     }
@@ -459,9 +525,12 @@ Item {
                     return Qt.alpha(root.activePrimary, 0.18);
                 }
 
-                // Specular perimeter ring
-                border.width: 1
+                // Specular / laser perimeter ring
+                border.width: root.isCyberpunk ? 1.5 : 1
                 border.color: {
+                    if (root.isCyberpunk) {
+                        return Colors.primary;
+                    }
                     if (isDragging) return Qt.rgba(1.0, 1.0, 1.0, 0.90);
                     if (isHovered) return Qt.rgba(1.0, 1.0, 1.0, 0.70);
                     return (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1.0, 1.0, 1.0, 0.45) : Qt.rgba(1.0, 1.0, 1.0, 0.75);
@@ -470,10 +539,22 @@ Item {
                 Behavior on color { ColorAnimation { duration: 150 } }
                 Behavior on border.color { ColorAnimation { duration: 150 } }
 
+                // Dedicated topmost glowing laser perimeter ring (guarantees border visibility)
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    color: "transparent"
+                    z: 5
+                    border.width: root.isCyberpunk ? 1.5 : 1
+                    border.color: parent.border.color
+                    visible: root.isCyberpunk
+                }
+
                 // Optical glass lens refraction cushion
                 Rectangle {
                     anchors.fill: parent
                     radius: parent.radius
+                    visible: !root.isCyberpunk
                     color: "transparent"
                     gradient: Gradient {
                         GradientStop {
@@ -491,11 +572,10 @@ Item {
                     }
                 }
 
-
-                // Floating glass elevation drop shadow
-                layer.enabled: true
+                // Floating glass elevation drop shadow (disabled in Cyberpunk to prevent subpixel text fringing)
+                layer.enabled: !root.isCyberpunk
                 layer.effect: MultiEffect {
-                    shadowEnabled: true
+                    shadowEnabled: !root.isCyberpunk
                     shadowBlur: brightnessKnob.isDragging ? 0.55 : (brightnessKnob.isHovered ? 0.45 : 0.35)
                     shadowVerticalOffset: brightnessKnob.isDragging ? 2.5 : 1.5
                     shadowHorizontalOffset: 0
@@ -505,9 +585,17 @@ Item {
                 // Centered Brightness Glyph
                 MaterialIcon {
                     anchors.centerIn: parent
+                    z: 6
                     text: "brightness"
                     size: 17
-                    color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? "#FFFFFF" : ((typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#111111")
+                    color: {
+                        if (root.isCyberpunk) {
+                            if (brightnessKnob.isDragging || brightnessKnob.isHovered) return "#FFFFFF";
+                            return Colors.primary;
+                        }
+                        if (typeof Colors !== "undefined" && Colors.isDarkMode) return "#FFFFFF";
+                        return (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : "#111111";
+                    }
                 }
             }
 

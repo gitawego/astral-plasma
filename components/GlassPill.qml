@@ -32,13 +32,17 @@ Item {
         ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.6))
         : (root.hovered ? ((typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.6)) : ((typeof Colors !== "undefined" && Colors.glassBorderSubtle) ? Colors.glassBorderSubtle : Qt.rgba(1, 1, 1, 0.12)))
 
-    property real borderWidth: root.active ? 1.2 : 1.0
+    property real borderWidth: root.active 
+        ? ((typeof Theme !== "undefined" && Theme.glassBorderWidth) ? Math.max(1.2, Theme.glassBorderWidth) : 1.2) 
+        : ((typeof Theme !== "undefined" && Theme.glassBorderWidth) ? Theme.glassBorderWidth : 1.0)
     property int paddingHorizontal: 16
     property int paddingVertical: 8
-    property int radius: height / 2
+    property int radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) 
+        ? Math.min(Theme.radiusGlassPill, Math.round(height / 2)) 
+        : Math.round(height / 2)
 
     // Liquid Glass Elevation
-    property bool showShadow: true
+    property bool showShadow: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true
     property real elevation: 5
 
     default property alias content: contentContainer.data

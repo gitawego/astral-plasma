@@ -229,6 +229,10 @@ pub async fn run_cli() -> DynResult<()> {
                     let devices = adapter.list_devices()?;
                     println!("{}", serde_json::to_string(&devices)?);
                 }
+                "match" => {
+                    let matched = adapter.match_storage(target.unwrap_or(""))?;
+                    println!("{}", serde_json::to_string(&matched)?);
+                }
                 "mount-open" | "open" => {
                     let mp = adapter.mount_and_open(target)?;
                     println!(r#"{{"success":true,"mountpoint":"{}"}}"#, mp);
@@ -237,7 +241,7 @@ pub async fn run_cli() -> DynResult<()> {
                     adapter.safely_remove(target)?;
                     println!(r#"{{"success":true}}"#);
                 }
-                _ => eprintln!("Usage: astral-plasma device <list|mount-open|eject> [target]"),
+                _ => eprintln!("Usage: astral-plasma device <list|match|mount-open|eject> [target]"),
             }
         }
         "visualizer" | "audio-vis" => {

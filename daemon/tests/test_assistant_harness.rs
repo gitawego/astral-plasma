@@ -238,11 +238,15 @@ fn test_parses_the_real_pi_1_0_json_stream() {
 // which one is there after, and the output when something went wrong.
 use astral_plasma::application::assistant_service::{pi_update_argv, PiUpdateTarget};
 
+static FAKE_PI_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// A fake pi whose `--version` reads a file and whose `update …` rewrites it.
 fn fake_updatable_pi(before: &str, after: &str, update_exit: i32) -> (PathBuf, PathBuf) {
+    let seq = FAKE_PI_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
-        "astral-pi-update-{}-{}-{}-{}",
+        "astral-pi-update-{}-{}-{}-{}-{}",
         std::process::id(),
+        seq,
         before.replace('.', "_"),
         after.replace('.', "_"),
         update_exit
@@ -251,16 +255,19 @@ fn fake_updatable_pi(before: &str, after: &str, update_exit: i32) -> (PathBuf, P
     let version_file = dir.join("version");
     std::fs::write(&version_file, format!("{before}\n")).expect("write version");
     let bin = dir.join("pi");
-    std::fs::write(
-        &bin,
-        format!(
-            "#!/bin/sh\nVF=\"{}\"\nif [ \"$1\" = \"--version\" ]; then cat \"$VF\"; exit 0; fi\nif [ \"$1\" = \"update\" ]; then echo \"updating {}\"; echo \"{after}\" > \"$VF\"; exit {}; fi\nif [ \"$1\" = \"mcp\" ]; then exit 0; fi\nexit 0\n",
-            version_file.display(),
-            if update_exit == 0 { "packages" } else { "failed" },
-            update_exit
-        ),
-    )
-    .expect("write fake pi");
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&bin).expect("create fake pi");
+        file.write_all(
+            format!(
+                "#!/bin/sh\nVF=\"{}\"\nif [ \"$1\" = \"--version\" ]; then cat \"$VF\"; exit 0; fi\nif [ \"$1\" = \"update\" ]; then echo \"updating {}\"; echo \"{after}\" > \"$VF\"; exit {}; fi\nif [ \"$1\" = \"mcp\" ]; then exit 0; fi\nexit 0\n",
+                version_file.display(),
+                if update_exit == 0 { "packages" } else { "failed" },
+                update_exit
+            ).as_bytes()
+        ).expect("write fake pi content");
+        file.sync_all().ok();
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

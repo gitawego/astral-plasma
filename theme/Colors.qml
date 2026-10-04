@@ -224,6 +224,363 @@ Singleton {
                 on_surface_variant: "#2D352D",
                 glassTint: "#1E6B42"
             }
+        },
+        "catppuccin": {
+            name: "Catppuccin",
+            dark: {
+                primary: "#CBA6F7",
+                on_primary: "#11111B",
+                primary_container: "#45475A",
+                on_primary_container: "#F5E0DC",
+                secondary: "#89B4FA",
+                on_secondary: "#181825",
+                secondary_container: "#313244",
+                on_secondary_container: "#CDD6F4",
+                tertiary: "#F5C2E7",
+                on_tertiary: "#11111B",
+                tertiary_container: "#585B70",
+                on_tertiary_container: "#F5E0DC",
+                surface: "#181825",
+                surface_container: "#1E1E2E",
+                surface_container_high: "#313244",
+                surface_container_lowest: "#11111B",
+                surface_variant: "#45475A",
+                outline: "#6C7086",
+                outline_variant: "#45475A",
+                on_surface: "#F2EFFB",
+                on_surface_variant: "#E4E1F0",
+                glassTint: "#CBA6F7"
+            },
+            light: {
+                primary: "#8839EF",
+                on_primary: "#FFFFFF",
+                primary_container: "#EA76CB",
+                on_primary_container: "#30005B",
+                secondary: "#1E66F5",
+                on_secondary: "#FFFFFF",
+                secondary_container: "#CCD0DA",
+                on_secondary_container: "#1E1E2E",
+                tertiary: "#EA76CB",
+                on_tertiary: "#FFFFFF",
+                tertiary_container: "#E6E9EF",
+                on_tertiary_container: "#4C4F69",
+                surface: "#EFF1F5",
+                surface_container: "#E6E9EF",
+                surface_container_high: "#DCE0E8",
+                surface_container_lowest: "#FFFFFF",
+                surface_variant: "#CCD0DA",
+                outline: "#9CA0B0",
+                outline_variant: "#BCC0CC",
+                on_surface: "#1E1F29",
+                on_surface_variant: "#303242",
+                glassTint: "#8839EF"
+            }
+        },
+        "tokyo-night": {
+            name: "Tokyo Night",
+            dark: {
+                primary: "#7AA2F7",
+                on_primary: "#15161E",
+                primary_container: "#283457",
+                on_primary_container: "#C0CAF5",
+                secondary: "#BB9AF7",
+                on_secondary: "#1A1B26",
+                secondary_container: "#3D3857",
+                on_secondary_container: "#E0AF68",
+                tertiary: "#7DCFFF",
+                on_tertiary: "#15161E",
+                tertiary_container: "#23405C",
+                on_tertiary_container: "#B4F9F8",
+                surface: "#16161E",
+                surface_container: "#1A1B26",
+                surface_container_high: "#24283B",
+                surface_container_lowest: "#101014",
+                surface_variant: "#292E42",
+                outline: "#565F89",
+                outline_variant: "#414868",
+                on_surface: "#EDF1FF",
+                on_surface_variant: "#DFE4F7",
+                glassTint: "#7AA2F7"
+            },
+            light: {
+                primary: "#34548A",
+                on_primary: "#FFFFFF",
+                primary_container: "#CFD8DC",
+                on_primary_container: "#0F1A2C",
+                secondary: "#5A4A78",
+                on_secondary: "#FFFFFF",
+                secondary_container: "#E0DBE8",
+                on_secondary_container: "#1F1530",
+                tertiary: "#0F4B6E",
+                on_tertiary: "#FFFFFF",
+                tertiary_container: "#CCE6F4",
+                on_tertiary_container: "#001D2E",
+                surface: "#F2F3F7",
+                surface_container: "#E6E8EF",
+                surface_container_high: "#DCDEE7",
+                surface_container_lowest: "#FFFFFF",
+                surface_variant: "#D0D3DF",
+                outline: "#6E738D",
+                outline_variant: "#B5B8C8",
+                on_surface: "#181B26",
+                on_surface_variant: "#282D3D",
+                glassTint: "#34548A"
+            }
+        },
+        "nord": {
+            name: "Nord",
+            dark: {
+                primary: "#88C0D0",
+                on_primary: "#2E3440",
+                primary_container: "#434C5E",
+                on_primary_container: "#ECEFF4",
+                secondary: "#81A1C1",
+                on_secondary: "#2E3440",
+                secondary_container: "#3B4252",
+                on_secondary_container: "#D8DEE9",
+                tertiary: "#B48EAD",
+                on_tertiary: "#2E3440",
+                tertiary_container: "#4C3E49",
+                on_tertiary_container: "#E5E9F0",
+                surface: "#242933",
+                surface_container: "#2E3440",
+                surface_container_high: "#3B4252",
+                surface_container_lowest: "#1E222A",
+                surface_variant: "#434C5E",
+                outline: "#6A778D",
+                outline_variant: "#4C566A",
+                on_surface: "#ECEFF4",
+                on_surface_variant: "#E1E7F2",
+                glassTint: "#88C0D0"
+            },
+            light: {
+                primary: "#5E81AC",
+                on_primary: "#FFFFFF",
+                primary_container: "#D8DEE9",
+                on_primary_container: "#1E2A38",
+                secondary: "#81A1C1",
+                on_secondary: "#FFFFFF",
+                secondary_container: "#E5E9F0",
+                on_secondary_container: "#2E3440",
+                tertiary: "#B48EAD",
+                on_tertiary: "#FFFFFF",
+                tertiary_container: "#EFE5EC",
+                on_tertiary_container: "#3A2836",
+                surface: "#ECEFF4",
+                surface_container: "#E5E9F0",
+                surface_container_high: "#D8DEE9",
+                surface_container_lowest: "#FFFFFF",
+                surface_variant: "#CCD3E0",
+                outline: "#768296",
+                outline_variant: "#B8C1D1",
+                on_surface: "#191D26",
+                on_surface_variant: "#29303D",
+                glassTint: "#5E81AC"
+            }
+        },
+        "everforest": {
+            name: "Everforest",
+            dark: {
+                primary: "#A7C080",
+                on_primary: "#1E2326",
+                primary_container: "#374137",
+                on_primary_container: "#D3C6AA",
+                secondary: "#83C092",
+                on_secondary: "#1E2326",
+                secondary_container: "#323F36",
+                on_secondary_container: "#D3C6AA",
+                tertiary: "#DBBC7F",
+                on_tertiary: "#1E2326",
+                tertiary_container: "#463E2D",
+                on_tertiary_container: "#E69875",
+                surface: "#1E2326",
+                surface_container: "#272E33",
+                surface_container_high: "#2E383C",
+                surface_container_lowest: "#14171A",
+                surface_variant: "#414B50",
+                outline: "#7A8478",
+                outline_variant: "#4F5B58",
+                on_surface: "#ECE7DA",
+                on_surface_variant: "#E3E8DC",
+                glassTint: "#A7C080"
+            },
+            light: {
+                primary: "#4F704A",
+                on_primary: "#FFFFFF",
+                primary_container: "#D2E5CE",
+                on_primary_container: "#12250F",
+                secondary: "#496F57",
+                on_secondary: "#FFFFFF",
+                secondary_container: "#D0E4D7",
+                on_secondary_container: "#0E2416",
+                tertiary: "#7B622B",
+                on_tertiary: "#FFFFFF",
+                tertiary_container: "#F5E7C4",
+                on_tertiary_container: "#2B1E03",
+                surface: "#FDF6E3",
+                surface_container: "#F4EED8",
+                surface_container_high: "#EAE3CE",
+                surface_container_lowest: "#FFFFFF",
+                surface_variant: "#E0D7C2",
+                outline: "#757B70",
+                outline_variant: "#C2BBA8",
+                on_surface: "#1A2219",
+                on_surface_variant: "#283327",
+                glassTint: "#4F704A"
+            }
+        },
+        "gruvbox": {
+            name: "Gruvbox",
+            dark: {
+                primary: "#FABD2F",
+                on_primary: "#1D2021",
+                primary_container: "#504945",
+                on_primary_container: "#EBDBB2",
+                secondary: "#8EC07C",
+                on_secondary: "#1D2021",
+                secondary_container: "#3C3836",
+                on_secondary_container: "#EBDBB2",
+                tertiary: "#FE8019",
+                on_tertiary: "#1D2021",
+                tertiary_container: "#665C54",
+                on_tertiary_container: "#FB4934",
+                surface: "#1D2021",
+                surface_container: "#282828",
+                surface_container_high: "#3C3836",
+                surface_container_lowest: "#141617",
+                surface_variant: "#504945",
+                outline: "#928374",
+                outline_variant: "#665C54",
+                on_surface: "#F6ECCB",
+                on_surface_variant: "#EBE5CC",
+                glassTint: "#FABD2F"
+            },
+            light: {
+                primary: "#B57614",
+                on_primary: "#FFFFFF",
+                primary_container: "#F5DDB3",
+                on_primary_container: "#3D2500",
+                secondary: "#427B58",
+                on_secondary: "#FFFFFF",
+                secondary_container: "#D2E9D9",
+                on_secondary_container: "#082813",
+                tertiary: "#AF3A03",
+                on_tertiary: "#FFFFFF",
+                tertiary_container: "#FFDAC8",
+                on_tertiary_container: "#3B0E00",
+                surface: "#FBF1C7",
+                surface_container: "#F2E5BC",
+                surface_container_high: "#EBDBB2",
+                surface_container_lowest: "#FFFFFF",
+                surface_variant: "#D5C4A1",
+                outline: "#7C6F64",
+                outline_variant: "#BDAE93",
+                on_surface: "#241C16",
+                on_surface_variant: "#332921",
+                glassTint: "#B57614"
+            }
+        },
+        "rose-pine": {
+            name: "Rosé Pine",
+            dark: {
+                primary: "#EBBCBA",
+                on_primary: "#191724",
+                primary_container: "#3A354E",
+                on_primary_container: "#E0DEF4",
+                secondary: "#9CCFD8",
+                on_secondary: "#191724",
+                secondary_container: "#2B3C46",
+                on_secondary_container: "#E0DEF4",
+                tertiary: "#C4A7E7",
+                on_tertiary: "#191724",
+                tertiary_container: "#3B324D",
+                on_tertiary_container: "#EB6F92",
+                surface: "#14121E",
+                surface_container: "#191724",
+                surface_container_high: "#26233A",
+                surface_container_lowest: "#0F0D17",
+                surface_variant: "#403D52",
+                outline: "#847E97",
+                outline_variant: "#524F67",
+                on_surface: "#F4F0FF",
+                on_surface_variant: "#E6E2F2",
+                glassTint: "#EBBCBA"
+            },
+            light: {
+                primary: "#D7827E",
+                on_primary: "#FFFFFF",
+                primary_container: "#F6DDD9",
+                on_primary_container: "#461816",
+                secondary: "#56949F",
+                on_secondary: "#FFFFFF",
+                secondary_container: "#D7EAF0",
+                on_secondary_container: "#112F35",
+                tertiary: "#907AA9",
+                on_tertiary: "#FFFFFF",
+                tertiary_container: "#EADFF2",
+                on_tertiary_container: "#2F2040",
+                surface: "#FAF4ED",
+                surface_container: "#F2E9E1",
+                surface_container_high: "#E8DDD2",
+                surface_container_lowest: "#FFFFFF",
+                surface_variant: "#DFD3C7",
+                outline: "#79757F",
+                outline_variant: "#C3B9B0",
+                on_surface: "#1E1829",
+                on_surface_variant: "#30283E",
+                glassTint: "#D7827E"
+            }
+        },
+        "astral-ai": {
+            name: "Astral AI",
+            dark: {
+                primary: "#818CF8",
+                on_primary: "#0F111A",
+                primary_container: "#312E81",
+                on_primary_container: "#E0E7FF",
+                secondary: "#38BDF8",
+                on_secondary: "#082F49",
+                secondary_container: "#0369A1",
+                on_secondary_container: "#E0F2FE",
+                tertiary: "#C084FC",
+                on_tertiary: "#3B0764",
+                tertiary_container: "#581C87",
+                on_tertiary_container: "#F3E8FF",
+                surface: "#0B0D14",
+                surface_container: "#111420",
+                surface_container_high: "#1E2235",
+                surface_container_lowest: "#07080D",
+                surface_variant: "#282E47",
+                outline: "#6366F1",
+                outline_variant: "#3730A3",
+                on_surface: "#EEF2FF",
+                on_surface_variant: "#E2E8FF",
+                glassTint: "#818CF8"
+            },
+            light: {
+                primary: "#4F46E5",
+                on_primary: "#FFFFFF",
+                primary_container: "#E0E7FF",
+                on_primary_container: "#1E1B4B",
+                secondary: "#0284C7",
+                on_secondary: "#FFFFFF",
+                secondary_container: "#E0F2FE",
+                on_secondary_container: "#082F49",
+                tertiary: "#7E22CE",
+                on_tertiary: "#FFFFFF",
+                tertiary_container: "#F3E8FF",
+                on_tertiary_container: "#3B0764",
+                surface: "#F8FAFC",
+                surface_container: "#F1F5F9",
+                surface_container_high: "#E2E8F0",
+                surface_container_lowest: "#FFFFFF",
+                surface_variant: "#CBD5E1",
+                outline: "#64748B",
+                outline_variant: "#94A3B8",
+                on_surface: "#0F172A",
+                on_surface_variant: "#1E293B",
+                glassTint: "#4F46E5"
+            }
         }
     })
 
@@ -237,6 +594,14 @@ Singleton {
         : root.activeThemeDefinition.light
 
     function getColor(key, lightFallback, darkFallback) {
+        // 0. Archetype-level strict palette overrides (Domain-Driven Design: Cyberpunk Neon, etc.)
+        if (typeof Theme !== "undefined" && Theme.activeArchetype) {
+            const archPalette = root.isDarkMode ? Theme.activeArchetype.paletteDark : Theme.activeArchetype.paletteLight;
+            if (archPalette && archPalette[key] !== undefined) {
+                return archPalette[key];
+            }
+        }
+
         // 1. If dynamic colors is explicitly enabled, use dynamic matugen palette from wallpaper
         if (root.dynamicColorsEnabled && root.dynamicPalette && root.dynamicPalette[key]) {
             const entry = root.dynamicPalette[key];
@@ -257,8 +622,14 @@ Singleton {
         return root.isDarkMode ? darkFallback : lightFallback;
     }
 
-    // Presets definitions for Accents (directly connected to activeThemeDefinition)
-    readonly property color presetPrimary: root.currentThemeTokens.primary
+    // Presets definitions for Accents (directly connected to activeThemeDefinition or active archetype)
+    readonly property color presetPrimary: {
+        if (typeof Theme !== "undefined" && Theme.activeArchetype) {
+            const archPalette = root.isDarkMode ? Theme.activeArchetype.paletteDark : Theme.activeArchetype.paletteLight;
+            if (archPalette && archPalette.primary !== undefined) return archPalette.primary;
+        }
+        return root.currentThemeTokens.primary;
+    }
     readonly property color presetPrimaryContainer: root.currentThemeTokens.primary_container
     readonly property color presetOnPrimary: root.currentThemeTokens.on_primary
     readonly property color presetOnPrimaryContainer: root.currentThemeTokens.on_primary_container
@@ -307,6 +678,14 @@ Singleton {
     readonly property color accentOnSuccess: getColor("on_success", "#FFFFFF", "#003912")
     readonly property color accentSuccessContainer: getColor("success_container", "#B0F2B2", "#125222")
     readonly property color accentOnSuccessContainer: getColor("on_success_container", "#002107", "#B0F2B2")
+
+    // AI-Centric Reactive Aura & Activity Color Tokens
+    readonly property bool aiActive: (typeof AiActivityService !== "undefined" && AiActivityService.isActive)
+    readonly property color aiActivityColor: (aiActive && typeof AiActivityService !== "undefined" && AiActivityService.brandColor)
+        ? AiActivityService.brandColor
+        : root.accentPrimary
+    readonly property real aiActivityIntensity: (typeof AiActivityService !== "undefined") ? AiActivityService.intensity : 0.0
+    readonly property color aiGlowColor: Qt.alpha(aiActivityColor, aiActive ? (0.35 + 0.25 * aiActivityIntensity) : 0.15)
 
     // Modern typography tokens (high contrast, crisp in both light and dark)
     readonly property color textMain: getColor("on_surface", "#14171F", "#F2EFF4")
@@ -517,7 +896,12 @@ Singleton {
         }
     })
 
-    readonly property var glassActive: root.isDarkMode ? root.glassParams.dark : root.glassParams.light
+    readonly property var glassActive: {
+        const p = (typeof Theme !== "undefined" && Theme.activeArchetype && Theme.activeArchetype.glassParams)
+            ? Theme.activeArchetype.glassParams
+            : root.glassParams;
+        return root.isDarkMode ? (p.dark || root.glassParams.dark) : (p.light || root.glassParams.light);
+    }
 
     function glassTinted(baseVec, alpha, tintAmount) {
         return Qt.tint(
@@ -562,14 +946,18 @@ Singleton {
         root.glassActive.cardBase, root.glassActive.cardVibrantAlpha, root.glassActive.cardVibrantTint)
 
     // Frosted interactive pills
-    readonly property color glassPill: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.09 : 0.50),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.08 : 0.05)
-    )
-    readonly property color glassPillHover: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.16 : 0.65),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.16 : 0.10)
-    )
+    readonly property color glassPill: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber")
+        ? Qt.rgba(0.04, 0.05, 0.08, 0.92)
+        : Qt.tint(
+            Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.09 : 0.50),
+            Qt.alpha(root.primary, root.isDarkMode ? 0.08 : 0.05)
+        )
+    readonly property color glassPillHover: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber")
+        ? Qt.tint(Qt.rgba(0.04, 0.05, 0.08, 0.95), Qt.alpha(root.primary, 0.20))
+        : Qt.tint(
+            Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.16 : 0.65),
+            Qt.alpha(root.primary, root.isDarkMode ? 0.16 : 0.10)
+        )
     // Active / Prominent Themed Glass Pill (Luminous translucent frosted glass with theme color)
     readonly property color glassPillActive: Qt.tint(
         Qt.alpha(root.primaryContainer, root.isDarkMode ? 0.65 : 0.80),
@@ -577,14 +965,30 @@ Singleton {
     )
 
     // Directional specular rim highlights (ultra-fine 1px hairline catch with luminous theme glint)
-    readonly property color glassBorderSpecular: Qt.tint(
-        Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.80 : 0.95),
-        Qt.alpha(root.primary, root.isDarkMode ? 0.35 : 0.20)
-    )
-    readonly property color glassBorderSubtle: root.isDarkMode
-        ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.18), Qt.alpha(root.primary, 0.20))
-        : Qt.rgba(0.0, 0.0, 0.0, 0.12)
-    readonly property color glassInnerRim: Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.18 : 0.45)
+    readonly property color glassBorderSpecular: {
+        if (typeof Theme !== "undefined" && Theme.material) {
+            if (Theme.material.surfaceStyle === "neon_cyber") {
+                return Qt.alpha(root.primary, 0.95);
+            } else if (!Theme.material.specularEnabled) {
+                return root.isDarkMode ? Qt.alpha(root.outline, 0.35) : Qt.alpha(root.outline, 0.25);
+            }
+        }
+        return Qt.tint(
+            Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.80 : 0.95),
+            Qt.alpha(root.primary, root.isDarkMode ? 0.35 : 0.20)
+        );
+    }
+    readonly property color glassBorderSubtle: {
+        if (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") {
+            return Qt.alpha(root.primary, 0.60);
+        }
+        return root.isDarkMode
+            ? Qt.tint(Qt.rgba(1.0, 1.0, 1.0, 0.18), Qt.alpha(root.primary, 0.20))
+            : Qt.rgba(0.0, 0.0, 0.0, 0.12);
+    }
+    readonly property color glassInnerRim: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber")
+        ? Qt.alpha(root.primary, 0.40)
+        : Qt.rgba(1.0, 1.0, 1.0, root.isDarkMode ? 0.18 : 0.45)
 
     // Text vibrancy halo: a soft outline painted under glyphs that sit on glass.
     // Liquid glass transmits the wallpaper, so a glyph's local backdrop is

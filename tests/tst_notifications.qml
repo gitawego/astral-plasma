@@ -82,7 +82,12 @@ Item {
         assert(notifPopup.fusedPanel.fillet2.overlap === 0, "fillet2 overlap must be 0 for seamless border fusion");
         assert(notifPopup.cardItem !== undefined && notifPopup.cardItem !== null, "NotificationPopup must have a cardItem background layer");
         assert(notifPopup.cardItem.visible === true, "cardItem must be visible");
-        assert(notifPopup.cardItem.radius >= 12, "cardItem must have radius >= 12");
+        if (typeof Theme !== "undefined" && Theme.isCyberpunk) {
+            assert(notifPopup.cardItem.radius === 0, "cardItem must be square in Cyberpunk Neon");
+            assert(notifPopup.iconBadgeItem.badgeRadius === 0, "iconBadge must be square in Cyberpunk Neon");
+        } else {
+            assert(notifPopup.cardItem.radius >= 12, "cardItem must have radius >= 12");
+        }
         if (typeof Colors !== "undefined" && Colors.glassCard) {
             assert(notifPopup.cardItem.color === Colors.glassCard, "cardItem must use Colors.glassCard");
         }
@@ -104,6 +109,11 @@ Item {
         assert(notifPopup.hasImageCover === true, "hasImageCover must be true when imageSource is set");
         assert(notifPopup.effectiveCover === "file:///tmp/test-cover.jpg", "effectiveCover must match imageSource");
         assert(notifPopup.fusedPanel.panelHeight >= 78, "Collapsed panelHeight with image cover must be >= 78");
+        if (typeof Theme !== "undefined" && Theme.isCyberpunk) {
+            assert(notifPopup.iconBadgeItem.badgeRadius === 0, "iconBadge with cover must remain square in Cyberpunk Neon");
+        } else {
+            assert(notifPopup.iconBadgeItem.badgeRadius === notifPopup.iconBadgeItem.width / 2, "iconBadge with cover must be circular in Liquid Glass");
+        }
 
         // Test 9: Interactive Action Buttons & displayActions
         assert(typeof notifPopup.resolveActionIcon === "function", "resolveActionIcon must be exposed");
@@ -158,40 +168,22 @@ Item {
         assert(isDeviceNotification("USB Device Detected", "EAGET SSD Device has been connected.", "Device Notifications", "drive-removable-media-usb") === true, "USB SSD notification must be detected as device notification");
         assert(isDeviceNotification("Regular alert", "Message content", "Slack", "info") === false, "Regular alert must not be detected as device notification");
 
-        // Test 13: Augmentation contract
-        var mockDeviceNotif = {
-            summary: "USB Device Detected",
-            body: "Samsung Portable SSD T7 has been connected.",
-            appName: "Device Notifications",
-            appIcon: "drive-removable-media-usb",
-            actions: [],
-            expireTimeout: 5000
-        };
-
-        var defAct = null;
-        var actList = [];
-        if (mockDeviceNotif.actions && mockDeviceNotif.actions.length > 0) {
-            // normal actions
-        } else if (isDeviceNotification(mockDeviceNotif.summary, mockDeviceNotif.body, mockDeviceNotif.appName, mockDeviceNotif.appIcon)) {
-            let openAct = {
-                identifier: "device_open",
-                text: "Open in File Manager",
-                target: mockDeviceNotif.body || mockDeviceNotif.summary
-            };
-            let ejectAct = {
-                identifier: "device_eject",
-                text: "Safely Remove",
-                target: mockDeviceNotif.body || mockDeviceNotif.summary
-            };
-            defAct = openAct;
-            actList.push(openAct);
-            actList.push(ejectAct);
-        }
-
-        assert(actList.length === 2, "Augmented actions must have 2 actions");
-        assert(actList[0].identifier === "device_open", "First action is device_open");
-        assert(actList[1].identifier === "device_eject", "Second action is device_eject");
-        assert(defAct !== null && defAct.identifier === "device_open", "defAct must be device_open");
+        // Test 13: Storage actions are data-driven, never inferred from wording.
+        // "USB Device Detected" is also sent for mice and keyboards, so the
+        // service must ask the daemon (kernel block layer) before offering
+        // "Open in File Manager" / "Safely Remove".
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl("../services/NotificationService.qml") + "?v=" + Date.now(), false);
+        xhr.send();
+        var svc = xhr.responseText;
+        assert(svc.length > 500, "NotificationService.qml must be readable");
+        assert(/"device",\s*"match"/.test(svc), "storage actions must be confirmed through `device match`");
+        assert(/function applyStorageMatch\(/.test(svc), "daemon verdict must be applied by applyStorageMatch");
+        var showFn = svc.slice(svc.indexOf("function showNotification"), svc.indexOf("function show("));
+        assert(!/device_open/.test(showFn), "showNotification must not fabricate storage actions from wording");
+        var showBody = svc.slice(svc.indexOf("function show("), svc.indexOf("function invokeAction"));
+        assert(!/identifier:\s*"device_open"/.test(showBody), "show() must not fabricate storage actions from wording");
+        assert(/if \(root\.storageConfirmed\)/.test(svc), "the click fallback must require a confirmed storage device");
 
         console.log("PASS: NotificationPopup Tests");
         Qt.exit(0);

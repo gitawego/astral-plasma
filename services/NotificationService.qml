@@ -30,6 +30,41 @@ Singleton {
         id: deviceProc
     }
 
+    // Text of the device notification whose storage match is pending.
+    property string storageQuery: ""
+    // Whether the current notification is confirmed to be a storage device.
+    property bool storageConfirmed: false
+
+    Process {
+        id: storageMatchProc
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: line => root.applyStorageMatch(line)
+        }
+    }
+
+    function resolveStorageActions(query) {
+        root.storageQuery = query;
+        root.storageConfirmed = false;
+        storageMatchProc.running = false;
+        storageMatchProc.command = [root.daemonBin, "device", "match", query];
+        storageMatchProc.running = true;
+    }
+
+    /** Applies the daemon's verdict: actions exist only for real storage. */
+    function applyStorageMatch(jsonLine) {
+        let dev = null;
+        try { dev = JSON.parse(jsonLine); } catch (e) { return; }
+        if (!dev || !root.hasNotification || !root.storageQuery) return;
+        if ((root.currentBody || root.currentSummary) !== root.storageQuery) return; // superseded
+        let target = dev.device || root.storageQuery;
+        let openAct = { identifier: "device_open", text: "Open in File Manager", target: target };
+        let ejectAct = { identifier: "device_eject", text: "Safely Remove", target: target };
+        root.storageConfirmed = true;
+        root.defaultAction = openAct;
+        root.currentActions = [openAct, ejectAct];
+    }
+
     function runDeviceAction(actionCommand, target) {
         let args = [root.daemonBin, "device", actionCommand];
         if (target) args.push(target);
@@ -74,20 +109,6 @@ Singleton {
                     actList.push(act);
                 }
             }
-        } else if (isDeviceNotification(notif.summary, notif.body, notif.appName, notif.appIcon)) {
-            let openAct = {
-                identifier: "device_open",
-                text: "Open in File Manager",
-                target: notif.body || notif.summary
-            };
-            let ejectAct = {
-                identifier: "device_eject",
-                text: "Safely Remove",
-                target: notif.body || notif.summary
-            };
-            defAct = openAct;
-            actList.push(openAct);
-            actList.push(ejectAct);
         }
 
         root.defaultAction = defAct;
@@ -108,21 +129,6 @@ Singleton {
         currentSummary = summary || "Notification";
         currentBody = body || "";
         currentAppName = appName || "System";
-
-        if (isDeviceNotification(summary, body, appName, icon) && root.currentActions.length === 0) {
-            let openAct = {
-                identifier: "device_open",
-                text: "Open in File Manager",
-                target: body || summary
-            };
-            let ejectAct = {
-                identifier: "device_eject",
-                text: "Safely Remove",
-                target: body || summary
-            };
-            root.defaultAction = openAct;
-            root.currentActions = [openAct, ejectAct];
-        }
 
         let appLower = (appName || "").toLowerCase();
         let isMedia = appLower.includes("strawberry") || 
@@ -148,6 +154,16 @@ Singleton {
         currentImage = img;
         currentTime = "now";
         hasNotification = true;
+        // A device-flavoured notification only *might* concern storage ("USB
+        // Device Detected" is also sent for mice and keyboards). Ask the
+        // daemon, which reads the kernel block layer, before offering any
+        // storage action.
+        if (root.currentActions.length === 0 && isDeviceNotification(summary, body, appName, icon)) {
+            resolveStorageActions(body || summary);
+        } else {
+            root.storageQuery = "";
+            root.storageConfirmed = false;
+        }
         notificationReceived(currentSummary, currentBody, currentIcon, currentAppName, currentImage);
     }
 
@@ -250,7 +266,7 @@ Singleton {
         }
 
         // Automatic fallback: if device notification without default action, default click opens USB folder
-        if (isDeviceNotification(currentSummary, currentBody, currentAppName, currentIcon)) {
+        if (root.storageConfirmed) {
             runDeviceAction("mount-open", currentBody || currentSummary);
             root.actionInvoked("device_open");
             dismiss();

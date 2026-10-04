@@ -285,7 +285,7 @@ Item {
                 interactive: true
                 selected: root.selectedDevice === "cpu"
                 accentGlint: root.cpuColor
-                radius: 12
+                radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard !== undefined) ? Theme.radiusGlassCard : 12
                 showShadow: true
                 hovered: cpuMa.containsMouse
 
@@ -404,7 +404,7 @@ Item {
                 interactive: true
                 selected: root.selectedDevice === "memory"
                 accentGlint: root.memoryColor
-                radius: 12
+                radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard !== undefined) ? Theme.radiusGlassCard : 12
                 showShadow: true
                 hovered: memMa.containsMouse
 
@@ -557,7 +557,7 @@ Item {
 
                     selected: (root.selectedDevice === "gpu" && (cardGpuIndex === 0 || root.selectedGpuIndex === cardGpuIndex)) || root.selectedDevice === ("gpu:" + cardGpuIndex)
                     accentGlint: root.gpuColor
-                    radius: 12
+                    radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard !== undefined) ? Theme.radiusGlassCard : 12
                     showShadow: true
                     hovered: gpuCardMa.containsMouse
 
@@ -697,7 +697,7 @@ Item {
                 interactive: true
                 selected: root.selectedDevice === "battery"
                 accentGlint: root.batteryColor
-                radius: 12
+                radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard !== undefined) ? Theme.radiusGlassCard : 12
                 showShadow: true
                 hovered: batMa.containsMouse
 
@@ -817,7 +817,7 @@ Item {
             Layout.minimumWidth: 400
             Layout.fillWidth: true
             Layout.fillHeight: true
-            radius: 16
+            radius: (typeof Theme !== "undefined" && Theme.radiusGlassCard !== undefined) ? Theme.radiusGlassCard : 16
             showShadow: true
             accentGlint: root.activeDeviceColor
 

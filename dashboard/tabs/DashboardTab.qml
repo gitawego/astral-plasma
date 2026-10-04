@@ -192,7 +192,7 @@ Item {
                             id: avatarCircle
                             width: 64
                             height: 64
-                            radius: 32
+                            radius: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0 : 32
                             color: root.hostAvatarBackgroundColor
                             clip: true
 
@@ -203,7 +203,7 @@ Item {
                             Rectangle {
                                 id: avatarMask
                                 anchors.fill: parent
-                                radius: width / 2
+                                radius: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0 : width / 2
                                 color: "white"
                                 visible: false
                                 layer.enabled: true
@@ -237,9 +237,9 @@ Item {
                             Rectangle {
                                 id: avatarBorder
                                 anchors.fill: parent
-                                radius: width / 2
+                                radius: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0 : width / 2
                                 color: "transparent"
-                                border.color: Theme.borderSubtle
+                                border.color: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? Colors.primary : Theme.borderSubtle
                                 border.width: 1
                             }
                         }
@@ -467,7 +467,7 @@ Item {
                                             anchors.centerIn: parent
                                             width: 32
                                             height: 26
-                                            radius: 13
+                                            radius: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0 : 13
                                             visible: isToday
                                             color: Colors.primary
                                         }
@@ -479,7 +479,7 @@ Item {
                                             anchors.centerIn: parent
                                             width: 32
                                             height: 26
-                                            radius: 13
+                                            radius: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0 : 13
                                             visible: dayHover.containsMouse && !isToday
                                             color: dayHover.pressed ? Qt.alpha(Colors.primary, 0.32)
                                                                    : Qt.alpha(Colors.primary, 0.18)
@@ -632,8 +632,11 @@ Item {
 
             readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
                 (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
+            readonly property bool isCyberpunk: (typeof Theme !== "undefined" && Theme.isCyberpunk)
+            readonly property bool showOrbitalRing: (typeof Theme !== "undefined" ? Theme.mediaOrbitalRing : true)
+            readonly property bool isCircularCover: (typeof Theme !== "undefined" ? Theme.mediaCircularCover : true)
 
-            // Visualizer Switcher Pill Button (Top-Right of Media Card)
+            // Visualizer Switcher Pill Button (Top-Right of Media Card - Hidden in Cyberpunk)
             LiquidGlassButton {
                 id: vizSwitchBtn
                 anchors.top: parent.top
@@ -648,6 +651,7 @@ Item {
                 iconText: "equalizer"
                 iconSize: 14
                 elevation: 4
+                visible: mediaCard.showOrbitalRing && !mediaCard.isCyberpunk
                 onClicked: {
                     if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
                         Config.setMediaVisualizerStyle(mediaCard.isSpeakerStyle ? "radial" : "speaker");
@@ -663,33 +667,34 @@ Item {
                 anchors.rightMargin: 10
                 spacing: 0
 
-                // Circular album artwork with progress arc
+                // Album artwork container with dynamic visualizer / progress
                 Item {
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 104
-                    Layout.preferredHeight: 104
+                    Layout.preferredWidth: mediaCard.isCircularCover ? 104 : 96
+                    Layout.preferredHeight: mediaCard.isCircularCover ? 104 : 96
 
-                    // 1. Dynamic Audio Heatmap Wave Ring & Thermal Aura (Speaker / Heatmap Style)
+                    // 1. Dynamic Audio Heatmap Wave Ring & Thermal Aura (Speaker / Heatmap Style - Non-Cyberpunk)
                     HeatmapCoverRing {
                         anchors.centerIn: parent
                         innerRadius: 38
                         outerRadius: 46
-                        visible: mediaCard.isSpeakerStyle
+                        visible: mediaCard.showOrbitalRing && mediaCard.isSpeakerStyle && !mediaCard.isCyberpunk
                         isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "dashboard" && visible) : false
                     }
 
-                    // 2. Radial Audio Spectrum Halo Ring (Radial Style)
+                    // 2. Radial Audio Spectrum Halo Ring (Radial Style or Cyberpunk)
                     RadialCoverRing {
                         anchors.centerIn: parent
-                        innerRadius: 50
-                        visible: !mediaCard.isSpeakerStyle
+                        innerRadius: 42
+                        visible: mediaCard.showOrbitalRing && (!mediaCard.isSpeakerStyle || mediaCard.isCyberpunk)
                         isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "dashboard" && visible) : false
                     }
 
-                    // Progress ring
+                    // Circular Progress ring (Only in non-cyberpunk orbital ring mode)
                     Canvas {
                         id: mediaProgRing
                         anchors.fill: parent
+                        visible: mediaCard.showOrbitalRing && !mediaCard.isCyberpunk
                         property real prog: MprisMedia.progress
 
                         onProgChanged: requestPaint()
@@ -719,17 +724,47 @@ Item {
                         }
                     }
 
-                    // Circular album artwork container in center with audio beat bounce.
-                    // The bounce follows the beat on the shared decorative clock: a
-                    // `Behavior on scale` was re-triggered by every audio frame (the
-                    // visualiser stream runs at display order), so its 60 ms animation
-                    // never ended and the masked cover below re-rendered at every
-                    // display frame.
+                    // Cyber HUD Corner Brackets framing the artwork container
+                    Item {
+                        anchors.fill: parent
+                        visible: mediaCard.isCyberpunk
+
+                        // Top-Left Bracket
+                        Item {
+                            anchors.top: parent.top; anchors.left: parent.left
+                            width: 8; height: 8
+                            Rectangle { anchors.top: parent.top; anchors.left: parent.left; width: 8; height: 1; color: Colors.primary }
+                            Rectangle { anchors.top: parent.top; anchors.left: parent.left; width: 1; height: 8; color: Colors.primary }
+                        }
+                        // Top-Right Bracket
+                        Item {
+                            anchors.top: parent.top; anchors.right: parent.right
+                            width: 8; height: 8
+                            Rectangle { anchors.top: parent.top; anchors.right: parent.right; width: 8; height: 1; color: Colors.primary }
+                            Rectangle { anchors.top: parent.top; anchors.right: parent.right; width: 1; height: 8; color: Colors.primary }
+                        }
+                        // Bottom-Left Bracket
+                        Item {
+                            anchors.bottom: parent.bottom; anchors.left: parent.left
+                            width: 8; height: 8
+                            Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; width: 8; height: 1; color: Colors.primary }
+                            Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; width: 1; height: 8; color: Colors.primary }
+                        }
+                        // Bottom-Right Bracket
+                        Item {
+                            anchors.bottom: parent.bottom; anchors.right: parent.right
+                            width: 8; height: 8
+                            Rectangle { anchors.bottom: parent.bottom; anchors.right: parent.right; width: 8; height: 1; color: Colors.primary }
+                            Rectangle { anchors.bottom: parent.bottom; anchors.right: parent.right; width: 1; height: 8; color: Colors.primary }
+                        }
+                    }
+
+                    // Album artwork tile in center with audio beat bounce
                     Item {
                         id: albumCenterCircle
                         anchors.centerIn: parent
-                        width: 74
-                        height: 74
+                        width: mediaCard.isCircularCover ? 74 : 88
+                        height: width
                         scale: beatBounce.value
 
                         MotionValue {
@@ -740,53 +775,48 @@ Item {
                             target: (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active
                                      && Config.dashboardVisible && Config.activeDashboardTab === "dashboard"
                                      && AudioVisualizer.displayBeat > 0.05)
-                                    ? (1.0 + Math.min(0.12, AudioVisualizer.displayBeat * 0.10))
+                                    ? (1.0 + Math.min(mediaCard.isCyberpunk ? 0.04 : 0.12, AudioVisualizer.displayBeat * (mediaCard.isCyberpunk ? 0.04 : 0.10)))
                                     : 1.0
                         }
 
-                        // Round mask geometry (always a perfect circle)
+                        // Mask geometry (circle in liquid/nordic, square in cyberpunk)
                         Rectangle {
                             id: dashCircleMask
                             anchors.fill: parent
-                            radius: width / 2
+                            radius: mediaCard.isCircularCover ? width / 2 : 0
                             color: "white"
                             visible: false
                             layer.enabled: true
                         }
 
-                        // Circular fallback placeholder (drawn underneath)
+                        // Fallback placeholder (drawn underneath)
                         Rectangle {
                             anchors.fill: parent
-                            radius: width / 2
-                            color: Colors.primaryContainer
+                            radius: mediaCard.isCircularCover ? width / 2 : 0
+                            color: mediaCard.isCyberpunk ? Qt.rgba(0.04, 0.04, 0.08, 0.95) : Colors.primaryContainer
 
                             MaterialIcon {
                                 anchors.centerIn: parent
                                 text: "music_note"
-                                size: 32
-                                color: Colors.onPrimaryContainer
+                                size: mediaCard.isCircularCover ? 32 : 36
+                                color: mediaCard.isCyberpunk ? Colors.primary : Colors.onPrimaryContainer
                             }
                         }
 
-                        // Rotating Cover Image masked strictly to the circular boundary
-                        // (1.45x size prevents corner clipping). The mask is applied to
-                        // the *static* artwork and the masked result is rotated: masking
-                        // the rotating image instead re-rasterized the MultiEffect layer
-                        // on every rotation frame, and a circle mask is rotation
-                        // invariant anyway.
+                        // Cover Image masked strictly to the boundary
                         Item {
                             anchors.fill: parent
                             visible: MprisMedia.artUrl.length > 0 && dashCoverImg.status === Image.Ready
-                            rotation: coverPacer.phase * 360
+                            rotation: (typeof Theme !== "undefined" && !Theme.mediaVinylSpin) ? 0 : (coverPacer.phase * 360)
 
                             Item {
                                 anchors.centerIn: parent
-                                width: parent.width * 1.45
+                                width: mediaCard.isCircularCover ? (parent.width * 1.45) : parent.width
                                 height: width
 
                                 MotionPacer {
                                     id: coverPacer
-                                    running: root.isTargetVisible && MprisMedia.isPlaying
+                                    running: (typeof Theme !== "undefined" ? Theme.mediaVinylSpin : true) && root.isTargetVisible && MprisMedia.isPlaying
                                     period: 22000
                                 }
 
@@ -805,16 +835,19 @@ Item {
                             }
                         }
 
-                        // Inner border for crisp circle definition
+                        // Inner border for crisp definition
                         Rectangle {
                             anchors.fill: parent
-                            radius: width / 2
+                            radius: mediaCard.isCircularCover ? width / 2 : 0
                             color: "transparent"
-                            border.color: Qt.rgba(1, 1, 1, 0.15)
+                            border.color: mediaCard.isCyberpunk ? Colors.primary : Qt.rgba(1, 1, 1, 0.15)
                             border.width: 1
                         }
                     }
+
+
                 }
+
 
                 // Spacer between Cover and Title
                 Item {
@@ -877,8 +910,68 @@ Item {
                 // Spacer between Text and Controls
                 Item {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 8
+                    Layout.preferredHeight: mediaCard.isCyberpunk ? 4 : 8
                 }
+
+                // Cyberpunk Linear Progress Bar with HUD Seek Track
+                Item {
+                    id: cyberProgressBar
+                    visible: mediaCard.isCyberpunk
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: parent.width - 24
+                    Layout.preferredHeight: 12
+
+                    // Progress Track Background
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 3
+                        color: Qt.alpha(Colors.primary, 0.15)
+                        border.color: Qt.alpha(Colors.primary, 0.30)
+                        border.width: 1
+                    }
+
+                    // Progress Fill (Laser Cyan)
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 3
+                        width: Math.max(0, Math.min(parent.width, parent.width * (MprisMedia.progress || 0.0)))
+                        color: Colors.primary
+                    }
+
+                    // Playhead Indicator (Magenta tick)
+                    Rectangle {
+                        visible: (MprisMedia.progress || 0.0) > 0.0
+                        x: Math.max(0, Math.min(parent.width - 3, parent.width * (MprisMedia.progress || 0.0) - 1.5))
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 3
+                        height: 9
+                        color: Colors.secondary
+                    }
+
+                    // Interactive Seek MouseArea
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: function(mouse) {
+                            if (typeof MprisMedia !== "undefined" && MprisMedia.canSeek && MprisMedia.length > 0) {
+                                var ratio = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                                MprisMedia.position = ratio * MprisMedia.length;
+                            }
+                        }
+                    }
+                }
+
+
+                // Spacer before Controls
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: mediaCard.isCyberpunk ? 6 : 8
+                }
+
 
                 // Playback Controls Row
                 RowLayout {

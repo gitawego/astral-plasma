@@ -83,11 +83,12 @@ FloatingWindow {
 
         // Top specular hairline glint
         Rectangle {
+            visible: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 24
-            anchors.rightMargin: 24
+            anchors.leftMargin: Math.max(parent.radius + 2, 8)
+            anchors.rightMargin: Math.max(parent.radius + 2, 8)
             height: 1
             z: 10
             gradient: Gradient {
@@ -100,6 +101,7 @@ FloatingWindow {
 
         // Inner caustic ambient glow
         Rectangle {
+            visible: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.causticEnabled : true
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
@@ -156,8 +158,10 @@ FloatingWindow {
             anchors.margins: Theme.padMedium
             width: 32
             height: 32
-            radius: 16
+            radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, 16) : 16
             color: closeMouseArea.containsMouse ? Colors.pillHover : "transparent"
+            border.color: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber") ? Qt.alpha(Colors.primary, 0.40) : "transparent"
+            border.width: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber") ? 1 : 0
             z: 200
 
             MaterialIcon {

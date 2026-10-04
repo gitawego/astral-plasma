@@ -532,9 +532,9 @@ Item {
                     Rectangle {
                         width: 32
                         height: 32
-                        radius: 16
+                        radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, 16) : 16
                         color: backHover.containsMouse ? Colors.pillHover : "transparent"
-                        border.color: Theme.borderSubtle
+                        border.color: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber") ? Qt.alpha(Colors.primary, 0.40) : Theme.borderSubtle
                         border.width: 1
                         z: 10
 
@@ -588,6 +588,7 @@ Item {
                         id: stickyHeaderLoader
                         anchors.left: parent.left
                         anchors.right: parent.right
+                        anchors.rightMargin: 14
                         anchors.top: parent.top
                         anchors.topMargin: Theme.spaceSmall
                         sourceComponent: root.pageStickyHeader
@@ -612,7 +613,7 @@ Item {
 
                     Loader {
                         id: pageLoader
-                        width: parent.width
+                        width: parent.width - 14
                         height: item ? item.implicitHeight : implicitHeight
                         onLoaded: {
                             root.applyPendingSettingsSection();
@@ -642,9 +643,11 @@ Item {
                     Rectangle {
                         id: scrollBarIndicator
                         anchors.right: parent.right
-                        anchors.rightMargin: 3
+                        anchors.rightMargin: 4
+                        readonly property real scrollableRange: Math.max(1, pageFlickable.contentHeight - pageFlickable.height)
+                        readonly property real thumbTravelRange: Math.max(0, pageFlickable.height - height)
                         y: pageFlickable.contentY + (pageFlickable.contentHeight > pageFlickable.height 
-                            ? (pageFlickable.contentY / pageFlickable.contentHeight) * pageFlickable.height 
+                            ? (pageFlickable.contentY / scrollableRange) * thumbTravelRange 
                             : 0)
                         width: 4
                         height: pageFlickable.contentHeight > pageFlickable.height 
