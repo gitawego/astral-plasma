@@ -339,6 +339,8 @@ Item {
             "DashboardTab must expose resolveAvatarBg()");
         assert(/hostAvatarBackgroundColor/.test(tabSrc),
             "the circle color must flow through hostAvatarBackgroundColor");
+        assert(/Theme\.defaultHostAvatar/.test(tabSrc),
+            "DashboardTab must check Theme.defaultHostAvatar in resolveAvatarSource");
         assert(/showBgOptions:\s*true/.test(pageSrc),
             "the host avatar card must enable the background options");
         assert((pageSrc.match(/showBgOptions:\s*true/g) || []).length === 1,

@@ -138,6 +138,9 @@ Item {
         assert(cpArchetype.mediaOrbitalRing === true, "Cyberpunk neon mediaOrbitalRing must be true (cyber radial spectrum ring)");
         assert(cpArchetype.mediaVinylSpin === false, "Cyberpunk neon mediaVinylSpin must be false (zero vinyl spinning)");
         assert(cpArchetype.mediaCoverStyle === "cyber_radial", "Cyberpunk neon mediaCoverStyle must be 'cyber_radial'");
+        assert(cpArchetype.defaultHostAvatar.indexOf("cyberpunk-avatar.webp") !== -1, "Cyberpunk neon must declare defaultHostAvatar with cyberpunk-avatar.webp");
+        assert(lgArchetype.defaultHostAvatar === "", "Liquid glass defaultHostAvatar must be empty");
+        assert(nmArchetype.defaultHostAvatar === "", "Nordic minimal defaultHostAvatar must be empty");
         assert(lgArchetype.filletRounding === 20, "Liquid glass filletRounding must be 20");
         assert(nmArchetype.filletRounding === 6, "Nordic minimal filletRounding must be 6");
 
@@ -191,6 +194,8 @@ Item {
                "Theme.qml must provide listArchetypes() discovery function");
         assert(/material:\s*QtObject\s*\{/.test(themeSrc), 
                "Theme.qml must expose material facade");
+        assert(/defaultHostAvatar:/.test(themeSrc), 
+               "Theme.qml must declare defaultHostAvatar delegation");
 
         // =====================================================================
         // 7. Config & Settings Architecture Contract

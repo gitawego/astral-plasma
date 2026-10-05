@@ -117,5 +117,6 @@ ThemeArchetype {
     mediaOrbitalRing: true
     mediaVinylSpin: false
     mediaCoverStyle: "cyber_radial"
+    defaultHostAvatar: Qt.resolvedUrl("../assets/cyberpunk-avatar.webp").toString()
 }
 

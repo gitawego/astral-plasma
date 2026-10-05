@@ -192,5 +192,8 @@ Singleton {
     readonly property string mediaCoverStyle: root.activeArchetype ? root.activeArchetype.mediaCoverStyle : "circular"
     readonly property string surfaceStyle: root.activeArchetype ? root.activeArchetype.surfaceStyle : "liquid_glass"
     readonly property bool isCyberpunk: surfaceStyle === "neon_cyber"
+
+    // Default host avatar override for active archetype ("" falls back to dino.png)
+    readonly property string defaultHostAvatar: root.activeArchetype ? (root.activeArchetype.defaultHostAvatar || "") : ""
 }
 

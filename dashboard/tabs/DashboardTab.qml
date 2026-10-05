@@ -55,9 +55,14 @@ Item {
     /// file:// URL; an existing file:// URL passes through unchanged.
     function resolveAvatarSource(configured) {
         const p = (configured || "").trim();
-        if (p === "") return "../../theme/assets/dino.png";
-        if (p.startsWith("file://")) return p;
-        return "file://" + p;
+        if (p !== "") {
+            if (p.startsWith("file://")) return p;
+            return "file://" + p;
+        }
+        if (typeof Theme !== "undefined" && Theme.defaultHostAvatar && Theme.defaultHostAvatar !== "") {
+            return Theme.defaultHostAvatar;
+        }
+        return "../../theme/assets/dino.png";
     }
 
     /// Avatar-circle background from a configurable hex color + transparency.

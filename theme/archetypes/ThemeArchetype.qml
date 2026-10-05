@@ -158,5 +158,8 @@ QtObject {
     property bool mediaOrbitalRing: true
     property bool mediaVinylSpin: true
     property string mediaCoverStyle: "circular"
+
+    // Default host avatar override for this archetype ("" = default dino sprite)
+    property string defaultHostAvatar: ""
 }
 

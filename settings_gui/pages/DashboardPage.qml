@@ -488,7 +488,7 @@ SettingsPage {
         Layout.fillWidth: true
         title: "System Host Card Avatar"
         description: "Avatar for the dashboard system host card - copied into the app config folder so it survives deleting the original"
-        placeholder: "Default (Dino)"
+        placeholder: (typeof Theme !== "undefined" && Theme.activeArchetype && Theme.activeArchetype.defaultHostAvatar) ? ("Default (" + Theme.activeArchetype.name + ")") : "Default (Dino)"
         path: Config.hostAvatar
         interactive: !root.testMode
         showBgOptions: true
