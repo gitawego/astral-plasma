@@ -584,6 +584,22 @@ Singleton {
         }
     })
 
+    // Canonical list of presets for UI pickers across settings pages
+    readonly property var presetList: [
+        { id: "dynamic", name: "Dynamic", isDynamic: true, darkColor: "#CFBCFF", lightColor: "#6750A4" },
+        { id: "astral-ai", name: "Astral AI", isDynamic: false, darkColor: "#818CF8", lightColor: "#4F46E5" },
+        { id: "tokyo-night", name: "Tokyo Night", isDynamic: false, darkColor: "#7AA2F7", lightColor: "#34548A" },
+        { id: "catppuccin", name: "Catppuccin", isDynamic: false, darkColor: "#CBA6F7", lightColor: "#8839EF" },
+        { id: "nord", name: "Nord", isDynamic: false, darkColor: "#88C0D0", lightColor: "#5E81AC" },
+        { id: "everforest", name: "Everforest", isDynamic: false, darkColor: "#A7C080", lightColor: "#4F704A" },
+        { id: "gruvbox", name: "Gruvbox", isDynamic: false, darkColor: "#FABD2F", lightColor: "#B57614" },
+        { id: "rose-pine", name: "Rosé Pine", isDynamic: false, darkColor: "#EBBCBA", lightColor: "#D7827E" },
+        { id: "iris", name: "Iris", isDynamic: false, darkColor: "#CFBCFF", lightColor: "#6750A4" },
+        { id: "ocean", name: "Ocean", isDynamic: false, darkColor: "#9ECAFF", lightColor: "#12609A" },
+        { id: "emerald", name: "Emerald", isDynamic: false, darkColor: "#81D99C", lightColor: "#1E6B42" },
+        { id: "coral", name: "Coral", isDynamic: false, darkColor: "#FFB4A8", lightColor: "#B32810" }
+    ]
+
     readonly property var activeThemeDefinition: {
         const key = (root.currentPreset || "iris").toLowerCase();
         return root.themeRegistry[key] || root.themeRegistry["iris"];

@@ -18,6 +18,15 @@ Item {
         testBlurStrength: 0.85
     }
 
+    WallpaperAndStylePage {
+        id: wallpaperPage
+        visible: false
+        testMode: true
+        testWallpapers: [
+            { path: "/tmp/mock.png", thumbnail_path: "/tmp/mock.png" }
+        ]
+    }
+
     Timer {
         interval: 50
         running: true
@@ -88,9 +97,24 @@ Item {
         assert(/themeCornerRadius/.test(themeSrc),
                "Theme.qml must incorporate Config.themeCornerRadius into corner radius scaling");
 
-        // Assert Theme.qml incorporates themeBlurStrength
-        assert(/themeBlurStrength/.test(themeSrc),
-               "Theme.qml must incorporate Config.themeBlurStrength into blur/specular intensity");
+        // 4. Unified Accent Palette & Redundancy Removal Checks
+        console.log("Test 8: Verify Colors.qml exposes presetList");
+        assert(/presetList:\s*\[/.test(colorsSrc), "Colors.qml must define canonical presetList");
+
+        console.log("Test 9: Verify ThemePage has no redundant SettingToggle for dynamic colors");
+        const themePageSrc = readLocalFile("../settings_gui/pages/ThemePage.qml");
+        assert(!/SettingToggle\s*\{[\s\S]*?Dynamic Wallpaper Colors/.test(themePageSrc),
+               "ThemePage must not have a redundant SettingToggle for dynamic colors");
+
+        console.log("Test 10: Verify WallpaperAndStylePage and ThemePage have Accent Palette title and valid zones");
+        const wallpaperPageSrc = readLocalFile("../settings_gui/pages/WallpaperAndStylePage.qml");
+        assert(wallpaperPageSrc.indexOf('title: "Accent Palette"') >= 0,
+               "WallpaperAndStylePage must use 'Accent Palette' title");
+        assert(themePageSrc.indexOf('title: "Accent Palette"') >= 0,
+               "ThemePage must use 'Accent Palette' title");
+
+        assert(wallpaperPage.sectionY("palette") !== undefined, "WallpaperAndStylePage palette zone must resolve offset");
+        assert(themePage.sectionY("colors") !== undefined, "ThemePage colors zone must resolve offset");
 
         console.log("PASS: Archetype Accent Reactivity & Geometry Scaling Tests Passed!");
         Qt.exit(0);

@@ -554,22 +554,13 @@ SettingsPage {
     // =========================================================================
     SectionHeader {
         id: colorsHeader
-        title: "Colors & Palettes"
-        eyebrow: root.isDynamic ? "dynamic palette · extracted from active wallpaper" : ("preset palette · " + root.presetName)
+        title: "Accent Palette"
+        eyebrow: root.isDynamic ? "dynamic · extracted from active wallpaper" : ("preset · " + root.presetName)
     }
 
-    // Dynamic Wallpaper Colors Toggle
-    SettingToggle {
-        id: colorsSection
-        Layout.fillWidth: true
-        title: "Dynamic Wallpaper Colors (Material You)"
-        description: "Extract soft harmonic color palettes dynamically from your active wallpaper"
-        checked: root.isDynamic
-        onToggled: val => root.setDynamicColors(val)
-    }
-
-    // Accent Palette Presets
+    // Accent Palette Card (Unified Dynamic & Presets)
     Rectangle {
+        id: colorsSection
         Layout.fillWidth: true
         implicitHeight: paletteLayout.implicitHeight + root.valPadLarge * 2
         radius: root.valRadiusMedium
@@ -598,7 +589,7 @@ SettingsPage {
                 }
 
                 Text {
-                    text: "Choose vibrant accent hues for highlights, controls and indicators"
+                    text: "Select Dynamic (Material You from active wallpaper) or a vibrant preset hue"
                     font.family: root.valFontFamily
                     font.pixelSize: 11
                     color: root.colOnSurfaceVariant
@@ -610,7 +601,7 @@ SettingsPage {
                 spacing: 10
 
                 Repeater {
-                    model: [
+                    model: (typeof Colors !== "undefined" && Colors.presetList) ? Colors.presetList : [
                         { id: "dynamic", name: "Dynamic", isDynamic: true, darkColor: "#CFBCFF", lightColor: "#6750A4" },
                         { id: "astral-ai", name: "Astral AI", isDynamic: false, darkColor: "#818CF8", lightColor: "#4F46E5" },
                         { id: "tokyo-night", name: "Tokyo Night", isDynamic: false, darkColor: "#7AA2F7", lightColor: "#34548A" },

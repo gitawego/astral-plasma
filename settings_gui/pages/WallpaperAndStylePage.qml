@@ -169,84 +169,94 @@ SettingsPage {
         }
     }
 
-    // Color Scheme Presets Row
+    // Accent Palette Section (Unified with Appearance)
     ColumnLayout {
         id: paletteSection
         Layout.fillWidth: true
-        spacing: 8
+        spacing: 10
 
         SectionHeader {
-            title: "Accent Color Scheme"
+            title: "Accent Palette"
             eyebrow: (typeof Config !== "undefined" && Config.dynamicColors)
-                ? "dynamic · derived from the wallpaper"
+                ? "dynamic · derived from active wallpaper"
                 : "preset · " + ((typeof Config !== "undefined" && Config.themePreset) ? Config.themePreset : "iris")
         }
 
-        Row {
+        Flow {
+            Layout.fillWidth: true
             spacing: 10
-            readonly property var presets: [
-                { name: "Dynamic", key: "dynamic", isDynamic: true, col: Colors.primary },
-                { name: "Iris", key: "iris", isDynamic: false, col: "#cba6f7" },
-                { name: "Ocean", key: "ocean", isDynamic: false, col: "#89b4fa" },
-                { name: "Coral", key: "coral", isDynamic: false, col: "#fab387" },
-                { name: "Emerald", key: "emerald", isDynamic: false, col: "#a6e3a1" }
+
+            readonly property var presets: (typeof Colors !== "undefined" && Colors.presetList) ? Colors.presetList : [
+                { id: "dynamic", name: "Dynamic", isDynamic: true, darkColor: "#CFBCFF", lightColor: "#6750A4" },
+                { id: "astral-ai", name: "Astral AI", isDynamic: false, darkColor: "#818CF8", lightColor: "#4F46E5" },
+                { id: "tokyo-night", name: "Tokyo Night", isDynamic: false, darkColor: "#7AA2F7", lightColor: "#34548A" },
+                { id: "catppuccin", name: "Catppuccin", isDynamic: false, darkColor: "#CBA6F7", lightColor: "#8839EF" },
+                { id: "nord", name: "Nord", isDynamic: false, darkColor: "#88C0D0", lightColor: "#5E81AC" },
+                { id: "everforest", name: "Everforest", isDynamic: false, darkColor: "#A7C080", lightColor: "#4F704A" },
+                { id: "gruvbox", name: "Gruvbox", isDynamic: false, darkColor: "#FABD2F", lightColor: "#B57614" },
+                { id: "rose-pine", name: "Rosé Pine", isDynamic: false, darkColor: "#EBBCBA", lightColor: "#D7827E" },
+                { id: "iris", name: "Iris", isDynamic: false, darkColor: "#CFBCFF", lightColor: "#6750A4" },
+                { id: "ocean", name: "Ocean", isDynamic: false, darkColor: "#9ECAFF", lightColor: "#12609A" },
+                { id: "emerald", name: "Emerald", isDynamic: false, darkColor: "#81D99C", lightColor: "#1E6B42" },
+                { id: "coral", name: "Coral", isDynamic: false, darkColor: "#FFB4A8", lightColor: "#B32810" }
             ]
 
             Repeater {
                 model: parent.presets
-                delegate: Rectangle {
+                delegate: Item {
+                    id: swatchItem
                     required property var modelData
-                    readonly property bool isActive: modelData.isDynamic
+
+                    readonly property bool isSelected: modelData.isDynamic
                         ? ((typeof Config !== "undefined") ? Config.dynamicColors : false)
-                        : ((typeof Config !== "undefined") && !Config.dynamicColors && Config.themePreset === modelData.key)
+                        : ((typeof Config !== "undefined") && !Config.dynamicColors && Config.themePreset === modelData.id)
+                    readonly property bool isDark: (typeof Config !== "undefined" ? Config.isDarkMode : true)
+                    readonly property color accentHue: isDark ? modelData.darkColor : modelData.lightColor
+
+                    width: 36
                     height: 36
-                    implicitWidth: pRow.implicitWidth + 24
-                    radius: 18
-                    color: isActive ? Qt.alpha(modelData.col, 0.25) : (presetHover.containsMouse ? Colors.pillHover : Colors.surfaceContainer)
-                    border.color: isActive ? modelData.col : Theme.borderSubtle
-                    border.width: isActive ? 2 : 1
 
-                    Row {
-                        id: pRow
+                    // Outer selection ring
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 18
+                        color: "transparent"
+                        border.color: swatchItem.isSelected ? Colors.primary : "transparent"
+                        border.width: swatchItem.isSelected ? 2 : 0
+
+                        Behavior on border.width { NumberAnimation { duration: 150 } }
+                    }
+
+                    // Inner colored circle
+                    Rectangle {
                         anchors.centerIn: parent
-                        spacing: 8
-                        Item {
-                            width: 14; height: 14
-                            anchors.verticalCenter: parent.verticalCenter
+                        width: swatchItem.isSelected ? 24 : 28
+                        height: swatchItem.isSelected ? 24 : 28
+                        radius: 14
+                        color: modelData.isDynamic ? "transparent" : swatchItem.accentHue
+                        gradient: modelData.isDynamic ? dynamicGradient : null
 
-                            // Dynamic Wallpaper gradient circle
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 7
-                                visible: modelData.isDynamic
-                                gradient: Gradient {
-                                    orientation: Gradient.Horizontal
-                                    GradientStop { position: 0.0; color: "#f38ba8" }
-                                    GradientStop { position: 0.5; color: "#89b4fa" }
-                                    GradientStop { position: 1.0; color: "#a6e3a1" }
-                                }
-                            }
-
-                            // Preset solid color circle
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 7
-                                visible: !modelData.isDynamic
-                                color: modelData.col
-                            }
+                        Gradient {
+                            id: dynamicGradient
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: "#f38ba8" }
+                            GradientStop { position: 0.5; color: "#89b4fa" }
+                            GradientStop { position: 1.0; color: "#a6e3a1" }
                         }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.name
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: isActive ? Font.Bold : Font.Normal
-                            color: Colors.m3onSurface
+
+                        Behavior on width { NumberAnimation { duration: 150 } }
+                        Behavior on height { NumberAnimation { duration: 150 } }
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: modelData.isDynamic ? (swatchItem.isSelected ? "check" : "auto_awesome") : (swatchItem.isSelected ? "check" : "")
+                            size: 14
+                            color: swatchItem.isDark ? "#121318" : "#FFFFFF"
+                            visible: swatchItem.isSelected || modelData.isDynamic
                         }
                     }
 
                     MouseArea {
-                        id: presetHover
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
@@ -255,7 +265,7 @@ SettingsPage {
                                 if (modelData.isDynamic) {
                                     Config.setDynamicColors(true);
                                 } else {
-                                    Config.setThemePreset(modelData.key);
+                                    Config.setThemePreset(modelData.id);
                                 }
                             }
                         }
@@ -285,7 +295,7 @@ SettingsPage {
                 Text {
                     id: moreThemeText
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "More Themes, Archetypes & Sliders in Appearance →"
+                    text: "More Archetypes, Corner Radii & Sliders in Appearance →"
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
                     color: Colors.primary
