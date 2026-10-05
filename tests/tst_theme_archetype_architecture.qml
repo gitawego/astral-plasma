@@ -139,8 +139,8 @@ Item {
         assert(cpArchetype.mediaVinylSpin === false, "Cyberpunk neon mediaVinylSpin must be false (zero vinyl spinning)");
         assert(cpArchetype.mediaCoverStyle === "cyber_radial", "Cyberpunk neon mediaCoverStyle must be 'cyber_radial'");
         assert(cpArchetype.defaultHostAvatar.indexOf("cyberpunk-avatar.webp") !== -1, "Cyberpunk neon must declare defaultHostAvatar with cyberpunk-avatar.webp");
-        assert(lgArchetype.defaultHostAvatar === "", "Liquid glass defaultHostAvatar must be empty");
-        assert(nmArchetype.defaultHostAvatar === "", "Nordic minimal defaultHostAvatar must be empty");
+        assert(lgArchetype.defaultHostAvatar.indexOf("liquid-glass-avatar.png") !== -1, "Liquid glass must declare defaultHostAvatar with liquid-glass-avatar.png");
+        assert(nmArchetype.defaultHostAvatar === "", "Nordic minimal defaultHostAvatar must be empty (falls back to bundled dino)");
         assert(lgArchetype.filletRounding === 20, "Liquid glass filletRounding must be 20");
         assert(nmArchetype.filletRounding === 6, "Nordic minimal filletRounding must be 6");
 

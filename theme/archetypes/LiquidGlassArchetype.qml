@@ -48,4 +48,7 @@ ThemeArchetype {
 
     fontFamily: "Google Sans Flex, Cantarell, Noto Sans, sans-serif"
     fontMonospace: "JetBrains Mono, monospace"
+
+    // Default host avatar: 3D abstract refractive glass object
+    defaultHostAvatar: Qt.resolvedUrl("../assets/liquid-glass-avatar.png").toString()
 }
