@@ -194,7 +194,8 @@
     "geminiMonthlyResetDay": 1,
     "defaultAgent": "agy",
     "terminal": "ghostty",
-    "themeSyncEnabled": true
+    "themeSyncEnabled": true,
+    "crashDiagnosisEnabled": true
   },
   "media": {
     "visualizerStyle": "radial"

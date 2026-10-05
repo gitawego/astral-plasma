@@ -240,6 +240,7 @@ Singleton {
     readonly property string aiDefaultAgent: (root.settings && root.settings.ai && root.settings.ai.defaultAgent) ? root.settings.ai.defaultAgent : "agy"
     readonly property string aiTerminal: (root.settings && root.settings.ai && root.settings.ai.terminal) ? root.settings.ai.terminal : "ghostty"
     readonly property bool aiThemeSyncEnabled: (root.settings && root.settings.ai && root.settings.ai.themeSyncEnabled !== undefined) ? root.settings.ai.themeSyncEnabled : true
+    readonly property bool aiCrashDiagnosisEnabled: (root.settings && root.settings.ai && root.settings.ai.crashDiagnosisEnabled !== undefined) ? root.settings.ai.crashDiagnosisEnabled : true
     readonly property bool aiPrivacyMode: (root.settings && root.settings.ai && root.settings.ai.privacyMode !== undefined) ? root.settings.ai.privacyMode : false
     // Download manager defaults (D6/D7): global split parts + destination.
     readonly property string downloadsDir: (root.settings && root.settings.downloads && typeof root.settings.downloads.dir === "string" && root.settings.downloads.dir.length > 0)

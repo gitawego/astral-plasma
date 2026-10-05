@@ -163,6 +163,62 @@ impl CrashMonitor {
 
         deduplicate_incidents(raw_incidents, limit)
     }
+
+    /// Fetches detailed coredump stack trace or journal diagnostic logs for a target process name or PID.
+    pub fn get_crash_details(target: &str) -> Option<String> {
+        if let Ok(output) = Command::new("coredumpctl")
+            .args(["info", target, "--no-pager"])
+            .output()
+        {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout).to_string();
+                if !text.trim().is_empty() {
+                    return Some(text);
+                }
+            }
+        }
+
+        if let Ok(output) = Command::new("journalctl")
+            .args(["-p", "3", "-xb", "-n", "40", "--no-pager"])
+            .output()
+        {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout).to_string();
+                let filtered: Vec<&str> = text
+                    .lines()
+                    .filter(|l| l.contains(target) || l.contains("segfault") || l.contains("error"))
+                    .collect();
+                if !filtered.is_empty() {
+                    return Some(filtered.join("\n"));
+                }
+            }
+        }
+        None
+    }
+
+    /// Formulates a complete, actionable AI diagnostic prompt for an application crash.
+    pub fn diagnose(target: &str) -> String {
+        let details = Self::get_crash_details(target);
+        let incident = Self::scan_recent_crashes(15)
+            .into_iter()
+            .find(|c| c.process_name.eq_ignore_ascii_case(target) || c.pid.map(|p| p.to_string()) == Some(target.to_string()));
+
+        if let Some(inc) = incident {
+            inc.build_diagnostic_prompt(details.as_deref())
+        } else {
+            let mut prompt = format!(
+                "Please diagnose the crash or abnormal termination of '{}'.\n",
+                target
+            );
+            if let Some(ref det) = details {
+                prompt.push_str("\nSystem Diagnostic Logs:\n```\n");
+                prompt.push_str(det.trim());
+                prompt.push_str("\n```\n");
+            }
+            prompt.push_str("\nPlease analyze what might have caused this application or service to fail, and explain how to troubleshoot or fix it.");
+            prompt
+        }
+    }
 }
 
 #[cfg(test)]
@@ -325,4 +381,33 @@ mod tests {
         // On clean test runners crashes might be empty or contain journal lines, but must not panic
         println!("Found {} crash incidents", crashes.len());
     }
+
+    #[test]
+    fn test_build_diagnostic_prompt() {
+        let inc = CrashIncident {
+            id: "core_1234".into(),
+            process_name: "ghostty".into(),
+            pid: Some(1234),
+            signal: Some("SIGSEGV".into()),
+            timestamp_ms: 1000,
+            summary: "Application 'ghostty' terminated due to SIGSEGV".into(),
+            log_snippet: "stack frame #0 at 0xdeadbeef".into(),
+            count: 1,
+        };
+
+        let prompt = inc.build_diagnostic_prompt(Some("frame #0 0xdeadbeef\nframe #1 0xbeefcafe"));
+        assert!(prompt.contains("ghostty"));
+        assert!(prompt.contains("SIGSEGV"));
+        assert!(prompt.contains("PID: 1234"));
+        assert!(prompt.contains("frame #0 0xdeadbeef"));
+        assert!(prompt.contains("suggest potential solutions"));
+    }
+
+    #[test]
+    fn test_diagnose_fallback_does_not_panic() {
+        let prompt = CrashMonitor::diagnose("non_existent_app_xyz");
+        assert!(prompt.contains("non_existent_app_xyz"));
+        assert!(prompt.contains("diagnose"));
+    }
 }
+

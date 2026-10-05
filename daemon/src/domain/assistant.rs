@@ -93,6 +93,32 @@ pub struct CrashIncident {
     pub count: u32,
 }
 
+impl CrashIncident {
+    pub fn build_diagnostic_prompt(&self, detailed_info: Option<&str>) -> String {
+        let mut prompt = format!(
+            "Please diagnose the following crash of '{}':\n\n- Process: {}\n",
+            self.process_name, self.process_name
+        );
+        if let Some(pid) = self.pid {
+            prompt.push_str(&format!("- PID: {}\n", pid));
+        }
+        if let Some(ref sig) = self.signal {
+            prompt.push_str(&format!("- Signal: {}\n", sig));
+        }
+        prompt.push_str(&format!("- Summary: {}\n", self.summary));
+
+        let logs = detailed_info.unwrap_or(&self.log_snippet);
+        if !logs.trim().is_empty() {
+            prompt.push_str("\nStack Trace / System Diagnostic Logs:\n```\n");
+            prompt.push_str(logs.trim());
+            prompt.push_str("\n```\n");
+        }
+        prompt.push_str("\nPlease analyze the root cause of this crash, explain why it happened, and suggest potential solutions or bug fixes.");
+        prompt
+    }
+}
+
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HarnessInfo {
     pub id: String,

@@ -81,6 +81,14 @@ Singleton {
         }
     }
 
+    function diagnoseCrash(target) {
+        if (typeof NotificationService !== "undefined" && typeof NotificationService.diagnoseCrashWithAgent === "function") {
+            NotificationService.diagnoseCrashWithAgent(target);
+        } else if (typeof AiTokenService !== "undefined" && AiTokenService.launchAgent) {
+            AiTokenService.launchAgent("Please diagnose the application crash of '" + (target || "app") + "' and suggest a fix.");
+        }
+    }
+
     function isCapabilityAvailable(name) {
         if (!capabilities || !capabilities[name]) return false;
         return Boolean(capabilities[name].available);

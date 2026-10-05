@@ -72,6 +72,63 @@ Singleton {
         deviceProc.running = true;
     }
 
+    property string crashPromptBuffer: ""
+    Process {
+        id: crashPromptProc
+        property string pendingApp: ""
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: line => {
+                root.crashPromptBuffer += line + "\n";
+            }
+        }
+        onExited: (code, status) => {
+            let prompt = root.crashPromptBuffer.trim();
+            root.crashPromptBuffer = "";
+            if (!prompt) {
+                prompt = "Please diagnose the crash or unexpected termination of '" + pendingApp + "'. Explain why it might have failed and how to fix it.";
+            }
+            if (typeof AiTokenService !== "undefined" && typeof AiTokenService.launchAgent === "function") {
+                AiTokenService.launchAgent(prompt);
+            }
+        }
+    }
+
+    function diagnoseCrashWithAgent(target) {
+        let app = target || root.currentAppName || root.currentSummary;
+        crashPromptProc.pendingApp = app;
+        root.crashPromptBuffer = "";
+        crashPromptProc.running = false;
+        crashPromptProc.command = [root.daemonBin, "crash", "prompt", app];
+        crashPromptProc.running = true;
+    }
+
+    function isCrashNotification(summary, body, appName, appIcon) {
+        let s = (summary || "").toLowerCase();
+        let b = (body || "").toLowerCase();
+        let app = (appName || "").toLowerCase();
+        let icon = (appIcon || "").toLowerCase();
+        return (
+            s.includes("crashed") ||
+            s.includes("crash") ||
+            s.includes("segmentation fault") ||
+            s.includes("core dump") ||
+            s.includes("sigsegv") ||
+            s.includes("sigabrt") ||
+            s.includes("terminated unexpectedly") ||
+            s.includes("killed by signal") ||
+            b.includes("crashed") ||
+            b.includes("segmentation fault") ||
+            b.includes("core dump") ||
+            b.includes("sigsegv") ||
+            b.includes("sigabrt") ||
+            app.includes("coredump") ||
+            app.includes("drkonqi") ||
+            app.includes("abrt") ||
+            icon.includes("crash")
+        );
+    }
+
     function isDeviceNotification(summary, body, appName, appIcon) {
         let s = (summary || "").toLowerCase();
         let b = (body || "").toLowerCase();
@@ -164,6 +221,27 @@ Singleton {
             root.storageQuery = "";
             root.storageConfirmed = false;
         }
+
+        // Crash-to-Agent Diagnostics ("Make sense of a crash")
+        if (root.isCrashNotification(summary, body, appName, currentIcon)) {
+            let enabled = (typeof Config === "undefined" || Config.aiCrashDiagnosisEnabled);
+            if (enabled) {
+                let target = (appName && appName !== "System" && !appName.toLowerCase().includes("coredump")) ? appName : (summary.replace(/crashed.*/i, "").trim() || "application");
+                let agentName = (typeof Config !== "undefined" && Config.aiDefaultAgent) ? Config.aiDefaultAgent : "AI";
+                let diagAct = { identifier: "diagnose_crash", text: "Diagnose with " + agentName, target: target };
+                let alreadyHas = false;
+                for (let i = 0; i < root.currentActions.length; i++) {
+                    if (root.currentActions[i] && root.currentActions[i].identifier === "diagnose_crash") {
+                        alreadyHas = true;
+                        break;
+                    }
+                }
+                if (!alreadyHas) {
+                    root.currentActions.push(diagAct);
+                }
+            }
+        }
+
         notificationReceived(currentSummary, currentBody, currentIcon, currentAppName, currentImage);
     }
 
@@ -178,6 +256,12 @@ Singleton {
             target = action.target || "";
         }
 
+        if (id === "diagnose_crash") {
+            diagnoseCrashWithAgent(target || currentAppName || currentSummary);
+            if (id) root.actionInvoked(id);
+            dismiss();
+            return;
+        }
         if (id === "device_open") {
             runDeviceAction("mount-open", target || currentSummary || currentBody);
             if (id) root.actionInvoked(id);
@@ -213,6 +297,12 @@ Singleton {
     function invokeDefaultAction() {
         if (defaultAction) {
             let id = defaultAction.identifier || "default";
+            if (id === "diagnose_crash") {
+                diagnoseCrashWithAgent(defaultAction.target || currentAppName || currentSummary);
+                root.actionInvoked(id);
+                dismiss();
+                return true;
+            }
             if (id === "device_open") {
                 runDeviceAction("mount-open", defaultAction.target || currentSummary || currentBody);
                 root.actionInvoked(id);

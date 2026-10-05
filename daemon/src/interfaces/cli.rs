@@ -720,6 +720,56 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "crash" => {
+            use crate::infrastructure::crash_monitor::CrashMonitor;
+            let sub = if args.len() >= 3 { args[2].as_str() } else { "recent" };
+            match sub {
+                "recent" | "list" => {
+                    let limit = args.get(3).and_then(|s| s.parse::<usize>().ok()).unwrap_or(5);
+                    let crashes = CrashMonitor::scan_recent_crashes(limit);
+                    let json = serde_json::to_string_pretty(&crashes)?;
+                    println!("{}", json);
+                }
+                "diagnose" => {
+                    let target = args.get(3).map(|s| s.as_str()).unwrap_or("");
+                    if target.is_empty() {
+                        eprintln!("Usage: astral-plasma crash diagnose <process_name|pid>");
+                        std::process::exit(1);
+                    }
+                    let prompt = CrashMonitor::diagnose(target);
+                    println!("{}", prompt);
+                }
+                "prompt" => {
+                    let target = args.get(3).map(|s| s.as_str()).unwrap_or("");
+                    if target.is_empty() {
+                        eprintln!("Usage: astral-plasma crash prompt <process_name|pid>");
+                        std::process::exit(1);
+                    }
+                    let prompt = CrashMonitor::diagnose(target);
+                    print!("{}", prompt);
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma crash <recent|diagnose|prompt> [target]");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "tool" | "tools" => {
+            use crate::application::agent_tools::AgentToolsUseCase;
+            let sub = if args.len() >= 3 { args[2].as_str() } else { "manifest" };
+            let tool_args: Vec<String> = args.iter().skip(3).cloned().collect();
+            match AgentToolsUseCase::execute_tool(sub, &tool_args) {
+                Ok(val) => {
+                    println!("{}", serde_json::to_string_pretty(&val)?);
+                }
+                Err(e) => {
+                    let err = serde_json::json!({ "success": false, "error": e.to_string() });
+                    eprintln!("{}", serde_json::to_string_pretty(&err)?);
+                    std::process::exit(1);
+                }
+            }
+        }
+
         "metrics" => {
             let metrics_ctrl = GetMetricsUseCase::new(ProcMetricsAdapter::new());
             let json = metrics_ctrl.execute_json()?;
