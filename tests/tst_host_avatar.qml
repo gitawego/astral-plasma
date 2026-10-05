@@ -52,6 +52,8 @@ Item {
     property int bgPickCount: 0
     property string lastBgHex: ""
     property real lastBgOpacity: -1
+    property int borderToggleCount: 0
+    property bool lastBorderToggled: true
 
     AvatarPathField {
         id: field
@@ -68,10 +70,15 @@ Item {
     AvatarPathField {
         id: fieldBg
         showBgOptions: true
+        showBorderOption: true
         onBgStylePicked: (hex, op) => {
             testRoot.lastBgHex = hex;
             testRoot.lastBgOpacity = op;
             testRoot.bgPickCount++;
+        }
+        onBorderToggled: enabled => {
+            testRoot.lastBorderToggled = enabled;
+            testRoot.borderToggleCount++;
         }
     }
 
@@ -235,6 +242,15 @@ Item {
         assert(testRoot.lastBgHex === "#aabbcc" && testRoot.lastBgOpacity === 0,
             "commitBg must keep a valid hex and clamp opacity to 0");
 
+        // Border toggle runtime checks
+        assert(fieldBg.showBorderOption === true, "fieldBg must enable showBorderOption");
+        assert(fieldBg.borderEnabled === true, "borderEnabled must default to true");
+        assert(fieldBg.borderToggleSwitchItem !== undefined, "fieldBg must expose borderToggleSwitchItem");
+        fieldBg.borderToggled(false);
+        assert(testRoot.borderToggleCount === 1 && testRoot.lastBorderToggled === false,
+            "borderToggled signal must fire with false");
+        assert(dashTab.hostAvatarBorderVisible === true, "hostAvatarBorderVisible must default to true");
+
         const imgSrc = dashTab.hostAvatarImageItem.source.toString();
         if (!configured) {
             assert(imgSrc.endsWith("theme/assets/dino.png"),
@@ -349,6 +365,21 @@ Item {
             "bg color commits must stay gated behind testMode");
         assert(/Config\.setHostAvatarBgOpacity/.test(pageSrc),
             "page must persist the opacity via Config.setHostAvatarBgOpacity");
+
+        assert(/function\s+setHostAvatarBorder\(/.test(cfgSrc),
+            "Config must expose setHostAvatarBorder()");
+        assert(/readonly\s+property\s+bool\s+hostAvatarBorder:/.test(cfgSrc),
+            "Config must expose the hostAvatarBorder getter");
+        assert(/"hostAvatarBorder":\s*true/.test(cfgSrc),
+            "defaultSettings must declare hostAvatarBorder true");
+        assert(shippedCfg.dashboard.hostAvatarBorder === true,
+            "shipped defaults must declare dashboard.hostAvatarBorder true");
+        assert(/hostAvatarBorderVisible/.test(tabSrc),
+            "DashboardTab must expose hostAvatarBorderVisible");
+        assert(/showBorderOption:\s*true/.test(pageSrc),
+            "the host avatar card must enable the border option");
+        assert(/Config\.setHostAvatarBorder/.test(pageSrc),
+            "page must persist the border option via Config.setHostAvatarBorder");
 
         console.log("PASS: Configurable host avatar (control runtime, rendering, durable-import source contracts)");
         Qt.exit(0);

@@ -49,6 +49,7 @@ Item {
     readonly property string hostAvatarBgColor: (typeof Config !== "undefined" && Config.hostAvatarBg) ? Config.hostAvatarBg : "#ffffff"
     readonly property real hostAvatarBgOpacity: (typeof Config !== "undefined" && Config.hostAvatarBgOpacity !== undefined && !isNaN(Config.hostAvatarBgOpacity)) ? Number(Config.hostAvatarBgOpacity) : 0.2
     readonly property color hostAvatarBackgroundColor: root.resolveAvatarBg(hostAvatarBgColor, hostAvatarBgOpacity)
+    readonly property bool hostAvatarBorderVisible: (typeof Config !== "undefined" && Config.hostAvatarBorder !== undefined) ? Boolean(Config.hostAvatarBorder) : true
 
     /// "" -> bundled default art (relative to this file, so it resolves in
     /// the shell and in the offscreen test harness alike); absolute path ->
@@ -244,8 +245,9 @@ Item {
                                 anchors.fill: parent
                                 radius: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? 0 : width / 2
                                 color: "transparent"
+                                visible: root.hostAvatarBorderVisible
                                 border.color: (typeof Theme !== "undefined" && Theme.material && Theme.material.surfaceStyle === "neon_cyber") ? Colors.primary : Theme.borderSubtle
-                                border.width: 1
+                                border.width: root.hostAvatarBorderVisible ? 1 : 0
                             }
                         }
 

@@ -37,8 +37,16 @@ Rectangle {
     property color bgColor: "#ffffff"
     property real bgOpacity: 0.2
 
+    /// Optional avatar border styling (opt-in, e.g. the host avatar card):
+    /// toggle switch reported through borderToggled.
+    property bool showBorderOption: false
+    property bool borderEnabled: true
+
     /// The background options row (exposed for tests).
     property alias bgOptionsRow: bgRow
+
+    /// The border toggle switch (exposed for tests).
+    property alias borderToggleSwitchItem: borderToggleSwitch
 
     /// The editable input (test / introspection surface).
     property alias inputField: input
@@ -48,6 +56,9 @@ Rectangle {
 
     /// Reports the circle background: #rrggbb hex + opacity clamped to 0..1.
     signal bgStylePicked(string colorHex, real opacity)
+
+    /// Reports when the avatar border is toggled (true = border, false = no border).
+    signal borderToggled(bool enabled)
 
     /// Single normalization point for every commit source (input, browse,
     /// reset): trim, then hand upstream.
@@ -206,22 +217,24 @@ Rectangle {
             }
         }
 
-        // Circle background options (opt-in): color swatch (native picker)
-        // previewed at the configured transparency + transparency slider.
+        // Circle background & border options (opt-in): color swatch (native picker)
+        // previewed at the configured transparency + transparency slider + border toggle.
         RowLayout {
             id: bgRow
             Layout.fillWidth: true
             spacing: Theme.spaceMedium
-            visible: field.showBgOptions
+            visible: field.showBgOptions || field.showBorderOption
 
             Text {
-                text: "Circle background"
+                visible: field.showBgOptions
+                text: "Background"
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontBodySmall
                 color: Colors.m3onSurfaceVariant
             }
 
             Rectangle {
+                visible: field.showBgOptions
                 width: 28
                 height: 28
                 radius: Theme.radiusSmall
@@ -244,6 +257,7 @@ Rectangle {
             }
 
             SettingSlider {
+                visible: field.showBgOptions
                 Layout.fillWidth: true
                 title: "Transparency"
                 min: 0
@@ -251,6 +265,52 @@ Rectangle {
                 suffix: "%"
                 value: field.bgOpacity * 100
                 onValueModified: v => field.commitBg(field.bgColor, v / 100)
+            }
+
+            // Avatar border toggle option
+            RowLayout {
+                id: borderToggleRow
+                spacing: Theme.spaceSmall
+                visible: field.showBorderOption
+
+                Text {
+                    text: "Border"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontBodySmall
+                    color: Colors.m3onSurfaceVariant
+                }
+
+                Rectangle {
+                    id: borderToggleSwitch
+                    width: 36
+                    height: 20
+                    radius: Theme.radiusFull
+                    color: field.borderEnabled ? Colors.primary : Colors.surfaceContainerHigh
+                    border.color: field.borderEnabled ? Colors.primary : Colors.outline
+                    border.width: 1
+
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: field.borderEnabled ? parent.width - width - 2 : 2
+                        width: 16
+                        height: 16
+                        radius: Theme.radiusFull
+                        color: field.borderEnabled ? Colors.m3onPrimary : Colors.outline
+                        Behavior on x { NumberAnimation { duration: 150 } }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.role: Accessible.CheckBox
+                        Accessible.name: "Toggle avatar border"
+                        onClicked: {
+                            if (field.interactive) {
+                                field.borderToggled(!field.borderEnabled);
+                            }
+                        }
+                    }
+                }
             }
         }
 

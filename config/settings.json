@@ -114,6 +114,7 @@
     "hostAvatar": "",
     "hostAvatarBg": "#ffffff",
     "hostAvatarBgOpacity": 0.2,
+    "hostAvatarBorder": true,
     "bongoCatAvatar": "",
     "tabs": [
       {

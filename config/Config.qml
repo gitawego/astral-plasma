@@ -81,6 +81,7 @@ Singleton {
             "hostAvatar": "",
             "hostAvatarBg": "#ffffff",
             "hostAvatarBgOpacity": 0.2,
+            "hostAvatarBorder": true,
             "bongoCatAvatar": "",
             "tabs": [
                 { "id": "dashboard", "label": "Dashboard", "enabled": true },
@@ -206,6 +207,9 @@ Singleton {
         const v = root.settings.dashboard ? Number(root.settings.dashboard.hostAvatarBgOpacity) : NaN;
         return isNaN(v) ? 0.2 : Math.max(0, Math.min(1, v));
     }
+    // Inner border for the system-host avatar (default true).
+    readonly property bool hostAvatarBorder: (root.settings.dashboard && root.settings.dashboard.hostAvatarBorder !== undefined)
+        ? Boolean(root.settings.dashboard.hostAvatarBorder) : true
     // Dashboard mascot / Bongo Cat avatar ("" = bundled default art).
     readonly property string bongoCatAvatar: (root.settings.dashboard && typeof root.settings.dashboard.bongoCatAvatar === "string")
         ? root.settings.dashboard.bongoCatAvatar : ""
@@ -883,6 +887,14 @@ Singleton {
         root.updateSettings(cfg => {
             if (!cfg.dashboard) cfg.dashboard = {};
             cfg.dashboard.hostAvatarBgOpacity = Math.max(0, Math.min(1, v));
+        });
+    }
+
+    /// Border visibility for the system-host avatar.
+    function setHostAvatarBorder(enabled) {
+        root.updateSettings(cfg => {
+            if (!cfg.dashboard) cfg.dashboard = {};
+            cfg.dashboard.hostAvatarBorder = Boolean(enabled);
         });
     }
 

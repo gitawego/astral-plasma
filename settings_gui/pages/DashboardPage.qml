@@ -494,9 +494,16 @@ SettingsPage {
         showBgOptions: true
         bgColor: (typeof Config !== "undefined" && Config.hostAvatarBg) ? Config.hostAvatarBg : "#ffffff"
         bgOpacity: (typeof Config !== "undefined" && Config.hostAvatarBgOpacity !== undefined && !isNaN(Config.hostAvatarBgOpacity)) ? Number(Config.hostAvatarBgOpacity) : 0.2
+        showBorderOption: true
+        borderEnabled: (typeof Config !== "undefined" && Config.hostAvatarBorder !== undefined) ? Boolean(Config.hostAvatarBorder) : true
         onPathPicked: p => {
             if (!root.testMode && typeof Config !== "undefined" && Config.setHostAvatar) {
                 Config.setHostAvatar(p);
+            }
+        }
+        onBorderToggled: enabled => {
+            if (!root.testMode && typeof Config !== "undefined" && Config.setHostAvatarBorder) {
+                Config.setHostAvatarBorder(enabled);
             }
         }
         onBgStylePicked: (hex, op) => {
