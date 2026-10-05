@@ -102,6 +102,42 @@ ColumnLayout {
     property alias refreshCatalogsButtonItem: refreshCatalogsButton
     property alias harnessInstallButtonItem: harnessInstallButton
 
+    // --- Desktop Agent Skills (astral-desktop-tools) ---
+    property bool testSkillInstalled: false
+    property var testSkillLocations: []
+    property int testInstallSkillRequests: 0
+    property int testUninstallSkillRequests: 0
+
+    readonly property bool skillInstalled: testMode
+        ? testSkillInstalled
+        : ((typeof AiTokenService !== "undefined" && AiTokenService) ? AiTokenService.skillInstalled : false)
+    readonly property var skillLocations: testMode
+        ? testSkillLocations
+        : ((typeof AiTokenService !== "undefined" && AiTokenService) ? AiTokenService.skillLocations : [])
+    readonly property bool skillOperating: testMode
+        ? false
+        : ((typeof AiTokenService !== "undefined" && AiTokenService) ? AiTokenService.skillOperating : false)
+    readonly property string skillStatusText: root.skillInstalled
+        ? "astral-desktop-tools installed"
+        : "astral-desktop-tools is not installed"
+
+    function installSkill() {
+        if (testMode) { testInstallSkillRequests += 1; return; }
+        if (typeof AiTokenService !== "undefined" && AiTokenService) AiTokenService.installSkill("astral-desktop-tools");
+    }
+
+    function uninstallSkill() {
+        if (testMode) { testUninstallSkillRequests += 1; return; }
+        if (typeof AiTokenService !== "undefined" && AiTokenService) AiTokenService.uninstallSkill("astral-desktop-tools");
+    }
+
+    property alias skillsSetupGroupItem: skillsSetupGroup
+    property alias skillStatusItem: skillStatus
+    property alias skillHintItem: skillHint
+    property alias installSkillButtonItem: installSkillButton
+    property alias reinstallSkillButtonItem: reinstallSkillButton
+    property alias uninstallSkillButtonItem: uninstallSkillButton
+
     readonly property bool isAuthenticating: testMode ? testIsAuthenticating : ((typeof AiTokenService !== "undefined") ? AiTokenService.isAuthenticating : false)
     readonly property string authenticatingEmail: testMode ? testAuthenticatingEmail : ((typeof AiTokenService !== "undefined") ? AiTokenService.authenticatingEmail : "")
 
@@ -196,6 +232,10 @@ ColumnLayout {
         // The panel is nested inside its card, so its own `y` is relative to that
         // card: map it into the page's space, which is what the settings hub
         // scrolls. `voice` predates the zones and stays a valid deep link.
+        if (name === "skills" || name === "skill") {
+            skillsSetupGroup.userOpen = true;
+            return skillsSetupGroup.mapToItem(root, 0, 0).y;
+        }
         if (name === "voice" || name === "setup") return setupHeader.mapToItem(root, 0, 0).y;
         if (name === "quotas" || name === "providers" || name === "quota") return quotasHeader.mapToItem(root, 0, 0).y;
         if (name === "copilot" || name === "harness" || name === "model") return copilotHeader.mapToItem(root, 0, 0).y;
@@ -1343,6 +1383,7 @@ ColumnLayout {
         id: setupHeader
         Layout.topMargin: Theme.spaceSmall
         eyebrow: (root.harnessInstalled ? "engine ready" : "engine missing")
+            + " · " + (root.skillInstalled ? "skills installed" : "skills available")
             + " · " + root.voiceSummaryText
         title: "Setup"
     }
@@ -1493,6 +1534,114 @@ ColumnLayout {
                 font.pixelSize: 11
                 color: Colors.m3onSurfaceVariant
                 opacity: 0.75
+            }
+        }
+    }
+
+    // =======================================================================
+    // Desktop Agent Skills
+    //
+    // Provides autonomous desktop control & inspection tools to AI agents
+    // (Antigravity, Agy, Claude Code, Cursor, Pi).
+    // =======================================================================
+    Item {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 1
+    }
+
+    SetupGroup {
+        id: skillsSetupGroup
+        title: "Desktop Agent Skills"
+        summary: root.skillInstalled ? "astral-desktop-tools active" : "skills available"
+        state: root.skillInstalled ? "ok" : "idle"
+        needsAttention: false
+
+        ColumnLayout {
+            id: skillsCol
+            Layout.fillWidth: true
+            spacing: 8
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceSmall
+
+                MaterialIcon {
+                    text: root.skillInstalled ? "psychology" : "extension_off"
+                    size: 20
+                    color: root.skillInstalled ? Colors.primary : Colors.m3onSurfaceVariant
+                }
+
+                Text {
+                    id: skillStatus
+                    Layout.fillWidth: true
+                    text: root.skillStatusText
+                        + (root.skillLocations && root.skillLocations.length > 0 ? ("  ·  " + root.skillLocations.length + " target(s)") : "")
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontBodyMedium
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+            }
+
+            Text {
+                id: skillHint
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: root.skillInstalled
+                    ? "Installed agent skill `astral-desktop-tools` allows autonomous coding assistants (Antigravity, Agy, Claude Code) to inspect windows, change workspaces, control notifications, and query system health."
+                    : "The `astral-desktop-tools` skill teaches AI coding assistants how to inspect open windows, switch workspaces, and diagnose system crashes using Astral Plasma's native CLI."
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                color: Colors.m3onSurfaceVariant
+                opacity: 0.85
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceSmall
+
+                PillButton {
+                    id: installSkillButton
+                    visible: !root.skillInstalled
+                    label: root.skillOperating ? "Installing…" : "Install Skill"
+                    variant: "filled"
+                    enabled: !root.skillOperating
+                    onClicked: root.installSkill()
+                }
+
+                PillButton {
+                    id: reinstallSkillButton
+                    visible: root.skillInstalled
+                    label: root.skillOperating ? "Updating…" : "Reinstall / Update"
+                    enabled: !root.skillOperating
+                    onClicked: root.installSkill()
+                }
+
+                PillButton {
+                    id: uninstallSkillButton
+                    visible: root.skillInstalled
+                    label: root.skillOperating ? "Removing…" : "Uninstall Skill"
+                    enabled: !root.skillOperating
+                    onClicked: root.uninstallSkill()
+                }
+            }
+
+            Repeater {
+                model: root.skillLocations
+                delegate: Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WrapAnywhere
+                    text: "• " + modelData
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    color: Colors.m3onSurfaceVariant
+                    opacity: 0.75
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.spaceExtraSmall
             }
         }
     }

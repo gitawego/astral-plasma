@@ -151,13 +151,34 @@ Item {
         assert(/onVisibleChanged:\s*if\s*\(visible\)\s*refreshVoiceReadiness\(\)/.test(aiPageSrc),
             "AiPage must refresh voice readiness when it becomes visible");
 
+        // 9. Desktop Agent Skills verification
+        assert(aiPage.skillInstalled === false, "agent skill must start uninstalled");
+        assert(aiPage.installSkillButtonItem.visible === true, "install button must be visible when uninstalled");
+        assert(aiPage.uninstallSkillButtonItem.visible === false, "uninstall button must be hidden when uninstalled");
+        assert(aiPage.reinstallSkillButtonItem.visible === false, "reinstall button must be hidden when uninstalled");
+        assert(aiPage.skillStatusItem.text.indexOf("is not installed") >= 0, "status must indicate not installed");
+
+        aiPage.installSkill();
+        assert(aiPage.testInstallSkillRequests === 1, "installSkill() must record request");
+
+        aiPage.testSkillInstalled = true;
+        aiPage.testSkillLocations = ["/home/hlu/.agents/skills/astral-desktop-tools"];
+        assert(aiPage.skillInstalled === true, "skillInstalled must reflect testSkillInstalled");
+        assert(aiPage.installSkillButtonItem.visible === false, "install button hidden when installed");
+        assert(aiPage.uninstallSkillButtonItem.visible === true, "uninstall button visible when installed");
+        assert(aiPage.reinstallSkillButtonItem.visible === true, "reinstall button visible when installed");
+        assert(aiPage.skillStatusItem.text.indexOf("installed") >= 0, "status text must indicate installed");
+
+        aiPage.uninstallSkill();
+        assert(aiPage.testUninstallSkillRequests === 1, "uninstallSkill() must record request");
+
         // Deep links land on a section, not just the page.
         assert(typeof aiPage.sectionY === "function", "AiPage must expose section anchors for deep links");
-        // The anchor is in the *page's* coordinate space (the panel is nested in
-        // its own card), so it is strictly below the panel's own y.
         assert(aiPage.sectionY("voice") > aiPage.voicePanelItem.y,
             "the voice anchor must be mapped into the page's space, got " + aiPage.sectionY("voice"));
         assert(aiPage.sectionY("voice") >= 0, "the voice anchor must be inside the page");
+        assert(aiPage.sectionY("skills") >= 0, "the skills anchor must be inside the page");
+        assert(aiPage.sectionY("skill") === aiPage.sectionY("skills"), "skill and skills aliases must match");
         assert(aiPage.sectionY("nope") === undefined, "an unknown section has no anchor");
 
         console.log("PASS: AI Settings Page Unit Tests");

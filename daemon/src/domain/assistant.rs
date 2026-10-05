@@ -76,6 +76,14 @@ pub struct SkillDescriptor {
     pub source: String, // "astral-builtin" | "user-agent" | "omarchy"
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillStatus {
+    pub name: String,
+    pub description: String,
+    pub installed: bool,
+    pub locations: Vec<String>,
+}
+
 fn default_crash_count() -> u32 {
     1
 }

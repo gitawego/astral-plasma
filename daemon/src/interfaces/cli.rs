@@ -769,6 +769,33 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
+        "skill" | "skills" => {
+            use crate::application::skill_service::SkillService;
+            let sub = if args.len() >= 3 { args[2].as_str() } else { "status" };
+            let skill_name = args.get(3).map(|s| s.as_str()).unwrap_or("astral-desktop-tools");
+            match sub {
+                "list" => {
+                    let list = SkillService::list_skills();
+                    println!("{}", serde_json::to_string_pretty(&list)?);
+                }
+                "status" => {
+                    let status = SkillService::get_status(skill_name);
+                    println!("{}", serde_json::to_string_pretty(&status)?);
+                }
+                "install" => {
+                    let status = SkillService::install(skill_name)?;
+                    println!("{}", serde_json::to_string_pretty(&status)?);
+                }
+                "remove" | "uninstall" => {
+                    let status = SkillService::uninstall(skill_name)?;
+                    println!("{}", serde_json::to_string_pretty(&status)?);
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma skill <status|install|uninstall|list> [skill_name]");
+                    std::process::exit(1);
+                }
+            }
+        }
 
         "metrics" => {
             let metrics_ctrl = GetMetricsUseCase::new(ProcMetricsAdapter::new());

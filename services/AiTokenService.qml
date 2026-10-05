@@ -36,6 +36,53 @@ Singleton {
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
     readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
 
+    property bool skillInstalled: false
+    property var skillLocations: []
+    property bool skillOperating: false
+
+    Process {
+        id: skillStatusProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const text = this.text.trim();
+                    if (!text) return;
+                    let val = JSON.parse(text);
+                    if (val && val.name === "astral-desktop-tools") {
+                        root.skillInstalled = Boolean(val.installed);
+                        root.skillLocations = val.locations || [];
+                    }
+                } catch(e) {}
+            }
+        }
+    }
+
+    Process {
+        id: skillOpProc
+        onExited: (code, status) => {
+            root.skillOperating = false;
+            root.refreshSkillStatus();
+        }
+    }
+
+    function refreshSkillStatus() {
+        skillStatusProc.running = false;
+        skillStatusProc.command = [root.daemonBin, "skill", "status", "astral-desktop-tools"];
+        skillStatusProc.running = true;
+    }
+
+    function installSkill(name) {
+        root.skillOperating = true;
+        skillOpProc.command = [root.daemonBin, "skill", "install", name || "astral-desktop-tools"];
+        skillOpProc.running = true;
+    }
+
+    function uninstallSkill(name) {
+        root.skillOperating = true;
+        skillOpProc.command = [root.daemonBin, "skill", "uninstall", name || "astral-desktop-tools"];
+        skillOpProc.running = true;
+    }
+
     function launchAgent(prompt) {
         const agent = (typeof Config !== "undefined" && Config.aiDefaultAgent) ? Config.aiDefaultAgent : "agy";
         const term = (typeof Config !== "undefined" && Config.aiTerminal) ? Config.aiTerminal : "ghostty";
@@ -63,6 +110,7 @@ Singleton {
     onIsUiActiveChanged: {
         if (isUiActive) {
             root.refresh(false);
+            root.refreshSkillStatus();
         }
     }
 

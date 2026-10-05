@@ -92,3 +92,56 @@ fn test_crash_recent_and_prompt() {
     assert!(prompt.contains("test-process"), "Prompt must reference process: {}", prompt);
     assert!(prompt.contains("diagnose"), "Prompt must ask for diagnosis");
 }
+
+#[test]
+fn test_agent_skill_install_and_uninstall() {
+    let bin = get_bin_path();
+    let temp_home = tempfile::tempdir().unwrap();
+
+    // 1. Initial status: uninstalled in clean HOME
+    let out = Command::new(&bin)
+        .env("HOME", temp_home.path())
+        .args(["skill", "status", "astral-desktop-tools"])
+        .output()
+        .expect("skill status");
+    assert!(out.status.success());
+    let val: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(val["name"], "astral-desktop-tools");
+    assert_eq!(val["installed"], false);
+
+    // 2. Install
+    let out = Command::new(&bin)
+        .env("HOME", temp_home.path())
+        .args(["skill", "install", "astral-desktop-tools"])
+        .output()
+        .expect("skill install");
+    assert!(out.status.success());
+    let val: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(val["installed"], true);
+    assert!(!val["locations"].as_array().unwrap().is_empty());
+
+    let skill_path = temp_home.path().join(".config/astral-plasma/skills/astral-desktop-tools/SKILL.md");
+    assert!(skill_path.exists(), "SKILL.md must be written to config path");
+
+    // 3. Status: installed
+    let out = Command::new(&bin)
+        .env("HOME", temp_home.path())
+        .args(["skill", "status", "astral-desktop-tools"])
+        .output()
+        .expect("skill status");
+    assert!(out.status.success());
+    let val: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(val["installed"], true);
+
+    // 4. Uninstall
+    let out = Command::new(&bin)
+        .env("HOME", temp_home.path())
+        .args(["skill", "uninstall", "astral-desktop-tools"])
+        .output()
+        .expect("skill uninstall");
+    assert!(out.status.success());
+    let val: Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(val["installed"], false);
+    assert!(!skill_path.exists(), "SKILL.md must be removed");
+}
+
