@@ -95,11 +95,12 @@ Item {
     readonly property alias tabContentContainerItem: tabContentContainer
     readonly property alias tabSliderItem: tabSlider
     readonly property alias downloadsTabItem: dlTab
+    readonly property alias workspacesTabItem: wsTab
 
     // Keyboard contract for the shell's layer surface: while a tab captures
-    // text (the Downloads add sheet), UnifiedShell requests compositor
-    // keyboard focus. A new text-capturing tab must OR its state in here.
-    readonly property bool textInputActive: dlTab.addDialogOpen
+    // text (the Downloads add sheet, Workspaces search), UnifiedShell requests
+    // compositor keyboard focus. A new text-capturing tab must OR its state in here.
+    readonly property bool textInputActive: dlTab.addDialogOpen || Boolean(wsTab && wsTab.searchActive)
 
     x: dropX
     y: 0
@@ -127,6 +128,13 @@ Item {
 
     HoverHandler {
         id: dropdownHover
+    }
+
+    // Shield: consume clicks within the dropdown bounds so unhandled clicks
+    // never fall through to the background dismiss scrim in UnifiedShell.
+    MouseArea {
+        anchors.fill: parent
+        onClicked: mouse.accepted = true
     }
 
     readonly property var tabs: root.visibleTabs

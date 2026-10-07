@@ -174,6 +174,9 @@ impl WindowManagerPort for HyprlandAdapter {
                 "",
             );
 
+            let ws_id = c.get("workspace").and_then(|w| w.get("id")).and_then(|v| v.as_i64()).map(|i| i.to_string());
+            let desktop_ids = ws_id.map(|s| vec![s]).unwrap_or_default();
+
             let win = Window {
                 id: addr.to_string(),
                 title: title.to_string(),
@@ -185,6 +188,8 @@ impl WindowManagerPort for HyprlandAdapter {
                 is_active,
                 is_maximized,
                 is_fullscreen,
+                desktop_ids,
+                on_all_desktops: false,
             };
 
             if is_active {
@@ -250,6 +255,12 @@ impl WorkspacePort for HyprlandAdapter {
 
     fn create_and_switch(&self, index: u32) -> DynResult<()> {
         let cmd = format!("dispatch workspace {}", index);
+        self.send_command(&cmd)?;
+        Ok(())
+    }
+
+    fn move_window(&self, window_id: &str, desktop_id: &str) -> DynResult<()> {
+        let cmd = format!("dispatch movetoworkspacesilent {},address:{}", desktop_id, window_id);
         self.send_command(&cmd)?;
         Ok(())
     }

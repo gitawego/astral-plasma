@@ -67,6 +67,8 @@ fn test_desktop_session_snapshot_schema_roundtrip() {
         is_active: true,
         is_maximized: false,
         is_fullscreen: false,
+        desktop_ids: vec!["1".to_string()],
+        on_all_desktops: false,
     };
 
     let snapshot = DesktopSessionSnapshot {

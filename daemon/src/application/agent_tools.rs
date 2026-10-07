@@ -95,6 +95,8 @@ impl AgentToolsUseCase {
                             "isActive": w.is_active,
                             "isMaximized": w.is_maximized,
                             "isFullScreen": w.is_fullscreen,
+                            "desktopIds": w.desktop_ids,
+                            "onAllDesktops": w.on_all_desktops,
                         })
                     })
                     .collect();

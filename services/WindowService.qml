@@ -64,6 +64,26 @@ Singleton {
         activateProc.running = true;
     }
 
+    function windowsForDesktop(desktopId) {
+        if (!desktopId || !root.windows || !Array.isArray(root.windows)) return [];
+        let res = [];
+        for (let i = 0; i < root.windows.length; i++) {
+            let w = root.windows[i];
+            if (!w) continue;
+            if (w.onAllDesktops) {
+                res.push(w);
+                continue;
+            }
+            if (w.desktopIds && Array.isArray(w.desktopIds)) {
+                if (w.desktopIds.indexOf(desktopId) !== -1) {
+                    res.push(w);
+                    continue;
+                }
+            }
+        }
+        return res;
+    }
+
     function launchTerminal(cmd) {
         const term = (typeof Config !== "undefined" && Config.aiTerminal) ? Config.aiTerminal : "ghostty";
         if (cmd) {

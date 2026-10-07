@@ -66,6 +66,8 @@ fn test_active_window_payload_serialization() {
             is_active: true,
             is_maximized: true,
             is_fullscreen: false,
+            desktop_ids: vec!["desk-1".to_string()],
+            on_all_desktops: false,
         }],
         has_maximized_window: true,
     };

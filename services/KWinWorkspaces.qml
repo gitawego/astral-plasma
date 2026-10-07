@@ -43,6 +43,13 @@ Singleton {
         }
     }
 
+    Process {
+        id: actionProc
+        onRunningChanged: {
+            if (!running) root.refresh();
+        }
+    }
+
     function refresh() {
         if (!queryDesktops.running) queryDesktops.running = true;
     }
@@ -71,6 +78,43 @@ Singleton {
             createAndSwitchProc.command = [root.daemonBin, "workspaces", "ensure", "" + index];
             createAndSwitchProc.running = true;
         }
+    }
+
+    function moveWindow(winId, desktopId) {
+        if (!winId || !desktopId) return;
+        actionProc.command = [root.daemonBin, "workspaces", "move-window", winId, desktopId];
+        actionProc.running = true;
+    }
+
+    function createDesktop(name) {
+        let cmd = [root.daemonBin, "workspaces", "create"];
+        if (name && ("" + name).trim().length > 0) {
+            cmd.push(("" + name).trim());
+        }
+        actionProc.command = cmd;
+        actionProc.running = true;
+    }
+
+    function removeDesktop(desktopId) {
+        if (!desktopId) return;
+        actionProc.command = [root.daemonBin, "workspaces", "remove", desktopId];
+        actionProc.running = true;
+    }
+
+    function renameDesktop(desktopId, name) {
+        if (!desktopId || !name) return;
+        actionProc.command = [root.daemonBin, "workspaces", "rename", desktopId, ("" + name).trim()];
+        actionProc.running = true;
+    }
+
+    function toggleOverview() {
+        actionProc.command = [root.daemonBin, "workspaces", "overview"];
+        actionProc.running = true;
+    }
+
+    function toggleGrid() {
+        actionProc.command = [root.daemonBin, "workspaces", "grid"];
+        actionProc.running = true;
     }
 
     Timer {

@@ -40,7 +40,7 @@ Item {
 
         // Test 2: Verify WorkspacesTab implicit dimensions
         assert(wsTab.implicitWidth === 680, "WorkspacesTab implicitWidth should be 680");
-        assert(wsTab.implicitHeight === 320, "WorkspacesTab implicitHeight should be 320");
+        assert(wsTab.implicitHeight >= 220 && wsTab.implicitHeight <= 500, "WorkspacesTab implicitHeight should be responsive between 220 and 500");
 
         // Test 3: Workspace service contract (prevent regression where switchToDesktop was missing)
         var mockService = {
@@ -83,6 +83,43 @@ Item {
         assert(mockService.currentId === "ws-2", "currentId should be ws-2 after clicking index 1");
         assert(mockService.desktops[1].active === true, "Desktop 2 must be active");
         assert(mockService.desktops[0].active === false, "Desktop 1 must be inactive");
+
+        // Test 5: Verify LiquidGlassCard usage
+        assert(wsTab.usesLiquidGlassCards === true, "WorkspacesTab must declare usesLiquidGlassCards");
+
+        // Test 6: Verify helper functions
+        assert(typeof wsTab.getWindowsForDesktop === "function", "getWindowsForDesktop must be a function");
+        assert(typeof wsTab.getDesktopNameForWindow === "function", "getDesktopNameForWindow must be a function");
+        assert(typeof wsTab.focusWindow === "function", "focusWindow must be a function");
+
+        // Test 7: Verify search filtering state and desktop window grouping
+        if (typeof WindowService !== "undefined") {
+            WindowService.windows = [
+                { id: "w1", title: "GitHub PR Review", appName: "Microsoft Edge", desktopIds: ["ws-1"], onAllDesktops: false },
+                { id: "w2", title: "Terminal", appName: "Ghostty", desktopIds: ["ws-2"], onAllDesktops: false }
+            ];
+            wsTab.searchQuery = "edge";
+            assert(wsTab.filteredWindows.length === 1, "filteredWindows should match 1 window for 'edge'");
+            assert(wsTab.filteredWindows[0].appName === "Microsoft Edge", "matched window should be Edge");
+
+            const ws1Wins = wsTab.getWindowsForDesktop("ws-1");
+            assert(ws1Wins.length === 1, "ws-1 should have 1 window");
+            assert(ws1Wins[0].id === "w1", "ws-1 window should be w1");
+
+            const ws2Wins = wsTab.getWindowsForDesktop("ws-2");
+            assert(ws2Wins.length === 1, "ws-2 should have 1 window");
+            assert(ws2Wins[0].id === "w2", "ws-2 window should be w2");
+
+            wsTab.searchQuery = "";
+        }
+
+        wsTab.searchQuery = "nonexistent_term_xyz";
+        assert(Array.isArray(wsTab.filteredWindows), "filteredWindows must be an array");
+        assert(wsTab.filteredWindows.length === 0, "filteredWindows should be empty for unmatched term");
+        wsTab.searchQuery = "";
+
+        // Test 8: Verify searchActive property exists for UnifiedShell focus contract
+        assert(typeof wsTab.searchActive === "boolean", "searchActive property must be a boolean");
 
         console.log("PASS: All WorkspacesTab unit tests passed!");
         Qt.exit(0);

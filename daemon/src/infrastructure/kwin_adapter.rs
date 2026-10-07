@@ -119,6 +119,13 @@ for (var i = 0; i < wins.length; i++) {
     var w = wins[i];
     if (w.normalWindow && w.caption && w.resourceClass !== 'quickshell') {
         var onCurrent = w.desktops ? (w.desktops.indexOf(cur) !== -1 || w.onAllDesktops) : true;
+        var dIds = [];
+        if (w.desktops) {
+            for (var j = 0; j < w.desktops.length; j++) {
+                var d = w.desktops[j];
+                dIds.push(d ? (d.id || ('' + d)) : '');
+            }
+        }
         res.push({
             id: ('' + w.internalId).replace('{','').replace('}',''),
             title: w.caption,
@@ -126,7 +133,9 @@ for (var i = 0; i < wins.length; i++) {
             app: '' + w.desktopFileName,
             active: ('' + w.internalId).replace('{','').replace('}','') === activeId,
             maximized: (w.maximizeMode === 3) && !w.minimized && onCurrent,
-            fullScreen: Boolean(w.fullScreen) && !w.minimized && onCurrent
+            fullScreen: Boolean(w.fullScreen) && !w.minimized && onCurrent,
+            desktopIds: dIds,
+            onAllDesktops: Boolean(w.onAllDesktops)
         });
     }
 }
@@ -204,6 +213,15 @@ impl WindowManagerPort for KWinAdapter {
                 let is_active = item["active"].as_bool().unwrap_or(false);
                 let is_maximized = item["maximized"].as_bool().unwrap_or(false);
                 let is_fullscreen = item["fullScreen"].as_bool().unwrap_or(false);
+                let desktop_ids: Vec<String> = item["desktopIds"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let on_all_desktops = item["onAllDesktops"].as_bool().unwrap_or(false);
 
                 let k_icon = krunner_icons.get(title).map(|s| s.as_str()).unwrap_or("");
                 let meta = crate::application::window_identity::resolve_window_identity(
@@ -225,6 +243,8 @@ impl WindowManagerPort for KWinAdapter {
                     is_active,
                     is_maximized,
                     is_fullscreen,
+                    desktop_ids,
+                    on_all_desktops,
                 };
 
                 if is_active {
@@ -354,6 +374,95 @@ impl WorkspacePort for KWinAdapter {
             self.switch_to(&target.id)?;
         }
 
+        Ok(())
+    }
+
+    fn move_window(&self, window_id: &str, desktop_id: &str) -> DynResult<()> {
+        let target_uuid = window_id
+            .replace("0_", "")
+            .replace('{', "")
+            .replace('}', "")
+            .trim()
+            .to_string();
+        let target_did = desktop_id.trim().to_string();
+
+        let script = format!(
+            r#"
+var targetWid = "{target_uuid}";
+var targetDid = "{target_did}";
+var wins = workspace.windowList();
+var des = workspace.desktops;
+var targetD = null;
+for (var i = 0; i < des.length; i++) {{
+    if (des[i].id === targetDid) {{
+        targetD = des[i];
+        break;
+    }}
+}}
+if (targetD) {{
+    for (var j = 0; j < wins.length; j++) {{
+        var w = wins[j];
+        var wid = ("" + w.internalId).replace("{{", "").replace("}}", "");
+        if (wid === targetWid) {{
+            w.desktops = [targetD];
+            break;
+        }}
+    }}
+}}
+"#
+        );
+        let script_file = branding::tmp_file("kwin_move_window.js");
+        fs::write(&script_file, script)?;
+
+        let num_out = Command::new("qdbus6")
+            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy()])
+            .output()?;
+        let num = String::from_utf8_lossy(&num_out.stdout).trim().to_string();
+
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", &format!("/Scripting/Script{}", num), "org.kde.kwin.Script.run"])
+            .output();
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", &format!("/Scripting/Script{}", num), "org.kde.kwin.Script.stop"])
+            .output();
+
+        Ok(())
+    }
+
+    fn create_desktop(&self, name: Option<&str>) -> DynResult<()> {
+        let (_, count, _) = self.query_desktops()?;
+        let dname = name.map(|s| s.to_string()).unwrap_or_else(|| format!("Desktop {}", count + 1));
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", "/VirtualDesktopManager", "org.kde.KWin.VirtualDesktopManager.createDesktop", &count.to_string(), &dname])
+            .output()?;
+        Ok(())
+    }
+
+    fn remove_desktop(&self, id: &str) -> DynResult<()> {
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", "/VirtualDesktopManager", "org.kde.KWin.VirtualDesktopManager.removeDesktop", id])
+            .output()?;
+        Ok(())
+    }
+
+    fn set_desktop_name(&self, id: &str, name: &str) -> DynResult<()> {
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.KWin", "/VirtualDesktopManager", "org.kde.KWin.VirtualDesktopManager.setDesktopName", id, name])
+            .output()?;
+        Ok(())
+    }
+
+    fn toggle_overview(&self) -> DynResult<()> {
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.kglobalaccel", "/component/kwin", "org.kde.kglobalaccel.Component.invokeShortcut", "Overview"])
+            .output()?;
+        Ok(())
+    }
+
+    fn toggle_grid(&self) -> DynResult<()> {
+        let _ = Command::new("qdbus6")
+            .args(["org.kde.kglobalaccel", "/component/kwin", "org.kde.kglobalaccel.Component.invokeShortcut", "Grid View"])
+            .output()?;
         Ok(())
     }
 }

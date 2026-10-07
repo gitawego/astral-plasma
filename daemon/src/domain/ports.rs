@@ -71,6 +71,24 @@ pub trait WorkspacePort: Send + Sync {
     fn query_desktops(&self) -> DynResult<(String, u32, Vec<Desktop>)>;
     fn switch_to(&self, id: &str) -> DynResult<()>;
     fn create_and_switch(&self, index: u32) -> DynResult<()>;
+    fn move_window(&self, _window_id: &str, _desktop_id: &str) -> DynResult<()> {
+        Ok(())
+    }
+    fn create_desktop(&self, _name: Option<&str>) -> DynResult<()> {
+        Ok(())
+    }
+    fn remove_desktop(&self, _id: &str) -> DynResult<()> {
+        Ok(())
+    }
+    fn set_desktop_name(&self, _id: &str, _name: &str) -> DynResult<()> {
+        Ok(())
+    }
+    fn toggle_overview(&self) -> DynResult<()> {
+        Ok(())
+    }
+    fn toggle_grid(&self) -> DynResult<()> {
+        Ok(())
+    }
 }
 
 impl<T: ?Sized + WorkspacePort> WorkspacePort for std::sync::Arc<T> {
@@ -82,6 +100,24 @@ impl<T: ?Sized + WorkspacePort> WorkspacePort for std::sync::Arc<T> {
     }
     fn create_and_switch(&self, index: u32) -> DynResult<()> {
         (**self).create_and_switch(index)
+    }
+    fn move_window(&self, window_id: &str, desktop_id: &str) -> DynResult<()> {
+        (**self).move_window(window_id, desktop_id)
+    }
+    fn create_desktop(&self, name: Option<&str>) -> DynResult<()> {
+        (**self).create_desktop(name)
+    }
+    fn remove_desktop(&self, id: &str) -> DynResult<()> {
+        (**self).remove_desktop(id)
+    }
+    fn set_desktop_name(&self, id: &str, name: &str) -> DynResult<()> {
+        (**self).set_desktop_name(id, name)
+    }
+    fn toggle_overview(&self) -> DynResult<()> {
+        (**self).toggle_overview()
+    }
+    fn toggle_grid(&self) -> DynResult<()> {
+        (**self).toggle_grid()
     }
 }
 

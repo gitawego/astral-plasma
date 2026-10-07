@@ -136,6 +136,8 @@ fn test_json_event_serialization() {
         is_active: true,
         is_maximized: false,
         is_fullscreen: false,
+        desktop_ids: vec!["ws-1".to_string()],
+        on_all_desktops: false,
     };
 
     let serialized = serde_json::to_string(&win).unwrap();

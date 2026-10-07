@@ -695,6 +695,31 @@ pub async fn run_cli() -> DynResult<()> {
                         }
                     }
                 }
+                "move-window" => {
+                    if args.len() >= 5 {
+                        ws_ctrl.move_window(&args[3], &args[4])?;
+                    }
+                }
+                "create" => {
+                    let name = if args.len() >= 4 { Some(args[3].as_str()) } else { None };
+                    ws_ctrl.create_desktop(name)?;
+                }
+                "remove" => {
+                    if args.len() >= 4 {
+                        ws_ctrl.remove_desktop(&args[3])?;
+                    }
+                }
+                "rename" => {
+                    if args.len() >= 5 {
+                        ws_ctrl.set_desktop_name(&args[3], &args[4])?;
+                    }
+                }
+                "overview" => {
+                    ws_ctrl.toggle_overview()?;
+                }
+                "grid" => {
+                    ws_ctrl.toggle_grid()?;
+                }
                 _ => {
                     let json = ws_ctrl.query_json()?;
                     println!("{}", json);

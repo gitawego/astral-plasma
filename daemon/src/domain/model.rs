@@ -30,6 +30,10 @@ pub struct Window {
     pub is_maximized: bool,
     #[serde(rename = "isFullScreen", default)]
     pub is_fullscreen: bool,
+    #[serde(rename = "desktopIds", default)]
+    pub desktop_ids: Vec<String>,
+    #[serde(rename = "onAllDesktops", default)]
+    pub on_all_desktops: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

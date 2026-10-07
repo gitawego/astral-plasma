@@ -269,6 +269,8 @@ impl WatcherService {
                 is_active: true,
                 is_maximized: false,
                 is_fullscreen: false,
+                desktop_ids: Vec::new(),
+                on_all_desktops: false,
             });
         }
 
@@ -349,6 +351,15 @@ impl WatcherService {
 
             let is_maximized = item["maximized"].as_bool().unwrap_or(false);
             let is_fullscreen = item["fullScreen"].as_bool().unwrap_or(false);
+            let desktop_ids: Vec<String> = item["desktopIds"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let on_all_desktops = item["onAllDesktops"].as_bool().unwrap_or(false);
 
             enriched.push(Window {
                 id: wid,
@@ -361,6 +372,8 @@ impl WatcherService {
                 is_active: is_kwin_active,
                 is_maximized,
                 is_fullscreen,
+                desktop_ids,
+                on_all_desktops,
             });
         }
 
@@ -633,6 +646,13 @@ function getWindowList() {
         }
         if (!isShell && w.normalWindow && w.caption) {
             var onCurrent = w.desktops ? (w.desktops.indexOf(cur) !== -1 || w.onAllDesktops) : true;
+            var dIds = [];
+            if (w.desktops) {
+                for (var j = 0; j < w.desktops.length; j++) {
+                    var d = w.desktops[j];
+                    dIds.push(d ? (d.id || ("" + d)) : "");
+                }
+            }
             res.push({
                 id: ("" + w.internalId).replace("{","").replace("}",""),
                 title: "" + (w.caption || ""),
@@ -641,7 +661,9 @@ function getWindowList() {
                 active: ("" + w.internalId).replace("{","").replace("}","") === activeId,
                 maximized: (w.maximizeMode === 3) && !w.minimized && onCurrent,
                 fullScreen: Boolean(w.fullScreen) && !w.minimized && onCurrent,
-                skipTaskbar: isShell
+                skipTaskbar: isShell,
+                desktopIds: dIds,
+                onAllDesktops: Boolean(w.onAllDesktops)
             });
         }
     }
