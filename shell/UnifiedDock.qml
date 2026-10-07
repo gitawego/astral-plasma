@@ -479,22 +479,14 @@ Item {
             width: root.iconS + 4
             height: root.iconS + 4
 
-            Image {
-                id: activeIconImg
-                anchors.centerIn: parent
-                width: root.iconS
-                height: root.iconS
-                source: Config.iconUrl(WindowService.activeIconName)
-                fillMode: Image.PreserveAspectFit
-                visible: status === Image.Ready
-            }
-
+            // The shared MaterialIcon resolves every app-icon archetype the same
+            // way: full-colour art, theme-tinted symbolic art, Material fallback.
             MaterialIcon {
                 anchors.centerIn: parent
+                iconName: WindowService.activeIconName
                 text: WindowService.activeMaterialIcon || "desktop_windows"
-                size: Math.round(root.iconS * 0.82)
+                size: root.iconS
                 color: Colors.primary
-                visible: !activeIconImg.visible || activeIconImg.status !== Image.Ready
             }
         }
 
@@ -779,21 +771,30 @@ Item {
                     id: appDelegate
                     required property var modelData
 
-                    readonly property int itemSize: root.iconS + 8
+                    readonly property int itemSize: metrics.itemSize
+
+                    // Indicator gutter + centred icon geometry (see DockItemMetrics).
+                    DockItemMetrics {
+                        id: metrics
+                        iconSize: root.iconS
+                    }
 
                     width: itemSize
                     height: itemSize
                     implicitWidth: itemSize
                     implicitHeight: itemSize
                     radius: Math.max(8, Math.round(itemSize * 0.28))
-                    color: modelData.isActive ? Colors.primaryContainer : (appHover.containsMouse ? Colors.surfaceContainerHigh : (modelData.isLoading ? Qt.alpha(Colors.primary, 0.12) : "transparent"))
+                    // Liquid-glass selected fill: the same primaryContainer role the
+                    // design assigns to a selected app, expressed through the dock's
+                    // frosted pill archetype instead of an opaque M3 container.
+                    color: modelData.isActive ? Colors.glassPillActive : (appHover.containsMouse ? Colors.surfaceContainerHigh : (modelData.isLoading ? Qt.alpha(Colors.primary, 0.12) : "transparent"))
 
                     // Active left pill indicator
                     Rectangle {
                         anchors.left: parent.left
-                        anchors.leftMargin: 2
+                        anchors.leftMargin: metrics.indicatorMargin
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 3
+                        width: metrics.indicatorWidth
                         height: modelData.isActive ? Math.round(root.iconS * 0.65) : 0
                         radius: 1.5
                         color: Colors.primary
@@ -807,9 +808,9 @@ Item {
                     // Running dot indicator
                     Rectangle {
                         anchors.left: parent.left
-                        anchors.leftMargin: 2
+                        anchors.leftMargin: metrics.indicatorMargin
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 3
+                        width: metrics.indicatorWidth
                         height: 3
                         radius: 1.5
                         color: Colors.textMuted
@@ -843,32 +844,14 @@ Item {
                         }
                     }
 
-                    // App Icon
-                    Image {
-                        id: appIconImg
-                        anchors.centerIn: parent
-                        width: root.iconS
-                        height: root.iconS
-                        opacity: modelData.isRunning ? 1.0 : (modelData.isLoading ? 0.95 : 0.65)
-                        source: Config.iconUrl(modelData.iconName)
-                        fillMode: Image.PreserveAspectFit
-                        visible: status === Image.Ready
-
-                        SequentialAnimation on scale {
-                            running: Boolean(modelData.isLoading)
-                            loops: Animation.Infinite
-                            NumberAnimation { to: 1.06; duration: 700; easing.type: Easing.InOutQuad }
-                            NumberAnimation { to: 0.94; duration: 700; easing.type: Easing.InOutQuad }
-                        }
-                    }
-
+                    // App Icon (shared archetype resolution + Material fallback).
                     MaterialIcon {
                         anchors.centerIn: parent
+                        iconName: modelData.iconName
                         text: modelData.materialIcon || "desktop_windows"
-                        size: Math.round(root.iconS * 0.82)
+                        size: root.iconS
                         opacity: modelData.isRunning ? 1.0 : (modelData.isLoading ? 0.95 : 0.65)
                         color: modelData.isActive ? Colors.primary : Colors.onSurfaceVariant
-                        visible: !appIconImg.visible || appIconImg.status !== Image.Ready
 
                         SequentialAnimation on scale {
                             running: Boolean(modelData.isLoading)

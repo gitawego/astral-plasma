@@ -124,7 +124,12 @@ impl DesktopIntegrationPort for DesktopEntriesAdapter {
             }
         }
 
-        // 4. Install KWin authorization entry
+        // 4. Install the DeepSeek icon + desktop entry the DSH web app window
+        // uses, so the shortcut's Icon=astral-dsh-web resolves immediately.
+        // Defaults here; the DSH launcher refines the host/size when it runs.
+        let _ = crate::infrastructure::dsh_web_desktop::ensure("127.0.0.1", 1440, 900);
+
+        // 5. Install KWin authorization entry
         let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(Some(&app_dir), None);
 
         // 5. Update databases if not in test mode
@@ -165,6 +170,7 @@ impl DesktopIntegrationPort for DesktopEntriesAdapter {
             "astral-wallpaper.desktop",
             "astral-settings.desktop",
             "astral-assistant.desktop",
+            "astral-dsh-web.desktop",
             "astral-plasma.desktop",
         ] {
             let path = app_dir.join(item);
@@ -173,7 +179,10 @@ impl DesktopIntegrationPort for DesktopEntriesAdapter {
             }
         }
 
-        // 4. Update databases if not in test mode
+        // 4. Remove the DeepSeek icon + desktop entry the DSH web app uses.
+        let _ = crate::infrastructure::dsh_web_desktop::remove();
+
+        // 5. Update databases if not in test mode
         if !branding::test_mode() {
             let _ = Command::new("update-desktop-database")
                 .arg(&app_dir)

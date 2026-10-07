@@ -233,7 +233,14 @@ fn external_desktop_state_has_one_writer_each() {
                 "scripts/restore_shortcuts.sh",
             ],
         ),
-        ("kwinrulesrc", &["daemon/src/infrastructure/kwin_window_rules.rs"]),
+        (
+            "kwinrulesrc",
+            &[
+                "daemon/src/infrastructure/kwin_window_rules.rs",
+                // Forces the DSH web app window's landscape size.
+                "daemon/src/infrastructure/dsh_web_desktop.rs",
+            ],
+        ),
         (
             "kwinrc",
             &[

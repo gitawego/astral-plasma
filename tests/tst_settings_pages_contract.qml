@@ -91,6 +91,11 @@ Item {
         testMode: true
     }
 
+    TimePage {
+        id: timePage
+        testMode: true
+    }
+
     /// `[page, source path, expected zone ids]` - the document, in one table, so
     /// a page cannot satisfy the contract by accident of a similar neighbour.
     readonly property var pages: [
@@ -153,6 +158,12 @@ Item {
             source: "../settings_gui/pages/SystemPage.qml",
             page: systemPage,
             zones: ["services", "desktop", "session", "developer", "logging", "display"]
+        },
+        {
+            name: "TimePage",
+            source: "../settings_gui/pages/TimePage.qml",
+            page: timePage,
+            zones: ["cities", "local"]
         }
     ]
 

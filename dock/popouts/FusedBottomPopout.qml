@@ -17,6 +17,13 @@ Item {
 
     readonly property bool isClockActive: (typeof Config !== "undefined" ? Config.bottomPopoutVisible : true) && (root.mode === "clock" || root.mode === "time")
     property var currentDate: new Date()
+
+    // The world-clock probe only runs while this popout presents the clock.
+    Binding {
+        target: ClockZoneService
+        property: "active"
+        value: root.isClockActive
+    }
     Timer {
         interval: 1000
         running: root.isClockActive
@@ -110,6 +117,24 @@ Item {
                     Config.scheduleCloseBottomPopout();
                 }
             }
+        }
+
+        // Ghostty-style translucent dark readable substrate for drawer contents.
+        // Inset with balanced margins so it does NOT fill the whole drawer space,
+        // preserving the authentic liquid glass mantle, concave shoulder fillets,
+        // and seamless 1-to-1 material fusion with the dock.
+        Rectangle {
+            id: ghosttySurface
+            anchors.fill: contentLoader
+            anchors.margins: -8
+            radius: Theme.radiusLarge
+            color: (typeof Colors !== "undefined" && Colors.isDarkMode)
+                ? Qt.tint(Qt.rgba(0.08, 0.09, 0.13, 0.78), Qt.alpha(Colors.primary, 0.04))
+                : Qt.rgba(0.10, 0.11, 0.16, 0.84)
+            border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular)
+                ? Qt.alpha(Colors.glassBorderSpecular, 0.28)
+                : Qt.rgba(1.0, 1.0, 1.0, 0.12)
+            border.width: 1
         }
 
         Item {
@@ -639,63 +664,163 @@ Item {
                     }
                 }
 
-                // Top: Large Digital Time with Live Seconds
+                // 1. Digital Time & Date Display
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 4
 
+                    // Live Time Row with Timezone Pill
                     RowLayout {
-                        spacing: 6
-                        Layout.alignment: Qt.AlignLeft
+                        Layout.fillWidth: true
+                        spacing: 4
 
-                        Text {
-                            text: Qt.formatDateTime(root.currentDate, "HH:mm")
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 32
-                            font.weight: Font.Bold
-                            color: Colors.textOnSurface
+                        RowLayout {
+                            spacing: 2
+                            Layout.alignment: Qt.AlignVCenter
+
+                            Text {
+                                text: Qt.formatDateTime(ClockZoneService.clockDate(root.currentDate), "HH:mm")
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 32
+                                font.weight: Font.Bold
+                                color: Colors.textOnSurface
+                                style: Text.Outline
+                                styleColor: Colors.glassTextHalo
+                            }
+
+                            Text {
+                                text: ":" + Qt.formatDateTime(ClockZoneService.clockDate(root.currentDate), "ss")
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 18
+                                font.weight: Font.DemiBold
+                                color: Colors.primary
+                                Layout.alignment: Qt.AlignBaseline
+                                style: Text.Outline
+                                styleColor: Colors.glassTextHalo
+                            }
                         }
 
-                        Text {
-                            text: ":" + Qt.formatDateTime(root.currentDate, "ss")
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 20
-                            font.weight: Font.DemiBold
-                            color: Colors.primary
-                            Layout.alignment: Qt.AlignBaseline
+                        Item { Layout.fillWidth: true }
+
+                        // Timezone Abbreviation Badge
+                        Rectangle {
+                            id: tzBadge
+                            visible: ClockZoneService.referenceAbbr.length > 0
+                            implicitHeight: 22
+                            implicitWidth: tzBadgeText.implicitWidth + 14
+                            radius: Theme.radiusFull
+                            color: Qt.alpha(Colors.primary, 0.15)
+                            border.color: Qt.alpha(Colors.primary, 0.35)
+                            border.width: 1
+
+                            Text {
+                                id: tzBadgeText
+                                anchors.centerIn: parent
+                                text: ClockZoneService.referenceAbbr
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontLabelSmall
+                                font.weight: Font.Bold
+                                color: Colors.primary
+                            }
                         }
                     }
 
-                    Text {
-                        text: Qt.formatDateTime(root.currentDate, "dddd, MMMM d, yyyy")
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSmall
-                        font.weight: Font.Medium
-                        color: Colors.textOnSurfaceVariant
+                    // Full Date Row with Icon
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        MaterialIcon {
+                            text: "calendar_today"
+                            size: 14
+                            color: Colors.primary
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: Qt.formatDateTime(ClockZoneService.clockDate(root.currentDate), "dddd, MMMM d, yyyy")
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            font.weight: Font.Medium
+                            color: Colors.textOnSurfaceVariant
+                            style: Text.Outline
+                            styleColor: Colors.glassTextHalo
+                        }
                     }
                 }
 
                 ActionDivider {}
 
-                // Details: Timezone & System Uptime
-                ActionItem {
-                    icon: "clock"
-                    label: "Timezone"
-                    detail: Qt.formatDateTime(root.currentDate, "t")
+                // 2. World Clock Section (Cities)
+                ColumnLayout {
+                    id: worldClock
+                    Layout.fillWidth: true
+                    spacing: 4
+                    visible: ClockZoneService.rows.length > 0
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 2
+                        spacing: 6
+
+                        MaterialIcon {
+                            text: "public"
+                            size: 14
+                            color: Colors.primary
+                        }
+
+                        Text {
+                            text: "WORLD CLOCK"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontLabelSmall
+                            font.weight: Font.Bold
+                            font.letterSpacing: 1.2
+                            color: Colors.textOnSurfaceVariant
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    Repeater {
+                        model: ClockZoneService.rows
+                        delegate: ClockZoneRow {
+                            required property var modelData
+                            zone: modelData
+                            onRemoveRequested: id => ClockZoneService.removeZone(id)
+                        }
+                    }
                 }
+
+                ActionDivider {
+                    visible: ClockZoneService.rows.length > 0
+                }
+
+                // 3. Quick Action Items
+                ActionItem {
+                    icon: "language"
+                    iconColor: Colors.primary
+                    label: ClockZoneService.rows.length === 0 ? "Add cities…" : "Manage cities…"
+                    hasSubmenu: true
+                    onClicked: {
+                        Config.closeBottomPopout();
+                        Config.openSettings("time", "cities");
+                    }
+                }
+
+                ActionDivider {}
 
                 ActionItem {
                     icon: "history"
+                    iconColor: Colors.primary
                     label: "System Uptime"
                     detail: SystemService.uptime || "up"
                 }
 
                 ActionDivider {}
 
-                // Settings link matching Wi-Fi
                 ActionItem {
                     icon: "settings"
-                    label: "Date & Time Settings..."
+                    iconColor: Colors.primary
+                    label: "Date & Time Settings…"
                     onClicked: Quickshell.execDetached(["kcmshell6", "kcm_clock"])
                 }
             }
@@ -1540,6 +1665,120 @@ Item {
     }
 
     // ==========================================
+    // WORLD CLOCK ROW
+    // ==========================================
+    // City + abbreviation + signed offset on the left, the time right-aligned
+    // so the times scan as a column, and a day chip that only exists when the
+    // remote calendar day differs from local. The remove affordance is quiet
+    // until the row is hovered.
+    component ClockZoneRow: Rectangle {
+        id: zoneRow
+        required property var zone
+        signal removeRequested(string id)
+
+        Layout.fillWidth: true
+        implicitHeight: 36
+        radius: Theme.radiusSmall
+        color: zoneHover.hovered ? Colors.surfaceContainerHigh : "transparent"
+        border.color: zoneHover.hovered ? Theme.borderNormal : "transparent"
+        border.width: zoneHover.hovered ? 1 : 0
+
+        HoverHandler {
+            id: zoneHover
+            onHoveredChanged: if (hovered) Config.keepBottomPopout()
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.padMedium
+            anchors.rightMargin: Theme.padSmall
+            spacing: Theme.spaceSmall
+
+            MaterialIcon {
+                text: "schedule"
+                size: 15
+                color: Colors.primary
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 1
+
+                Text {
+                    Layout.fillWidth: true
+                    text: zoneRow.zone.city
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSmall
+                    font.weight: Font.DemiBold
+                    color: Colors.textOnSurface
+                    elide: Text.ElideRight
+                }
+
+                // Abbreviation, signed offset, and — only when the calendar day
+                // actually differs — the word for it, in the accent. Saying it in
+                // the meta line keeps the time column free to align.
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Text {
+                        text: (zoneRow.zone.abbr ? zoneRow.zone.abbr + " · " : "") + zoneRow.zone.offsetLabel
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.textOnSurfaceVariant
+                    }
+
+                    Text {
+                        visible: zoneRow.zone.dayWord !== ""
+                        text: zoneRow.zone.dayWord
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        font.weight: Font.DemiBold
+                        color: Colors.primary
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+            }
+
+            Text {
+                Layout.alignment: Qt.AlignVCenter
+                text: zoneRow.zone.time
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontTitleSmall
+                font.weight: Font.Bold
+                color: Colors.textOnSurface
+            }
+
+            Rectangle {
+                Layout.preferredWidth: 22
+                Layout.preferredHeight: 22
+                Layout.alignment: Qt.AlignVCenter
+                radius: Theme.radiusFull
+                color: removeMouse.containsMouse ? Qt.alpha(Colors.error || "#ff5449", 0.15) : "transparent"
+                // Always present so the rail is self-managing, quiet at rest.
+                opacity: (zoneHover.hovered || removeMouse.containsMouse) ? 1.0 : 0.45
+                Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast } }
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: "close"
+                    size: 13
+                    color: removeMouse.containsMouse ? (Colors.error || "#ff5449") : Colors.textOnSurfaceVariant
+                }
+
+                MouseArea {
+                    id: removeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: zoneRow.removeRequested(zoneRow.zone.id)
+                }
+            }
+        }
+    }
+
+    // ==========================================
     // ACTION ITEM HELPER COMPONENT
     // ==========================================
     component ActionItem: Rectangle {
@@ -1553,12 +1792,19 @@ Item {
         property bool hasSubmenu: false
         property string toggleType: "" // "checkmark", "radio", ""
         property int toggleState: 0 // 0, 1
+        property bool isCard: false
         signal clicked()
 
         Layout.fillWidth: true
-        implicitHeight: 30
-        radius: Theme.radiusSmall
-        color: (actionRoot.enabled && actionMouse.containsMouse) ? Colors.surfaceContainerHigh : "transparent"
+        implicitHeight: isCard ? 36 : 30
+        radius: isCard ? Theme.radiusMedium : Theme.radiusSmall
+        color: (actionRoot.enabled && actionMouse.containsMouse)
+            ? Colors.surfaceContainerHigh
+            : (actionRoot.isCard ? Colors.surfaceContainer : "transparent")
+        border.color: (actionRoot.isCard || (actionRoot.enabled && actionMouse.containsMouse))
+            ? Theme.borderSubtle
+            : "transparent"
+        border.width: 1
 
         RowLayout {
             anchors.fill: parent

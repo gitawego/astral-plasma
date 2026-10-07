@@ -1,5 +1,6 @@
 //@ pragma DefaultEnv QS_NO_RELOAD_POPUP=1
 //@ pragma DefaultEnv QSG_RENDER_LOOP=threaded
+//@ pragma UseWebEngine
 
 import QtQuick
 import Quickshell
@@ -186,6 +187,16 @@ ShellRoot {
             if (typeof AiActivityService === "undefined" || !AiActivityService.activeAgents) return "";
             return AiActivityService.activeAgents.map(function(a) { return a.display_name; }).join(", ");
         }
+    }
+
+    // Embedded DSH web UI (dsh/DshWebWindow.qml). open() adopts a running server
+    // or starts one, then shows the view.
+    IpcHandler {
+        target: "dshweb"
+        function toggle(): void { DshWebService.toggle(); }
+        function open(): void { DshWebService.open(); }
+        function close(): void { DshWebService.close(); }
+        function stopServer(): void { DshWebService.stopServer(); }
     }
 
     IpcHandler {
@@ -469,6 +480,17 @@ ShellRoot {
     AssistantWindow {
         id: assistantWindow
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+    }
+
+    // Embedded DSH web UI. Lazy: the window (and its WebEngineView) is only
+    // instantiated when the hosting Quickshell actually has WebEngine, so stock
+    // Quickshell never constructs the type that would abort it.
+    LazyLoader {
+        id: dshWebLoader
+        active: typeof DshWebService !== "undefined"
+            && DshWebService.mode === "embedded"
+            && DshWebService.webEngineSupported
+        source: "dsh/DshWebWindow.qml"
     }
 
     Component.onCompleted: {

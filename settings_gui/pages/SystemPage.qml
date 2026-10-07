@@ -508,6 +508,5 @@ SettingsPage {
             opacity: 0.8
         }
     }
-
     Item { Layout.fillHeight: true }
 }

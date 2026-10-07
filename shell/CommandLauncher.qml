@@ -202,6 +202,13 @@ PanelWindow {
             aliases: ["ai", "ask", "agent", "prompt"]
         },
         {
+            id: "dsh",
+            name: "Open DSH Web",
+            description: "DeepSeek Harness web app (browser or embedded)",
+            icon: "language",
+            aliases: ["dsh", "deepseek", "harness", "web"]
+        },
+        {
             id: "exit",
             name: "Exit Astral Plasma",
             description: "Leave the shell and restore the Plasma desktop",
@@ -985,6 +992,12 @@ PanelWindow {
             root.activeMode = "mode";
         } else if (item.id === "settings") {
             root.activeMode = "settings";
+        } else if (item.id === "dsh") {
+            // Not a mode: opening the DSH web app runs straight away.
+            if (typeof DshWebService !== "undefined" && DshWebService.open) {
+                DshWebService.open();
+            }
+            root.closeLauncher();
         } else if (item.id === "exit") {
             // Not a mode: leaving the shell runs straight away.
             if (typeof Config !== "undefined" && Config.exitShell) {

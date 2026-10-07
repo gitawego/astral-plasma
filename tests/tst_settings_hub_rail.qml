@@ -122,7 +122,7 @@ Item {
             break;
         case 4: {
             // --------------------------------------------------------------
-            // A long page: six zones that all resolve in order
+            // A long page: every declared zone resolves in order
             // --------------------------------------------------------------
             const zones = hub.pageZones;
             assert(zones.length === 6, "the system page declares six zones (got " + zones.length + ")");

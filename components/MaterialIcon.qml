@@ -274,16 +274,14 @@ Item {
 
     readonly property string resolvedIconUrl: (root.iconName !== "" && typeof Config !== "undefined" && typeof Config.iconUrl === "function") ? Config.iconUrl(root.iconName) : ""
 
-    Loader {
+    // App icons go through the shared archetype renderer: full-colour art is
+    // drawn as-is and symbolic art is tinted with `color`. `displaySymbol` is the
+    // Material fallback below.
+    ThemedImage {
         anchors.fill: parent
-        active: root.resolvedIconUrl !== ""
-        sourceComponent: Image {
-            source: root.resolvedIconUrl
-            sourceSize.width: root.size
-            sourceSize.height: root.size
-            fillMode: Image.PreserveAspectFit
-            smooth: true
-        }
+        source: root.resolvedIconUrl
+        size: root.size
+        color: root.color
     }
 
     Text {

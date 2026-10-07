@@ -23,23 +23,12 @@ Item {
             width: 18
             height: 18
 
-            Image {
-                id: activeIconImg
-                anchors.centerIn: parent
-                width: 18
-                height: 18
-                source: Config.iconUrl(WindowService.appId)
-                fillMode: Image.PreserveAspectFit
-                visible: status === Image.Ready
-            }
-
             MaterialIcon {
                 anchors.centerIn: parent
-                iconName: activeIconImg.visible ? "" : (WindowService.appId ? WindowService.appId : "")
+                iconName: WindowService.activeIconName
                 text: WindowService.materialIcon || "desktop_windows"
                 size: 18
                 color: Colors.primary
-                visible: !activeIconImg.visible || activeIconImg.status !== Image.Ready
             }
         }
 

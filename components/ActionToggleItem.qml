@@ -24,6 +24,26 @@ Rectangle {
     radius: Theme.radiusSmall
     color: "transparent"
 
+    // The whole row toggles, not just the switch: a 36x20 target must never be the
+    // only way to turn something on. This sits under the switch's own handler, so
+    // the switch still wins where the two overlap.
+    MouseArea {
+        id: rowMouse
+        anchors.fill: parent
+        hoverEnabled: toggleItemRoot.enabled
+        cursorShape: toggleItemRoot.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onEntered: {
+            if (typeof Config !== "undefined" && Config.keepBottomPopout) {
+                Config.keepBottomPopout();
+            }
+        }
+        onClicked: {
+            if (toggleItemRoot.enabled) {
+                toggleItemRoot.toggled();
+            }
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: Theme.padSmall

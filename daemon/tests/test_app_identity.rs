@@ -39,9 +39,14 @@ fn parses_identity_fields() {
 }
 
 #[test]
-fn skips_nodisplay_entries() {
+fn keeps_nodisplay_entries_for_window_identity() {
+    // A NoDisplay entry is hidden from launchers, but it is still the window's
+    // identity (KWin's titlebar draws its icon), so the parser must keep it and
+    // flag it hidden instead of dropping it.
     let content = "[Desktop Entry]\nType=Application\nName=Hidden\nNoDisplay=true\n";
-    assert!(parse_desktop_entry(content, "hidden").is_none());
+    let app = parse_desktop_entry(content, "hidden").expect("NoDisplay entries must still parse");
+    assert!(app.no_display);
+    assert!(!parse_desktop_entry(ZCODE_DESKTOP, "zcode").unwrap().no_display);
 }
 
 #[test]
@@ -168,6 +173,7 @@ fn resolves_by_wm_class_then_desktop_id() {
             material_icon: "window".into(),
             comment: String::new(),
             exec: String::new(),
+        no_display: false,
         },
         DesktopApp {
             desktop_id: "declared".into(),
@@ -177,6 +183,7 @@ fn resolves_by_wm_class_then_desktop_id() {
             material_icon: "window".into(),
             comment: String::new(),
             exec: String::new(),
+        no_display: false,
         },
     ];
     let idx = AppIdentityIndex::from_entries(entries);
@@ -189,6 +196,30 @@ fn resolves_by_wm_class_then_desktop_id() {
 }
 
 #[test]
+fn no_display_entries_still_identify_windows_but_hide_from_the_launcher() {
+    // A NoDisplay entry is exactly how a browser-installed web app (and our DSH
+    // identity) registers: hidden from launchers, but it is the window's identity,
+    // so KWin's titlebar draws its icon and the dock must resolve the same icon.
+    let hidden = DesktopApp {
+        desktop_id: "msedge-127.0.0.1__-Default".into(),
+        name: "DeepSeek Harness".into(),
+        icon: "/home/u/.local/share/icons/astral-dsh-web.svg".into(),
+        wm_class: Some("msedge-127.0.0.1__-Default".into()),
+        material_icon: "language".into(),
+        comment: String::new(),
+        exec: String::new(),
+        no_display: true,
+    };
+    let idx = AppIdentityIndex::from_entries(vec![hidden]);
+    let found = idx
+        .resolve("msedge-127.0.0.1__-Default", "msedge-127.0.0.1__-Default")
+        .expect("a NoDisplay entry must still resolve its window");
+    assert_eq!(found.name, "DeepSeek Harness");
+    assert_eq!(found.icon, "/home/u/.local/share/icons/astral-dsh-web.svg");
+    assert!(idx.entries().is_empty(), "the launcher must not list hidden entries");
+}
+
+#[test]
 fn earlier_entries_win_so_user_overrides_system() {
     let user = DesktopApp {
         desktop_id: "app".into(),
@@ -198,6 +229,7 @@ fn earlier_entries_win_so_user_overrides_system() {
         material_icon: "window".into(),
         comment: String::new(),
         exec: String::new(),
+        no_display: false,
     };
     let system = DesktopApp {
         desktop_id: "app".into(),
@@ -207,6 +239,7 @@ fn earlier_entries_win_so_user_overrides_system() {
         material_icon: "window".into(),
         comment: String::new(),
         exec: String::new(),
+        no_display: false,
     };
     let idx = AppIdentityIndex::from_entries(vec![user, system]);
     assert_eq!(idx.resolve("app", "").unwrap().name, "User App");
@@ -265,6 +298,7 @@ fn identities_resolve_only_through_their_own_declared_metadata() {
             material_icon: "code".into(),
             comment: String::new(),
             exec: String::new(),
+        no_display: false,
         },
         DesktopApp {
             desktop_id: "com.mitchellh.ghostty".into(),
@@ -274,6 +308,7 @@ fn identities_resolve_only_through_their_own_declared_metadata() {
             material_icon: "terminal".into(),
             comment: String::new(),
             exec: String::new(),
+        no_display: false,
         },
         DesktopApp {
             desktop_id: "microsoft-edge".into(),
@@ -283,6 +318,7 @@ fn identities_resolve_only_through_their_own_declared_metadata() {
             material_icon: "language".into(),
             comment: String::new(),
             exec: String::new(),
+        no_display: false,
         },
     ]);
 

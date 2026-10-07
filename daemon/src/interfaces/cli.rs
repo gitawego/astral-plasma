@@ -216,6 +216,39 @@ pub async fn run_cli() -> DynResult<()> {
             }
         }
 
+        // Desktop identity for the browser app window: installs DeepSeek's icon
+        // and a matching .desktop so KWin shows it instead of the browser's.
+        "dsh-web" => {
+            use crate::infrastructure::dsh_web_desktop;
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("desktop");
+            let action = args.get(3).map(|s| s.as_str()).unwrap_or("install");
+            let host = args.get(4).map(|s| s.as_str()).unwrap_or("127.0.0.1");
+            let width: u32 = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(1440);
+            let height: u32 = args.get(6).and_then(|s| s.parse().ok()).unwrap_or(900);
+            match (sub, action) {
+                ("desktop", "install") => {
+                    let changed = dsh_web_desktop::ensure(host, width, height)?;
+                    println!("{}", serde_json::json!({"success": true, "changed": changed}));
+                }
+                ("desktop", "remove") => {
+                    let removed = dsh_web_desktop::remove()?;
+                    println!("{}", serde_json::json!({"success": true, "removed": removed}));
+                }
+                ("desktop", "status") => {
+                    println!("{}", serde_json::json!({
+                        "installed": dsh_web_desktop::is_installed(),
+                        "desktop_file": dsh_web_desktop::desktop_path().display().to_string(),
+                        "icon_file": dsh_web_desktop::icon_path().display().to_string(),
+                        "app_ids": dsh_web_desktop::wayland_app_ids(host),
+                    }));
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma dsh-web desktop [install|remove|status]");
+                    std::process::exit(2);
+                }
+            }
+        }
+
         "notifs" => {
             crate::application::notif_monitor::run_notif_monitor().await?;
         }
@@ -1946,10 +1979,21 @@ async fn run_self_contained_app() -> DynResult<()> {
     }
 
     // 4. Launch Quickshell
-    let mut child = Command::new("quickshell")
-        .arg("-p")
-        .arg(&theme_dir)
-        .spawn()?;
+    //
+    // A stock Quickshell cannot initialise QtWebEngine on its own (QtWebEngine
+    // must run before QGuiApplication, and Chromium needs argv[0]). When the
+    // user installed the runtime shim, hand it to the shell so the embedded DSH
+    // web view works without rebuilding Quickshell. See domain::quickshell_host.
+    let mut quickshell = Command::new("quickshell");
+    quickshell.arg("-p").arg(&theme_dir);
+    if let Some(preload) = crate::domain::quickshell_host::preload_library() {
+        let existing = env::var("LD_PRELOAD").ok();
+        quickshell.env(
+            "LD_PRELOAD",
+            crate::domain::quickshell_host::preload_env_value(&preload, existing.as_deref()),
+        );
+    }
+    let mut child = quickshell.spawn()?;
 
     // 5. Wait for Quickshell process or signal
     #[cfg(unix)]

@@ -1,5 +1,4 @@
 import QtQuick
-import Qt5Compat.GraphicalEffects
 import "../theme"
 
 Item {
@@ -11,61 +10,32 @@ Item {
     property int size: 18
     property bool forceColorize: false
 
-    // Generically detect if the icon is symbolic/monochrome action icon
-    readonly property bool isSymbolic: {
-        if (forceColorize) return true;
-        if (!source) return false;
-        const s = source.toLowerCase();
-        return s.indexOf("-symbolic") !== -1 || 
-               s.indexOf(".symbolic") !== -1 || 
-               s.indexOf("/symbolic/") !== -1 || 
-               s.indexOf("/actions/") !== -1 || 
-               s.indexOf("/status/") !== -1 ||
-               s.indexOf("symbolic") !== -1;
-    }
+    // Public contract kept for callers/tests: symbolic when asked, or when the
+    // source follows the `-symbolic` convention.
+    readonly property bool isSymbolic: iconImage.isSymbolic
 
     implicitWidth: size
     implicitHeight: size
     width: size
     height: size
 
-    // 1. Regular Full-Color App/Asset Icon (when not symbolic)
-    Image {
-        id: rawIconImg
+    // 1+2. The shared archetype renderer (full-colour or tinted symbolic).
+    ThemedImage {
+        id: iconImage
         anchors.fill: parent
         source: root.source
-        fillMode: Image.PreserveAspectFit
-        visible: (!root.isSymbolic) && (root.source !== "") && (status === Image.Ready)
+        color: root.color
+        size: root.size
+        forceColorize: root.forceColorize
     }
 
-    // 2. Tinted Symbolic / Monochrome Action Icon (ColorOverlay for high contrast)
-    Item {
-        id: overlayContainer
-        anchors.fill: parent
-        visible: root.isSymbolic && (root.source !== "") && (symbolicSourceImg.status === Image.Ready)
-
-        Image {
-            id: symbolicSourceImg
-            anchors.fill: parent
-            source: root.source
-            fillMode: Image.PreserveAspectFit
-            visible: false
-        }
-
-        ColorOverlay {
-            anchors.fill: symbolicSourceImg
-            source: symbolicSourceImg
-            color: root.color
-        }
-    }
-
-    // 3. Fallback MaterialIcon
+    // 3. Fallback MaterialIcon.
     MaterialIcon {
         id: fallbackIcon
         anchors.centerIn: parent
         text: root.materialIcon
         size: root.size
         color: root.color
-        visible: (root.materialIcon !== "") && (!rawIconImg.visible) && (!overlayContainer.visible)
+        visible: (root.materialIcon !== "") && !iconImage.hasIcon
     }
 }

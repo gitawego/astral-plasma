@@ -196,7 +196,19 @@
     "defaultAgent": "agy",
     "terminal": "ghostty",
     "themeSyncEnabled": true,
-    "crashDiagnosisEnabled": true
+    "crashDiagnosisEnabled": true,
+    "dshWeb": {
+      "enabled": true,
+      "url": "http://127.0.0.1:3080",
+      "command": "",
+      "mode": "browser",
+      "browser": "",
+      "firefoxKiosk": false,
+      "installDesktopIcon": true
+    }
+  },
+  "clock": {
+    "timeZones": []
   },
   "media": {
     "visualizerStyle": "radial"

@@ -282,6 +282,67 @@ Item {
                     }
                 }
             }
+
+            // Open DSH Web: the DeepSeek Harness UI, right beside the Copilot
+            // button. The mark is themed with the palette accent (monochrome),
+            // never the brand blue, so it sits in the theme's design language.
+            Rectangle {
+                id: dshWebButton
+                width: 28
+                height: 28
+                radius: 14
+                // While our web UI is on screen the button keeps the tinted active
+                // fill, so the icon reports the state it launched.
+                color: {
+                    const open = (typeof DshWebService !== "undefined") && DshWebService.windowOpen;
+                    if (dshWebHover.containsMouse) return Qt.rgba(1.0, 1.0, 1.0, 0.16);
+                    if (open) return Qt.alpha(Colors.primary, 0.18);
+                    return Qt.rgba(1.0, 1.0, 1.0, 0.06);
+                }
+                border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular)
+                    ? Qt.alpha(Colors.glassBorderSpecular, 0.25)
+                    : Qt.rgba(1.0, 1.0, 1.0, 0.12)
+                border.width: 1
+
+                ThemedIcon {
+                    anchors.centerIn: parent
+                    source: Qt.resolvedUrl("../../theme/assets/icons/deepseek.svg")
+                    forceColorize: true
+                    size: 15
+                    color: {
+                        if (typeof DshWebService === "undefined") return Colors.primary;
+                        return DshWebService.failed ? Colors.error : Colors.primary;
+                    }
+                }
+
+                // Running dot: the same "this is live" mark the dock uses. It
+                // shows when the server answers or its window is already up.
+                Rectangle {
+                    visible: (typeof DshWebService !== "undefined") && DshWebService.live
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    // Inset so the 5px dot sits fully inside the 28px circle.
+                    anchors.rightMargin: 4
+                    anchors.bottomMargin: 4
+                    width: 5
+                    height: 5
+                    radius: 2.5
+                    color: (typeof DshWebService !== "undefined" && DshWebService.failed)
+                        ? Colors.error
+                        : Colors.primary
+                }
+
+                MouseArea {
+                    id: dshWebHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Config.closeBottomPopout();
+                        if (typeof DshWebService !== "undefined") DshWebService.open();
+                    }
+                }
+            }
         }
 
         // Horizontal Segmented Provider Tabs (Responsive Chip Bar for 2, 3, 4, 5+ providers)

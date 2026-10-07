@@ -37,6 +37,9 @@ pub struct DesktopApp {
     pub comment: String,
     /// `Exec=` - the command line the entry declares.
     pub exec: String,
+    /// `NoDisplay=true` - hidden from launchers, but still the window's identity.
+    /// KWin's titlebar draws this entry's icon, so the identity index keeps it.
+    pub no_display: bool,
 }
 
 /// Map a desktop entry's `Categories=` to a Material Symbols icon name.
@@ -251,7 +254,7 @@ pub fn parse_desktop_entry(content: &str, desktop_id: &str) -> Option<DesktopApp
         }
     }
 
-    if !type_app || no_display {
+    if !type_app {
         return None;
     }
     let name = name?;
@@ -264,6 +267,7 @@ pub fn parse_desktop_entry(content: &str, desktop_id: &str) -> Option<DesktopApp
         material_icon: material_icon_for_categories(&categories),
         comment,
         exec,
+        no_display,
     })
 }
 
@@ -327,9 +331,14 @@ impl AppIdentityIndex {
         self.by_desktop_id.len()
     }
 
-    /// Every indexed application, one per desktop id.
+    /// Every indexed application, one per desktop id, excluding the entries the
+    /// launcher must hide (`NoDisplay=true`). Window identity still resolves
+    /// through them, exactly as KWin's titlebar does.
     pub fn entries(&self) -> Vec<&DesktopApp> {
-        self.by_desktop_id.values().collect()
+        self.by_desktop_id
+            .values()
+            .filter(|app| !app.no_display)
+            .collect()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -420,26 +429,63 @@ fn scan_dir(dir: &Path, depth: usize, out: &mut Vec<DesktopApp>) {
     }
 }
 
-static SHARED_INDEX: OnceLock<RwLock<Arc<AppIdentityIndex>>> = OnceLock::new();
-
-fn shared_slot() -> &'static RwLock<Arc<AppIdentityIndex>> {
-    SHARED_INDEX.get_or_init(|| RwLock::new(Arc::new(AppIdentityIndex::load())))
+struct SharedIndex {
+    index: Arc<AppIdentityIndex>,
+    stamp: u64,
 }
 
-/// The process-wide index. Cheap to call: clones an `Arc`.
+static SHARED_INDEX: OnceLock<RwLock<SharedIndex>> = OnceLock::new();
+
+/// Cheap change token for the application directories: the newest mtime of the
+/// `applications/` directories. Installing or removing a desktop entry bumps its
+/// containing directory, which is exactly when the index must be rebuilt. This
+/// is what lets a running shell pick up an app (or our DSH identity) the moment
+/// it is installed, instead of needing a daemon restart.
+fn search_dirs_stamp() -> u64 {
+    AppIdentityIndex::search_dirs()
+        .iter()
+        .filter_map(|dir| fs::metadata(dir).ok())
+        .filter_map(|meta| meta.modified().ok())
+        .filter_map(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos() as u64)
+        .max()
+        .unwrap_or(0)
+}
+
+fn shared_slot() -> &'static RwLock<SharedIndex> {
+    SHARED_INDEX.get_or_init(|| {
+        RwLock::new(SharedIndex {
+            index: Arc::new(AppIdentityIndex::load()),
+            stamp: search_dirs_stamp(),
+        })
+    })
+}
+
+/// The process-wide index. Cheap to call: a directory-mtime check plus an `Arc`
+/// clone; it rebuilds only when the installed entries actually changed.
 pub fn shared_index() -> Arc<AppIdentityIndex> {
-    shared_slot()
-        .read()
-        .map(|g| Arc::clone(&g))
-        .unwrap_or_else(|e| Arc::clone(&e.into_inner()))
+    let stamp = search_dirs_stamp();
+    if let Ok(g) = shared_slot().read() {
+        if g.stamp == stamp {
+            return Arc::clone(&g.index);
+        }
+    }
+    let fresh = Arc::new(AppIdentityIndex::load());
+    if let Ok(mut g) = shared_slot().write() {
+        g.index = Arc::clone(&fresh);
+        g.stamp = stamp;
+    }
+    fresh
 }
 
 /// Re-scan the XDG directories, for when the user installs an application while
 /// the shell is running.
 pub fn refresh_shared_index() -> Arc<AppIdentityIndex> {
     let fresh = Arc::new(AppIdentityIndex::load());
+    let stamp = search_dirs_stamp();
     if let Ok(mut g) = shared_slot().write() {
-        *g = Arc::clone(&fresh);
+        g.index = Arc::clone(&fresh);
+        g.stamp = stamp;
     }
     fresh
 }

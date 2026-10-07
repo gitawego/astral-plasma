@@ -5,6 +5,7 @@ pub mod calendar;
 pub mod tray_adapter;
 pub mod kwin_adapter;
 pub mod preview_capture;
+pub mod dsh_web_desktop;
 pub mod plasma_adapter;
 pub mod session_identity;
 pub mod systemd_adapter;

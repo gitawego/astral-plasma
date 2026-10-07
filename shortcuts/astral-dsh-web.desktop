@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=DSH Web
+Comment=Open the DeepSeek Harness web app
+Exec=sh -c "$HOME/.config/quickshell/scripts/toggle_dsh_web.sh"
+Icon=astral-dsh-web
+Terminal=false
+Type=Application
+Categories=Utility;Development;
+StartupNotify=false

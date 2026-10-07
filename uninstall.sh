@@ -60,6 +60,8 @@ rm -f "$DATA_HOME/applications/astral-dashboard.desktop" \
       "$DATA_HOME/applications/astral-launcher.desktop" \
       "$DATA_HOME/applications/astral-wallpaper.desktop" \
       "$DATA_HOME/applications/astral-plasma.desktop" \
+      "$DATA_HOME/applications/astral-dsh-web.desktop" \
+      "$DATA_HOME/icons/hicolor/scalable/apps/astral-dsh-web.svg" \
       "$DATA_HOME/wayland-sessions/astral-plasma.desktop"
 rm -f "$HOME/.local/bin/astral-plasma-session"
 if command -v update-desktop-database >/dev/null 2>&1; then

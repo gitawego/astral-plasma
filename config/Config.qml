@@ -246,6 +246,26 @@ Singleton {
     readonly property bool aiThemeSyncEnabled: (root.settings && root.settings.ai && root.settings.ai.themeSyncEnabled !== undefined) ? root.settings.ai.themeSyncEnabled : true
     readonly property bool aiCrashDiagnosisEnabled: (root.settings && root.settings.ai && root.settings.ai.crashDiagnosisEnabled !== undefined) ? root.settings.ai.crashDiagnosisEnabled : true
     readonly property bool aiPrivacyMode: (root.settings && root.settings.ai && root.settings.ai.privacyMode !== undefined) ? root.settings.ai.privacyMode : false
+
+    // DSH embedded web UI (see services/DshWebService.qml and dsh/DshWebWindow.qml).
+    // `url` is the ordinary loopback origin; `command` overrides how a headless
+    // server is started (empty => `dsh web` if installed, else `npx`).
+    readonly property bool dshWebEnabled: (root.settings && root.settings.ai && root.settings.ai.dshWeb && root.settings.ai.dshWeb.enabled !== undefined) ? root.settings.ai.dshWeb.enabled : true
+    readonly property string dshWebUrl: (root.settings && root.settings.ai && root.settings.ai.dshWeb && root.settings.ai.dshWeb.url) ? root.settings.ai.dshWeb.url : "http://127.0.0.1:3080"
+    readonly property string dshWebCommand: (root.settings && root.settings.ai && root.settings.ai.dshWeb && root.settings.ai.dshWeb.command) ? root.settings.ai.dshWeb.command : ""
+    // How the DSH UI is presented: "browser" (default) opens it as a chromeless
+    // app window in the user's browser; "embedded" uses the in-shell QtWebEngine
+    // view, which needs a WebEngine-enabled host.
+    readonly property string dshWebMode: (root.settings && root.settings.ai && root.settings.ai.dshWeb && root.settings.ai.dshWeb.mode) ? root.settings.ai.dshWeb.mode : "browser"
+    // Force one browser id (chrome|chromium|edge|firefox); empty = preference order.
+    readonly property string dshWebBrowser: (root.settings && root.settings.ai && root.settings.ai.dshWeb && root.settings.ai.dshWeb.browser) ? root.settings.ai.dshWeb.browser : ""
+    // Firefox has no app mode; kiosk is the only chromeless option.
+    readonly property bool dshWebFirefoxKiosk: (root.settings && root.settings.ai && root.settings.ai.dshWeb && root.settings.ai.dshWeb.firefoxKiosk !== undefined) ? root.settings.ai.dshWeb.firefoxKiosk : false
+    // Whether the DeepSeek icon + desktop entry are installed. The shell applies
+    // it automatically; changeable in Settings > AI or with
+    // `astral-plasma dsh-web desktop remove`.
+    readonly property bool dshWebInstallDesktopIcon: (root.settings && root.settings.ai && root.settings.ai.dshWeb && root.settings.ai.dshWeb.installDesktopIcon !== undefined) ? root.settings.ai.dshWeb.installDesktopIcon : true
+
     // Download manager defaults (D6/D7): global split parts + destination.
     readonly property string downloadsDir: (root.settings && root.settings.downloads && typeof root.settings.downloads.dir === "string" && root.settings.downloads.dir.length > 0)
         ? root.settings.downloads.dir : ""
@@ -450,6 +470,31 @@ Singleton {
         }
     }
 
+    // World clock (clock popout rail): up to three remote zones, IANA ids.
+    readonly property var clockTimeZones: {
+        const list = (root.settings.clock && root.settings.clock.timeZones) ? root.settings.clock.timeZones : [];
+        return Array.isArray(list) ? list : [];
+    }
+
+    function addClockTimeZone(id) {
+        const clean = ("" + (id || "")).trim();
+        if (!clean) return;
+        updateSettings(cfg => {
+            if (!cfg.clock) cfg.clock = {};
+            const list = Array.isArray(cfg.clock.timeZones) ? cfg.clock.timeZones.slice() : [];
+            if (list.length >= 3 || list.indexOf(clean) !== -1) return;
+            list.push(clean);
+            cfg.clock.timeZones = list;
+        });
+    }
+
+    function removeClockTimeZone(id) {
+        updateSettings(cfg => {
+            if (!cfg.clock || !Array.isArray(cfg.clock.timeZones)) return;
+            cfg.clock.timeZones = cfg.clock.timeZones.filter(zone => zone !== id);
+        });
+    }
+
     // Pinned apps management
     readonly property var pinnedApps: (root.settings.dock && root.settings.dock.pinnedApps) ? root.settings.dock.pinnedApps : []
 
@@ -578,6 +623,14 @@ Singleton {
         updateSettings(cfg => {
             if (!cfg.ai) cfg.ai = {};
             cfg.ai.privacyMode = enabled;
+        });
+    }
+
+    function setDshWebInstallDesktopIcon(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.ai) cfg.ai = {};
+            if (!cfg.ai.dshWeb) cfg.ai.dshWeb = {};
+            cfg.ai.dshWeb.installDesktopIcon = enabled;
         });
     }
 

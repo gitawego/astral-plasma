@@ -1267,6 +1267,14 @@ PanelWindow {
                 : 0
         }
 
+        // Fused Bottom Popout Drawer Transparent Backdrop Scrim (when open)
+        Region {
+            x: 0
+            y: 0
+            width: (Config.bottomPopoutVisible && fusedBottomPopoutWrapper.offsetProgress > 0.001) ? root.width : 0
+            height: (Config.bottomPopoutVisible && fusedBottomPopoutWrapper.offsetProgress > 0.001) ? root.height : 0
+        }
+
         // Central Fused Dropdown Dashboard & Backdrop Scrim (when open)
         Region {
             x: 0
@@ -1336,6 +1344,24 @@ PanelWindow {
             onClicked: {
                 if (typeof Config !== "undefined") {
                     Config.dashboardVisible = false;
+                }
+            }
+        }
+    }
+
+    // 0B. BOTTOM POPOUT BACKDROP SCRIM (Soft contrast shield for dock drawers & click-to-dismiss)
+    Rectangle {
+        id: popoutScrim
+        anchors.fill: parent
+        visible: fusedBottomPopoutWrapper.offsetProgress > 0.001
+        opacity: fusedBottomPopoutWrapper.offsetProgress * root.scrimOpacity
+        color: "#000000"
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: {
+                if (typeof Config !== "undefined") {
+                    Config.closeBottomPopout();
                 }
             }
         }

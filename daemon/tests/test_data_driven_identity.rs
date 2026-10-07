@@ -24,6 +24,7 @@ fn entry(desktop_id: &str, name: &str, icon: &str, wm_class: Option<&str>, mater
         material_icon: material.to_string(),
         comment: String::new(),
         exec: String::new(),
+        no_display: false,
     }
 }
 
@@ -259,6 +260,7 @@ fn app_list_entries_carry_the_full_desktop_entry_data() {
         material_icon: "code".to_string(),
         comment: "OpenCode desktop".to_string(),
         exec: "opencode-desktop %U".to_string(),
+        no_display: false,
     };
 
     let info = app_info_from_entry(&app);

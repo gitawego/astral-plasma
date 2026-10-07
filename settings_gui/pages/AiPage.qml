@@ -1377,6 +1377,71 @@ ColumnLayout {
         }
     }
 
+    // --- DSH WEB APP -------------------------------------------------------
+    SettingToggle {
+        Layout.fillWidth: true
+        Layout.topMargin: Theme.spaceSmall
+        title: "DSH Web app icon"
+        description: "Install a DeepSeek icon and desktop entry so the DSH web app window is not branded as Chrome, Edge or Firefox. Turning this off removes them."
+        checked: root.testMode ? false : (typeof Config !== "undefined" ? Config.dshWebInstallDesktopIcon : true)
+        onToggled: val => {
+            if (root.testMode) return;
+            if (typeof Config !== "undefined" && Config.setDshWebInstallDesktopIcon) {
+                Config.setDshWebInstallDesktopIcon(val);
+            }
+        }
+    }
+
+    // Open the DSH web app straight from Settings.
+    Rectangle {
+        Layout.fillWidth: true
+        implicitHeight: 44
+        radius: Theme.radiusMedium
+        color: dshOpenHover.hovered ? Colors.surfaceContainerHigh : Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.padLarge
+            anchors.rightMargin: Theme.padLarge
+            spacing: Theme.spaceSmall
+
+            MaterialIcon {
+                text: "language"
+                size: 18
+                color: Colors.primary
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Open DSH Web"
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBodyMedium
+                font.weight: Font.DemiBold
+                color: Colors.m3onSurface
+            }
+
+            Text {
+                text: "browser / embedded"
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontLabelSmall
+                color: Colors.m3onSurfaceVariant
+            }
+        }
+
+        HoverHandler { id: dshOpenHover }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (root.testMode) return;
+                if (typeof DshWebService !== "undefined") DshWebService.open();
+            }
+        }
+    }
+
 
     // --- SETUP -------------------------------------------------------------
     SectionHeader {
