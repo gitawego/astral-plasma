@@ -103,6 +103,18 @@ Item {
         size: 16
     }
 
+    MaterialIcon {
+        id: iconAstroid
+        text: "astroid"
+        size: 16
+    }
+
+    MaterialIcon {
+        id: iconToken
+        text: "token"
+        size: 16
+    }
+
     Timer {
         interval: 50
         running: true
@@ -163,6 +175,14 @@ Item {
         assert(iconSpeaker.displaySymbol === "󰓃", "speaker must resolve to speaker cabinet glyph (󰓃), not volume");
         assert(iconEqualizer.displaySymbol === "󰺢", "equalizer must resolve to equalizer bars glyph (󰺢)");
         assert(iconGraphicEq.displaySymbol === "󰺢", "graphic_eq must resolve to equalizer bars glyph (󰺢)");
+
+        // 10. astroid and token vector resolution (replaces stacked layers glyph)
+        assert(iconAstroid.hasIcon === true, "astroid must have hasIcon === true");
+        assert(iconAstroid.isAstroid === true, "astroid must be identified as isAstroid");
+        assert(iconAstroid.displaySymbol === "", "astroid must not use font glyph fallback");
+        assert(iconToken.hasIcon === true, "token must have hasIcon === true");
+        assert(iconToken.isAstroid === true, "token must resolve to vector astroid");
+        assert(iconToken.displaySymbol === "", "token must not use misleading stacked-layers font glyph");
 
         console.log("PASS: MaterialIcon Resolution Tests");
         Qt.exit(0);

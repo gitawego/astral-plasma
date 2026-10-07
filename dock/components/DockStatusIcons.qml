@@ -291,7 +291,7 @@ LiquidGlassCard {
 
                 MaterialIcon {
                     anchors.centerIn: parent
-                    text: "token"
+                    text: "astroid"
                     size: root.iconSize
                     color: aiBg.isPopActive
                         ? Colors.textOnPrimary

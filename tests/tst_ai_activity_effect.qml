@@ -266,8 +266,8 @@ Item {
         // ---- 7. Source Contract: dock/components/DockStatusIcons.qml ----
         const dockSrc = readLocalFile("../dock/components/DockStatusIcons.qml");
         assert(dockSrc.length > 1000, "DockStatusIcons.qml must be readable");
-        assert(/text:\s*"token"/.test(dockSrc),
-            "DockStatusIcons must strictly use 'token' icon for AI activity/quota pill");
+        assert(/text:\s*"(?:astroid|token)"/.test(dockSrc),
+            "DockStatusIcons must strictly use 'astroid' or 'token' icon for AI activity/quota pill");
 
         // ---- 8. Source Contract: components/MatrixBorderEffect.qml ----
         const matrixSrc = readLocalFile("../components/MatrixBorderEffect.qml");

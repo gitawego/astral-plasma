@@ -56,7 +56,7 @@ Item {
         if (pid.indexOf("minimax") !== -1) return "bolt";
         if (pid.indexOf("xiaomi") !== -1 || pid.indexOf("mimo") !== -1) return "smartphone";
         if (pid.indexOf("deepseek") !== -1) return "psychology";
-        return "token";
+        return "astroid";
     }
 
     function syncActiveTab() {

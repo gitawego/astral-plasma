@@ -974,6 +974,29 @@ Singleton {
     readonly property color glassPanelSubstrate: glassTinted(
         root.glassActive.panelBase, root.glassActive.panelAlpha, root.isDarkMode ? 0.04 : 0.03)
 
+    // Ghostty drawer substrate for dock popouts that visibly follows the active
+    // accent palette in both dark and light modes.
+    readonly property color drawerSubstrate: root.isDarkMode
+        ? Qt.tint(
+            Qt.rgba(0.06, 0.07, 0.11, 0.78),
+            Qt.alpha(root.primary, 0.14)
+        )
+        : Qt.tint(
+            Qt.rgba(0.96, 0.97, 1.0, 0.86),
+            Qt.alpha(root.primary, 0.10)
+        )
+    readonly property color drawerSubstrateBorder: root.isDarkMode
+        ? Qt.tint(
+            Qt.alpha(root.glassBorderSpecular, 0.22),
+            Qt.alpha(root.primary, 0.26)
+        )
+        : Qt.tint(
+            Qt.alpha(root.outline, 0.28),
+            Qt.alpha(root.primary, 0.22)
+        )
+    readonly property alias ghosttyDrawerSubstrate: root.drawerSubstrate
+    readonly property alias ghosttyDrawerBorder: root.drawerSubstrateBorder
+
     // Vibrant tinted glass card (e.g. Media Player, Highlighted cards)
     readonly property color glassCardVibrant: glassTinted(
         root.glassActive.cardBase, root.glassActive.cardVibrantAlpha, root.glassActive.cardVibrantTint)

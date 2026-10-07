@@ -11,7 +11,8 @@ Item {
     property int size: 18
 
     readonly property string iconKey: root.text !== "" ? root.text : root.iconName
-    readonly property bool hasIcon: displaySymbol !== "" || resolvedIconUrl !== ""
+    readonly property bool isAstroid: iconKey === "astroid" || iconKey === "token" || iconKey === "tokens"
+    readonly property bool hasIcon: displaySymbol !== "" || resolvedIconUrl !== "" || isAstroid
     visible: hasIcon
     implicitWidth: hasIcon ? size : 0
     implicitHeight: hasIcon ? size : 0
@@ -152,8 +153,6 @@ Item {
         "auto_awesome": "󰄧",
         "psychology": "󰧑",
         "brain": "󰧑",
-        "token": "\uf51e",
-        "tokens": "\uf51e",
         "spark": "󰄧",
         "sparkles": "󰄧",
         "tune": "󰔡",
@@ -166,7 +165,6 @@ Item {
         "disk": "󰋊",
         "palette": "󰏘",
         "window": "󰖯",
-        "toll": "\uf51e",
         "cloud": "󰅟",
         "keyboard": "󰌌",
         "system_update": "󰚰",
@@ -241,6 +239,7 @@ Item {
     })
 
     readonly property string displaySymbol: {
+        if (root.isAstroid) return "";
         let key = iconKey;
         if (symbolMap[key]) return symbolMap[key];
         if (key && key.length <= 2) return key;
@@ -252,7 +251,6 @@ Item {
         if (key && key.includes("drag")) return "󰇙";
         if (key && (key.includes("psychology") || key.includes("brain") || key === "ai")) return "󰧑";
         if (key && (key.includes("spark") || key.includes("auto_awesome"))) return "󰄧";
-        if (key && (key.includes("token") || key.includes("toll") || key.includes("coin"))) return "\uf51e";
         if (key && (key === "add" || key.includes("plus"))) return "󰐕";
         if (key && (key.includes("key") || key.includes("vpn_key"))) return "󰌆";
         if (key && (key.includes("delete") || key.includes("trash"))) return "󰆴";
@@ -284,11 +282,18 @@ Item {
         color: root.color
     }
 
+    AstroidIcon {
+        anchors.centerIn: parent
+        size: root.size
+        color: root.color
+        visible: root.isAstroid && root.resolvedIconUrl === ""
+    }
+
     Text {
         anchors.centerIn: parent
         width: root.size
         height: root.size
-        visible: root.resolvedIconUrl === ""
+        visible: root.resolvedIconUrl === "" && !root.isAstroid
         text: root.displaySymbol
         color: root.color
         font.pixelSize: root.size

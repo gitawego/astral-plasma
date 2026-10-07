@@ -43,12 +43,13 @@ Item {
             case "bluetooth": return 300;
             case "network": return 300;
             case "audio": return 280;
-            case "power": return 260;
+            case "power": return 280;
             case "clock":
             case "time": return 300;
             case "tray": return 380;
             case "app": return 350;
-            default: return 280;
+            case "battery":
+            default: return 300;
         }
     }
     property real popWidth: targetPopWidth
@@ -102,10 +103,19 @@ Item {
         return true;
     }
 
+    // Balanced concentric padding tokens for drawer contents:
+    // - drawerOuterMargin (12px): clearance between popout outer glass mantle and dark card,
+    //   ensuring the inner card's radius concentricity (R_inner = R_outer - margin) and avoiding corner cramping.
+    // - drawerInnerPadding (16px / Theme.padLarge): generous breathing room inside the dark card
+    //   for headers, labels, and interactive action pills.
+    readonly property int drawerOuterMargin: (typeof Theme !== "undefined" && Theme.padMedium) ? Theme.padMedium : 12
+    readonly property int drawerInnerPadding: (typeof Theme !== "undefined" && Theme.padLarge) ? Theme.padLarge : 16
+    readonly property int drawerTotalMargin: drawerOuterMargin + drawerInnerPadding
+
     Item {
         id: popCard
         width: root.popWidth
-        implicitHeight: root.targetContentHeight + Theme.padLarge * 2
+        implicitHeight: root.targetContentHeight + root.drawerTotalMargin * 2
         height: implicitHeight + Config.borderThickness
 
         HoverHandler {
@@ -126,15 +136,22 @@ Item {
         Rectangle {
             id: ghosttySurface
             anchors.fill: contentLoader
-            anchors.margins: -8
+            anchors.margins: -root.drawerInnerPadding
             radius: Theme.radiusLarge
-            color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                ? Qt.tint(Qt.rgba(0.08, 0.09, 0.13, 0.78), Qt.alpha(Colors.primary, 0.04))
-                : Qt.rgba(0.10, 0.11, 0.16, 0.84)
-            border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular)
-                ? Qt.alpha(Colors.glassBorderSpecular, 0.28)
-                : Qt.rgba(1.0, 1.0, 1.0, 0.12)
+            color: (typeof Colors !== "undefined" && Colors.drawerSubstrate)
+                ? Colors.drawerSubstrate
+                : (typeof Colors !== "undefined" && Colors.isDarkMode
+                    ? Qt.tint(Qt.rgba(0.06, 0.07, 0.11, 0.78), Qt.alpha(Colors.primary, 0.14))
+                    : Qt.tint(Qt.rgba(0.96, 0.97, 1.0, 0.86), Qt.alpha(Colors.primary, 0.10)))
+            border.color: (typeof Colors !== "undefined" && Colors.drawerSubstrateBorder)
+                ? Colors.drawerSubstrateBorder
+                : (typeof Colors !== "undefined" && Colors.isDarkMode
+                    ? Qt.tint(Qt.alpha(Colors.glassBorderSpecular, 0.22), Qt.alpha(Colors.primary, 0.26))
+                    : Qt.tint(Qt.alpha(Colors.outline, 0.28), Qt.alpha(Colors.primary, 0.22)))
             border.width: 1
+
+            Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
+            Behavior on border.color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
         }
 
         Item {
@@ -142,7 +159,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: Theme.padLarge
+            anchors.margins: root.drawerTotalMargin
             height: root.targetContentHeight
 
             // ==========================================
