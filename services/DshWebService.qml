@@ -183,6 +183,14 @@ Singleton {
         }
     }
 
+    readonly property string daemonBin: {
+        var bin = (typeof Config !== "undefined" && Config.daemonBin) ? Config.daemonBin : "";
+        if (bin.length > 0) return bin;
+        var url = Qt.resolvedUrl("../bin/astral-plasma").toString();
+        if (url.startsWith("file://")) return url.substring(7);
+        return url;
+    }
+
     // Install DeepSeek's icon + a matching .desktop so the browser app window is
     // identified as its own application (daemon infrastructure/dsh_web_desktop.rs).
     // That is what makes the window and taskbar show DeepSeek's icon.
@@ -193,7 +201,7 @@ Singleton {
     /** Install or remove the DeepSeek icon + desktop entry. The daemon tells the
      *  user with a notification when something actually changes. */
     function applyDesktopIcon(enabled) {
-        if (typeof Config === "undefined" || !Config.daemonBin || Config.daemonBin.length === 0) return;
+        if (!root.daemonBin || root.daemonBin.length === 0) return;
         desktopEntryProc.running = false;
         if (enabled) {
             // The daemon writes desktop entries for the real Wayland app ids and a
@@ -201,10 +209,10 @@ Singleton {
             var screen = (typeof Quickshell !== "undefined" && Quickshell.screens && Quickshell.screens.length > 0)
                 ? Quickshell.screens[0] : null;
             var geometry = DshLogic.windowGeometry(screen ? screen.width : 0, screen ? screen.height : 0);
-            desktopEntryProc.command = [Config.daemonBin, "dsh-web", "desktop", "install",
+            desktopEntryProc.command = [root.daemonBin, "dsh-web", "desktop", "install",
                 root.host, String(geometry.width), String(geometry.height)];
         } else {
-            desktopEntryProc.command = [Config.daemonBin, "dsh-web", "desktop", "remove"];
+            desktopEntryProc.command = [root.daemonBin, "dsh-web", "desktop", "remove"];
         }
         desktopEntryProc.running = true;
     }
@@ -338,6 +346,7 @@ Singleton {
      * authenticates; otherwise the browser's own DSH cookie does.
      */
     function launchBrowser(url, preferDefaultBrowser) {
+        if (root.installDesktopIcon) root.applyDesktopIcon(true);
         var override = root.browserOverride;
         if ((!override || override.length === 0) && preferDefaultBrowser && root.defaultBrowserId.length > 0) {
             override = root.defaultBrowserId;
@@ -368,6 +377,16 @@ Singleton {
     // ------------------------------------------------------------------
     function open() {
         if (!root.enabled) return;
+        // If the window is already open on screen, activate it directly
+        if (root.mode !== "embedded" && typeof WindowService !== "undefined" && WindowService) {
+            const wins = WindowService.windows || [];
+            for (let i = 0; i < wins.length; i++) {
+                if (DshLogic.isDshAppId(wins[i].appId, root.host)) {
+                    WindowService.activate(wins[i].id);
+                    return;
+                }
+            }
+        }
         root.startOpenFlow();
     }
 
@@ -415,12 +434,25 @@ Singleton {
             try {
                 xhr.open("GET", sources[i], false);
                 xhr.send();
+                if (xhr.responseText && xhr.responseText.length > 0) {
+                    if (DshLogic.portListeningFromProcNetTcp(xhr.responseText, root.port)) return true;
+                }
             } catch (e) {
                 continue;
             }
-            if (DshLogic.portListeningFromProcNetTcp(xhr.responseText, root.port)) return true;
         }
         return false;
+    }
+
+    Process {
+        id: procNetTcpProc
+        command: ["sh", "-c", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var isListening = DshLogic.portListeningFromProcNetTcp(this.text, root.port);
+                root.handleExternalWatchStatus(isListening);
+            }
+        }
     }
 
     Timer {
@@ -435,7 +467,20 @@ Singleton {
 
     function handleExternalWatch() {
         if (root.managed) return;              // we started it: nothing to announce
-        if (!root.dshPortListening()) {
+        // Try in-process synchronous read (works when QML_XHR_ALLOW_FILE_READ=1)
+        if (root.dshPortListening()) {
+            root.handleExternalWatchStatus(true);
+            return;
+        }
+        // In live desktop, local file XHR is disabled by default in Qt; fall back to procfs read
+        if (!procNetTcpProc.running) {
+            procNetTcpProc.running = true;
+        }
+    }
+
+    function handleExternalWatchStatus(isListening) {
+        if (root.managed) return;
+        if (!isListening) {
             root.externalNotified = false;     // a later start is a new episode
             root.externalSeenDown = true;
             return;

@@ -1331,66 +1331,81 @@ Singleton {
     }
 
     function setVoiceEnabled(enabled) {
-        const block = root._ensureVoiceBlock();
-        block.enabled = !!enabled;
-        root.voiceSettings = block;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.enabled = !!enabled;
+        });
+    }
+
+    function setVoiceEngine(engineId) {
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.engine = engineId;
+            // Reset model to default for the selected engine if needed
+            if (engineId === "sherpa-onnx") {
+                cfg.voice.model = "sherpa-sensevoice-small";
+            } else if (engineId === "whisper-cpp" && (cfg.voice.model === "sherpa-sensevoice-small" || cfg.voice.model === "nova-3")) {
+                cfg.voice.model = "ggml-small";
+            } else if (engineId === "deepgram") {
+                cfg.voice.model = "nova-3";
+            }
+        });
     }
 
     function setVoiceModel(modelId) {
-        const block = root._ensureVoiceBlock();
-        block.model = modelId;
-        root.voiceSettings = block;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.model = modelId;
+        });
     }
 
     function setVoiceLanguage(language) {
-        const block = root._ensureVoiceBlock();
-        block.language = language;
-        root.voiceSettings = block;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.language = language;
+        });
     }
 
     function setVoiceMaxUtteranceSeconds(seconds) {
-        const block = root._ensureVoiceBlock();
-        block.maxUtteranceSeconds = seconds;
-        root.voiceSettings = block;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.maxUtteranceSeconds = seconds;
+        });
     }
 
     function setVoiceSilenceHangoverMs(ms) {
-        const block = root._ensureVoiceBlock();
-        block.silenceHangoverMs = ms;
-        root.voiceSettings = block;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.silenceHangoverMs = ms;
+        });
     }
 
     function setVoiceAutoFinalize(enabled) {
-        const block = root._ensureVoiceBlock();
-        block.autoFinalize = !!enabled;
-        root.voiceSettings = block;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.autoFinalize = !!enabled;
+        });
     }
 
     function setVoiceInstallModelOnDemand(enabled) {
-        const block = root._ensureVoiceBlock();
-        block.installModelOnDemand = !!enabled;
-        root.voiceSettings = block;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.installModelOnDemand = !!enabled;
+        });
     }
 
     function setVoiceEchoCancel(enabled) {
-        const block = root._ensureVoiceBlock();
-        block.echoCancel = !!enabled;
-        root.voiceSettings = block;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.echoCancel = !!enabled;
+        });
     }
 
     function setVoiceNoiseSuppress(enabled) {
-        const block = root._ensureVoiceBlock();
-        block.noiseSuppress = !!enabled;
-        root.voiceSettings = block;
-        root.saveSettings();
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.noiseSuppress = !!enabled;
+        });
     }
 
     // Right border edge control (volume & brightness) state
@@ -1557,11 +1572,27 @@ Singleton {
     }
 
     // Save settings back to disk
+    property bool _pendingSave: false
+    signal settingsSaved()
+
     Process {
         id: saveProcess
+        onRunningChanged: {
+            if (!running) {
+                root.settingsSaved();
+                if (root._pendingSave) {
+                    root._pendingSave = false;
+                    root.saveSettings();
+                }
+            }
+        }
     }
 
     function saveSettings() {
+        if (saveProcess.running) {
+            root._pendingSave = true;
+            return;
+        }
         try {
             const jsonStr = JSON.stringify(root.settings, null, 2);
             saveProcess.command = [root.daemonBin, "config", "write", root.userConfigPath, jsonStr];

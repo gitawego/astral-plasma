@@ -59,8 +59,11 @@ pub fn wayland_app_ids(host: &str) -> Vec<String> {
     let infix = format!("{}__", host);
     vec![
         format!("chrome-{infix}-Default"),
+        format!("chrome-{infix}-default"),
         format!("chromium-{infix}-Default"),
+        format!("chromium-{infix}-default"),
         format!("msedge-{infix}-Default"),
+        format!("msedge-{infix}-default"),
     ]
 }
 
@@ -216,6 +219,7 @@ fn render_size_rules(existing: &str, host: &str, width: u32, height: u32) -> Str
         ini.set(&group, "Description", &format!("{KWIN_RULE_PREFIX} ({app_id})"));
         ini.set(&group, "wmclass", &app_id);
         ini.set(&group, "wmclassmatch", "1");
+        ini.set(&group, "wmclasscomplete", "false");
         ini.set(&group, "size", &format!("{width},{height}"));
         ini.set(&group, "sizerule", SIZE_RULE);
     }
@@ -322,8 +326,11 @@ mod tests {
     fn app_ids_follow_the_wayland_scheme() {
         let ids = wayland_app_ids("127.0.0.1");
         assert!(ids.contains(&"chrome-127.0.0.1__-Default".to_string()));
+        assert!(ids.contains(&"chrome-127.0.0.1__-default".to_string()));
         assert!(ids.contains(&"chromium-127.0.0.1__-Default".to_string()));
+        assert!(ids.contains(&"chromium-127.0.0.1__-default".to_string()));
         assert!(ids.contains(&"msedge-127.0.0.1__-Default".to_string()));
+        assert!(ids.contains(&"msedge-127.0.0.1__-default".to_string()));
     }
 
     #[test]
@@ -340,6 +347,7 @@ mod tests {
         let rendered = render_size_rules("", "127.0.0.1", 1536, 968);
         assert!(rendered.contains("size=1536,968"));
         assert!(rendered.contains(&format!("sizerule={SIZE_RULE}")));
+        assert!(rendered.contains("wmclasscomplete=false"));
         assert_eq!(SIZE_RULE, "3", "Remember: apply the default, keep user resizes");
         assert!(!rendered.contains("sizerule=2"));
     }

@@ -1033,10 +1033,10 @@ Item {
 
         // The engine's install one-liner belongs to the daemon, which knows the
         // distribution. A hardcoded `pacman` line is a dead end everywhere else.
-        const aiPageSrc = readLocalFile("../settings_gui/pages/AiPage.qml");
-        assert(aiPageSrc.indexOf("pacman") < 0,
-            "AiPage must not hardcode a distribution's package manager");
-        assert(/voiceStatus\.engine_install_command/.test(aiPageSrc),
+        const voicePageSrc = readLocalFile("../settings_gui/pages/VoicePage.qml");
+        assert(voicePageSrc.indexOf("pacman") < 0,
+            "VoicePage must not hardcode a distribution's package manager");
+        assert(/voiceStatus\.engine_install_command/.test(voicePageSrc),
             "the engine notice must render the command the daemon reported");
 
         const stripSrc = readLocalFile("../assistant/components/VoiceListeningStrip.qml");

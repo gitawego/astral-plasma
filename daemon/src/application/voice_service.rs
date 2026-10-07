@@ -10,7 +10,6 @@
 use crate::domain::ports::{DynError, DynResult, SpeechToTextPort};
 use crate::infrastructure::whisper_stt_adapter::{models_dir, CancelHandle};
 use crate::domain::voice::{
-    LanguageSource,
     model_descriptors, setup_gap_for, staged_download_paths, EngineProbe, LanguageOption,
     ModelDescriptor, SetupGap, Transcript, VoiceEvent, VoiceSessionConfig, VoiceSettings,
     VoiceState, VoiceStatus, MODEL_CATALOG,
@@ -103,13 +102,24 @@ impl VoiceService {
 
     /// The engine and model catalogs the settings UI renders.
     pub fn catalogs(&self) -> (Vec<ModelDescriptor>, Vec<LanguageOption>) {
-        (model_descriptors(), LanguageOption::all())
+        if self.settings.engine.trim() == crate::infrastructure::sherpa_stt_adapter::SHERPA_ENGINE_ID {
+            (crate::domain::voice::sherpa_model_descriptors(), crate::domain::voice::sherpa_language_options())
+        } else {
+            (model_descriptors(), LanguageOption::all())
+        }
     }
 
     /// Current readiness, consumed by `voice status`, the doctor and the UI.
     /// The install one-liner for *this* machine, or `None` when its
     /// distribution is not one we can name a package for.
     pub fn engine_install_command(&self) -> Option<String> {
+        let engine = self.settings.engine.trim();
+        if engine == crate::infrastructure::sherpa_stt_adapter::SHERPA_ENGINE_ID {
+            return Some("pip install sherpa-onnx".to_string());
+        }
+        if engine == crate::infrastructure::deepgram_stt_adapter::DEEPGRAM_ENGINE_ID {
+            return None;
+        }
         crate::domain::voice::package_manager_for_os_release(&os_release_text())
             .engine_install_command()
             .map(str::to_string)
@@ -117,17 +127,37 @@ impl VoiceService {
 
     pub fn status(&self) -> VoiceStatus {
         let probe = self.engine.probe().unwrap_or_else(|_| EngineProbe::missing(&self.settings.engine));
+        let is_deepgram = self.settings.engine.trim() == crate::infrastructure::deepgram_stt_adapter::DEEPGRAM_ENGINE_ID;
+        let is_sherpa = self.settings.engine.trim() == crate::infrastructure::sherpa_stt_adapter::SHERPA_ENGINE_ID;
+
         // Cloud engines have no binary: availability is key presence.
-        let engine_available = if self.settings.engine.trim() == crate::infrastructure::deepgram_stt_adapter::DEEPGRAM_ENGINE_ID {
+        let engine_available = if is_deepgram {
             crate::infrastructure::deepgram_stt_adapter::read_key().is_some()
         } else {
             probe.binary_path.is_some()
         };
-        let model_present = crate::infrastructure::whisper_stt_adapter::resolve_model_file(&self.settings.model).is_some();
+
+        let model_present = if is_deepgram {
+            true
+        } else if is_sherpa {
+            crate::infrastructure::sherpa_stt_adapter::resolve_sherpa_model(&self.settings.model).is_some()
+        } else {
+            crate::infrastructure::whisper_stt_adapter::resolve_model_file(&self.settings.model).is_some()
+        };
+
+        let model_path = if is_sherpa {
+            crate::infrastructure::sherpa_stt_adapter::resolve_sherpa_model(&self.settings.model)
+                .map(|f| f.model_path.to_string_lossy().into_owned())
+        } else {
+            crate::infrastructure::whisper_stt_adapter::resolve_model_file(&self.settings.model)
+                .map(|p| p.to_string_lossy().into_owned())
+        };
+
         let has_source = crate::infrastructure::whisper_stt_adapter::has_audio_source();
         let gap = setup_gap_for(engine_available, model_present, has_source);
 
         let descriptor = crate::domain::voice::model_by_id(&self.settings.model);
+        let (models_available, languages) = self.catalogs();
         VoiceStatus {
             enabled: self.settings.enabled,
             engine: self.settings.engine.clone(),
@@ -136,8 +166,7 @@ impl VoiceService {
             engine_version: probe.version.clone(),
             model: self.settings.model.clone(),
             model_present,
-            model_path: crate::infrastructure::whisper_stt_adapter::resolve_model_file(&self.settings.model)
-                .map(|p| p.to_string_lossy().into_owned()),
+            model_path,
             model_size_bytes: descriptor.size_bytes,
             echo_cancel: self.settings.echo_cancel,
             echo_cancel_active: crate::infrastructure::echo_cancel::source_available(),
@@ -149,8 +178,8 @@ impl VoiceService {
             setup_complete: gap == SetupGap::Ready,
             gap,
             engine_install_command: if engine_available { None } else { self.engine_install_command() },
-            models_available: model_descriptors(),
-            languages: LanguageOption::all(),
+            models_available,
+            languages,
             capabilities: probe.capabilities,
         }
     }
@@ -162,11 +191,15 @@ impl VoiceService {
     /// usable model. `curl` is used rather than a new HTTP dependency, matching
     /// how `ai_quota_adapter` already reaches the network.
     pub fn install_model<F: FnMut(f32)>(&self, model_id: &str, mut progress: F) -> DynResult<PathBuf> {
-        let entry = crate::domain::voice::model_by_id(model_id);
         if !crate::domain::voice::is_known_model(model_id) {
             return Err(format!("Unknown speech model '{model_id}'.").into());
         }
 
+        if model_id == crate::domain::voice::SENSEVOICE_SMALL_ID {
+            return self.install_sherpa_sensevoice_model(progress);
+        }
+
+        let entry = crate::domain::voice::model_by_id(model_id);
         let dir = models_dir();
         std::fs::create_dir_all(&dir)
             .map_err(|e| -> DynError { format!("Cannot create {}: {e}", dir.display()).into() })?;
@@ -179,6 +212,43 @@ impl VoiceService {
 
         progress(1.0);
         Ok(final_path)
+    }
+
+    /// Downloads SenseVoice-Small ONNX weights and tokens for sherpa-onnx.
+    pub fn install_sherpa_sensevoice_model<F: FnMut(f32)>(&self, mut progress: F) -> DynResult<PathBuf> {
+        let dir = models_dir().join(crate::domain::voice::SENSEVOICE_SMALL_ID);
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| -> DynError { format!("Cannot create {}: {e}", dir.display()).into() })?;
+
+        let model_part = dir.join("model.int8.onnx.part");
+        let model_final = dir.join("model.int8.onnx");
+        let tokens_part = dir.join("tokens.txt.part");
+        let tokens_final = dir.join("tokens.txt");
+
+        Self::download_asset(
+            "SenseVoice Model",
+            crate::domain::voice::SENSEVOICE_MODEL_URL,
+            crate::domain::voice::SENSEVOICE_MODEL_SIZE_BYTES,
+            &model_part,
+            &mut |p| progress(p * 0.98),
+        )?;
+        std::fs::rename(&model_part, &model_final).map_err(|e| -> DynError {
+            format!("Cannot install SenseVoice model weights: {e}").into()
+        })?;
+
+        Self::download_asset(
+            "SenseVoice Tokens",
+            crate::domain::voice::SENSEVOICE_TOKENS_URL,
+            crate::domain::voice::SENSEVOICE_TOKENS_SIZE_BYTES,
+            &tokens_part,
+            &mut |p| progress(0.98 + p * 0.02),
+        )?;
+        std::fs::rename(&tokens_part, &tokens_final).map_err(|e| -> DynError {
+            format!("Cannot install SenseVoice tokens: {e}").into()
+        })?;
+
+        progress(1.0);
+        Ok(dir)
     }
 
     /// Downloads the Silero VAD asset, reporting progress as `0.0 ..= 1.0`.    ///
@@ -287,6 +357,16 @@ impl VoiceService {
     pub fn remove_model(&self, model_id: &str) -> DynResult<bool> {
         if !crate::domain::voice::is_known_model(model_id) {
             return Err(format!("Unknown speech model '{model_id}'.").into());
+        }
+        if model_id == crate::domain::voice::SENSEVOICE_SMALL_ID {
+            let dir = models_dir().join(crate::domain::voice::SENSEVOICE_SMALL_ID);
+            if dir.exists() {
+                std::fs::remove_dir_all(&dir).map_err(|e| -> DynError {
+                    format!("Cannot remove {}: {e}", dir.display()).into()
+                })?;
+                return Ok(true);
+            }
+            return Ok(false);
         }
         let entry = crate::domain::voice::model_by_id(model_id);
         let dir = models_dir();
@@ -525,6 +605,7 @@ pub fn catalog_total_bytes() -> u64 {
 mod tests {
     use super::*;
     use crate::domain::ports::SpeechToTextPort;
+    use crate::domain::voice::LanguageSource;
     use std::sync::Mutex;
 
     /// A fake engine that records what it was asked to do and replays a script

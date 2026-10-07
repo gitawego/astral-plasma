@@ -158,7 +158,7 @@ Item {
 
         // The AI page must not render the header twice.
         const page = readLocalFile("../settings_gui/pages/AiPage.qml");
-        assert(page.split("AI Token Plans").length - 1 === 1,
+        assert(page.split("AI & Agents").length - 1 === 1,
             "the page title lives in the sticky header exactly once");
         assert(page.indexOf("property Component stickyHeader") >= 0,
             "the page exposes its header as a component");

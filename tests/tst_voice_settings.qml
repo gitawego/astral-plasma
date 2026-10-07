@@ -72,7 +72,7 @@ Item {
         };
     }
 
-    AiPage {
+    VoicePage {
         id: page
         width: parent.width
         testMode: true
@@ -87,6 +87,13 @@ Item {
         // 1. Defaults
         // ------------------------------------------------------------------
         assert(page.voiceEnabled === true, "voice must default to enabled");
+        assert(page.voiceEngine === "whisper-cpp", "default engine must be whisper.cpp");
+        page.setVoiceEngine("sherpa-onnx");
+        assert(page.voiceEngine === "sherpa-onnx", "engine must switch to sherpa-onnx");
+        assert(page.voiceModel === "sherpa-sensevoice-small", "switching to sherpa-onnx must update model default");
+        page.setVoiceEngine("whisper-cpp");
+        assert(page.voiceEngine === "whisper-cpp", "engine must restore to whisper-cpp");
+        assert(page.voiceModel === "ggml-small", "restoring to whisper-cpp must restore model default");
         assert(page.voiceModel === "ggml-small", "default model must be the CPU-interactive tier");
         // Empty is "follow the system locale". The reported failure was English
         // speech transcribed as Japanese, which happened because `auto` was the
@@ -262,34 +269,116 @@ Item {
         assert(page.languageMenuOpen === false, "only one dropdown may be open at a time");
         page.testVoiceStatus = testRoot.readyStatus();
 
+        // A downloaded model must be removable, and the control must only exist
+        // while there is something to remove.
+        assert(page.voiceModelRemoveItem !== undefined, "VoicePage must offer removing a downloaded model");
+        page.testVoiceStatus = { engine_available: true, model_present: true, setup_complete: true, gap: "" };
+        assert(page.voiceModelPresent === true, "the seam must drive model presence");
+        assert(page.voiceModelRemoveItem.visible === true, "the remove control shows for a present model");
+        page.testVoiceStatus = { engine_available: true, model_present: false, setup_complete: false, gap: "model_missing" };
+        assert(page.voiceModelRemoveItem.visible === false, "no remove control without a model");
+        page.testVoiceStatus = null;
+
+        // The install one-liner must come from the daemon, which knows the
+        // distribution. A hardcoded `pacman` line is a dead end everywhere else.
+        page.testVoiceStatus = { engine_available: false, engine_install_command: "sudo dnf install whisper-cpp" };
+        assert(page.voiceEngineNotice.indexOf("sudo dnf install whisper-cpp") >= 0,
+            "the engine notice must show the command the daemon reported, got: " + page.voiceEngineNotice);
+        page.testVoiceStatus = { engine_available: false, engine_install_command: "" };
+        assert(page.voiceEngineNotice.indexOf("github.com/ggml-org/whisper.cpp") >= 0,
+            "an unknown distribution must get the upstream build, got: " + page.voiceEngineNotice);
+        page.testVoiceStatus = null;
+
+        // ------------------------------------------------------------------
+        // 5b. Cross-engine stale status isolation & engine notice accuracy
+        // ------------------------------------------------------------------
+        // Switching to Sherpa-ONNX while status still holds a previous Deepgram
+        // report must not leak Deepgram's notice or status summary into the view.
+        page.setVoiceEngine("sherpa-onnx");
+        page.testVoiceStatus = {
+            engine: "deepgram",
+            engine_available: false,
+            model_present: true,
+            setup_complete: false,
+            gap: "engine_missing"
+        };
+        assert(page.voiceStatusCurrent === false,
+            "a status for deepgram must not be considered current when sherpa-onnx is selected");
+        assert(page.voiceModelPresent === false,
+            "deepgram's cloud model presence must not mark local sherpa-sensevoice-small as downloaded");
+        assert(page.voiceEngineNotice.indexOf("Deepgram") === -1,
+            "sherpa-onnx view must never display Deepgram notices, got: " + page.voiceEngineNotice);
+        assert(page.voiceEngineNotice.indexOf("sherpa-onnx") !== -1,
+            "sherpa-onnx view must display sherpa-onnx notices, got: " + page.voiceEngineNotice);
+        assert(page.voiceStatusSummary === "Checking speech engine…",
+            "stale cross-engine status must show checking rather than wrong engine summary, got: " + page.voiceStatusSummary);
+
+        // When sherpa status arrives with missing engine:
+        page.testVoiceStatus = {
+            engine: "sherpa-onnx",
+            engine_available: false,
+            model: "sherpa-sensevoice-small",
+            model_present: false,
+            setup_complete: false,
+            gap: "engine_missing",
+            engine_install_command: "pip install sherpa-onnx"
+        };
+        assert(page.voiceStatusCurrent === true, "matching engine status must be current");
+        assert(page.voiceEngineAvailable === false, "sherpa engine must be detected as missing");
+        assert(page.voiceStatusSummary === "sherpa-onnx engine not installed",
+            "missing sherpa engine must be named honestly, got: " + page.voiceStatusSummary);
+        assert(page.voiceEngineNotice.indexOf("pip install sherpa-onnx") !== -1,
+            "notice must display pip install command, got: " + page.voiceEngineNotice);
+
+        // Switching to Deepgram:
+        page.setVoiceEngine("deepgram");
+        page.testVoiceStatus = {
+            engine: "deepgram",
+            engine_available: false,
+            model_present: true,
+            setup_complete: false,
+            gap: "engine_missing"
+        };
+        assert(page.voiceStatusCurrent === true, "deepgram status must be current");
+        assert(page.voiceStatusSummary === "Deepgram API key missing",
+            "missing key must be reported, got: " + page.voiceStatusSummary);
+        assert(page.voiceEngineNotice.indexOf("deepgram") !== -1 || page.voiceEngineNotice.indexOf("Deepgram") !== -1,
+            "deepgram notice must name deepgram key, got: " + page.voiceEngineNotice);
+
+        // Restore to whisper-cpp
+        page.setVoiceEngine("whisper-cpp");
+        page.testVoiceStatus = null;
+
         // ------------------------------------------------------------------
         // 6. Source contracts
         // ------------------------------------------------------------------
-        const pageSrc = readLocalFile("../settings_gui/pages/AiPage.qml");
-        assert(/Voice Input/.test(pageSrc), "the AI page must contain a Voice Input section");
-        assert(/property bool voiceEnabled/.test(pageSrc), "AiPage must expose voiceEnabled");
-        assert(/Config\.setVoiceModel\(/.test(pageSrc), "AiPage must persist the model choice");
-        assert(/Config\.setVoiceLanguage\(/.test(pageSrc), "AiPage must persist the language choice");
-        assert(/Config\.setVoiceAutoFinalize\(/.test(pageSrc), "AiPage must persist auto-finalize");
-        assert(/installVoiceModel\(/.test(pageSrc), "AiPage must trigger the explicit download");
+        const pageSrc = readLocalFile("../settings_gui/pages/VoicePage.qml");
+        assert(/Speech Engine/.test(pageSrc) || /Voice Dictation/.test(pageSrc), "the Voice page must contain a Speech Engine section");
+        assert(/property bool voiceEnabled/.test(pageSrc), "VoicePage must expose voiceEnabled");
+        assert(/Config\.setVoiceModel\(/.test(pageSrc), "VoicePage must persist the model choice");
+        assert(/Config\.setVoiceLanguage\(/.test(pageSrc), "VoicePage must persist the language choice");
+        assert(/Config\.setVoiceAutoFinalize\(/.test(pageSrc), "VoicePage must persist auto-finalize");
+        assert(/setVoiceEngine\(/.test(pageSrc), "VoicePage must support switching speech engine");
+        assert(/voiceEngineSherpa/.test(pageSrc), "VoicePage must include sherpa-onnx engine option");
+        assert(/installVoiceModel\(/.test(pageSrc), "VoicePage must trigger the explicit download");
         assert(/voiceVadInstallButton/.test(pageSrc),
-            "AiPage must offer the explicit VAD asset download beside the model row");
+            "VoicePage must offer the explicit VAD asset download beside the model row");
         assert(/installVoiceVadModel\(\)/.test(pageSrc),
-            "AiPage must trigger the VAD download through AssistantService");
+            "VoicePage must trigger the VAD download through AssistantService");
         assert(/voiceMicCheckButton/.test(pageSrc),
-            "AiPage must offer the device-only microphone check");
+            "VoicePage must offer the device-only microphone check");
         assert(/runMicCheck\(\)/.test(pageSrc),
-            "AiPage must trigger the mic check through AssistantService");
+            "VoicePage must trigger the mic check through AssistantService");
         assert(/voiceEchoCancelToggle/.test(pageSrc),
             "the voice section must render the echo-cancellation toggle");
         assert(/voiceNoiseSuppressToggle/.test(pageSrc),
             "the voice section must render the noise-suppression toggle");
         assert(/function setVoiceEchoCancel\(/.test(pageSrc),
-            "AiPage must persist the echo-cancellation choice");
+            "VoicePage must persist the echo-cancellation choice");
         assert(/function setVoiceNoiseSuppress\(/.test(pageSrc),
-            "AiPage must persist the noise-suppression choice");
-        // Voice belongs to the assistant, so it lives in the AI page rather
-        // than a new page of its own (AGENTS.md 6).
+            "VoicePage must persist the noise-suppression choice");
+        // Voice belongs to the assistant, so it lives in the Voice page rather
+        // than an un-themed dialog.
         assert(!/ComboBox/.test(pageSrc), "QtQuick.Controls is not imported in this shell; do not use ComboBox");
 
         // NexusHub loads pages through a Loader, so the page is constructed
@@ -299,20 +388,24 @@ Item {
         // page being opened - readiness is re-read on construction, and again
         // whenever the settings window is shown while the page stays loaded.
         const probeIdx = pageSrc.indexOf("Component.onCompleted");
-        assert(probeIdx !== -1, "AiPage must re-probe voice readiness when it is constructed");
+        assert(probeIdx !== -1, "VoicePage must re-probe voice readiness when it is constructed");
         const visibleIdx = pageSrc.indexOf("onVisibleChanged", probeIdx);
-        assert(visibleIdx !== -1, "AiPage must keep its onVisibleChanged re-probe hook");
+        assert(visibleIdx !== -1, "VoicePage must keep its onVisibleChanged re-probe hook");
         const probeChunk = pageSrc.substring(probeIdx, visibleIdx);
         assert(/refreshVoiceReadiness\(\)/.test(probeChunk) || /refreshVoiceStatus\(\)/.test(probeChunk),
-            "AiPage construction must probe voice readiness");
+            "VoicePage construction must probe voice readiness");
         assert(!/voiceStatus\s*===\s*null/.test(probeChunk),
             "the construction probe must run unconditionally: the page loads already-visible, "
             + "so onVisibleChanged cannot be the only first-show hook");
         assert(/onSettingsVisibleChanged/.test(pageSrc),
-            "AiPage must re-probe when the settings window is shown again while the page stays instantiated");
+            "VoicePage must re-probe when the settings window is shown again while the page stays instantiated");
         // No hardcoded model list: options must be data-driven.
         const hardcodedCatalog = /models_available:\s*\[/.test(pageSrc);
         assert(!hardcodedCatalog, "the model catalog must come from the daemon, not a hardcoded list");
+
+        const configSrc = readLocalFile("../config/Config.qml");
+        assert(/function setVoiceEngine\(engineId\)\s*\{\s*updateSettings\(/.test(configSrc),
+            "Config.qml must use updateSettings for setVoiceEngine to ensure reactive binding updates");
 
         const shellSrc = readLocalFile("../shell.qml");
         assert(/function toggleVoice\(\)/.test(shellSrc), "shell.qml must expose a voice.toggle IPC action");

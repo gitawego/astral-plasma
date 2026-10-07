@@ -96,6 +96,11 @@ Item {
         testMode: true
     }
 
+    VoicePage {
+        id: voicePage
+        testMode: true
+    }
+
     /// `[page, source path, expected zone ids]` - the document, in one table, so
     /// a page cannot satisfy the contract by accident of a similar neighbour.
     readonly property var pages: [
@@ -164,6 +169,12 @@ Item {
             source: "../settings_gui/pages/TimePage.qml",
             page: timePage,
             zones: ["cities", "local"]
+        },
+        {
+            name: "VoicePage",
+            source: "../settings_gui/pages/VoicePage.qml",
+            page: voicePage,
+            zones: ["engine", "model", "audio", "preferences"]
         }
     ]
 

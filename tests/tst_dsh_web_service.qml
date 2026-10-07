@@ -143,6 +143,10 @@ Item {
             "the prompt must carry a default action so any click opens the view");
         assert(service.indexOf("portListeningFromProcNetTcp") !== -1,
             "the server check must be fork-free procfs parsing");
+        assert(service.indexOf("procNetTcpProc") !== -1,
+            "the service must have a procfs fallback for environments without XHR file reads");
+        assert(service.indexOf("WindowService.activate") !== -1,
+            "the service must activate existing open window when requested");
         assert(service.indexOf("interval: 20000") !== -1,
             "the watcher must be slow and idle-only (no busy polling)");
 

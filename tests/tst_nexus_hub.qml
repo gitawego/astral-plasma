@@ -51,7 +51,7 @@ Item {
         if (!cond) {
             console.error("FAIL: " + msg);
             Qt.exit(1);
-            return false;
+            throw new Error(msg);
         }
         return true;
     }
@@ -123,6 +123,23 @@ Item {
             "pageLoader must reserve a 14px scrollbar gutter to prevent content overlap");
         assert(/id:\s*scrollBarIndicator[\s\S]{0,300}?thumbTravelRange/.test(hubSrc),
             "scrollBarIndicator must use bounded thumbTravelRange math");
+        assert(/title:\s*"AI & Voice"/.test(hubSrc), "NexusHub must feature an AI & Voice category");
+        assert(/id:\s*"voice",\s*label:\s*"Voice Dictation"/.test(hubSrc),
+            "NexusHub must offer a first-class Voice Dictation navigation entry");
+        assert(/case\s*"voice":\s*return\s*voicePageComp;/.test(hubSrc),
+            "NexusHub pageLoader must route 'voice' to voicePageComp");
+        assert(/Component\s*\{\s*id:\s*voicePageComp;\s*VoicePage/.test(hubSrc),
+            "NexusHub must declare voicePageComp component");
+
+        // Verify that sidebar delegate is decoupled from in-page scroll spy
+        assert(/active:\s*root\.activePage\s*===\s*modelData\.id/.test(hubSrc),
+            "NexusHub sidebar must strictly use page-level active state, decoupled from in-page scroll sections");
+
+        // Test navigation to voice page and back
+        nexusHarness.navigateTo("voice");
+        assert(nexusHarness.activePage === "voice", "Harness can navigate directly to voice page");
+        nexusHarness.goBack();
+        assert(nexusHarness.activePage === "wallpaper", "Harness can navigate back from voice page");
 
         console.log("PASS: NexusHub Hierarchical Navigation & Back Stack Unit Tests");
         Qt.exit(0);

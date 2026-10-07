@@ -268,9 +268,6 @@ impl SpeechToTextPort for DeepgramAdapter {
 /// the caller emits interims as `Partial` before the `Final`, preserving
 /// engine order.
 fn stream_transcribe(url: &str, key: &str, pcm: &[u8]) -> DynResult<(String, Vec<String>)> {
-    use futures_util::{SinkExt, StreamExt};
-    use tokio_tungstenite::tungstenite::Message;
-
     let url = url.to_string();
     let key = key.to_string();
     let pcm = pcm.to_vec();

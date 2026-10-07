@@ -50,7 +50,7 @@ Item {
         ]
     })
 
-    AiPage {
+    VoicePage {
         id: page
         width: parent.width
         height: parent.height

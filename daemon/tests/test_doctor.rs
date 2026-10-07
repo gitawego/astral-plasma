@@ -198,8 +198,9 @@ fn pi_harness_check_reports_the_installed_version_and_how_to_update() {
 /// A fake `pi` that answers `--version` and, when `mcp` is true, `mcp --help`.
 fn fake_pi(version: &str, mcp: bool) -> std::path::PathBuf {
     let path = std::env::temp_dir().join(format!(
-        "astral-doctor-pi-{}-{}-{}",
+        "astral-doctor-pi-{}-{}-{}-{}",
         std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
         version.replace('.', "_"),
         mcp
     ));

@@ -1061,8 +1061,48 @@ pub const MODEL_CATALOG: &[ModelEntry] = &[
     },
 ];
 
+/// SenseVoice-Small model identifier for sherpa-onnx.
+pub const SHERPA_ENGINE_ID: &str = "sherpa-onnx";
+pub const SENSEVOICE_SMALL_ID: &str = "sherpa-sensevoice-small";
+pub const SENSEVOICE_MODEL_URL: &str = "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx";
+pub const SENSEVOICE_TOKENS_URL: &str = "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt";
+pub const SENSEVOICE_MODEL_SIZE_BYTES: u64 = 239_233_841;
+pub const SENSEVOICE_TOKENS_SIZE_BYTES: u64 = 315_894;
+pub const SENSEVOICE_TOTAL_SIZE_BYTES: u64 = SENSEVOICE_MODEL_SIZE_BYTES + SENSEVOICE_TOKENS_SIZE_BYTES;
+
+static SENSEVOICE_ENTRY: ModelEntry = ModelEntry {
+    id: SENSEVOICE_SMALL_ID,
+    display_name: "SenseVoice Small (Sherpa-ONNX, fast ZH/EN)",
+    size_bytes: SENSEVOICE_TOTAL_SIZE_BYTES,
+};
+
+/// Models catalog specifically for sherpa-onnx engine.
+pub fn sherpa_model_descriptors() -> Vec<ModelDescriptor> {
+    vec![ModelDescriptor {
+        id: SENSEVOICE_SMALL_ID.to_string(),
+        display_name: "SenseVoice Small (Sherpa-ONNX, fast ZH/EN)".to_string(),
+        size_bytes: SENSEVOICE_TOTAL_SIZE_BYTES,
+        size_label: format_size(SENSEVOICE_TOTAL_SIZE_BYTES),
+    }]
+}
+
+/// Languages supported by SenseVoice-Small.
+pub fn sherpa_language_options() -> Vec<LanguageOption> {
+    vec![
+        LanguageOption { code: "auto".to_string(), label: "Auto-detect".to_string() },
+        LanguageOption { code: "zh".to_string(), label: "中文 (Chinese)".to_string() },
+        LanguageOption { code: "en".to_string(), label: "English".to_string() },
+        LanguageOption { code: "ja".to_string(), label: "日本語 (Japanese)".to_string() },
+        LanguageOption { code: "ko".to_string(), label: "한국어 (Korean)".to_string() },
+        LanguageOption { code: "yue".to_string(), label: "粤语 (Cantonese)".to_string() },
+    ]
+}
+
 /// Looks a model up by id, falling back to [`DEFAULT_MODEL_ID`].
 pub fn model_by_id(id: &str) -> &'static ModelEntry {
+    if id == SENSEVOICE_SMALL_ID {
+        return &SENSEVOICE_ENTRY;
+    }
     MODEL_CATALOG
         .iter()
         .find(|m| m.id == id)
@@ -1083,6 +1123,15 @@ pub fn models_dir() -> PathBuf {
 /// Resolves a model's on-disk path. A zero-length file is reported as absent:
 /// an interrupted download must not be mistaken for a usable model.
 pub fn resolve_model_file(model_id: &str) -> Option<PathBuf> {
+    if model_id == SENSEVOICE_SMALL_ID {
+        let dir = models_dir().join(SENSEVOICE_SMALL_ID);
+        let model = dir.join("model.int8.onnx");
+        let tokens = dir.join("tokens.txt");
+        if model.is_file() && tokens.is_file() {
+            return Some(dir);
+        }
+        return None;
+    }
     let path = models_dir().join(model_by_id(model_id).file_name());
     match std::fs::metadata(&path) {
         Ok(meta) if meta.len() > 0 => Some(path),
@@ -1092,7 +1141,7 @@ pub fn resolve_model_file(model_id: &str) -> Option<PathBuf> {
 
 /// Whether a model id names something in the catalog.
 pub fn is_known_model(id: &str) -> bool {
-    MODEL_CATALOG.iter().any(|m| m.id == id)
+    id == SENSEVOICE_SMALL_ID || MODEL_CATALOG.iter().any(|m| m.id == id)
 }
 
 // ---------------------------------------------------------------------------
@@ -1170,7 +1219,21 @@ impl Default for VoiceSettings {
 impl VoiceSettings {
     /// Applies every documented clamp and fallback.
     pub fn sanitized(mut self) -> Self {
-        if !is_known_model(&self.model) {
+        if let Ok(env_engine) = std::env::var("ASTRAL_VOICE_ENGINE") {
+            let trimmed = env_engine.trim();
+            if !trimmed.is_empty() {
+                self.engine = trimmed.to_string();
+            }
+        }
+        if let Ok(env_model) = std::env::var("ASTRAL_VOICE_MODEL") {
+            let trimmed = env_model.trim();
+            if !trimmed.is_empty() && is_known_model(trimmed) {
+                self.model = trimmed.to_string();
+            }
+        }
+        if self.engine == SHERPA_ENGINE_ID && (self.model == DEFAULT_MODEL_ID || !is_known_model(&self.model)) {
+            self.model = SENSEVOICE_SMALL_ID.to_string();
+        } else if !is_known_model(&self.model) {
             self.model = DEFAULT_MODEL_ID.to_string();
         }
         if self.engine.trim().is_empty() {

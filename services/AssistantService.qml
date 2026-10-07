@@ -335,9 +335,8 @@ Singleton {
         if (!status || status.setup_complete === true) return "";
         switch (status.gap) {
         case "engine_missing":
-            // Name the *engine*: the model can be downloaded while the engine is
-            // still missing, and "whisper.cpp is not installed" read as if the
-            // speech model were the problem.
+            if (status.engine === "deepgram") return "Deepgram API key missing";
+            if (status.engine === "sherpa-onnx") return "sherpa-onnx engine not installed";
             return "whisper.cpp engine not installed";
         case "model_missing":
             return "Speech model " + (status.model || "") + " is not downloaded";
@@ -441,9 +440,18 @@ Singleton {
     }
 
     /** Probes engine and model readiness. Cheap; safe to call often. */
-    function refreshVoiceStatus() {
+    function refreshVoiceStatus(engineOverride, modelOverride) {
         cancelProc(voiceStatusProc);
-        runProc(voiceStatusProc, [daemonBin, "voice", "status"]);
+        let cmd = [daemonBin, "voice", "status"];
+        const eng = engineOverride || (typeof Config !== "undefined" && Config.voiceEngine ? Config.voiceEngine : "");
+        const mdl = modelOverride || (typeof Config !== "undefined" && Config.voiceModel ? Config.voiceModel : "");
+        if (eng) {
+            cmd.push("--engine", eng);
+        }
+        if (mdl) {
+            cmd.push("--model", mdl);
+        }
+        runProc(voiceStatusProc, cmd);
     }
 
     /** Downloads a speech model, reporting progress through voiceInstallProgress. */

@@ -328,8 +328,14 @@ Item {
             title: "Connectivity",
             items: [
                 { id: "network", label: "Wi-Fi & Network", icon: "wifi" },
-                { id: "bluetooth", label: "Bluetooth", icon: "bluetooth" },
-                { id: "ai", label: "AI Token Plans", icon: "psychology" }
+                { id: "bluetooth", label: "Bluetooth", icon: "bluetooth" }
+            ]
+        },
+        {
+            title: "AI & Voice",
+            items: [
+                { id: "ai", label: "AI & Agents", icon: "psychology" },
+                { id: "voice", label: "Voice Dictation", icon: "mic" }
             ]
         },
         {
@@ -629,6 +635,7 @@ Item {
                                 case "network": return networkPageComp;
                                 case "bluetooth": return bluetoothPageComp;
                                 case "ai": return aiPageComp;
+                                case "voice": return voicePageComp;
                                 case "audio": return audioPageComp;
                                 case "dock": return dockPageComp;
                                 case "status": return statusPageComp;
@@ -672,6 +679,7 @@ Item {
     Component { id: networkPageComp; NetworkPage { testMode: root.testMode } }
     Component { id: bluetoothPageComp; BluetoothPage { testMode: root.testMode } }
     Component { id: aiPageComp; AiPage { testMode: root.testMode } }
+    Component { id: voicePageComp; VoicePage { testMode: root.testMode } }
     Component { id: audioPageComp; AudioPage { testMode: root.testMode } }
     Component { id: dockPageComp; DockPage {} }
     Component { id: statusPageComp; StatusIconsPage {} }

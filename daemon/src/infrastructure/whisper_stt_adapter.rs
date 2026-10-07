@@ -1163,16 +1163,6 @@ fn resolve_capture_node(cfg: &VoiceSessionConfig) -> Option<String> {
     crate::infrastructure::echo_cancel::ensure_source()
 }
 
-/// Scores one trimmed utterance with the neural VAD sidecar, if provisioned.
-///
-/// Protocol: `$ASTRAL_VOICE_VAD_BIN <wav-path>` prints a single speech
-/// probability `0.0..=1.0` on stdout (Silero `p > 0.5` gate). Returns `None`
-/// when no sidecar is configured, it fails, or its output does not parse —
-/// the caller then keeps the energy detector's verdict. Never fabricates: no
-/// output means no override.
-fn vad_utterance_prob(pcm: &[u8]) -> Option<f32> {
-    vad_generic_prob(pcm)
-}
 
 /// Generic float-probability VAD sidecar (`$ASTRAL_VOICE_VAD_BIN <wav-path>`).
 fn vad_generic_prob(pcm: &[u8]) -> Option<f32> {
@@ -1242,7 +1232,7 @@ fn vad_model_path() -> Option<PathBuf> {
 ///   wins but bounds stay energy (a scalar carries no bounds).
 /// * `None` — VAD unavailable (no binary/model, failure, unparsable output);
 ///   the caller keeps energy bounds and verdict.
-fn apply_neural_vad(
+pub(crate) fn apply_neural_vad(
     full_pcm: &[u8],
     cfg: &VoiceSessionConfig,
 ) -> Option<(Option<(usize, usize)>, bool)> {

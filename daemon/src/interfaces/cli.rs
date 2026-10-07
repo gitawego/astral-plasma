@@ -1435,6 +1435,23 @@ pub async fn run_cli() -> DynResult<()> {
             let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
             match sub {
                 "status" => {
+                    let mut settings = svc.settings().clone();
+                    let mut i = 3;
+                    while i < args.len() {
+                        if args[i] == "--engine" {
+                            if let Some(val) = args.get(i + 1) {
+                                settings.engine = val.clone();
+                                i += 1;
+                            }
+                        } else if args[i] == "--model" {
+                            if let Some(val) = args.get(i + 1) {
+                                settings.model = val.clone();
+                                i += 1;
+                            }
+                        }
+                        i += 1;
+                    }
+                    let svc = VoiceService::new(VoiceService::adapter_for_engine(&settings.engine), settings);
                     println!("{}", serde_json::to_string(&svc.status())?);
                 }
                 "engines" => {
