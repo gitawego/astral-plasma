@@ -130,13 +130,14 @@ Item {
         let formattedIso = aiTab.formatResetTime(futureIso);
         assert(formattedIso.indexOf("Resets in") !== -1, "formatResetTime should format ISO string, got: " + formattedIso);
 
-        // 7. CentralDropdown 6-tab registration (downloads sits between workspaces & ai)
+        // 7. CentralDropdown 6-tab registration (ai sits immediately after performance)
         assert(dropdown !== null, "CentralDropdown must instantiate");
         assert(dropdown.tabs.length === 6, "CentralDropdown tabs must contain exactly 6 tabs, got: " + dropdown.tabs.length);
-        assert(dropdown.tabs[4].id === "downloads", "CentralDropdown 5th tab must be 'downloads', got: " + dropdown.tabs[4].id);
-        assert(dropdown.tabs[4].label === "Downloads", "CentralDropdown 5th tab label must be 'Downloads'");
-        assert(dropdown.tabs[5].id === "ai", "CentralDropdown 6th tab must be 'ai', got: " + dropdown.tabs[5].id);
-        assert(dropdown.tabs[5].label === "AI Quotas", "CentralDropdown 6th tab label must be 'AI Quotas'");
+        assert(dropdown.tabs[3].id === "ai", "CentralDropdown 4th tab must be 'ai', got: " + dropdown.tabs[3].id);
+        assert(dropdown.tabs[3].label === "AI Quotas", "CentralDropdown 4th tab label must be 'AI Quotas'");
+        assert(dropdown.tabs[4].id === "workspaces", "CentralDropdown 5th tab must be 'workspaces', got: " + dropdown.tabs[4].id);
+        assert(dropdown.tabs[5].id === "downloads", "CentralDropdown 6th tab must be 'downloads', got: " + dropdown.tabs[5].id);
+        assert(dropdown.tabs[5].label === "Downloads", "CentralDropdown 6th tab label must be 'Downloads'");
 
         // 8. Tab repeater item count
         let repeater = dropdown.tabRepeaterItem;
@@ -148,10 +149,10 @@ Item {
         assert(slidingIndicator !== undefined && slidingIndicator !== null, "CentralDropdown must expose tabSlidingIndicatorItem");
 
         dropdown.activeTab = "ai";
-        assert(slidingIndicator.activeIdx === 5, "tabSlidingIndicator activeIdx should be 5 when activeTab is 'ai', got: " + slidingIndicator.activeIdx);
+        assert(slidingIndicator.activeIdx === 3, "tabSlidingIndicator activeIdx should be 3 when activeTab is 'ai', got: " + slidingIndicator.activeIdx);
 
         dropdown.activeTab = "downloads";
-        assert(slidingIndicator.activeIdx === 4, "tabSlidingIndicator activeIdx should be 4 when activeTab is 'downloads', got: " + slidingIndicator.activeIdx);
+        assert(slidingIndicator.activeIdx === 5, "tabSlidingIndicator activeIdx should be 5 when activeTab is 'downloads', got: " + slidingIndicator.activeIdx);
 
         // 10. Cache hit rate format token count helper
         assert(aiTab.formatTokenCount(120000000) === "120.0M", "formatTokenCount 120M");

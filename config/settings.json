@@ -133,6 +133,11 @@
         "enabled": true
       },
       {
+        "id": "ai",
+        "label": "AI Quotas",
+        "enabled": true
+      },
+      {
         "id": "workspaces",
         "label": "Workspaces",
         "enabled": true
@@ -140,11 +145,6 @@
       {
         "id": "downloads",
         "label": "Downloads",
-        "enabled": true
-      },
-      {
-        "id": "ai",
-        "label": "AI Quotas",
         "enabled": true
       }
     ],

@@ -22,9 +22,9 @@ var DEFAULT_TABS = [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
     { id: "media", label: "Media", icon: "media" },
     { id: "performance", label: "Performance", icon: "performance" },
+    { id: "ai", label: "AI Quotas", icon: "auto_awesome" },
     { id: "workspaces", label: "Workspaces", icon: "workspaces" },
-    { id: "downloads", label: "Downloads", icon: "download" },
-    { id: "ai", label: "AI Quotas", icon: "auto_awesome" }
+    { id: "downloads", label: "Downloads", icon: "download" }
 ];
 
 /// Tabs whose setting is not explicitly off.

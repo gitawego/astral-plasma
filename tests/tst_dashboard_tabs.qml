@@ -21,9 +21,9 @@ Item {
         { id: "dashboard", label: "Dashboard", icon: "dashboard", enabled: true },
         { id: "media", label: "Media", icon: "media", enabled: true },
         { id: "performance", label: "Performance", icon: "performance", enabled: false },
+        { id: "ai", label: "AI Quotas", icon: "auto_awesome", enabled: true },
         { id: "workspaces", label: "Workspaces", icon: "workspaces", enabled: true },
-        { id: "downloads", label: "Downloads", icon: "download", enabled: true },
-        { id: "ai", label: "AI Quotas", icon: "auto_awesome", enabled: true }
+        { id: "downloads", label: "Downloads", icon: "download", enabled: true }
     ]
 
     function readLocalFile(relUrl) {
@@ -137,6 +137,8 @@ Item {
             assert(shippedIds.indexOf(expected) >= 0,
                 "every rendered tab must be configurable: " + expected + " missing from " + shippedIds);
         }
+        assert(shippedIds.indexOf("ai") === shippedIds.indexOf("performance") + 1,
+            "AI tab must appear immediately after performance tab in shipped settings: " + shippedIds);
         assert(shipped.dashboard.tabs.filter(t => t.id === "downloads")[0].enabled === true,
             "the shipped default is on, and the engine decides whether it applies");
         assert(shipped.downloads && shipped.downloads.maxConcurrentDownloads !== undefined
@@ -153,6 +155,9 @@ Item {
             "Config must accept the engine settings");
         assert(config.indexOf("function setDashboardTabEnabled(") >= 0,
             "the existing tab setter stays the one write path");
+        assert(config.indexOf("function moveDashboardTab(") >= 0
+                && config.indexOf("function setDashboardTabsOrder(") >= 0,
+            "Config must provide tab reordering setters for settings");
 
         // Both dashboard views: shell/CentralDropdown is what the shell
         // instantiates (the top drawer), dashboard/CentralDashboard is the
@@ -180,8 +185,44 @@ Item {
         // every tab then renders as blocked (this shipped once, on all of them).
         assert(/readonly property var gateReason/.test(page),
             "the gate reason must be typed `var` so `null` (no reason) survives");
+        assert(page.indexOf("function moveTab(") >= 0,
+            "DashboardPage must provide tab reordering");
+        assert(page.indexOf("arrow_upward") >= 0 && page.indexOf("arrow_downward") >= 0,
+            "DashboardPage must render move up and move down controls for tab order");
+
+        // ------------------------------------------------------------------
+        // Functional verification: DashboardPage.moveTab reorders tabs
+        // ------------------------------------------------------------------
+        pageLoader.active = true;
+        const pageItem = pageLoader.item;
+        assert(pageItem !== null, "DashboardPage must instantiate");
+        pageItem.testMode = true;
+        pageItem.testDashboardTabs = [
+            { id: "dashboard", label: "Dashboard", enabled: true },
+            { id: "media", label: "Media", enabled: true },
+            { id: "performance", label: "Performance", enabled: true },
+            { id: "ai", label: "AI Quotas", enabled: true },
+            { id: "workspaces", label: "Workspaces", enabled: true }
+        ];
+        assert(pageItem.dashboardTabs.length === 5, "testDashboardTabs loaded");
+        pageItem.moveTab(3, 1);
+        assert(pageItem.dashboardTabs[1].id === "ai", "moveTab moved 'ai' to index 1");
+        assert(pageItem.dashboardTabs[2].id === "media", "media shifted to index 2");
+        assert(pageItem.dashboardTabs[3].id === "performance", "performance shifted to index 3");
+
+        // Edge bounds check: invalid indices must be safely ignored
+        pageItem.moveTab(0, -1);
+        assert(pageItem.dashboardTabs[0].id === "dashboard", "out of bounds move ignored");
+        pageItem.moveTab(0, 10);
+        assert(pageItem.dashboardTabs[0].id === "dashboard", "out of bounds move ignored");
 
         console.log("PASS: Dashboard Tab Policy");
         Qt.exit(0);
+    }
+
+    Loader {
+        id: pageLoader
+        active: false
+        source: "../settings_gui/pages/DashboardPage.qml"
     }
 }

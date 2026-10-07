@@ -67,9 +67,9 @@ Item {
         assert(dropdown.tabs[0].id === "dashboard", "Tab 0 is dashboard");
         assert(dropdown.tabs[1].id === "media", "Tab 1 is media");
         assert(dropdown.tabs[2].id === "performance", "Tab 2 is performance");
-        assert(dropdown.tabs[3].id === "workspaces", "Tab 3 is workspaces");
-        assert(dropdown.tabs[4].id === "downloads", "Tab 4 is downloads");
-        assert(dropdown.tabs[5].id === "ai", "Tab 5 is ai");
+        assert(dropdown.tabs[3].id === "ai", "Tab 3 is ai");
+        assert(dropdown.tabs[4].id === "workspaces", "Tab 4 is workspaces");
+        assert(dropdown.tabs[5].id === "downloads", "Tab 5 is downloads");
 
         console.log("PASS: Modular Shell Architecture Unit Tests");
         Qt.exit(0);

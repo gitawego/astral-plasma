@@ -806,6 +806,56 @@ Singleton {
         });
     }
 
+    function moveDashboardTab(fromIndex, toIndex) {
+        updateSettings(cfg => {
+            if (!cfg.dashboard) cfg.dashboard = {};
+            if (!Array.isArray(cfg.dashboard.tabs)) {
+                cfg.dashboard.tabs = DashboardTabs.DEFAULT_TABS.map(t => ({
+                    id: t.id,
+                    label: t.label,
+                    enabled: true
+                }));
+            }
+            if (fromIndex < 0 || fromIndex >= cfg.dashboard.tabs.length ||
+                toIndex < 0 || toIndex >= cfg.dashboard.tabs.length ||
+                fromIndex === toIndex) {
+                return;
+            }
+            const tabs = cfg.dashboard.tabs.slice();
+            const moved = tabs.splice(fromIndex, 1)[0];
+            tabs.splice(toIndex, 0, moved);
+            cfg.dashboard.tabs = tabs;
+        });
+    }
+
+    function setDashboardTabsOrder(tabIds) {
+        updateSettings(cfg => {
+            if (!cfg.dashboard) cfg.dashboard = {};
+            const existing = Array.isArray(cfg.dashboard.tabs) ? cfg.dashboard.tabs : DashboardTabs.DEFAULT_TABS;
+            const tabMap = {};
+            for (let i = 0; i < existing.length; i++) {
+                if (existing[i] && existing[i].id) {
+                    tabMap[existing[i].id] = existing[i];
+                }
+            }
+            const reordered = [];
+            const seen = {};
+            for (let i = 0; i < tabIds.length; i++) {
+                const id = tabIds[i];
+                if (tabMap[id] && !seen[id]) {
+                    reordered.push(tabMap[id]);
+                    seen[id] = true;
+                }
+            }
+            for (let i = 0; i < existing.length; i++) {
+                if (existing[i] && existing[i].id && !seen[existing[i].id]) {
+                    reordered.push(existing[i]);
+                }
+            }
+            cfg.dashboard.tabs = reordered;
+        });
+    }
+
     // ------------------------------------------------------------------
     // Durable avatar image import (system-host card + media tab avatars)
     // ------------------------------------------------------------------

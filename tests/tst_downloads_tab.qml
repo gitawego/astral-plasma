@@ -154,9 +154,10 @@ Item {
         // ---- 7. CentralDropdown 6-tab registration (D1) ----
         assert(dropdown !== null, "CentralDropdown must instantiate");
         assert(dropdown.tabs.length === 6, "CentralDropdown tabs must be 6, got " + dropdown.tabs.length);
-        assert(dropdown.tabs[4].id === "downloads", "5th tab must be 'downloads', got " + dropdown.tabs[4].id);
-        assert(dropdown.tabs[4].label === "Downloads", "downloads tab label");
-        assert(dropdown.tabs[5].id === "ai", "6th tab must be 'ai', got " + dropdown.tabs[5].id);
+        assert(dropdown.tabs[3].id === "ai", "4th tab must be 'ai', got " + dropdown.tabs[3].id);
+        assert(dropdown.tabs[4].id === "workspaces", "5th tab must be 'workspaces', got " + dropdown.tabs[4].id);
+        assert(dropdown.tabs[5].id === "downloads", "6th tab must be 'downloads', got " + dropdown.tabs[5].id);
+        assert(dropdown.tabs[5].label === "Downloads", "downloads tab label");
 
         assert(dropdown.downloadsTabItem !== undefined && dropdown.downloadsTabItem !== null,
             "CentralDropdown must expose downloadsTabItem");
@@ -170,11 +171,11 @@ Item {
         const indicator = dropdown.tabSlidingIndicatorItem;
         assert(indicator !== undefined && indicator !== null, "must expose tabSlidingIndicatorItem");
         dropdown.activeTab = "downloads";
-        assert(indicator.activeIdx === 4, "activeIdx 4 for downloads, got " + indicator.activeIdx);
+        assert(indicator.activeIdx === 5, "activeIdx 5 for downloads, got " + indicator.activeIdx);
         dropdown.activeTab = "ai";
-        assert(indicator.activeIdx === 5, "activeIdx 5 for ai, got " + indicator.activeIdx);
+        assert(indicator.activeIdx === 3, "activeIdx 3 for ai, got " + indicator.activeIdx);
         dropdown.activeTab = "workspaces";
-        assert(indicator.activeIdx === 3, "workspaces stays 3, got " + indicator.activeIdx);
+        assert(indicator.activeIdx === 4, "workspaces stays 4, got " + indicator.activeIdx);
         dropdown.activeTab = "dashboard";
 
         // ---- 7b. Tab-bar overflow contract: 6 cells fit left of the gear ----

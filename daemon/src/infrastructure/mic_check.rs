@@ -165,6 +165,7 @@ mod tests {
 
     #[test]
     fn probe_reports_synthetic_capture_honestly() {
+        let _guard = capture_env_lock().lock().unwrap_or_else(|e| e.into_inner());
         // Loud tone through the stub capture path: usable signal, no clipping.
         let dir = tempfile::tempdir().unwrap();
         let capture = dir.path().join("stub-cap.sh");
@@ -180,7 +181,6 @@ mod tests {
             p.set_mode(0o755);
             std::fs::set_permissions(&capture, p).unwrap();
         }
-        let _guard = capture_env_lock().lock().unwrap();
         std::env::set_var(CAPTURE_BIN_ENV, &capture);
         let report = probe_microphone(2).unwrap();
         std::env::remove_var(CAPTURE_BIN_ENV);
@@ -192,6 +192,7 @@ mod tests {
 
     #[test]
     fn probe_calls_silence_silent() {
+        let _guard = capture_env_lock().lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let capture = dir.path().join("sil-cap.sh");
         std::fs::write(
@@ -206,7 +207,6 @@ mod tests {
             p.set_mode(0o755);
             std::fs::set_permissions(&capture, p).unwrap();
         }
-        let _guard = capture_env_lock().lock().unwrap();
         std::env::set_var(CAPTURE_BIN_ENV, &capture);
         let report = probe_microphone(1).unwrap();
         std::env::remove_var(CAPTURE_BIN_ENV);

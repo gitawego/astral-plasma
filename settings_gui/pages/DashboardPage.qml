@@ -61,6 +61,27 @@ SettingsPage {
         return true;
     }
 
+    /// Reorder dashboard tabs
+    function moveTab(fromIndex, toIndex) {
+        if (fromIndex < 0 || fromIndex >= root.dashboardTabs.length ||
+            toIndex < 0 || toIndex >= root.dashboardTabs.length ||
+            fromIndex === toIndex) {
+            return;
+        }
+        if (root.testMode) {
+            const tabs = root.dashboardTabs.slice();
+            const moved = tabs.splice(fromIndex, 1)[0];
+            tabs.splice(toIndex, 0, moved);
+            root.testDashboardTabs = tabs;
+            return;
+        }
+        if (!root.testMode && typeof Config !== "undefined" && Config.moveDashboardTab) {
+            Config.moveDashboardTab(fromIndex, toIndex);
+        }
+    }
+
+    property var testDashboardTabs: null
+
     /// The last tab switch that was refused (test plumbing).
     property string lastRefusedTabId: ""
 
@@ -133,9 +154,11 @@ SettingsPage {
 
     /// The configured tabs, read once so the header's count and the Repeater
     /// below cannot disagree.
-    readonly property var dashboardTabs: (typeof Config !== "undefined" && Config.settings
+    readonly property var dashboardTabs: root.testDashboardTabs !== null
+        ? root.testDashboardTabs
+        : ((typeof Config !== "undefined" && Config.settings
             && Config.settings.dashboard && Config.settings.dashboard.tabs)
-        ? Config.settings.dashboard.tabs : []
+            ? Config.settings.dashboard.tabs : [])
 
     /// Tabs the dashboard actually renders: enabled *and* not gated by a missing
     /// engine. A blocked tab reads as off, so it is not counted as shown.
@@ -179,6 +202,7 @@ SettingsPage {
 
         delegate: ColumnLayout {
             required property var modelData
+            required property int index
             Layout.fillWidth: true
             spacing: 8
 
@@ -190,16 +214,85 @@ SettingsPage {
             /// tab happened to be in view.
             readonly property var gateReason: root.tabGateReason(modelData.id)
 
-            SettingToggle {
+            RowLayout {
                 Layout.fillWidth: true
-                title: modelData.label + " Tab"
-                description: gateReason === null
-                    ? ("Show " + modelData.label + " tab inside the Central Dashboard")
-                    : (modelData.label + " needs the aria2 download engine")
-                // Blocked tabs read as off: the dashboard does not render them,
-                // whatever the stored preference says.
-                checked: modelData.enabled === true && gateReason === null
-                onToggled: val => root.requestTabEnabled(modelData.id, val)
+                spacing: Theme.spaceSmall
+
+                // Reorder controls: move up / move down buttons
+                RowLayout {
+                    spacing: 4
+                    Layout.alignment: Qt.AlignVCenter
+
+                    Rectangle {
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        radius: Theme.radiusSmall
+                        color: upMa.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainer
+                        opacity: index > 0 ? 1.0 : 0.35
+                        border.color: Colors.glassBorderSubtle
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+                        Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast } }
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "arrow_upward"
+                            size: 16
+                            color: Colors.m3onSurface
+                        }
+
+                        MouseArea {
+                            id: upMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: index > 0
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: root.moveTab(index, index - 1)
+                        }
+                    }
+
+                    Rectangle {
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        radius: Theme.radiusSmall
+                        color: downMa.containsMouse ? Colors.surfaceContainerHighest : Colors.surfaceContainer
+                        opacity: index < root.dashboardTabs.length - 1 ? 1.0 : 0.35
+                        border.color: Colors.glassBorderSubtle
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: Theme.animDurationFast } }
+                        Behavior on opacity { NumberAnimation { duration: Theme.animDurationFast } }
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "arrow_downward"
+                            size: 16
+                            color: Colors.m3onSurface
+                        }
+
+                        MouseArea {
+                            id: downMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: index < root.dashboardTabs.length - 1
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: root.moveTab(index, index + 1)
+                        }
+                    }
+                }
+
+                SettingToggle {
+                    Layout.fillWidth: true
+                    title: modelData.label + " Tab"
+                    description: gateReason === null
+                        ? ("Show " + modelData.label + " tab inside the Central Dashboard")
+                        : (modelData.label + " needs the aria2 download engine")
+                    // Blocked tabs read as off: the dashboard does not render them,
+                    // whatever the stored preference says.
+                    checked: modelData.enabled === true && gateReason === null
+                    onToggled: val => root.requestTabEnabled(modelData.id, val)
+                }
             }
 
             // The refusal, with both ways to fix it: install with the system

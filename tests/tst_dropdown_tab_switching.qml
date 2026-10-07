@@ -49,7 +49,7 @@ Item {
         "play_arrow", "task_alt", "content_paste", "select_all", "delete_sweep"
     ]
 
-    readonly property var tabIds: ["dashboard", "media", "performance", "workspaces", "downloads", "ai"]
+    readonly property var tabIds: ["dashboard", "media", "performance", "ai", "workspaces", "downloads"]
     // Start on a non-dashboard tab so the regression cannot hide behind the
     // trivially-correct index 0 position.
     readonly property var tabOrder: [1, 2, 3, 4, 5, 0]

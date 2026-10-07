@@ -58,6 +58,15 @@ Item {
     /// never selected, instead of shifting every pane.
     readonly property var visibleTabs: DashboardTabs.availableTabs(Config.dashboardTabs, root.ariaAvailable)
 
+    function tabIndex(tabId) {
+        for (let i = 0; i < root.visibleTabs.length; ++i) {
+            if (root.visibleTabs[i] && root.visibleTabs[i].id === tabId) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     /// The selected tab, falling back to one that is actually rendered: the
     /// stored preference can point at a hidden tab (it was disabled, or the
     /// engine went away), and a view left on a tab with no chip is a view the
@@ -307,13 +316,13 @@ Item {
             clip: true
             implicitHeight: {
                 switch (root.activeTab) {
-                    case "dashboard": return tabPane0.implicitHeight;
-                    case "media": return tabPane1.implicitHeight;
-                    case "performance": return tabPane2.implicitHeight;
-                    case "workspaces": return tabPane3.implicitHeight;
-                    case "downloads": return tabPane4.implicitHeight;
-                    case "ai": return tabPane5.implicitHeight;
-                    default: return tabPane0.implicitHeight;
+                    case "dashboard": return tabPaneDashboard.implicitHeight;
+                    case "media": return tabPaneMedia.implicitHeight;
+                    case "performance": return tabPanePerformance.implicitHeight;
+                    case "ai": return tabPaneAi.implicitHeight;
+                    case "workspaces": return tabPaneWorkspaces.implicitHeight;
+                    case "downloads": return tabPaneDownloads.implicitHeight;
+                    default: return tabPaneDashboard.implicitHeight;
                 }
             }
 
@@ -326,20 +335,13 @@ Item {
             }
 
             readonly property int activeTabIndex: {
-                switch (root.activeTab) {
-                    case "dashboard": return 0;
-                    case "media": return 1;
-                    case "performance": return 2;
-                    case "workspaces": return 3;
-                    case "downloads": return 4;
-                    case "ai": return 5;
-                    default: return 0;
-                }
+                const idx = root.tabIndex(root.activeTab);
+                return idx >= 0 ? idx : 0;
             }
 
             Item {
                 id: tabSlider
-                width: tabContentContainer.width * 6
+                width: tabContentContainer.width * Math.max(6, root.visibleTabs.length)
                 height: parent.height
                 x: -tabContentContainer.activeTabIndex * tabContentContainer.width
 
@@ -354,13 +356,14 @@ Item {
                 readonly property bool isAnimating: Math.abs(tabSlider.x - (-tabContentContainer.activeTabIndex * tabContentContainer.width)) > 1
 
                 Item {
-                    id: tabPane0
-                    x: 0
+                    id: tabPaneDashboard
+                    readonly property int myIndex: root.tabIndex("dashboard")
+                    x: myIndex >= 0 ? myIndex * tabContentContainer.width : 0
                     width: tabContentContainer.width
                     height: implicitHeight
                     implicitHeight: dashTab.implicitHeight
                     clip: true
-                    visible: tabContentContainer.activeTabIndex === 0 || tabSlider.isAnimating
+                    visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 0) || tabSlider.isAnimating
 
                     DashboardTab {
                         id: dashTab
@@ -370,13 +373,14 @@ Item {
                 }
 
                 Item {
-                    id: tabPane1
-                    x: tabContentContainer.width
+                    id: tabPaneMedia
+                    readonly property int myIndex: root.tabIndex("media")
+                    x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width
                     width: tabContentContainer.width
                     height: implicitHeight
                     implicitHeight: mediaTab.implicitHeight
                     clip: true
-                    visible: tabContentContainer.activeTabIndex === 1 || tabSlider.isAnimating
+                    visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 1) || tabSlider.isAnimating
 
                     MediaTab {
                         id: mediaTab
@@ -386,13 +390,14 @@ Item {
                 }
 
                 Item {
-                    id: tabPane2
-                    x: tabContentContainer.width * 2
+                    id: tabPanePerformance
+                    readonly property int myIndex: root.tabIndex("performance")
+                    x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 2
                     width: tabContentContainer.width
                     height: implicitHeight
                     implicitHeight: perfTab.implicitHeight
                     clip: true
-                    visible: tabContentContainer.activeTabIndex === 2 || tabSlider.isAnimating
+                    visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 2) || tabSlider.isAnimating
 
                     PerformanceTab {
                         id: perfTab
@@ -402,13 +407,31 @@ Item {
                 }
 
                 Item {
-                    id: tabPane3
-                    x: tabContentContainer.width * 3
+                    id: tabPaneAi
+                    readonly property int myIndex: root.tabIndex("ai")
+                    x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 3
+                    width: tabContentContainer.width
+                    height: implicitHeight
+                    implicitHeight: aiTab.implicitHeight
+                    clip: true
+                    visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 3) || tabSlider.isAnimating
+
+                    AiTab {
+                        id: aiTab
+                        width: parent.width
+                        height: parent.height
+                    }
+                }
+
+                Item {
+                    id: tabPaneWorkspaces
+                    readonly property int myIndex: root.tabIndex("workspaces")
+                    x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 4
                     width: tabContentContainer.width
                     height: implicitHeight
                     implicitHeight: wsTab.implicitHeight
                     clip: true
-                    visible: tabContentContainer.activeTabIndex === 3 || tabSlider.isAnimating
+                    visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 4) || tabSlider.isAnimating
 
                     WorkspacesTab {
                         id: wsTab
@@ -418,32 +441,17 @@ Item {
                 }
 
                 Item {
-                    id: tabPane4
-                    x: tabContentContainer.width * 4
+                    id: tabPaneDownloads
+                    readonly property int myIndex: root.tabIndex("downloads")
+                    x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 5
                     width: tabContentContainer.width
                     height: implicitHeight
                     implicitHeight: dlTab.implicitHeight
                     clip: true
-                    visible: tabContentContainer.activeTabIndex === 4 || tabSlider.isAnimating
+                    visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 5) || tabSlider.isAnimating
 
                     DownloadsTab {
                         id: dlTab
-                        width: parent.width
-                        height: parent.height
-                    }
-                }
-
-                Item {
-                    id: tabPane5
-                    x: tabContentContainer.width * 5
-                    width: tabContentContainer.width
-                    height: implicitHeight
-                    implicitHeight: aiTab.implicitHeight
-                    clip: true
-                    visible: tabContentContainer.activeTabIndex === 5 || tabSlider.isAnimating
-
-                    AiTab {
-                        id: aiTab
                         width: parent.width
                         height: parent.height
                     }
