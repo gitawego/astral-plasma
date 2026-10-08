@@ -736,12 +736,20 @@ Singleton {
 
     function seekTo(fraction) {
         if (!activePlayer || length <= 0) return;
-        let targetSecs = fraction * length;
+        if (!canSeek) return;
+        let frac = Math.max(0.0, Math.min(1.0, fraction));
+        let targetSecs = frac * length;
         currentPosition = targetSecs;
-        if (activePlayer.canSeek) {
+        if (typeof activePlayer.position !== "undefined") {
             try {
                 activePlayer.position = targetSecs;
-            } catch (e) {}
+            } catch (e) {
+                if (typeof activePlayer.seek === "function") {
+                    try {
+                        activePlayer.seek(targetSecs - currentPosition);
+                    } catch (e2) {}
+                }
+            }
         }
     }
 

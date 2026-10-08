@@ -928,6 +928,10 @@ Item {
                     Layout.preferredWidth: parent.width - 24
                     Layout.preferredHeight: 12
 
+                    readonly property real effectiveProgress: (dashSeekMouse.isDragging)
+                        ? dashSeekMouse.dragRatio
+                        : Math.min(1.0, Math.max(0.0, MprisMedia.progress || 0.0))
+
                     // Progress Track Background
                     Rectangle {
                         anchors.left: parent.left
@@ -944,30 +948,56 @@ Item {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         height: 3
-                        width: Math.max(0, Math.min(parent.width, parent.width * (MprisMedia.progress || 0.0)))
+                        width: Math.max(0, Math.min(parent.width, parent.width * cyberProgressBar.effectiveProgress))
                         color: Colors.primary
                     }
 
                     // Playhead Indicator (Magenta tick)
                     Rectangle {
-                        visible: (MprisMedia.progress || 0.0) > 0.0
-                        x: Math.max(0, Math.min(parent.width - 3, parent.width * (MprisMedia.progress || 0.0) - 1.5))
+                        visible: cyberProgressBar.effectiveProgress > 0.0
+                        x: Math.max(0, Math.min(parent.width - 3, parent.width * cyberProgressBar.effectiveProgress - 1.5))
                         anchors.verticalCenter: parent.verticalCenter
                         width: 3
                         height: 9
                         color: Colors.secondary
+                        opacity: ((typeof MprisMedia !== "undefined") && MprisMedia.canSeek) ? 1.0 : 0.60
                     }
 
                     // Interactive Seek MouseArea
                     MouseArea {
+                        id: dashSeekMouse
                         anchors.fill: parent
                         anchors.margins: -4
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: function(mouse) {
-                            if (typeof MprisMedia !== "undefined" && MprisMedia.canSeek && MprisMedia.length > 0) {
-                                var ratio = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                MprisMedia.position = ratio * MprisMedia.length;
+                        enabled: (typeof MprisMedia !== "undefined") && MprisMedia.canSeek && MprisMedia.length > 0
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+                        property bool isDragging: false
+                        property real dragRatio: 0.0
+
+                        onPressed: function(mouse) {
+                            if (!enabled) return;
+                            isDragging = true;
+                            dragRatio = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                        }
+                        onPositionChanged: function(mouse) {
+                            if (isDragging) {
+                                dragRatio = Math.max(0.0, Math.min(1.0, mouse.x / width));
                             }
+                        }
+                        onReleased: function(mouse) {
+                            if (isDragging) {
+                                isDragging = false;
+                                var ratio = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                                MprisMedia.seekTo(ratio);
+                            }
+                        }
+                        onCanceled: function() {
+                            isDragging = false;
+                        }
+                        onClicked: function(mouse) {
+                            if (!enabled) return;
+                            var ratio = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                            MprisMedia.seekTo(ratio);
                         }
                     }
                 }

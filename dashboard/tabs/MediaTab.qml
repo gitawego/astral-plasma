@@ -191,8 +191,13 @@ Item {
 
                 // Progress Bar with Vertical Pill Thumb & Interactive Seeking
                 Item {
+                    id: sliderContainer
                     Layout.fillWidth: true
                     Layout.preferredHeight: 18
+
+                    readonly property real effectiveProgress: (sliderMouse.isDragging)
+                        ? sliderMouse.dragFraction
+                        : Math.min(1.0, Math.max(0.0, MprisMedia.progress))
 
                     // Frosted Glass Track Groove
                     Rectangle {
@@ -216,7 +221,7 @@ Item {
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
                             anchors.margins: 0.5
-                            width: Math.max(0, (parent.width - 1) * Math.min(1.0, Math.max(0.0, MprisMedia.progress)))
+                            width: Math.max(0, (parent.width - 1) * sliderContainer.effectiveProgress)
                             radius: 2.5
 
                             gradient: Gradient {
@@ -243,14 +248,15 @@ Item {
                             height: 16
                             radius: 3
                             anchors.verticalCenter: parent.verticalCenter
-                            x: Math.max(0, Math.min(parent.width - width, parent.width * Math.min(1.0, Math.max(0.0, MprisMedia.progress)) - width / 2))
+                            x: Math.max(0, Math.min(parent.width - width, parent.width * sliderContainer.effectiveProgress - width / 2))
                             color: Colors.primary
                             visible: MprisMedia.length > 0
+                            opacity: MprisMedia.canSeek ? 1.0 : 0.60
 
                             border.color: Qt.rgba(1.0, 1.0, 1.0, 0.85)
                             border.width: 1
 
-                            scale: sliderMouse.pressed ? 1.30 : (sliderMouse.containsMouse ? 1.15 : 1.0)
+                            scale: (sliderMouse.enabled && sliderMouse.pressed) ? 1.30 : ((sliderMouse.enabled && sliderMouse.containsMouse) ? 1.15 : 1.0)
                             Behavior on scale { NumberAnimation { duration: 120 } }
                         }
                     }
@@ -259,17 +265,37 @@ Item {
                     MouseArea {
                         id: sliderMouse
                         anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: MprisMedia.canSeek ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: mouse => {
-                            let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                            MprisMedia.seekTo(frac);
+                        enabled: (typeof MprisMedia !== "undefined") && MprisMedia.canSeek && MprisMedia.length > 0
+                        hoverEnabled: enabled
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+                        property bool isDragging: false
+                        property real dragFraction: 0.0
+
+                        onPressed: mouse => {
+                            if (!enabled) return;
+                            isDragging = true;
+                            dragFraction = Math.max(0.0, Math.min(1.0, mouse.x / width));
                         }
                         onPositionChanged: mouse => {
-                            if (pressed && MprisMedia.canSeek) {
+                            if (isDragging) {
+                                dragFraction = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                            }
+                        }
+                        onReleased: mouse => {
+                            if (isDragging) {
+                                isDragging = false;
                                 let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
                                 MprisMedia.seekTo(frac);
                             }
+                        }
+                        onCanceled: {
+                            isDragging = false;
+                        }
+                        onClicked: mouse => {
+                            if (!enabled) return;
+                            let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                            MprisMedia.seekTo(frac);
                         }
                     }
                 }
@@ -281,13 +307,15 @@ Item {
 
                     Text {
                         text: {
-                            const secs = Math.floor(MprisMedia.position);
+                            const secs = Math.floor(sliderMouse.isDragging
+                                ? (sliderMouse.dragFraction * (MprisMedia.length || 0))
+                                : (MprisMedia.position || 0));
                             const m = Math.floor(secs / 60);
                             const s = secs % 60;
                             return m + ":" + (s < 10 ? "0" : "") + s;
+                        }
                         style: Text.Outline
                         styleColor: Colors.glassTextHalo
-                        }
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontLabelSmall
                         color: Colors.m3onSurfaceVariant
@@ -297,13 +325,13 @@ Item {
 
                     Text {
                         text: {
-                            const secs = Math.floor(MprisMedia.length);
+                            const secs = Math.floor(MprisMedia.length || 0);
                             const m = Math.floor(secs / 60);
                             const s = secs % 60;
                             return m + ":" + (s < 10 ? "0" : "") + s;
+                        }
                         style: Text.Outline
                         styleColor: Colors.glassTextHalo
-                        }
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontLabelSmall
                         color: Colors.m3onSurfaceVariant
