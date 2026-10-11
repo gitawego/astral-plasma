@@ -106,7 +106,7 @@ Rectangle {
                         text: "New"
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
-                        font.weight: Font.SemiBold
+                        font.weight: Font.DemiBold
                         color: Colors.primary
                     }
                 }

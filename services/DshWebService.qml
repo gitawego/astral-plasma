@@ -425,9 +425,12 @@ Singleton {
     // action name is printed), so nothing hooks the global notification stream.
     // ------------------------------------------------------------------
     readonly property bool watchExternal: root.enabled
+    readonly property bool xhrFileReadAllowed: (typeof Quickshell !== "undefined" && Quickshell.env)
+        ? (Quickshell.env("QML_XHR_ALLOW_FILE_READ") === "1") : false
 
-    /** Fork-free "is something listening on our port?" check. */
+    /** Fork-free "is something listening on our port?" check (when QML_XHR_ALLOW_FILE_READ=1). */
     function dshPortListening() {
+        if (!root.xhrFileReadAllowed) return false;
         var sources = ["file:///proc/net/tcp", "file:///proc/net/tcp6"];
         for (var i = 0; i < sources.length; i++) {
             var xhr = new XMLHttpRequest();
@@ -467,12 +470,13 @@ Singleton {
 
     function handleExternalWatch() {
         if (root.managed) return;              // we started it: nothing to announce
-        // Try in-process synchronous read (works when QML_XHR_ALLOW_FILE_READ=1)
-        if (root.dshPortListening()) {
+        // Try in-process synchronous read only when QML_XHR_ALLOW_FILE_READ=1
+        // is enabled; otherwise Qt logs a warning on every local-file GET.
+        if (root.xhrFileReadAllowed && root.dshPortListening()) {
             root.handleExternalWatchStatus(true);
             return;
         }
-        // In live desktop, local file XHR is disabled by default in Qt; fall back to procfs read
+        // In live desktop, local file XHR is disabled by default in Qt; use procfs read
         if (!procNetTcpProc.running) {
             procNetTcpProc.running = true;
         }

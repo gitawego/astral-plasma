@@ -27,16 +27,36 @@ var DEFAULT_TABS = [
     { id: "downloads", label: "Downloads", icon: "download" }
 ];
 
+/// Look up the canonical shipped metadata (`label`, `icon`) for a built-in tab.
+function canonicalTab(tabId) {
+    for (var i = 0; i < DEFAULT_TABS.length; ++i) {
+        if (DEFAULT_TABS[i].id === tabId) {
+            return DEFAULT_TABS[i];
+        }
+    }
+    return null;
+}
+
 /// Tabs whose setting is not explicitly off.
 ///
 /// A missing `enabled` flag means on: a settings file written before tabs were
-/// configurable must not end up with a hidden dashboard.
+/// configurable must not end up with a hidden dashboard. Missing `label` or
+/// `icon` fields are filled from `DEFAULT_TABS` so QML delegates always receive
+/// valid strings even before settings reconciliation or from bare tab objects.
 function enabledTabs(tabs) {
     if (!tabs || !Array.isArray(tabs)) {
         return DEFAULT_TABS.slice();
     }
     return tabs.filter(function (tab) {
         return !!tab && tab.id && tab.enabled !== false;
+    }).map(function (tab) {
+        const canonical = canonicalTab(tab.id);
+        return {
+            id: tab.id,
+            label: tab.label || (canonical ? canonical.label : tab.id),
+            icon: tab.icon || (canonical ? canonical.icon : tab.id),
+            enabled: tab.enabled !== false
+        };
     });
 }
 
@@ -97,7 +117,15 @@ function fallbackActiveTab(tabs, activeId) {
 function reconcileTabs(stored, shipped) {
     const shippedList = (shipped && Array.isArray(shipped)) ? shipped : DEFAULT_TABS;
     if (!stored || !Array.isArray(stored) || stored.length === 0) {
-        return shippedList.slice();
+        return shippedList.map(function (tab) {
+            const canonical = canonicalTab(tab.id);
+            return {
+                id: tab.id,
+                label: tab.label || (canonical ? canonical.label : tab.id),
+                icon: tab.icon || (canonical ? canonical.icon : tab.id),
+                enabled: tab.enabled !== false
+            };
+        });
     }
 
     const result = [];
@@ -107,10 +135,11 @@ function reconcileTabs(stored, shipped) {
             return;
         }
         const fresh = shippedList.filter(function (s) { return s.id === tab.id; })[0];
+        const canonical = canonicalTab(tab.id);
         result.push({
             id: tab.id,
-            label: tab.label || (fresh ? fresh.label : tab.id),
-            icon: tab.icon || (fresh ? fresh.icon : undefined),
+            label: tab.label || (fresh ? fresh.label : "") || (canonical ? canonical.label : tab.id),
+            icon: tab.icon || (fresh ? fresh.icon : "") || (canonical ? canonical.icon : tab.id),
             enabled: tab.enabled !== false
         });
         seen[tab.id] = true;
@@ -120,10 +149,11 @@ function reconcileTabs(stored, shipped) {
         if (seen[tab.id]) {
             return;
         }
+        const canonical = canonicalTab(tab.id);
         result.push({
             id: tab.id,
-            label: tab.label,
-            icon: tab.icon,
+            label: tab.label || (canonical ? canonical.label : tab.id),
+            icon: tab.icon || (canonical ? canonical.icon : tab.id),
             enabled: tab.enabled !== false
         });
     });

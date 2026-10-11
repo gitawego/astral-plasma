@@ -170,23 +170,6 @@ ShellRoot {
                 });
             }
         }
-
-        property string activeModel: (typeof AiActivityService !== "undefined") ? AiActivityService.model : ""
-        property string activeDisplayName: (typeof AiActivityService !== "undefined") ? AiActivityService.displayName : ""
-        property bool isActive: (typeof AiActivityService !== "undefined") ? AiActivityService.isActive : false
-        property real intensity: (typeof AiActivityService !== "undefined") ? AiActivityService.intensity : 0.0
-        property real requestRate: (typeof AiActivityService !== "undefined") ? AiActivityService.requestRate : 0.0
-        property real tokenRate: (typeof AiActivityService !== "undefined") ? AiActivityService.tokenRate : 0.0
-        property real recentTokens: (typeof AiActivityService !== "undefined") ? AiActivityService.recentTokens : 0.0
-        property real throughputLoad: (typeof AiActivityService !== "undefined") ? AiActivityService.throughputLoad : 0.0
-        property int currentTravelDuration: (typeof AiActivityService !== "undefined") ? AiActivityService.currentTravelDuration : 3200
-        property int pulseDuration: (typeof AiActivityService !== "undefined") ? AiActivityService.pulseDuration : 2400
-        property real packetLength: (typeof AiActivityService !== "undefined") ? AiActivityService.packetLength : 48.0
-        property int activeAgentsCount: (typeof AiActivityService !== "undefined" && AiActivityService.activeAgents) ? AiActivityService.activeAgents.length : 0
-        property string activeAgentsSummary: {
-            if (typeof AiActivityService === "undefined" || !AiActivityService.activeAgents) return "";
-            return AiActivityService.activeAgents.map(function(a) { return a.display_name; }).join(", ");
-        }
     }
 
     // Embedded DSH web UI (dsh/DshWebWindow.qml). open() adopts a running server

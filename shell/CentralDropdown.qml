@@ -233,7 +233,7 @@ Item {
 
                             MaterialIcon {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: modelData.icon
+                                text: modelData.icon || modelData.id || ""
                                 size: 20
                                 color: isSelected ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb") : (tabHover.containsMouse ? ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#9bcbfb") : ((typeof Colors !== "undefined" && Colors.textMain) ? Colors.textMain : "#e3e3e3"))
                                 Behavior on color {
@@ -245,7 +245,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: Math.min(implicitWidth, tabItem.width - 12)
                                 horizontalAlignment: Text.AlignHCenter
-                                text: modelData.label
+                                text: modelData.label || modelData.id || ""
                                 font.pixelSize: 12
                                 font.weight: isSelected ? Font.Bold : Font.DemiBold
                                 font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"

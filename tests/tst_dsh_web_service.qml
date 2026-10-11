@@ -145,6 +145,8 @@ Item {
             "the server check must be fork-free procfs parsing");
         assert(service.indexOf("procNetTcpProc") !== -1,
             "the service must have a procfs fallback for environments without XHR file reads");
+        assert(service.indexOf('Quickshell.env("QML_XHR_ALLOW_FILE_READ") === "1"') !== -1,
+            "the service must gate local-file XMLHttpRequest on QML_XHR_ALLOW_FILE_READ=1 to avoid live session warnings");
         assert(service.indexOf("WindowService.activate") !== -1,
             "the service must activate existing open window when requested");
         assert(service.indexOf("interval: 20000") !== -1,

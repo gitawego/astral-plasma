@@ -84,16 +84,16 @@ Singleton {
             "hostAvatarBorder": true,
             "bongoCatAvatar": "",
             "tabs": [
-                { "id": "dashboard", "label": "Dashboard", "enabled": true },
-                { "id": "media", "label": "Media", "enabled": true },
-                { "id": "performance", "label": "Performance", "enabled": true },
-                { "id": "workspaces", "label": "Workspaces", "enabled": true },
+                { "id": "dashboard", "label": "Dashboard", "icon": "dashboard", "enabled": true },
+                { "id": "media", "label": "Media", "icon": "media", "enabled": true },
+                { "id": "performance", "label": "Performance", "icon": "performance", "enabled": true },
+                { "id": "workspaces", "label": "Workspaces", "icon": "workspaces", "enabled": true },
                 // The Downloads tab needs the aria2 engine: it is hidden while
                 // the engine is missing, whatever this flag says, and the
                 // settings page offers to install the engine instead of
                 // enabling a tab that could only show an install banner.
-                { "id": "downloads", "label": "Downloads", "enabled": true },
-                { "id": "ai", "label": "AI Quotas", "enabled": true }
+                { "id": "downloads", "label": "Downloads", "icon": "download", "enabled": true },
+                { "id": "ai", "label": "AI Quotas", "icon": "auto_awesome", "enabled": true }
             ],
             "weather": {
                 "location": "auto",

@@ -487,7 +487,7 @@ Rectangle {
                                         text: modelData.name
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 11
-                                        font.weight: isActive ? Font.SemiBold : Font.Normal
+                                        font.weight: isActive ? Font.DemiBold : Font.Normal
                                         color: isActive ? Colors.m3onPrimaryContainer : Colors.m3onSurface
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
@@ -895,7 +895,7 @@ Rectangle {
                                         text: itemDelegate.name
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 11
-                                        font.weight: itemDelegate.isDir ? Font.SemiBold : Font.Normal
+                                        font.weight: itemDelegate.isDir ? Font.DemiBold : Font.Normal
                                         color: itemDelegate.isDir ? Colors.primary : Colors.m3onSurface
                                         elide: Text.ElideMiddle
                                         Layout.fillWidth: true

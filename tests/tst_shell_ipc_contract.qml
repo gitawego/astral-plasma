@@ -99,6 +99,11 @@ Item {
                     + "silently drops any function above " + testRoot.ipcArgumentLimit
                     + " arguments, so the action can never be invoked");
             }
+
+            assert(!/\b(?:readonly\s+)?property\s+\w+\s+\w+/.test(block),
+                "IpcHandler block " + (i + 1) + " must not declare custom QML properties (Quickshell IpcHandler only exposes functions and warns 'Signal detected: ...Changed' for each property):\n" + block);
+            assert(!/\bsignal\s+\w+/.test(block),
+                "IpcHandler block " + (i + 1) + " must not declare signals:\n" + block);
         }
 
         assert(functions >= 10,

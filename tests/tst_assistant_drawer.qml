@@ -800,6 +800,13 @@ Item {
         assert(/restingOpacity:\s*0\b/.test(readLocalFile("../dock/popouts/FusedBottomPopout.qml")),
             "the transient dock menu keeps its bar hidden at rest");
 
+        // Qt Quick's enum is Font.DemiBold (600); Font.SemiBold is undefined and
+        // logs `Unable to assign [undefined] to int` when bound to font.weight.
+        assert(!/Font\.SemiBold\b/.test(readLocalFile("../assistant/components/LiquidGlassFilePicker.qml")),
+            "LiquidGlassFilePicker.qml must use Font.DemiBold instead of undefined Font.SemiBold");
+        assert(!/Font\.SemiBold\b/.test(readLocalFile("../assistant/components/SessionListDrawer.qml")),
+            "SessionListDrawer.qml must use Font.DemiBold instead of undefined Font.SemiBold");
+
         console.log("PASS: All Assistant Drawer tests passed!");
         Qt.exit(0);
     }

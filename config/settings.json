@@ -120,31 +120,37 @@
       {
         "id": "dashboard",
         "label": "Dashboard",
+        "icon": "dashboard",
         "enabled": true
       },
       {
         "id": "media",
         "label": "Media",
+        "icon": "media",
         "enabled": true
       },
       {
         "id": "performance",
         "label": "Performance",
+        "icon": "performance",
         "enabled": true
       },
       {
         "id": "ai",
         "label": "AI Quotas",
+        "icon": "auto_awesome",
         "enabled": true
       },
       {
         "id": "workspaces",
         "label": "Workspaces",
+        "icon": "workspaces",
         "enabled": true
       },
       {
         "id": "downloads",
         "label": "Downloads",
+        "icon": "download",
         "enabled": true
       }
     ],

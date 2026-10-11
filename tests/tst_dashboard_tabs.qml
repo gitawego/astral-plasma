@@ -129,13 +129,32 @@ Item {
             "no stored list = the shipped list");
 
         // ------------------------------------------------------------------
+        // Icon resolution: stored/shipped tabs without `icon` must still resolve
+        // their canonical Material icon name so CentralDropdown never assigns
+        // `undefined` to MaterialIcon.text (QString).
+        // ------------------------------------------------------------------
+        const shippedFromJson = JSON.parse(readLocalFile("../config/settings.json"));
+        const reconciledWithJson = Tabs.reconcileTabs(storedOld, shippedFromJson.dashboard.tabs);
+        for (const t of reconciledWithJson) {
+            assert(typeof t.icon === "string" && t.icon.length > 0,
+                "reconciled tab '" + t.id + "' must have a non-empty icon string, got: " + JSON.stringify(t));
+        }
+        const enabledFromBare = Tabs.enabledTabs([{ id: "dashboard", label: "Dashboard", enabled: true }, { id: "ai", label: "AI Quotas", enabled: true }]);
+        assert(enabledFromBare[0].icon === "dashboard" && enabledFromBare[1].icon === "auto_awesome",
+            "enabledTabs must enrich missing icon fields from canonical defaults: " + JSON.stringify(enabledFromBare));
+
+        // ------------------------------------------------------------------
         // Wiring: settings own the list, the dashboard consumes the policy
         // ------------------------------------------------------------------
-        const shipped = JSON.parse(readLocalFile("../config/settings.json"));
+        const shipped = shippedFromJson;
         const shippedIds = (shipped.dashboard.tabs || []).map(t => t.id);
         for (const expected of ["dashboard", "media", "performance", "workspaces", "downloads", "ai"]) {
             assert(shippedIds.indexOf(expected) >= 0,
                 "every rendered tab must be configurable: " + expected + " missing from " + shippedIds);
+        }
+        for (const tabEntry of (shipped.dashboard.tabs || [])) {
+            assert(typeof tabEntry.icon === "string" && tabEntry.icon.length > 0,
+                "shipped settings.json tab '" + tabEntry.id + "' must include a non-empty icon");
         }
         assert(shippedIds.indexOf("ai") === shippedIds.indexOf("performance") + 1,
             "AI tab must appear immediately after performance tab in shipped settings: " + shippedIds);
