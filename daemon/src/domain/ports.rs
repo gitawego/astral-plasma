@@ -327,6 +327,7 @@ pub trait SystemMonitorPort: Send + Sync {
 pub trait AiQuotaPort: Send + Sync {
     fn get_snapshot(&self, warning_thr: f64, critical_thr: f64, force_refresh: bool) -> crate::domain::ai_quota::AiQuotaSnapshot;
     fn switch_gemini_account(&self, target_id_or_email: &str) -> Result<String, String>;
+    fn switch_provider_account(&self, provider_id: &str, target_id_or_email: &str) -> Result<String, String>;
     fn login_gemini_oauth(&self, email_hint: Option<&str>) -> Result<String, String>;
     fn remove_account(&self, provider_id: &str, target_id_or_email: &str) -> Result<String, String>;
     fn add_account(&self, provider_id: &str, credential: &str, label: Option<&str>, is_session: bool) -> Result<String, String>;

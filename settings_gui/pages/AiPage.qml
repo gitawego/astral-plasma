@@ -141,6 +141,94 @@ ColumnLayout {
     readonly property bool isAuthenticating: testMode ? testIsAuthenticating : ((typeof AiTokenService !== "undefined") ? AiTokenService.isAuthenticating : false)
     readonly property string authenticatingEmail: testMode ? testAuthenticatingEmail : ((typeof AiTokenService !== "undefined") ? AiTokenService.authenticatingEmail : "")
 
+    property var testAccountSwitchRequests: []
+    property var testAccountAddRequests: []
+    property var testAccountRemoveRequests: []
+    property var testGeminiLoginRequests: []
+
+    property bool addProviderOpen: false
+    property string selectedAddProviderId: "gemini"
+
+    readonly property var supportedProviderCatalog: [
+        { id: "gemini", name: "Google Gemini (Antigravity)", authType: "oauth", hint: "Sign in with Google OAuth in your browser, or add a Gemini API key." },
+        { id: "opencode-go", name: "OpenCode Go", authType: "cookie", hint: "Paste your OpenCode auth cookie or API token." },
+        { id: "minimax-cn", name: "MiniMax", authType: "key", hint: "Paste your MiniMax Coding Plan API key." },
+        { id: "xiaomi-mimo-cn", name: "Xiaomi MiMo Token Plan", authType: "key", hint: "Paste your Xiaomi MiMo API key or session cookie." },
+        { id: "deepseek", name: "DeepSeek", authType: "key", hint: "Paste your DeepSeek API key (sk-...)." },
+        { id: "claude", name: "Anthropic Claude", authType: "key", hint: "Paste your Anthropic API key (sk-ant-...)." },
+        { id: "openai", name: "OpenAI", authType: "key", hint: "Paste your OpenAI API key (sk-...)." }
+    ]
+
+    readonly property var selectedAddProviderMeta: {
+        for (let i = 0; i < root.supportedProviderCatalog.length; i++) {
+            if (root.supportedProviderCatalog[i].id === root.selectedAddProviderId) {
+                return root.supportedProviderCatalog[i];
+            }
+        }
+        return root.supportedProviderCatalog[0];
+    }
+
+    function loginGeminiAccount(emailHint) {
+        const cleanHint = (emailHint && String(emailHint).trim().length > 0) ? String(emailHint).trim() : "";
+        if (testMode) {
+            let next = root.testGeminiLoginRequests.slice();
+            next.push(cleanHint);
+            root.testGeminiLoginRequests = next;
+            root.testIsAuthenticating = true;
+            root.testAuthenticatingEmail = cleanHint;
+            return;
+        }
+        if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
+            AiTokenService.loginGemini(cleanHint);
+        }
+    }
+
+    function switchProviderAccount(providerId, targetIdOrEmail) {
+        if (!providerId || !targetIdOrEmail) return;
+        if (testMode) {
+            let next = root.testAccountSwitchRequests.slice();
+            next.push({ provider: providerId, target: targetIdOrEmail });
+            root.testAccountSwitchRequests = next;
+            return;
+        }
+        if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
+            AiTokenService.switchAccount(providerId, targetIdOrEmail);
+        }
+    }
+
+    function addProviderAccount(providerId, credential, label) {
+        const cleanCred = credential ? String(credential).trim() : "";
+        const cleanLabel = label ? String(label).trim() : "";
+        if (!providerId || cleanCred === "") return;
+        if (testMode) {
+            let next = root.testAccountAddRequests.slice();
+            next.push({ provider: providerId, credential: cleanCred, label: cleanLabel });
+            root.testAccountAddRequests = next;
+            return;
+        }
+        if (typeof AiTokenService !== "undefined") {
+            AiTokenService.addAccount(providerId, cleanCred, cleanLabel);
+        }
+    }
+
+    function removeProviderAccount(providerId, idOrEmail) {
+        if (!providerId || !idOrEmail) return;
+        if (testMode) {
+            let next = root.testAccountRemoveRequests.slice();
+            next.push({ provider: providerId, target: idOrEmail });
+            root.testAccountRemoveRequests = next;
+            return;
+        }
+        if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
+            AiTokenService.removeAccount(providerId, idOrEmail);
+        }
+    }
+
+    property alias providersRepeaterItem: providersRepeater
+    property alias addProviderButtonItem: addProviderButton
+    property alias addProviderCardItem: addProviderCard
+    property alias setupHeaderItem: setupHeader
+
     function cancelAuth() {
         if (testMode) {
             testIsAuthenticating = false;
@@ -429,6 +517,7 @@ ColumnLayout {
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: Theme.spaceSmall
 
             Text {
                 text: "Configured Providers & Quotas"
@@ -441,6 +530,16 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
 
             PillButton {
+                id: addProviderButton
+                label: root.addProviderOpen ? "Close" : "Add Provider / Account"
+                iconText: root.addProviderOpen ? "close" : "add"
+                variant: root.addProviderOpen ? "subtle" : "filled"
+                onClicked: {
+                    root.addProviderOpen = !root.addProviderOpen;
+                }
+            }
+
+            PillButton {
                 label: "Rescan All Models"
                 iconText: "refresh"
                 onClicked: {
@@ -451,49 +550,300 @@ ColumnLayout {
             }
         }
 
-        GridLayout {
+        // Inline Add Provider / Account Panel
+        Rectangle {
+            id: addProviderCard
+            visible: root.addProviderOpen
             Layout.fillWidth: true
-            // Two cards side by side when there is room, one when the settings
-            // window is narrow: a quota row squeezed to 300px is unreadable.
-            columns: width > 760 ? 2 : 1
-            columnSpacing: Theme.spaceSmall
+            radius: Theme.radiusMedium
+            color: Colors.surfaceContainer
+            border.color: Qt.alpha(Colors.primary, 0.45)
+            border.width: 1
+            implicitHeight: visible ? (addProviderCol.implicitHeight + Theme.padLarge * 2) : 0
+            Layout.preferredHeight: implicitHeight
+
+            property bool showSecret: false
 
             ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 6
+                id: addProviderCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: Theme.padLarge
+                spacing: 12
 
-                ThresholdRange {
-                    id: thresholdRange
+                RowLayout {
                     Layout.fillWidth: true
-                    warning: root.warningThreshold
-                    critical: root.criticalThreshold
-                    onRangeModified: (warning, critical) => root.setThresholds(warning, critical)
+                    spacing: 8
+
+                    MaterialIcon {
+                        text: "vpn_key"
+                        size: 20
+                        color: Colors.primary
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        Text {
+                            text: "Add AI Provider or Account"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                            color: Colors.m3onSurface
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            text: root.selectedAddProviderMeta ? root.selectedAddProviderMeta.hint : ""
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            color: Colors.m3onSurfaceVariant
+                        }
+                    }
                 }
 
-                Text {
+                // Provider Picker Chips
+                Flow {
                     Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    text: "The dock pill turns amber at " + Math.round(root.warningThreshold)
-                        + "% used and rose at " + Math.round(root.criticalThreshold)
-                        + "%. Drag a handle, or focus the control and press ←/→ (Shift for 5% steps)."
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    color: Colors.m3onSurfaceVariant
+                    spacing: 6
+
+                    Repeater {
+                        model: root.supportedProviderCatalog
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool isChosen: root.selectedAddProviderId === modelData.id
+                            implicitHeight: 30
+                            implicitWidth: chipTxt.implicitWidth + 20
+                            radius: 8
+                            color: isChosen ? Colors.m3primaryContainer : (chipHover.containsMouse ? Colors.glassCardHover : Colors.glassCard)
+                            border.width: 1
+                            border.color: isChosen ? Colors.primary : Colors.glassBorderSpecular
+
+                            Text {
+                                id: chipTxt
+                                anchors.centerIn: parent
+                                text: modelData.name
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: isChosen ? Font.Bold : Font.Normal
+                                color: isChosen ? Colors.m3onPrimaryContainer : Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                id: chipHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.selectedAddProviderId = modelData.id;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Google OAuth quick sign-in row when Gemini is selected
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    visible: root.selectedAddProviderId === "gemini"
+
+                    PillButton {
+                        label: root.isAuthenticating ? "Signing in via Browser…" : "Sign in with Google (OAuth)"
+                        iconText: root.isAuthenticating ? "sync" : "login"
+                        variant: "filled"
+                        enabled: !root.isAuthenticating
+                        onClicked: {
+                            root.loginGeminiAccount(addLabelInput.text);
+                        }
+                    }
+
+                    PillButton {
+                        visible: root.isAuthenticating
+                        label: "Cancel"
+                        iconText: "close"
+                        onClicked: root.cancelAuth()
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: "Or enter an API key / token below:"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.m3onSurfaceVariant
+                    }
+                }
+
+                // Credential & Label Input Row
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    // Account Label Input
+                    Rectangle {
+                        Layout.preferredWidth: 160
+                        height: 34
+                        radius: Theme.radiusSmall
+                        color: Colors.surfaceContainerHighest
+                        border.color: addLabelInput.activeFocus ? Colors.primary : Theme.borderSubtle
+                        border.width: 1
+
+                        TextInput {
+                            id: addLabelInput
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            verticalAlignment: TextInput.AlignVCenter
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            color: Colors.m3onSurface
+                            clip: true
+
+                            Text {
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                visible: !addLabelInput.text && !addLabelInput.activeFocus
+                                text: root.selectedAddProviderId === "gemini" ? "Label / Email hint" : "Label (e.g. Work)"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                color: Colors.m3onSurfaceVariant
+                                opacity: 0.7
+                            }
+                        }
+                    }
+
+                    // API Key / Token / Cookie Input
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 34
+                        radius: Theme.radiusSmall
+                        color: Colors.surfaceContainerHighest
+                        border.color: addCredentialInput.activeFocus ? Colors.primary : Theme.borderSubtle
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 8
+                            spacing: 6
+
+                            TextInput {
+                                id: addCredentialInput
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                verticalAlignment: TextInput.AlignVCenter
+                                font.family: Theme.fontMonospace
+                                font.pixelSize: 12
+                                color: Colors.m3onSurface
+                                echoMode: addProviderCard.showSecret ? TextInput.Normal : TextInput.Password
+                                clip: true
+
+                                Text {
+                                    anchors.fill: parent
+                                    verticalAlignment: Text.AlignVCenter
+                                    visible: !addCredentialInput.text && !addCredentialInput.activeFocus
+                                    text: root.selectedAddProviderId === "opencode-go"
+                                        ? "Paste OpenCode cookie or token…"
+                                        : "Paste API key or token…"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    color: Colors.m3onSurfaceVariant
+                                    opacity: 0.7
+                                }
+                            }
+
+                            MaterialIcon {
+                                text: addProviderCard.showSecret ? "visibility_off" : "visibility"
+                                size: 16
+                                color: Colors.m3onSurfaceVariant
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: addProviderCard.showSecret = !addProviderCard.showSecret
+                                }
+                            }
+                        }
+                    }
+
+                    PillButton {
+                        id: saveProviderAccountBtn
+                        label: "Save Account"
+                        iconText: "check"
+                        variant: "filled"
+                        enabled: addCredentialInput.text.trim().length > 0
+                        onClicked: {
+                            root.addProviderAccount(
+                                root.selectedAddProviderId,
+                                addCredentialInput.text.trim(),
+                                addLabelInput.text.trim()
+                            );
+                            addCredentialInput.text = "";
+                            addLabelInput.text = "";
+                            root.addProviderOpen = false;
+                        }
+                    }
                 }
             }
-            rowSpacing: Theme.spaceSmall
+        }
+
+        // Full-width Threshold Range (kept outside provider cards so it never distorts card columns)
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
+
+            ThresholdRange {
+                id: thresholdRange
+                Layout.fillWidth: true
+                warning: root.warningThreshold
+                critical: root.criticalThreshold
+                onRangeModified: (warning, critical) => root.setThresholds(warning, critical)
+            }
+
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "The dock pill turns amber at " + Math.round(root.warningThreshold)
+                    + "% used and rose at " + Math.round(root.criticalThreshold)
+                    + "%. Drag a handle, or focus the control and press ←/→ (Shift for 5% steps)."
+                font.family: Theme.fontFamily
+                font.pixelSize: 11
+                color: Colors.m3onSurfaceVariant
+            }
+        }
+
+        // Full-width vertical stack of ProviderQuotaCards so multi-account controls never clip
+        ColumnLayout {
+            id: providersColumn
+            Layout.fillWidth: true
+            spacing: Theme.spaceSmall
+
             Repeater {
+                id: providersRepeater
                 model: root.providersList
                 delegate: ProviderQuotaCard {
+                    id: providerCardItem
                     required property var modelData
                     Layout.fillWidth: true
                     provider: modelData
                     warningThreshold: root.warningThreshold
                     criticalThreshold: root.criticalThreshold
 
+                    readonly property string resolvedProviderId: String(modelData.provider_id || modelData.provider || "")
+                    readonly property bool isGeminiProvider: resolvedProviderId === "gemini"
+                    property bool inlineAddOpen: false
+                    property bool inlineShowSecret: false
+                    property alias accountsContentItem: accountsContentCol
+                    property alias accountsSetupGroupItem: providerAccountsGroup
+
                     // Accounts and sign-in belong to their provider, and stay collapsed
                     // until that provider needs the user (unavailable, or a new sign-in).
                     SetupGroup {
+                        id: providerAccountsGroup
                         Layout.fillWidth: true
                         flat: true
                         title: "Accounts & sign-in"
@@ -503,247 +853,401 @@ ColumnLayout {
                         state: modelData.is_available === false ? "attention" : "ok"
                         needsAttention: modelData.is_available === false
 
-                                    // Configured Accounts Management (Gemini & Multi-Account Providers)
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 8
-                                        visible: (modelData.provider_id === "gemini" || modelData.provider === "gemini")
+                        // Configured Accounts Management (All Providers: Gemini OAuth + API Keys / Cookies)
+                        ColumnLayout {
+                            id: accountsContentCol
+                            Layout.fillWidth: true
+                            spacing: 8
+                            visible: true
 
-                                        Rectangle {
-                                            Layout.fillWidth: true
-                                            height: 1
-                                            color: Theme.borderSubtle
-                                            opacity: 0.4
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 1
+                                color: Theme.borderSubtle
+                                opacity: 0.4
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Text {
+                                    text: "Configured Accounts"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    color: Colors.m3onSurface
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                // Sign In with Google Button (Gemini OAuth)
+                                Rectangle {
+                                    visible: providerCardItem.isGeminiProvider
+                                    height: 28
+                                    implicitWidth: addBtnRow.implicitWidth + 20
+                                    radius: 14
+                                    color: (!root.isAuthenticating && addMouse.containsMouse) ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.primary, 0.1)
+                                    border.color: (!root.isAuthenticating && addMouse.containsMouse) ? Colors.primary : Qt.alpha(Colors.primary, 0.3)
+                                    border.width: 1
+
+                                    RowLayout {
+                                        id: addBtnRow
+                                        anchors.centerIn: parent
+                                        spacing: 6
+
+                                        MaterialIcon {
+                                            text: root.isAuthenticating ? "sync" : "add"
+                                            size: 15
+                                            color: Colors.primary
+
+                                            RotationAnimation on rotation {
+                                                running: root.isAuthenticating
+                                                from: 0
+                                                to: 360
+                                                duration: 1000
+                                                loops: Animation.Infinite
+                                            }
                                         }
 
-                                        RowLayout {
+                                        Text {
+                                            text: root.isAuthenticating ? "Signing in..." : "Sign in with Google"
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 12
+                                            font.weight: Font.DemiBold
+                                            color: Colors.primary
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: addMouse
+                                        anchors.fill: parent
+                                        cursorShape: root.isAuthenticating ? Qt.ArrowCursor : Qt.PointingHandCursor
+                                        hoverEnabled: !root.isAuthenticating
+                                        onClicked: {
+                                            if (!root.isAuthenticating) {
+                                                root.loginGeminiAccount("");
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Prominent Cancel Button when authenticating
+                                ActionPill {
+                                    id: headerCancelBtn
+                                    visible: providerCardItem.isGeminiProvider && root.isAuthenticating
+                                    text: "Cancel"
+                                    icon: "close"
+                                    iconSize: 13
+                                    variant: "danger"
+                                    fixedHeight: 28
+                                    pill: true
+                                    fontPixelSize: 11
+                                    fontWeight: Font.DemiBold
+                                    paddingHorizontal: 12
+                                    onClicked: {
+                                        root.cancelAuth();
+                                    }
+                                }
+
+                                // Add Key / Account Button (available on every provider)
+                                ActionPill {
+                                    text: providerCardItem.inlineAddOpen ? "Close" : "+ Add Key"
+                                    icon: providerCardItem.inlineAddOpen ? "close" : "vpn_key"
+                                    iconSize: 12
+                                    variant: providerCardItem.inlineAddOpen ? "secondary" : "info"
+                                    fixedHeight: 28
+                                    pill: true
+                                    fontPixelSize: 11
+                                    fontWeight: Font.DemiBold
+                                    paddingHorizontal: 12
+                                    onClicked: {
+                                        providerCardItem.inlineAddOpen = !providerCardItem.inlineAddOpen;
+                                    }
+                                }
+                            }
+
+                            // Inline Add Key / Token row inside the provider card
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                visible: providerCardItem.inlineAddOpen
+
+                                Rectangle {
+                                    Layout.preferredWidth: 140
+                                    height: 32
+                                    radius: Theme.radiusSmall
+                                    color: Colors.surfaceContainerHighest
+                                    border.color: inlineLabelInput.activeFocus ? Colors.primary : Theme.borderSubtle
+                                    border.width: 1
+
+                                    TextInput {
+                                        id: inlineLabelInput
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 8
+                                        anchors.rightMargin: 8
+                                        verticalAlignment: TextInput.AlignVCenter
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        color: Colors.m3onSurface
+                                        clip: true
+
+                                        Text {
+                                            anchors.fill: parent
+                                            verticalAlignment: Text.AlignVCenter
+                                            visible: !inlineLabelInput.text && !inlineLabelInput.activeFocus
+                                            text: "Label (e.g. Account 2)"
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 11
+                                            color: Colors.m3onSurfaceVariant
+                                            opacity: 0.7
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 32
+                                    radius: Theme.radiusSmall
+                                    color: Colors.surfaceContainerHighest
+                                    border.color: inlineKeyInput.activeFocus ? Colors.primary : Theme.borderSubtle
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 8
+                                        anchors.rightMargin: 8
+                                        spacing: 4
+
+                                        TextInput {
+                                            id: inlineKeyInput
                                             Layout.fillWidth: true
-                                            spacing: 8
+                                            Layout.fillHeight: true
+                                            verticalAlignment: TextInput.AlignVCenter
+                                            font.family: Theme.fontMonospace
+                                            font.pixelSize: 11
+                                            color: Colors.m3onSurface
+                                            echoMode: providerCardItem.inlineShowSecret ? TextInput.Normal : TextInput.Password
+                                            clip: true
 
                                             Text {
-                                                text: "Configured Accounts"
+                                                anchors.fill: parent
+                                                verticalAlignment: Text.AlignVCenter
+                                                visible: !inlineKeyInput.text && !inlineKeyInput.activeFocus
+                                                text: providerCardItem.resolvedProviderId === "opencode-go"
+                                                    ? "Paste cookie or API token…"
+                                                    : "Paste API key or token…"
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 11
+                                                color: Colors.m3onSurfaceVariant
+                                                opacity: 0.7
+                                            }
+                                        }
+
+                                        MaterialIcon {
+                                            text: providerCardItem.inlineShowSecret ? "visibility_off" : "visibility"
+                                            size: 15
+                                            color: Colors.m3onSurfaceVariant
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: providerCardItem.inlineShowSecret = !providerCardItem.inlineShowSecret
+                                            }
+                                        }
+                                    }
+                                }
+
+                                ActionPill {
+                                    text: "Save"
+                                    icon: "check"
+                                    iconSize: 12
+                                    variant: "active"
+                                    fixedHeight: 32
+                                    pill: true
+                                    fontPixelSize: 11
+                                    fontWeight: Font.DemiBold
+                                    paddingHorizontal: 12
+                                    interactive: inlineKeyInput.text.trim().length > 0
+                                    opacity: inlineKeyInput.text.trim().length > 0 ? 1.0 : 0.45
+                                    onClicked: {
+                                        if (inlineKeyInput.text.trim().length > 0) {
+                                            root.addProviderAccount(
+                                                providerCardItem.resolvedProviderId,
+                                                inlineKeyInput.text.trim(),
+                                                inlineLabelInput.text.trim()
+                                            );
+                                            inlineKeyInput.text = "";
+                                            inlineLabelInput.text = "";
+                                            providerCardItem.inlineAddOpen = false;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Account Items Repeater
+                            Repeater {
+                                model: modelData.accounts || []
+                                delegate: Rectangle {
+                                    id: accDelegate
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    height: 46
+                                    radius: Theme.radiusSmall
+                                    color: modelData.is_active ? Qt.alpha(Colors.primary, 0.08) : (accRowHover.containsMouse ? Colors.pillHover : Colors.surfaceContainerHighest)
+                                    border.color: modelData.is_active ? Qt.alpha(Colors.primary, 0.3) : Theme.borderSubtle
+                                    border.width: 1
+
+                                    MouseArea {
+                                        id: accRowHover
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                    }
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 12
+                                        anchors.rightMargin: 12
+                                        spacing: 10
+
+                                        MaterialIcon {
+                                            Layout.alignment: Qt.AlignVCenter
+                                            text: modelData.is_active ? "check_circle" : "account_circle"
+                                            size: 18
+                                            color: modelData.is_active ? "#10B981" : Colors.m3onSurfaceVariant
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.alignment: Qt.AlignVCenter
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 120
+                                            Layout.maximumWidth: 99999
+                                            spacing: 2
+
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.identity || modelData.label || modelData.id
                                                 font.family: Theme.fontFamily
                                                 font.pixelSize: 12
-                                                font.weight: Font.DemiBold
+                                                font.weight: modelData.is_active ? Font.DemiBold : Font.Normal
                                                 color: Colors.m3onSurface
+                                                elide: Text.ElideRight
                                             }
 
-                                            Item { Layout.fillWidth: true }
-
-                                            // Sign In with Google Button
-                                            Rectangle {
-                                                height: 28
-                                                implicitWidth: addBtnRow.implicitWidth + 20
-                                                radius: 14
-                                                color: (!root.isAuthenticating && addMouse.containsMouse) ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.primary, 0.1)
-                                                border.color: (!root.isAuthenticating && addMouse.containsMouse) ? Colors.primary : Qt.alpha(Colors.primary, 0.3)
-                                                border.width: 1
-
-                                                RowLayout {
-                                                    id: addBtnRow
-                                                    anchors.centerIn: parent
-                                                    spacing: 6
-
-                                                    MaterialIcon {
-                                                        text: root.isAuthenticating ? "sync" : "add"
-                                                        size: 15
-                                                        color: Colors.primary
-
-                                                        RotationAnimation on rotation {
-                                                            running: root.isAuthenticating
-                                                            from: 0
-                                                            to: 360
-                                                            duration: 1000
-                                                            loops: Animation.Infinite
-                                                        }
-                                                    }
-
-                                                    Text {
-                                                        text: root.isAuthenticating ? "Signing in..." : "Sign in with Google"
-                                                        font.family: Theme.fontFamily
-                                                        font.pixelSize: 12
-                                                        font.weight: Font.DemiBold
-                                                        color: Colors.primary
-                                                    }
-                                                }
-
-                                                MouseArea {
-                                                    id: addMouse
-                                                    anchors.fill: parent
-                                                    cursorShape: root.isAuthenticating ? Qt.ArrowCursor : Qt.PointingHandCursor
-                                                    hoverEnabled: !root.isAuthenticating
-                                                    onClicked: {
-                                                        if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
-                                                            AiTokenService.loginGemini("");
-                                                        }
-                                                    }
-                                                }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                visible: Boolean(modelData.label && modelData.label !== modelData.identity)
+                                                text: modelData.label || ""
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 10
+                                                color: Colors.m3onSurfaceVariant
+                                                elide: Text.ElideRight
                                             }
+                                        }
 
-                                            // Prominent Cancel Button when authenticating
-                                            ActionPill {
-                                                id: headerCancelBtn
-                                                visible: root.isAuthenticating
-                                                text: "Cancel"
-                                                icon: "close"
-                                                iconSize: 13
-                                                variant: "danger"
-                                                fixedHeight: 28
-                                                pill: true
-                                                fontPixelSize: 11
-                                                fontWeight: Font.DemiBold
-                                                paddingHorizontal: 12
-                                                onClicked: {
-                                                    root.cancelAuth();
+                                        // Flexible spacer ensuring rightmost button columns lock to consistent positions
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
+
+                                        // Column 1: Active Badge / Switch Button (Uniform 64px width)
+                                        ActionPill {
+                                            Layout.preferredWidth: 64
+                                            Layout.preferredHeight: 26
+                                            Layout.alignment: Qt.AlignVCenter
+                                            fixedWidth: 64
+                                            fixedHeight: 26
+                                            pill: true
+                                            variant: modelData.is_active ? "active" : "secondary"
+                                            text: modelData.is_active ? "Active" : "Switch"
+                                            interactive: !modelData.is_active && !root.isAuthenticating
+                                            opacity: (!modelData.is_active && root.isAuthenticating) ? 0.45 : 1.0
+                                            fontPixelSize: 11
+                                            fontWeight: Font.DemiBold
+                                            onClicked: {
+                                                if (!modelData.is_active && !root.isAuthenticating) {
+                                                    root.switchProviderAccount(
+                                                        providerCardItem.resolvedProviderId,
+                                                        modelData.id || modelData.identity
+                                                    );
                                                 }
                                             }
                                         }
 
-                                        // Account Items Repeater
-                                        Repeater {
-                                            model: modelData.accounts || []
-                                            delegate: Rectangle {
-                                                id: accDelegate
-                                                required property var modelData
-                                                Layout.fillWidth: true
-                                                height: 46
-                                                radius: Theme.radiusSmall
-                                                color: modelData.is_active ? Qt.alpha(Colors.primary, 0.08) : (accRowHover.containsMouse ? Colors.pillHover : Colors.surfaceContainerHighest)
-                                                border.color: modelData.is_active ? Qt.alpha(Colors.primary, 0.3) : Theme.borderSubtle
-                                                border.width: 1
+                                        // Column 2: Re-auth / Cancel Button (Gemini OAuth, Uniform 80px width)
+                                        ActionPill {
+                                            visible: providerCardItem.isGeminiProvider
+                                            readonly property bool isThisAccountAuthenticating: root.isAuthenticating && (root.authenticatingEmail && (root.authenticatingEmail.toLowerCase() === (modelData.identity || "").toLowerCase() || root.authenticatingEmail === modelData.id))
 
-                                                MouseArea {
-                                                    id: accRowHover
-                                                    anchors.fill: parent
-                                                    hoverEnabled: true
+                                            Layout.preferredWidth: 80
+                                            Layout.preferredHeight: 26
+                                            Layout.alignment: Qt.AlignVCenter
+                                            fixedWidth: 80
+                                            fixedHeight: 26
+                                            pill: true
+                                            icon: isThisAccountAuthenticating ? "close" : "vpn_key"
+                                            iconSize: isThisAccountAuthenticating ? 13 : 12
+                                            text: isThisAccountAuthenticating ? "Cancel" : "Re-auth"
+                                            variant: isThisAccountAuthenticating ? "danger" : "info"
+                                            fontPixelSize: 11
+                                            fontWeight: Font.DemiBold
+                                            opacity: (root.isAuthenticating && !isThisAccountAuthenticating) ? 0.45 : 1.0
+                                            interactive: !root.isAuthenticating || isThisAccountAuthenticating
+                                            onClicked: {
+                                                if (isThisAccountAuthenticating) {
+                                                    root.cancelAuth();
+                                                } else if (!root.isAuthenticating) {
+                                                    root.loginGeminiAccount(modelData.identity);
                                                 }
+                                            }
+                                        }
 
-                                                RowLayout {
-                                                    anchors.fill: parent
-                                                    anchors.leftMargin: 12
-                                                    anchors.rightMargin: 12
-                                                    spacing: 10
-
-                                                    MaterialIcon {
-                                                        Layout.alignment: Qt.AlignVCenter
-                                                        text: modelData.is_active ? "check_circle" : "account_circle"
-                                                        size: 18
-                                                        color: modelData.is_active ? "#10B981" : Colors.m3onSurfaceVariant
-                                                    }
-
-                                                    ColumnLayout {
-                                                        Layout.alignment: Qt.AlignVCenter
-                                                        Layout.fillWidth: true
-                                                        Layout.minimumWidth: 120
-                                                        Layout.maximumWidth: 99999
-                                                        spacing: 2
-
-                                                        Text {
-                                                            Layout.fillWidth: true
-                                                            text: modelData.identity || modelData.label
-                                                            font.family: Theme.fontFamily
-                                                            font.pixelSize: 12
-                                                            font.weight: modelData.is_active ? Font.DemiBold : Font.Normal
-                                                            color: Colors.m3onSurface
-                                                            elide: Text.ElideRight
-                                                        }
-
-                                                        Text {
-                                                            Layout.fillWidth: true
-                                                            visible: modelData.label && modelData.label !== modelData.identity
-                                                            text: modelData.label || ""
-                                                            font.family: Theme.fontFamily
-                                                            font.pixelSize: 10
-                                                            color: Colors.m3onSurfaceVariant
-                                                            elide: Text.ElideRight
-                                                        }
-                                                    }
-
-                                                    // Flexible spacer ensuring rightmost button columns lock to consistent positions
-                                                    Item {
-                                                        Layout.fillWidth: true
-                                                    }
-
-                                                    // Column 1: Active Badge / Switch Button (Uniform 64px width)
-                                                    ActionPill {
-                                                        Layout.preferredWidth: 64
-                                                        Layout.preferredHeight: 26
-                                                        Layout.alignment: Qt.AlignVCenter
-                                                        fixedWidth: 64
-                                                        fixedHeight: 26
-                                                        pill: true
-                                                        variant: modelData.is_active ? "active" : "secondary"
-                                                        text: modelData.is_active ? "Active" : "Switch"
-                                                        interactive: !modelData.is_active && !root.isAuthenticating
-                                                        opacity: (!modelData.is_active && root.isAuthenticating) ? 0.45 : 1.0
-                                                        fontPixelSize: 11
-                                                        fontWeight: Font.DemiBold
-                                                        onClicked: {
-                                                            if (!modelData.is_active && !root.isAuthenticating && typeof AiTokenService !== "undefined") {
-                                                                AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
-                                                            }
-                                                        }
-                                                    }
-
-                                                    // Column 2: Re-auth / Cancel Button (Uniform 80px width)
-                                                    ActionPill {
-                                                        readonly property bool isThisAccountAuthenticating: root.isAuthenticating && (root.authenticatingEmail && (root.authenticatingEmail.toLowerCase() === (modelData.identity || "").toLowerCase() || root.authenticatingEmail === modelData.id))
-
-                                                        Layout.preferredWidth: 80
-                                                        Layout.preferredHeight: 26
-                                                        Layout.alignment: Qt.AlignVCenter
-                                                        fixedWidth: 80
-                                                        fixedHeight: 26
-                                                        pill: true
-                                                        icon: isThisAccountAuthenticating ? "close" : "vpn_key"
-                                                        iconSize: isThisAccountAuthenticating ? 13 : 12
-                                                        text: isThisAccountAuthenticating ? "Cancel" : "Re-auth"
-                                                        variant: isThisAccountAuthenticating ? "danger" : "info"
-                                                        fontPixelSize: 11
-                                                        fontWeight: Font.DemiBold
-                                                        opacity: (root.isAuthenticating && !isThisAccountAuthenticating) ? 0.45 : 1.0
-                                                        interactive: !root.isAuthenticating || isThisAccountAuthenticating
-                                                        onClicked: {
-                                                            if (isThisAccountAuthenticating) {
-                                                                root.cancelAuth();
-                                                            } else if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
-                                                                AiTokenService.loginGemini(modelData.identity);
-                                                            }
-                                                        }
-                                                    }
-
-                                                    // Column 3: Remove Button (Uniform 82px width)
-                                                    ActionPill {
-                                                        Layout.preferredWidth: 82
-                                                        Layout.preferredHeight: 26
-                                                        Layout.alignment: Qt.AlignVCenter
-                                                        fixedWidth: 82
-                                                        fixedHeight: 26
-                                                        pill: true
-                                                        icon: "delete_outline"
-                                                        iconSize: 13
-                                                        text: "Remove"
-                                                        variant: "danger"
-                                                        fontPixelSize: 11
-                                                        fontWeight: Font.DemiBold
-                                                        opacity: root.isAuthenticating ? 0.45 : 1.0
-                                                        interactive: !root.isAuthenticating
-                                                        onClicked: {
-                                                            if (!root.isAuthenticating && typeof AiTokenService !== "undefined") {
-                                                                AiTokenService.removeAccount("gemini", modelData.id || modelData.identity);
-                                                            }
-                                                        }
-                                                    }
+                                        // Column 3: Remove Button (Uniform 82px width)
+                                        ActionPill {
+                                            Layout.preferredWidth: 82
+                                            Layout.preferredHeight: 26
+                                            Layout.alignment: Qt.AlignVCenter
+                                            fixedWidth: 82
+                                            fixedHeight: 26
+                                            pill: true
+                                            icon: "delete_outline"
+                                            iconSize: 13
+                                            text: "Remove"
+                                            variant: "danger"
+                                            fontPixelSize: 11
+                                            fontWeight: Font.DemiBold
+                                            opacity: root.isAuthenticating ? 0.45 : 1.0
+                                            interactive: !root.isAuthenticating
+                                            onClicked: {
+                                                if (!root.isAuthenticating) {
+                                                    root.removeProviderAccount(
+                                                        providerCardItem.resolvedProviderId,
+                                                        modelData.id || modelData.identity
+                                                    );
                                                 }
                                             }
                                         }
                                     }
+                                }
+                            }
 
+                            Text {
+                                Layout.fillWidth: true
+                                visible: !modelData.accounts || modelData.accounts.length === 0
+                                text: providerCardItem.isGeminiProvider
+                                    ? "No accounts stored in Astral Keyring yet. Click 'Sign in with Google' or '+ Add Key' above."
+                                    : "Using auto-discovered credential. Click '+ Add Key' above to save or switch accounts in Astral Keyring."
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                color: Colors.m3onSurfaceVariant
+                                opacity: 0.85
+                                wrapMode: Text.WordWrap
+                            }
+                        }
                     }
                 }
             }
         }
-
     }
 
 
@@ -1206,7 +1710,6 @@ ColumnLayout {
         Layout.topMargin: Theme.spaceSmall
         eyebrow: (root.harnessInstalled ? "engine ready" : "engine missing")
             + " · " + (root.skillInstalled ? "skills installed" : "skills available")
-            + " · " + root.voiceSummaryText
         title: "Setup"
     }
 
@@ -1224,6 +1727,18 @@ ColumnLayout {
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: Theme.spaceSmall
+
+            PillButton {
+                label: "Add Provider / Account"
+                iconText: "add"
+                variant: "filled"
+                onClicked: {
+                    root.addProviderOpen = true;
+                    root.jumpToZone("quotas");
+                }
+            }
+
             PillButton {
                 label: "Open quotas"
                 iconText: "arrow_upward"

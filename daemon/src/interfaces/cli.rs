@@ -1037,13 +1037,11 @@ pub async fn run_cli() -> DynResult<()> {
                     if args.len() >= 5 {
                         let provider = &args[3];
                         let account_target = &args[4];
-                        if provider == "gemini" {
-                            let switched = ai_service.switch_gemini_account(account_target)?;
-                            println!(r#"{{"success":true,"provider":"gemini","account":"{}"}}"#, switched);
-                        } else {
-                            eprintln!("Provider '{}' does not currently support multiple account switching", provider);
-                            std::process::exit(1);
-                        }
+                        let switched = ai_service.switch_provider_account(provider, account_target)?;
+                        println!(
+                            r#"{{"success":true,"provider":"{}","account":"{}"}}"#,
+                            provider, switched
+                        );
                     } else {
                         eprintln!("Usage: astral-plasma ai switch-account <provider> <account_id_or_email>");
                         std::process::exit(1);

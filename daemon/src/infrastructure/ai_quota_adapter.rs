@@ -591,7 +591,14 @@ impl AiQuotaAdapter {
                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
                             let id = v.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
                             let label = v.get("label").and_then(|l| l.as_str()).unwrap_or("").to_string();
-                            let identity = v.get("identity").and_then(|id| id.as_str()).unwrap_or("").to_string();
+                            let raw_identity = v.get("identity").and_then(|id| id.as_str()).unwrap_or("").trim().to_string();
+                            let identity = if !raw_identity.is_empty() {
+                                raw_identity
+                            } else if !label.trim().is_empty() {
+                                label.clone()
+                            } else {
+                                id.clone()
+                            };
                             let is_act = v.get("is_active").and_then(|a| a.as_bool()).unwrap_or(true);
                             let plan_type = v.get("plan_type").and_then(|pt| pt.as_str()).map(|s| s.to_string());
                             accounts.push(ProviderAccount {
@@ -610,7 +617,7 @@ impl AiQuotaAdapter {
                 }
             }
         }
-        accounts.sort_by(|a, b| a.identity.cmp(&b.identity));
+        accounts.sort_by(|a, b| a.identity.cmp(&b.identity).then_with(|| a.id.cmp(&b.id)));
         accounts
     }
 
@@ -1263,7 +1270,7 @@ impl AiQuotaAdapter {
 
         // If the removed account was active, auto-promote the next available account
         if was_active {
-            let mut next_account: Option<(String, std::path::PathBuf)> = None;
+            let mut next_account: Option<(String, String, std::path::PathBuf)> = None;
             if let Ok(entries) = fs::read_dir(&dir) {
                 for entry in entries.flatten() {
                     let p = entry.path();
@@ -1271,8 +1278,18 @@ impl AiQuotaAdapter {
                         if let Ok(c) = fs::read_to_string(&p) {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&c) {
                                 let identity = v.get("identity").and_then(|i| i.as_str()).unwrap_or("");
-                                if !identity.is_empty() {
-                                    next_account = Some((identity.to_string(), p.clone()));
+                                let label = v.get("label").and_then(|l| l.as_str()).unwrap_or("");
+                                let id = v.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                                let cred = v.get("credential").and_then(|cr| cr.as_str()).unwrap_or("");
+                                let resolved = if !identity.is_empty() {
+                                    identity
+                                } else if !label.is_empty() {
+                                    label
+                                } else {
+                                    id
+                                };
+                                if !resolved.is_empty() {
+                                    next_account = Some((resolved.to_string(), cred.to_string(), p.clone()));
                                     break;
                                 }
                             }
@@ -1281,7 +1298,7 @@ impl AiQuotaAdapter {
                 }
             }
 
-            if let Some((next_email, next_path)) = next_account {
+            if let Some((next_email, next_cred, next_path)) = next_account {
                 if let Ok(c) = fs::read_to_string(&next_path) {
                     if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&c) {
                         if let Some(obj) = v.as_object_mut() {
@@ -1292,8 +1309,12 @@ impl AiQuotaAdapter {
                         }
                     }
                 }
-                let _ = fs::write(dir.join(".antigravity_last_active"), &next_email);
-            } else {
+                if provider_id == "gemini" {
+                    let _ = fs::write(dir.join(".antigravity_last_active"), &next_email);
+                } else if !next_cred.is_empty() {
+                    self.write_credential_fallback(provider_id, &next_cred);
+                }
+            } else if provider_id == "gemini" {
                 let _ = fs::remove_file(dir.join(".antigravity_last_active"));
             }
         }
@@ -1304,6 +1325,122 @@ impl AiQuotaAdapter {
         }
 
         Ok(target_identity)
+    }
+
+    fn write_credential_fallback(&self, provider_id: &str, credential: &str) {
+        if let Some(creds_path) = self.get_credentials_file() {
+            if let Some(parent) = creds_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let mut creds_map: serde_json::Map<String, serde_json::Value> = if creds_path.exists() {
+                fs::read_to_string(&creds_path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default()
+            } else {
+                serde_json::Map::new()
+            };
+            creds_map.insert(
+                provider_id.to_string(),
+                serde_json::Value::String(credential.to_string()),
+            );
+            if let Ok(updated) = serde_json::to_string_pretty(&creds_map) {
+                let _ = fs::write(creds_path, updated);
+            }
+        }
+    }
+
+    /// Switches the active account for any provider (`gemini` or API-key/session providers).
+    pub fn switch_provider_account(
+        &self,
+        provider_id: &str,
+        target_id_or_email: &str,
+    ) -> Result<String, String> {
+        if provider_id == "gemini" {
+            return self.switch_gemini_account(target_id_or_email);
+        }
+
+        let dir = self
+            .get_accounts_dir_for(provider_id)
+            .ok_or_else(|| format!("Cannot find accounts directory for '{}'", provider_id))?;
+        if !dir.exists() {
+            return Err(format!("Accounts directory for '{}' does not exist", provider_id));
+        }
+
+        let mut matched_identity: Option<String> = None;
+        let mut matched_credential: Option<String> = None;
+        let mut matched_path: Option<PathBuf> = None;
+
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Ok(c) = fs::read_to_string(&p) {
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&c) {
+                            let id = v.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                            let identity = v.get("identity").and_then(|i| i.as_str()).unwrap_or("");
+                            let label = v.get("label").and_then(|l| l.as_str()).unwrap_or("");
+                            let cred = v.get("credential").and_then(|cr| cr.as_str()).unwrap_or("");
+                            if id == target_id_or_email
+                                || (!identity.is_empty() && identity.eq_ignore_ascii_case(target_id_or_email))
+                                || (!label.is_empty() && label.eq_ignore_ascii_case(target_id_or_email))
+                            {
+                                let resolved = if !identity.trim().is_empty() {
+                                    identity.trim().to_string()
+                                } else if !label.trim().is_empty() {
+                                    label.trim().to_string()
+                                } else {
+                                    id.to_string()
+                                };
+                                matched_identity = Some(resolved);
+                                matched_credential = Some(cred.to_string());
+                                matched_path = Some(p);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let target_path = matched_path.ok_or_else(|| {
+            format!(
+                "Account '{}' not found for provider '{}'",
+                target_id_or_email, provider_id
+            )
+        })?;
+        let switched_identity = matched_identity.unwrap_or_else(|| target_id_or_email.to_string());
+
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Ok(c) = fs::read_to_string(&p) {
+                        if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&c) {
+                            let is_target = p == target_path;
+                            if let Some(obj) = v.as_object_mut() {
+                                obj.insert("is_active".to_string(), serde_json::Value::Bool(is_target));
+                                if let Ok(s) = serde_json::to_string_pretty(&v) {
+                                    let _ = fs::write(&p, s);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(cred) = matched_credential {
+            if !cred.is_empty() {
+                self.write_credential_fallback(provider_id, &cred);
+            }
+        }
+
+        if let Some(cache_path) = self.get_cache_file() {
+            let _ = fs::remove_file(cache_path);
+        }
+
+        Ok(switched_identity)
     }
 
     /// Adds a configured account or API token for a provider.
@@ -1319,16 +1456,33 @@ impl AiQuotaAdapter {
             .ok_or_else(|| format!("Cannot find accounts directory for '{}'", provider_id))?;
         let _ = fs::create_dir_all(&dir);
 
-        let now_sec = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        // Deactivate any previously active accounts for this provider
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Ok(c) = fs::read_to_string(&p) {
+                        if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&c) {
+                            if let Some(obj) = v.as_object_mut() {
+                                obj.insert("is_active".to_string(), serde_json::Value::Bool(false));
+                                if let Ok(s) = serde_json::to_string_pretty(&v) {
+                                    let _ = fs::write(&p, s);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-        let now_ms = (now_sec * 1000) as i64;
+        let now_ms = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
         let iso_time = epoch_millis_to_rfc3339(now_ms);
 
-        let account_id = format!("{}_{}", provider_id, now_sec);
-        let final_label = label.unwrap_or(provider_id);
+        let account_id = format!("{}_{}", provider_id, now_ms);
+        let final_label = label.filter(|s| !s.trim().is_empty()).unwrap_or(provider_id);
         let auth_type = if is_session { "cookie_session" } else { "token" };
 
         let acc_obj = serde_json::json!({
@@ -1350,23 +1504,7 @@ impl AiQuotaAdapter {
             .map_err(|e| format!("Failed to write account file: {}", e))?;
 
         // Update credentials.json fallback
-        if let Some(creds_path) = self.get_credentials_file() {
-            if let Some(parent) = creds_path.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            let mut creds_map: serde_json::Map<String, serde_json::Value> = if creds_path.exists() {
-                fs::read_to_string(&creds_path)
-                    .ok()
-                    .and_then(|s| serde_json::from_str(&s).ok())
-                    .unwrap_or_default()
-            } else {
-                serde_json::Map::new()
-            };
-            creds_map.insert(provider_id.to_string(), serde_json::Value::String(credential.to_string()));
-            if let Ok(updated) = serde_json::to_string_pretty(&creds_map) {
-                let _ = fs::write(creds_path, updated);
-            }
-        }
+        self.write_credential_fallback(provider_id, credential);
 
         // Invalidate cache
         if let Some(cache_path) = self.get_cache_file() {
@@ -1430,7 +1568,7 @@ impl AiQuotaAdapter {
     }
 
     /// Resolves an API key or bearer token for a provider.
-    /// Checks environment variables -> tool config scanners (OMP, Pi, OpenCode, Antigravity) -> credentials.json -> accounts/<provider>/*.json.
+    /// Checks environment variables -> accounts/<provider>/*.json (preferring is_active) -> credentials.json -> tool config scanners.
     pub fn get_provider_api_key(
         &self,
         provider_id: &str,
@@ -1446,7 +1584,38 @@ impl AiQuotaAdapter {
             }
         }
 
-        // 2. Check credentials.json in astral-plasma config dir
+        // 2. Check accounts/<provider_id>/*.json (preferring is_active == true)
+        if let Some(acc_dir) = self.get_accounts_dir_for(provider_id) {
+            if let Ok(entries) = fs::read_dir(acc_dir) {
+                let mut fallback_cred: Option<String> = None;
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                        if let Ok(c) = fs::read_to_string(&path) {
+                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&c) {
+                                if let Some(k) = v.get("credential").and_then(|k| k.as_str()) {
+                                    let trimmed = k.trim();
+                                    if !trimmed.is_empty() {
+                                        let is_act = v.get("is_active").and_then(|b| b.as_bool()).unwrap_or(false);
+                                        if is_act {
+                                            return Some(trimmed.to_string());
+                                        }
+                                        if fallback_cred.is_none() {
+                                            fallback_cred = Some(trimmed.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Some(cred) = fallback_cred {
+                    return Some(cred);
+                }
+            }
+        }
+
+        // 3. Check credentials.json in astral-plasma config dir
         if let Some(cred_file) = self.get_credentials_file() {
             if let Ok(content) = fs::read_to_string(&cred_file) {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -1454,23 +1623,6 @@ impl AiQuotaAdapter {
                         if let Some(k) = v.get(*key).and_then(|k| k.as_str()) {
                             if !k.trim().is_empty() {
                                 return Some(k.trim().to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Check accounts/<provider_id>/*.json
-        if let Some(acc_dir) = self.get_accounts_dir_for(provider_id) {
-            if let Ok(entries) = fs::read_dir(acc_dir) {
-                for entry in entries.flatten() {
-                    if let Ok(c) = fs::read_to_string(entry.path()) {
-                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&c) {
-                            if let Some(k) = v.get("credential").and_then(|k| k.as_str()) {
-                                if !k.trim().is_empty() {
-                                    return Some(k.trim().to_string());
-                                }
                             }
                         }
                     }
@@ -2045,6 +2197,11 @@ impl AiQuotaAdapter {
                                                 acc.monthly_remaining_percent = None;
                                                 acc.windows.retain(|w| w.label != "monthly");
                                             }
+                                        } else {
+                                            let fresh_accs = self.load_provider_accounts(&p.provider_id);
+                                            if !fresh_accs.is_empty() || !p.accounts.is_empty() {
+                                                p.accounts = fresh_accs;
+                                            }
                                         }
                                     }
                                     if snap.global_cache_stats.is_none() {
@@ -2072,6 +2229,23 @@ impl AiQuotaAdapter {
 
         if let Some(gemini) = self.query_gemini_quota(active_gemini_email.clone()) {
             providers.push(gemini);
+        } else {
+            let gemini_accs = self.load_configured_gemini_accounts(active_gemini_email.as_deref());
+            if !gemini_accs.is_empty() {
+                providers.push(AiProviderQuota {
+                    provider_id: "gemini".to_string(),
+                    display_name: "Google Gemini (Antigravity)".to_string(),
+                    icon: "spark".to_string(),
+                    plan_type: Some("Google AI Pro".to_string()),
+                    account_email: active_gemini_email.clone(),
+                    account_name: active_gemini_email.clone(),
+                    is_available: false,
+                    windows: Vec::new(),
+                    accounts: gemini_accs,
+                    error_message: Some("Re-authentication required".to_string()),
+                    cache_stats: None,
+                });
+            }
         }
 
         if let Some(opencode) = self.query_opencode_usage() {
@@ -2092,15 +2266,63 @@ impl AiQuotaAdapter {
             if let Some(cache_path) = self.get_cache_file() {
                 if let Ok(content) = fs::read_to_string(&cache_path) {
                     if let Ok(prev_snap) = serde_json::from_str::<AiQuotaSnapshot>(&content) {
-                        for prev_p in prev_snap.providers {
+                        for mut prev_p in prev_snap.providers {
                             if prev_p.provider_id != "gemini"
                                 && !providers.iter().any(|p| p.provider_id == prev_p.provider_id)
                                 && self.get_provider_api_key(&prev_p.provider_id, "", &[&prev_p.provider_id]).is_some()
                             {
+                                prev_p.accounts = self.load_provider_accounts(&prev_p.provider_id);
                                 providers.push(prev_p);
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Surface any user-configured provider accounts from ~/.config/astral-plasma/accounts/<provider>/
+        // that were not already added by live quota queries above.
+        if let Some(cfg) = self.get_config_dir() {
+            let acc_root = cfg.join("accounts");
+            if let Ok(entries) = fs::read_dir(acc_root) {
+                let mut extra_dirs: Vec<String> = entries
+                    .flatten()
+                    .filter(|e| e.path().is_dir())
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect();
+                extra_dirs.sort();
+                for prov_id in extra_dirs {
+                    if prov_id == "gemini" || providers.iter().any(|p| p.provider_id == prov_id) {
+                        continue;
+                    }
+                    let accs = self.load_provider_accounts(&prov_id);
+                    if accs.is_empty() {
+                        continue;
+                    }
+                    let active_acc = accs.iter().find(|a| a.is_active).or_else(|| accs.first());
+                    let acc_identity = active_acc.map(|a| a.identity.clone());
+                    let (display_name, icon, default_plan) = match prov_id.as_str() {
+                        "opencode-go" => ("OpenCode Go", "terminal", "Go Plan"),
+                        "minimax-cn" | "minimax" => ("MiniMax", "bolt", "Pay-as-you-go"),
+                        "xiaomi-mimo-cn" | "xiaomi-mimo" => ("Xiaomi MiMo", "smartphone", "Coding Plan"),
+                        "deepseek" => ("DeepSeek", "psychology", "API Key"),
+                        "claude" | "anthropic" => ("Anthropic Claude", "auto_awesome", "API Key"),
+                        "openai" => ("OpenAI", "auto_awesome", "API Key"),
+                        _ => (prov_id.as_str(), "auto_awesome", "Configured"),
+                    };
+                    providers.push(AiProviderQuota {
+                        provider_id: prov_id.clone(),
+                        display_name: display_name.to_string(),
+                        icon: icon.to_string(),
+                        plan_type: Some(default_plan.to_string()),
+                        account_email: acc_identity.clone(),
+                        account_name: acc_identity,
+                        is_available: true,
+                        windows: Vec::new(),
+                        accounts: accs,
+                        error_message: None,
+                        cache_stats: None,
+                    });
                 }
             }
         }
@@ -2147,6 +2369,10 @@ impl crate::domain::ports::AiQuotaPort for AiQuotaAdapter {
 
     fn switch_gemini_account(&self, target_id_or_email: &str) -> Result<String, String> {
         self.switch_gemini_account(target_id_or_email)
+    }
+
+    fn switch_provider_account(&self, provider_id: &str, target_id_or_email: &str) -> Result<String, String> {
+        self.switch_provider_account(provider_id, target_id_or_email)
     }
 
     fn login_gemini_oauth(&self, email_hint: Option<&str>) -> Result<String, String> {

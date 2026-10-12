@@ -30,6 +30,12 @@ impl AiQuotaUseCase {
             .map_err(|e| e.into())
     }
 
+    pub fn switch_provider_account(&self, provider_id: &str, target_id_or_email: &str) -> DynResult<String> {
+        self.port
+            .switch_provider_account(provider_id, target_id_or_email)
+            .map_err(|e| e.into())
+    }
+
     pub fn login_gemini_oauth(&self, email_hint: Option<&str>) -> DynResult<String> {
         self.port
             .login_gemini_oauth(email_hint)

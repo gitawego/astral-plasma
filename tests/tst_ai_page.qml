@@ -26,7 +26,7 @@ Item {
         if (!cond) {
             console.error("FAIL: " + msg);
             Qt.exit(1);
-            return false;
+            throw new Error(msg);
         }
         return true;
     }
@@ -43,8 +43,8 @@ Item {
             {
                 provider: "gemini",
                 provider_id: "gemini",
-                display_name: "Gemini (Antigravity)",
-                plan_type: "Pro Plan",
+                display_name: "Google Gemini (Antigravity)",
+                plan_type: "OAuth",
                 is_available: true,
                 account_email: "gitawego@gmail.com",
                 accounts: [
@@ -53,6 +53,35 @@ Item {
                 ],
                 windows: [
                     { label: "5h", used_percent: 85.0, remaining_percent: 15.0, reset_at: "in 1 hour" }
+                ]
+            },
+            {
+                provider: "opencode",
+                provider_id: "opencode-go",
+                display_name: "OpenCode Go",
+                plan_type: "Usage-Based",
+                is_available: true,
+                account_email: "Account 1",
+                accounts: [
+                    { id: "oc_1", identity: "Account 1", label: "Account 1", is_active: true },
+                    { id: "oc_2", identity: "Account 2", label: "Account 2", is_active: false }
+                ],
+                windows: [
+                    { label: "5h", used_percent: 14.0, remaining_percent: 86.0, reset_at: "in 3 hours" }
+                ]
+            },
+            {
+                provider: "minimax",
+                provider_id: "minimax-cn",
+                display_name: "MiniMax",
+                plan_type: "Coding Plan",
+                is_available: true,
+                account_email: "Default",
+                accounts: [
+                    { id: "mm_1", identity: "Default", label: "Default", is_active: true }
+                ],
+                windows: [
+                    { label: "5h", used_percent: 0.0, remaining_percent: 100.0, reset_at: "in 4 hours" }
                 ]
             }
         ]
@@ -67,7 +96,7 @@ Item {
         assert(aiPage.warningThreshold === 80, "Warning threshold must start at 80");
         assert(aiPage.criticalThreshold === 95, "Critical threshold must start at 95");
         assert(aiPage.pollInterval === 5, "Poll interval must start at 5m");
-        assert(aiPage.providersList.length === 1, "Must have 1 test provider");
+        assert(aiPage.providersList.length === 3, "Must have 3 test providers");
 
         // 2. Toggle AI enabled
         aiPage.setAiEnabled(false);
@@ -104,12 +133,50 @@ Item {
         aiPage.setGeminiMonthlyResetDay(15);
         assert(aiPage.geminiMonthlyResetDay === 15, "Gemini monthly reset day must update to 15");
 
-        // 7. Configured Accounts verification
-        assert(aiPage.providersList[0].accounts.length === 2, "Must have 2 configured accounts");
+        // 7. Configured Accounts verification & Layout Regression Guard
+        assert(aiPage.providersList[0].accounts.length === 2, "Must have 2 configured Gemini accounts");
         assert(aiPage.providersList[0].accounts[0].identity === "gitawego@gmail.com", "First account identity must match");
         assert(aiPage.providersList[0].accounts[0].is_active === true, "First account must be active");
         assert(aiPage.providersList[0].accounts[1].identity === "personal@gmail.com", "Second account identity must match");
         assert(aiPage.providersList[0].accounts[1].is_active === false, "Second account must be inactive");
+
+        // Regression test: ProviderQuotaCards must never be pushed off-screen into a clipped second column
+        aiPage.width = 800;
+        assert(aiPage.providersRepeaterItem !== undefined && aiPage.providersRepeaterItem.count === 3,
+            "All 3 provider cards must be instantiated by the repeater");
+        for (let i = 0; i < aiPage.providersRepeaterItem.count; i++) {
+            const card = aiPage.providersRepeaterItem.itemAt(i);
+            assert(card !== null, "Provider card " + i + " must exist");
+            assert(card.x === 0, "Provider card " + i + " (" + card.provider.display_name + ") must start at x=0, got x=" + card.x);
+            assert(card.width >= 700, "Provider card " + i + " must span full column width, got width=" + card.width);
+            assert(card.accountsContentItem !== undefined && card.accountsContentItem.visible === true,
+                "Provider card " + i + " (" + card.provider.provider_id + ") must make its accounts configuration content visible for all providers");
+        }
+
+        // 7b. Multi-provider account operations (Switch, Add, Remove) & Add Provider panel
+        assert(aiPage.addProviderOpen === false, "Add Provider card must start closed");
+        aiPage.addProviderButtonItem.clicked();
+        assert(aiPage.addProviderOpen === true, "Clicking Add Provider button must open Add Provider panel");
+        assert(aiPage.addProviderCardItem.visible === true, "Add Provider card must be visible when open");
+
+        aiPage.switchProviderAccount("opencode-go", "oc_2");
+        assert(aiPage.testAccountSwitchRequests.length === 1, "switchProviderAccount must record switch request");
+        assert(aiPage.testAccountSwitchRequests[0].provider === "opencode-go" && aiPage.testAccountSwitchRequests[0].target === "oc_2",
+            "switchProviderAccount must target opencode-go oc_2");
+
+        aiPage.addProviderAccount("deepseek", "sk-test-12345", "DeepSeek Main");
+        assert(aiPage.testAccountAddRequests.length === 1, "addProviderAccount must record add request");
+        assert(aiPage.testAccountAddRequests[0].provider === "deepseek" && aiPage.testAccountAddRequests[0].label === "DeepSeek Main",
+            "addProviderAccount must record provider and label");
+
+        aiPage.removeProviderAccount("opencode-go", "oc_1");
+        assert(aiPage.testAccountRemoveRequests.length === 1, "removeProviderAccount must record remove request");
+        assert(aiPage.testAccountRemoveRequests[0].provider === "opencode-go" && aiPage.testAccountRemoveRequests[0].target === "oc_1",
+            "removeProviderAccount must record provider and target");
+
+        // 7c. Setup header eyebrow must never contain "undefined"
+        assert(aiPage.setupHeaderItem.eyebrow.indexOf("undefined") === -1,
+            "setupHeader eyebrow must never contain 'undefined', got: " + aiPage.setupHeaderItem.eyebrow);
 
         // 8. Authentication and Cancel button verification
         assert(!aiPage.isAuthenticating, "aiPage.isAuthenticating must start false");
