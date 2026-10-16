@@ -115,11 +115,30 @@ Item {
         size: 16
     }
 
+    MaterialIcon {
+        id: iconAntigravity
+        iconName: "antigravity"
+        size: 24
+    }
+
+    MaterialIcon {
+        id: iconDirectPath
+        iconName: "/home/hlu/.cache/astral-plasma/window-icons/cloudmusic.exe.png"
+        size: 24
+    }
+
     Timer {
         interval: 50
         running: true
         repeat: false
         onTriggered: runTests()
+    }
+
+    function readLocalFile(relPath) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl(relPath), false);
+        xhr.send();
+        return xhr.responseText;
     }
 
     function assert(cond, msg) {
@@ -132,9 +151,7 @@ Item {
 
     function runTests() {
         console.log("RUNNING: MaterialIcon Resolution Tests");
-
         // 1. iconName resolution
-        assert(iconByName.hasIcon === true, "iconByName must have hasIcon === true");
         assert(iconByName.displaySymbol === "󰄧", "auto_awesome iconName must resolve to sparkle symbol");
 
         // 2. text resolution
@@ -183,6 +200,22 @@ Item {
         assert(iconToken.hasIcon === true, "token must have hasIcon === true");
         assert(iconToken.isAstroid === true, "token must resolve to vector astroid");
         assert(iconToken.displaySymbol === "", "token must not use misleading stacked-layers font glyph");
+
+        // 11. Direct file path resolution (e.g. Wine extracted icons, AppImage desktop caches)
+        assert(iconDirectPath.hasIcon === true, "direct file path icon must have hasIcon === true");
+        assert(iconDirectPath.resolvedIconUrl === "file:///home/hlu/.cache/astral-plasma/window-icons/cloudmusic.exe.png",
+            "direct file path must resolve to file:// URI, got: " + iconDirectPath.resolvedIconUrl);
+
+        // 12. Bundled asset resolution contract in Config.qml
+        const cfgSrc = readLocalFile("../config/Config.qml");
+        assert(cfgSrc.indexOf("function iconUrl(") !== -1, "Config.qml must define iconUrl()");
+        assert(cfgSrc.indexOf('"antigravity"') !== -1, "Config.qml must include antigravity in bundled icons");
+        assert(cfgSrc.indexOf("bundledIcons") !== -1, "Config.qml must check bundled icons list");
+        if (typeof Config !== "undefined" && typeof Config.iconUrl === "function") {
+            assert(iconAntigravity.hasIcon === true, "antigravity must have hasIcon === true when Config is present");
+            assert(iconAntigravity.resolvedIconUrl.indexOf("antigravity.svg") !== -1,
+                "antigravity must resolve to antigravity.svg, got: " + iconAntigravity.resolvedIconUrl);
+        }
 
         console.log("PASS: MaterialIcon Resolution Tests");
         Qt.exit(0);

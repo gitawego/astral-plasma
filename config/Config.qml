@@ -375,11 +375,21 @@ Singleton {
             return Quickshell.iconPath(s);
         }
         const dotIdx = s.lastIndexOf(".");
+        let noExt = s;
         if (dotIdx > 0) {
-            const noExt = s.substring(0, dotIdx);
+            noExt = s.substring(0, dotIdx);
             if (Quickshell.hasThemeIcon(noExt)) {
                 return Quickshell.iconPath(noExt);
             }
+        }
+        // 4. Bundled shell icons in theme/assets/icons/ (e.g. antigravity, deepseek, bot-message-square)
+        const lower = noExt.toLowerCase();
+        const bundledIcons = [
+            "antigravity", "anthropic", "deepseek", "gemini", "minimax",
+            "ollama", "openai", "opencode", "xiaomi", "bot-message-square"
+        ];
+        if (bundledIcons.indexOf(lower) !== -1) {
+            return Qt.resolvedUrl("../theme/assets/icons/" + lower + ".svg").toString();
         }
         return "";
     }

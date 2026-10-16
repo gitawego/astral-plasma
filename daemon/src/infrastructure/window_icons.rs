@@ -138,15 +138,6 @@ pub fn ensure_window_icon(class: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-/// Icon path for a window identity, extracting the window's own icon when the
-/// resolver could not supply a real one.
-pub fn resolve_window_icon(class: &str, resolved_icon: &str) -> Option<PathBuf> {
-    if !should_extract_window_icon(resolved_icon) {
-        return None;
-    }
-    ensure_window_icon(class)
-}
-
 /// Roots an icon-theme lookup searches, in load order.
 pub fn default_icon_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
@@ -184,27 +175,33 @@ pub fn theme_icon_exists(name: &str) -> bool {
     found
 }
 
-/// `theme_icon_exists` against an explicit set of roots (pure, testable).
-pub fn theme_icon_exists_in(roots: &[PathBuf], name: &str) -> bool {
+/// Locate a themed icon file against an explicit set of roots (pure, testable).
+pub fn find_theme_icon_in(roots: &[PathBuf], name: &str) -> Option<PathBuf> {
     let name = name.trim().to_ascii_lowercase();
     if name.is_empty() || name.contains('/') || name.starts_with("file:") {
-        return false;
+        return None;
     }
-    roots.iter().any(|root| icon_names_under(root).contains(&name))
+    for root in roots {
+        if let Some(path) = icon_map_under(root).get(&name) {
+            return Some(path.clone());
+        }
+    }
+    None
+}
+
+/// `theme_icon_exists` against an explicit set of roots (pure, testable).
+pub fn theme_icon_exists_in(roots: &[PathBuf], name: &str) -> bool {
+    find_theme_icon_in(roots, name).is_some()
 }
 
 /// Image extensions an icon may carry. A name that only exists as some other
 /// kind of file is not an icon the theme can draw.
 const ICON_EXTENSIONS: [&str; 4] = ["png", "svg", "svgz", "xpm"];
 
-/// Every icon name a theme root provides, indexed once per process.
-///
-/// The walk is the expensive part (a full icon theme is tens of thousands of
-/// files) and its answer cannot change while the daemon runs, so it happens once
-/// per root instead of once per window identity.
-fn icon_names_under(root: &Path) -> std::sync::Arc<std::collections::HashSet<String>> {
+/// Map of icon names to file paths under a root, indexed once per process.
+fn icon_map_under(root: &Path) -> std::sync::Arc<std::collections::HashMap<String, PathBuf>> {
     static INDEX: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<PathBuf, std::sync::Arc<std::collections::HashSet<String>>>>,
+        std::sync::Mutex<std::collections::HashMap<PathBuf, std::sync::Arc<std::collections::HashMap<String, PathBuf>>>>,
     > = std::sync::OnceLock::new();
     let index = INDEX.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     if let Ok(guard) = index.lock() {
@@ -212,19 +209,19 @@ fn icon_names_under(root: &Path) -> std::sync::Arc<std::collections::HashSet<Str
             return std::sync::Arc::clone(hit);
         }
     }
-    let mut names = std::collections::HashSet::new();
-    collect_icon_names(root, 4, &mut names);
-    let names = std::sync::Arc::new(names);
+    let mut map = std::collections::HashMap::new();
+    collect_icon_map(root, 4, &mut map);
+    let map = std::sync::Arc::new(map);
     if let Ok(mut guard) = index.lock() {
-        guard.insert(root.to_path_buf(), std::sync::Arc::clone(&names));
+        guard.insert(root.to_path_buf(), std::sync::Arc::clone(&map));
     }
-    names
+    map
 }
 
-fn collect_icon_names(
+fn collect_icon_map(
     dir: &Path,
     depth: usize,
-    names: &mut std::collections::HashSet<String>,
+    map: &mut std::collections::HashMap<String, PathBuf>,
 ) {
     if depth == 0 {
         return;
@@ -236,7 +233,7 @@ fn collect_icon_names(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_icon_names(&path, depth - 1, names);
+            collect_icon_map(&path, depth - 1, map);
             continue;
         }
         let extension = path
@@ -252,11 +249,134 @@ fn collect_icon_names(
             .strip_suffix("-symbolic")
             .or_else(|| stem.strip_suffix(".symbolic"))
         {
-            // `foo-symbolic.svg` is the symbolic form of the icon `foo`.
-            names.insert(base.to_string());
+            map.entry(base.to_string()).or_insert_with(|| path.clone());
         }
-        names.insert(stem);
+        map.entry(stem).or_insert(path);
     }
+}
+
+/// Find an existing icon file for `name` on disk.
+/// Searches window-icons cache, bundled assets, loose user icons, pixmaps, and theme roots.
+pub fn find_icon_path(name: &str) -> Option<PathBuf> {
+    let clean = name.trim();
+    if clean.is_empty() {
+        return None;
+    }
+    if clean.starts_with('/') || clean.starts_with("file:") {
+        let p = PathBuf::from(clean.trim_start_matches("file://"));
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+
+    let safe_stem = clean.to_ascii_lowercase();
+
+    // 1. Check window-icons cache directly
+    let cache_dir = icon_cache_dir();
+    for suffix in ["", ".exe"] {
+        let p = cache_dir.join(format!("{safe_stem}{suffix}.png"));
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    if let Some(stripped) = safe_stem.strip_suffix(".exe") {
+        let p = cache_dir.join(format!("{stripped}.png"));
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+
+    // 2. Check bundled Astral Plasma icons: theme/assets/icons/<name>.svg
+    for candidate in [&safe_stem, &safe_stem.replace(".desktop", "")] {
+        let bundled = PathBuf::from("theme/assets/icons").join(format!("{candidate}.svg"));
+        if bundled.is_file() {
+            if let Ok(abs) = std::fs::canonicalize(&bundled) {
+                return Some(abs);
+            }
+            return Some(bundled);
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                let p = parent.join("../theme/assets/icons").join(format!("{candidate}.svg"));
+                if p.is_file() {
+                    if let Ok(abs) = std::fs::canonicalize(&p) {
+                        return Some(abs);
+                    }
+                    return Some(p);
+                }
+            }
+        }
+    }
+
+    // 3. Check loose user icons (~/.local/share/icons, ~/.icons, /usr/share/pixmaps)
+    let roots = default_icon_roots();
+    let exts = [".svg", ".png", ".desktop.png", ".xpm"];
+    for r in &roots {
+        for ext in &exts {
+            let candidate = r.join(format!("{safe_stem}{ext}"));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    // 4. Search icon themes under default_icon_roots
+    if let Some(p) = find_theme_icon_in(&roots, &safe_stem) {
+        return Some(p);
+    }
+    if let Some(stripped) = safe_stem.strip_suffix(".desktop") {
+        if let Some(p) = find_theme_icon_in(&roots, stripped) {
+            return Some(p);
+        }
+    }
+
+    None
+}
+
+/// Icon path for a window identity, extracting the window's own icon or resolving
+/// an on-disk icon file when the theme cannot draw the bare name.
+pub fn resolve_window_icon(class: &str, resolved_icon: &str) -> Option<PathBuf> {
+    // 1. If resolved_icon is already a valid file path, return it directly.
+    let icon_clean = resolved_icon.trim();
+    if icon_clean.starts_with('/') || icon_clean.starts_with("file:") {
+        let p = PathBuf::from(icon_clean.trim_start_matches("file://"));
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+
+    // 2. Check window-icons cache directly (e.g. cloudmusic.exe.png)
+    let cache_dir = icon_cache_dir();
+    for candidate in [class, resolved_icon] {
+        let c = candidate.trim().to_ascii_lowercase();
+        if c.is_empty() { continue; }
+        for ext in [".png", ".exe.png"] {
+            let p = cache_dir.join(format!("{c}{ext}"));
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+        if let Some(stripped) = c.strip_suffix(".exe") {
+            let p = cache_dir.join(format!("{stripped}.png"));
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+
+    // 3. For X11 / Wine apps publishing _NET_WM_ICON, extract it
+    if should_extract_window_icon(resolved_icon) {
+        if let Some(extracted) = ensure_window_icon(class) {
+            return Some(extracted);
+        }
+    }
+
+    // 4. Find icon file on disk for resolved_icon or class
+    if let Some(path) = find_icon_path(resolved_icon).or_else(|| find_icon_path(class)) {
+        return Some(path);
+    }
+
+    None
 }
 
 /// True when the path looks like an icon file we produced.

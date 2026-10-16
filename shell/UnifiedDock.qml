@@ -66,6 +66,12 @@ Item {
                 const isAct = Boolean(found.isActive)
                     || (Boolean(_actId) && String(found.id).replace(/[{}]/g, "") === String(_actId).replace(/[{}]/g, ""))
                     || (Boolean(_actApp) && (String(p.appId).toLowerCase() === String(_actApp).toLowerCase() || String(found.appId).toLowerCase() === String(_actApp).toLowerCase()));
+                // If the pinned app's icon does not resolve via iconUrl (e.g. not in active theme),
+                // or if the live running window published an extracted/resolved file icon, use the live icon.
+                const pIconResolves = Boolean(p.iconName && Config.iconUrl(p.iconName) !== "");
+                const foundIsFile = Boolean(found.iconName && (found.iconName.startsWith("/") || found.iconName.startsWith("file:")));
+                const effectiveIcon = (!pIconResolves || foundIsFile) && found.iconName ? found.iconName : (p.iconName || found.iconName);
+
                 result.push({
                     isPinned: true,
                     isRunning: true,
@@ -73,7 +79,7 @@ Item {
                     id: found.id,
                     appId: p.appId,
                     appName: p.appName || found.appName,
-                    iconName: p.iconName || found.iconName,
+                    iconName: effectiveIcon,
                     materialIcon: p.materialIcon || found.materialIcon,
                     desktopFile: p.desktopFile || found.desktopFile || p.appId,
                     title: found.title,

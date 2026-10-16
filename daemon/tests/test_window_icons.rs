@@ -101,3 +101,28 @@ fn only_an_icon_the_theme_can_draw_counts_as_an_icon() {
 
     std::fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn locates_icon_files_across_theme_roots_and_cache() {
+    let root = std::env::temp_dir().join(format!("astral-icon-loc-{}", std::process::id()));
+    let apps = root.join("WhiteSur/apps/scalable");
+    std::fs::create_dir_all(&apps).expect("probe icon dir");
+    let target_icon = apps.join("antigravity.svg");
+    std::fs::write(&target_icon, b"<svg></svg>").expect("probe svg icon");
+    let roots = vec![root.clone()];
+
+    let found = astral_plasma::infrastructure::window_icons::find_theme_icon_in(&roots, "antigravity");
+    assert_eq!(found, Some(target_icon));
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn resolves_window_icon_for_appimage_or_wine_cache() {
+    let resolved = astral_plasma::infrastructure::window_icons::resolve_window_icon("antigravity", "antigravity");
+    if let Some(path) = resolved {
+        assert!(path.is_file(), "resolved icon path must point to a real file: {:?}", path);
+        assert!(path.to_string_lossy().contains("antigravity"));
+    }
+}
+

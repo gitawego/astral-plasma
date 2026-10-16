@@ -270,7 +270,12 @@ Item {
         return "";
     }
 
-    readonly property string resolvedIconUrl: (root.iconName !== "" && typeof Config !== "undefined" && typeof Config.iconUrl === "function") ? Config.iconUrl(root.iconName) : ""
+    readonly property string resolvedIconUrl: {
+        if (root.iconName && (root.iconName.startsWith("/") || root.iconName.startsWith("file://"))) {
+            return root.iconName.startsWith("file://") ? root.iconName : ("file://" + root.iconName);
+        }
+        return (root.iconName !== "" && typeof Config !== "undefined" && typeof Config.iconUrl === "function") ? Config.iconUrl(root.iconName) : "";
+    }
 
     // App icons go through the shared archetype renderer: full-colour art is
     // drawn as-is and symbolic art is tinted with `color`. `displaySymbol` is the
