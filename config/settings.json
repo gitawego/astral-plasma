@@ -235,10 +235,13 @@
     "model": "ggml-small",
     "language": "",
     "maxUtteranceSeconds": 30,
-    "silenceHangoverMs": 1200,
+    "silenceHangoverMs": 2000,
     "autoFinalize": true,
+    "continuous": true,
     "echoCancel": false,
     "noiseSuppress": false,
-    "installModelOnDemand": true
+    "installModelOnDemand": true,
+    "languages": ["zh", "en"],
+    "vocabulary": []
   }
 }

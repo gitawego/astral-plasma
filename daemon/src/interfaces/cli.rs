@@ -1671,8 +1671,100 @@ pub async fn run_cli() -> DynResult<()> {
                         ),
                     }
                 }
+                "bench" => {
+                    use crate::domain::voice::{calculate_cer, calculate_wer};
+                    use crate::infrastructure::whisper_stt_adapter::WhisperCppAdapter;
+
+                    let manifest_path = args
+                        .windows(2)
+                        .find(|w| w[0] == "--manifest")
+                        .map(|w| std::path::PathBuf::from(&w[1]))
+                        .unwrap_or_else(|| {
+                            std::path::PathBuf::from("tests/fixtures/voice/dataset.json")
+                        });
+
+                    let model_id = args
+                        .windows(2)
+                        .find(|w| w[0] == "--model")
+                        .map(|w| w[1].clone())
+                        .unwrap_or_else(|| "ggml-tiny".to_string());
+
+                    if !manifest_path.exists() {
+                        eprintln!("Manifest not found at {}", manifest_path.display());
+                        std::process::exit(1);
+                    }
+
+                    let content = std::fs::read_to_string(&manifest_path)?;
+                    let items: Vec<serde_json::Value> = serde_json::from_str(&content)?;
+
+                    let adapter = WhisperCppAdapter::new();
+                    let parent_dir = manifest_path.parent().unwrap_or(std::path::Path::new("."));
+
+                    let mut results = Vec::new();
+                    let mut total_wer = 0.0f32;
+                    let mut total_cer = 0.0f32;
+                    let count = items.len();
+
+                    let bench_start = std::time::Instant::now();
+
+                    for item in &items {
+                        let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                        let lang = item.get("language").and_then(|v| v.as_str()).unwrap_or("auto");
+                        let reference = item.get("reference").and_then(|v| v.as_str()).unwrap_or("");
+
+                        let audio_path = parent_dir.join(file);
+                        let start = std::time::Instant::now();
+                        match adapter.transcribe_file(&audio_path, &model_id, lang) {
+                            Ok(t) => {
+                                let elapsed = start.elapsed().as_millis() as u64;
+                                let wer = calculate_wer(&t.text, reference);
+                                let cer = calculate_cer(&t.text, reference);
+                                total_wer += wer;
+                                total_cer += cer;
+
+                                results.push(serde_json::json!({
+                                    "id": id,
+                                    "file": file,
+                                    "reference": reference,
+                                    "hypothesis": t.text,
+                                    "language": t.language,
+                                    "wer": wer,
+                                    "cer": cer,
+                                    "latency_ms": elapsed,
+                                    "success": true,
+                                }));
+                            }
+                            Err(e) => {
+                                results.push(serde_json::json!({
+                                    "id": id,
+                                    "file": file,
+                                    "reference": reference,
+                                    "error": e.to_string(),
+                                    "success": false,
+                                }));
+                            }
+                        }
+                    }
+
+                    let avg_wer = if count > 0 { total_wer / count as f32 } else { 0.0 };
+                    let avg_cer = if count > 0 { total_cer / count as f32 } else { 0.0 };
+                    let total_elapsed_ms = bench_start.elapsed().as_millis() as u64;
+
+                    let summary = serde_json::json!({
+                        "model": model_id,
+                        "manifest": manifest_path.to_string_lossy(),
+                        "samples": count,
+                        "avg_wer": avg_wer,
+                        "avg_cer": avg_cer,
+                        "total_time_ms": total_elapsed_ms,
+                        "results": results,
+                    });
+
+                    println!("{}", serde_json::to_string_pretty(&summary)?);
+                }
                 _ => {
-                    eprintln!("Usage: astral-plasma voice <status|engines|install-model [id]|install-vad-model|mic-check [--secs N]|cloud-key <set|clear|test|status>|session [--lang <tag>]|serve [socket] [idle-secs]>");
+                    eprintln!("Usage: astral-plasma voice <status|engines|install-model [id]|install-vad-model|mic-check [--secs N]|cloud-key <set|clear|test|status>|bench [--manifest path] [--model id]|session [--lang <tag>]|serve [socket] [idle-secs]>");
                 }
             }
         }

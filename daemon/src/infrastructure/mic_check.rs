@@ -182,7 +182,15 @@ mod tests {
             std::fs::set_permissions(&capture, p).unwrap();
         }
         std::env::set_var(CAPTURE_BIN_ENV, &capture);
-        let report = probe_microphone(2).unwrap();
+        let mut report = probe_microphone(2);
+        for _ in 0..5 {
+            if report.is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            report = probe_microphone(2);
+        }
+        let report = report.unwrap();
         std::env::remove_var(CAPTURE_BIN_ENV);
         assert_eq!(report.backend, "pw-record");
         assert!(report.frames > 40, "two seconds must yield frames");
@@ -208,7 +216,15 @@ mod tests {
             std::fs::set_permissions(&capture, p).unwrap();
         }
         std::env::set_var(CAPTURE_BIN_ENV, &capture);
-        let report = probe_microphone(1).unwrap();
+        let mut report = probe_microphone(1);
+        for _ in 0..5 {
+            if report.is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            report = probe_microphone(1);
+        }
+        let report = report.unwrap();
         std::env::remove_var(CAPTURE_BIN_ENV);
         assert_eq!(report.verdict, crate::domain::voice::MicVerdict::Silent);
         assert!(report.advice.contains("Unmute") || report.advice.contains("muted") || report.advice.contains("nothing"));

@@ -103,6 +103,8 @@ Rectangle {
     readonly property string voiceDetectedLanguage: voice !== null ? (voice.voiceDetectedLanguage || "") : ""
     readonly property real voiceLanguageConfidence: voice !== null ? (voice.voiceLanguageConfidence || -1) : -1
     readonly property string voicePartialText: voice !== null ? (voice.voicePartialText || "") : ""
+    /** Auto-correction undo state: { original: string, corrected: string } or null */
+    property var activePolishUndo: null
 
     // The strip stays up for a notice as well as for a live session. Without
     // the notice term it vanished the instant `Final` arrived carrying no
@@ -408,6 +410,9 @@ Rectangle {
                             event.accepted = false;
                         } else {
                             event.accepted = true;
+                            if (root.voice) {
+                                root.voice.cancelVoiceInput();
+                            }
                             if (inputField.text.trim().length > 0 || root.stagedImages.length > 0) {
                                 root.submitMessage(inputField.text, root.stagedImages);
                                 inputField.text = "";
@@ -566,7 +571,7 @@ Rectangle {
                     cursorShape: micButton.serviceReady ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: {
                         if (root.voice === null) return;
-                        if (micButton.recording) {
+                        if (micButton.recording || micButton.finalizing) {
                             root.voice.stopVoiceInput();
                         } else if (micButton.usable) {
                             root.voice.startVoiceInput();
@@ -613,6 +618,47 @@ Rectangle {
                         elide: Text.ElideRight
                         Layout.maximumWidth: 110
                     }
+                }
+            }
+
+            // Context Auto-Correction Undo Chip
+            Rectangle {
+                id: polishUndoChip
+                visible: root.activePolishUndo !== null
+                implicitHeight: 24
+                implicitWidth: undoRow.implicitWidth + 12
+                radius: 6
+                color: Qt.alpha(Colors.primary, 0.15)
+                border.width: 1
+                border.color: Qt.alpha(Colors.primary, 0.40)
+                Layout.alignment: Qt.AlignVCenter
+
+                RowLayout {
+                    id: undoRow
+                    anchors.centerIn: parent
+                    spacing: 4
+
+                    MaterialIcon {
+                        iconName: "auto_fix_high"
+                        size: 12
+                        color: Colors.primary
+                    }
+
+                    Text {
+                        text: "Corrected · Undo"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        font.weight: Font.Medium
+                        color: Colors.primary
+                    }
+                }
+
+                MouseArea {
+                    id: undoMouse
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    hoverEnabled: true
+                    onClicked: root.undoLastPolish()
                 }
             }
 
@@ -664,6 +710,9 @@ Rectangle {
                         if (sendButton.isStreaming) {
                             if (typeof AssistantService !== "undefined") AssistantService.stopStreaming();
                         } else if (sendButton.hasContent) {
+                            if (root.voice) {
+                                root.voice.cancelVoiceInput();
+                            }
                             root.submitMessage(inputField.text, root.stagedImages);
                             inputField.text = "";
                             root.stagedImages = [];
@@ -700,6 +749,27 @@ Rectangle {
             if (root.voice) root.voice.voiceTranscript = "";
             // Deliberately no submitMessage() call here.
         }
+
+        function onVoiceSentencePolished(original, corrected) {
+            if (!original || !corrected || original === corrected) return;
+            if (inputField.text.indexOf(original) !== -1) {
+                inputField.text = inputField.text.replace(original, corrected);
+                inputField.cursorPosition = inputField.text.length;
+                root.activePolishUndo = { original: original, corrected: corrected };
+            }
+        }
+    }
+
+    /**
+     * Undoes the last contextual LLM proofreader polish pass, reverting to original transcript.
+     */
+    function undoLastPolish() {
+        if (!activePolishUndo) return;
+        if (inputField.text.indexOf(activePolishUndo.corrected) !== -1) {
+            inputField.text = inputField.text.replace(activePolishUndo.corrected, activePolishUndo.original);
+            inputField.cursorPosition = inputField.text.length;
+        }
+        activePolishUndo = null;
     }
 
     /**
@@ -722,6 +792,7 @@ Rectangle {
     // Exposed so the click routing can be exercised: emitting `clicked()` runs the
     // real onClicked handler rather than a re-implementation of it.
     readonly property alias micMouseItem: micMouse
+    readonly property alias polishUndoChipItem: polishUndoChip
     readonly property alias voiceStripItem: voiceStrip
     readonly property alias voiceStripHolderItem: voiceStripHolder
     readonly property alias attachButtonItem: attachButton

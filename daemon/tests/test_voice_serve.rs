@@ -143,7 +143,7 @@ fn serve_exits_on_idle_timeout() {
     let models = dir.path().join("models");
     std::fs::create_dir_all(&models).expect("models dir");
     let sock = dir.path().join("idle.sock");
-    let mut serve = Command::new(daemon_bin())
+    let serve = Command::new(daemon_bin())
         .arg("voice")
         .arg("serve")
         .arg(&sock)

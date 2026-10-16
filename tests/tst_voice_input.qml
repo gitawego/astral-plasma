@@ -62,6 +62,9 @@ Item {
         property string voiceSetupMessage: ""
         property string voiceEmptyNotice: ""
         property string voiceTranscript: ""
+        property string voiceCommittedText: ""
+        property var voiceLastPolished: null
+        signal voiceSentencePolished(string original, string corrected)
         property var voiceStatus: null
         property int startCount: 0
         property int stopCount: 0
@@ -75,6 +78,7 @@ Item {
 
         function startVoiceInput() { startCount++; voiceState = "recording"; }
         function stopVoiceInput() { stopCount++; voiceState = "idle"; }
+        function cancelVoiceInput() { voiceState = "idle"; }
         // Mirrors AssistantService.showVoiceSetupNotice(): the notice is
         // dismissed per-gap, so re-showing must clear that dismissal first.
         function showVoiceSetupNotice() { showNoticeCount++; }
@@ -254,6 +258,16 @@ Item {
             assert(voiceCodec.partial(bad) === "", "a malformed Partial event must decode to an empty string");
         }
 
+        // `Commit { sentence_id, text }` decoding
+        const com = voiceCodec.commit({ "type": "Commit", "payload": { "sentence_id": 1, "text": "hello " } });
+        assert(com.sentenceId === 1 && com.text === "hello ", "Commit event text and sentenceId must decode properly");
+        assert(voiceCodec.commit(null).text === "", "null Commit must return empty text");
+
+        // `Polished { sentence_id, original, corrected }` decoding
+        const pol = voiceCodec.polished({ "type": "Polished", "payload": { "sentence_id": 2, "original": "helo", "corrected": "hello" } });
+        assert(pol.sentenceId === 2 && pol.original === "helo" && pol.corrected === "hello", "Polished event must decode properly");
+        assert(voiceCodec.polished(null).corrected === "", "null Polished must return empty corrected");
+
         // ------------------------------------------------------------------
         // 0b. Child ids are lexical, not root properties
         // ------------------------------------------------------------------
@@ -310,6 +324,20 @@ Item {
                     assert(testRoot.submitCount === 0, "SAFETY: a second transcript must still never auto-send");
                     assert(bar.inputText === "please reboot the machine and check the logs",
                         "a second transcript must append, got: '" + bar.inputText + "'");
+
+                    // Test Context Auto-Correction Polish and Undo
+                    bar.inputText = "please check the netwrk stats";
+                    fakeVoice.voiceSentencePolished("netwrk", "network");
+                    assert(bar.inputText === "please check the network stats",
+                        "Polished event must auto-correct text in composer, got: " + bar.inputText);
+                    assert(bar.activePolishUndo !== null, "activePolishUndo must be populated");
+                    assert(bar.polishUndoChipItem.visible === true, "polishUndoChipItem must be visible");
+                    bar.undoLastPolish();
+                    assert(bar.inputText === "please check the netwrk stats",
+                        "undoLastPolish must revert to original transcript, got: " + bar.inputText);
+                    assert(bar.activePolishUndo === null, "activePolishUndo must be reset to null");
+                    assert(bar.polishUndoChipItem.visible === false, "polishUndoChipItem must be hidden");
+
                     bar.inputText = "";
                     runComposerTests();
                 });
@@ -766,6 +794,12 @@ Item {
             "the raw payload must never be assigned to voiceLevel as if it were the level number");
         assert(/voicePartialText\s*=\s*voiceEventCodec\.partial\(\s*ev\s*\)/.test(serviceSrc),
             "the Partial branch must decode through VoiceEventCodec.partial, not assign the payload object to a string");
+        assert(/voiceEventCodec\.commit\(\s*ev\s*\)/.test(serviceSrc),
+            "the Commit branch must decode through VoiceEventCodec.commit");
+        assert(!/ev\.type\s*===\s*"Commit"[\s\S]{0,150}root\.voiceTranscript\s*=/.test(serviceSrc),
+            "Commit events must not write to voiceTranscript directly to prevent duplicate sentence insertion before Final");
+        assert(/voiceEventCodec\.polished\(\s*ev\s*\)/.test(serviceSrc),
+            "the Polished branch must decode through VoiceEventCodec.polished");
         // Child ids are lexical captures, not properties of the root object:
         // `root.voiceElapsedTimer` is undefined, so every stop() in the session
         // handlers threw and the timer reset, state reconcile and exit handshake
@@ -782,6 +816,12 @@ Item {
             "the 60s stream watchdog must actually cancel the stream");
         assert(/function startVoiceInput\(/.test(serviceSrc), "AssistantService must implement startVoiceInput");
         assert(/function stopVoiceInput\(/.test(serviceSrc), "AssistantService must implement stopVoiceInput");
+        assert(/function stopVoiceInput\(\) \{[\s\S]{0,150}voiceContinuousActive\s*=\s*false/.test(serviceSrc),
+            "stopVoiceInput must clear voiceContinuousActive to terminate the continuous listening loop");
+        assert(!/ev\.type\s*===\s*"Final"[\s\S]{0,350}root\.voiceContinuousActive\s*=\s*false/.test(serviceSrc),
+            "Final event must never cancel voiceContinuousActive on empty or silent speech");
+        assert(/if\s*\(root\.voiceContinuousActive\s*&&\s*root\.voiceMicUsable\)\s*\{[\s\S]{0,600}runProc\(voiceSessionProc/.test(serviceSrc),
+            "continuous dictation must keep listening on segment exit until explicitly stopped");
         assert(/function cancelVoiceInput\(/.test(serviceSrc), "AssistantService must implement cancelVoiceInput");
         assert(/function refreshVoiceStatus\(/.test(serviceSrc), "AssistantService must implement refreshVoiceStatus");
         assert(/function installVoiceModel\(/.test(serviceSrc), "AssistantService must implement installVoiceModel");
@@ -1101,7 +1141,8 @@ Item {
         assert(/voiceLanguage[^\n]*: *\(root\.voiceSettings\.language\) ?\? ?root\.voiceSettings\.language : ""/.test(configSrc),
             "Config must fall back to the empty value, not to \"auto\"");
         assert(parsed.voice.maxUtteranceSeconds === 30, "default utterance cap must be 30s");
-        assert(parsed.voice.silenceHangoverMs === 1200, "default hangover must match the daemon default");
+        assert(parsed.voice.silenceHangoverMs === 2000, "default hangover must match the daemon default");
+        assert(parsed.voice.continuous === true, "continuous dictation must default on in settings.json");
         assert(parsed.voice.autoFinalize === true, "auto-finalize must default on");
         assert(parsed.voice.echoCancel === false,
             "echo cancellation must default off (audit §3.3): legacy AEC ships zero reference samples without sink routing");

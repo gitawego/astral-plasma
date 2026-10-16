@@ -248,6 +248,7 @@ impl SpeechToTextPort for SherpaOnnxAdapter {
                 no_prints: false,
                 threads: true,
                 translate: false,
+                prompt: false,
             },
         })
     }
@@ -413,11 +414,15 @@ mod tests {
             model: SENSEVOICE_SMALL_ID.to_string(),
             language: "en".to_string(),
             language_override: String::new(),
+            allowed_languages: Vec::new(),
+            custom_vocabulary: Vec::new(),
             silence_hangover_ms: 1200,
             max_utterance_ms: 30_000,
             auto_finalize: true,
             frame_len: 320,
             sample_rate: 16_000,
+            prompt: None,
+            continuous: false,
         };
         let mut events = Vec::new();
         let result = crate::domain::ports::SpeechToTextPort::run_session(

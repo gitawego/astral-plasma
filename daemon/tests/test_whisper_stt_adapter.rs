@@ -19,6 +19,8 @@ fn invocation(caps: EngineCapabilities) -> EngineInvocation {
         model: PathBuf::from("/models/ggml-large-v3-turbo.bin"),
         language: "auto".to_string(),
         fallback_language: "en".to_string(),
+        allowed_languages: Vec::new(),
+        prompt: None,
         threads: 8,
         capabilities: caps,
     }
@@ -39,6 +41,7 @@ fn full_caps() -> EngineCapabilities {
         threads: true,
         translate: true,
         detect_language: true,
+        prompt: true,
     }
 }
 

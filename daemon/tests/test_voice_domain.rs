@@ -576,6 +576,8 @@ fn settings_default_to_the_documented_values() {
         "the default language {} must be one the engine can be asked for", s.language);
     assert_eq!(s.max_utterance_seconds, DEFAULT_MAX_UTTERANCE_SECS);
     assert!(s.auto_finalize);
+    assert!(s.continuous);
+    assert_eq!(s.silence_hangover_ms, 2000);
     assert!(s.install_model_on_demand);
     assert!(!s.echo_cancel,
         "echo cancellation defaults off (audit §3.3): the legacy module-echo-cancel path ships zero reference samples without sink routing");
@@ -636,6 +638,25 @@ fn session_config_is_derived_from_sanitized_settings() {
         "noise suppression is opt-in per session like echo cancellation");
     settings.noise_suppress = true;
     assert!(VoiceSessionConfig::from_settings(&settings).noise_suppress);
+
+    // Continuous mode with default hangover uses 800ms for responsive inter-sentence dictation
+    let mut continuous_default = VoiceSettings::default();
+    continuous_default.continuous = true;
+    continuous_default.auto_finalize = true;
+    assert_eq!(VoiceSessionConfig::from_settings(&continuous_default).silence_hangover_ms, 800);
+
+    // Non-continuous mode retains default 2000ms
+    let mut non_continuous = VoiceSettings::default();
+    non_continuous.continuous = false;
+    non_continuous.auto_finalize = true;
+    assert_eq!(VoiceSessionConfig::from_settings(&non_continuous).silence_hangover_ms, 2000);
+
+    // Explicit custom hangover is preserved in continuous mode
+    let mut custom = VoiceSettings::default();
+    custom.continuous = true;
+    custom.auto_finalize = true;
+    custom.silence_hangover_ms = 1200;
+    assert_eq!(VoiceSessionConfig::from_settings(&custom).silence_hangover_ms, 1200);
 }
 
 #[test]

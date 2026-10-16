@@ -27,9 +27,11 @@ SettingsPage {
     ]
 
     readonly property alias voiceModelRemoveItem: voiceModelRemoveItem
+    readonly property alias voiceGpuCard: gpuCard
     readonly property alias voicePanelItem: root
     readonly property alias voiceModelListItem: modelList
     readonly property alias voiceLanguageListItem: languageList
+
 
     readonly property int padLargeVal: (typeof Theme !== "undefined" && Theme.padLarge !== undefined) ? Theme.padLarge : 16
     readonly property int padMediumVal: (typeof Theme !== "undefined" && Theme.padMedium !== undefined) ? Theme.padMedium : 12
@@ -50,8 +52,9 @@ SettingsPage {
     property bool testVoiceAutoFinalize: true
     property bool testVoiceEchoCancel: false
     property bool testVoiceNoiseSuppress: false
-    property int testVoiceSilenceHangoverMs: 1200
+    property int testVoiceSilenceHangoverMs: 2000
     property int testVoiceMaxUtteranceSeconds: 30
+    property bool testVoiceContinuous: true
     property var testVoiceStatus: null
     property real testVoiceModelInstallProgress: 0.0
     property bool testVoiceModelInstalling: false
@@ -69,6 +72,8 @@ SettingsPage {
 
     readonly property bool voiceEnabled: testMode ? testVoiceEnabled
         : ((typeof Config !== "undefined" && Config.voiceEnabled !== undefined) ? Config.voiceEnabled : true)
+    readonly property bool voiceContinuous: testMode ? testVoiceContinuous
+        : ((typeof Config !== "undefined" && Config.voiceContinuous !== undefined) ? Config.voiceContinuous : true)
     readonly property string voiceEngine: testMode ? testVoiceEngine
         : ((typeof Config !== "undefined" && Config.voiceEngine) ? Config.voiceEngine : "whisper-cpp")
     readonly property string voiceModel: testMode ? testVoiceModel
@@ -81,9 +86,15 @@ SettingsPage {
         : ((typeof Config !== "undefined" && Config.voiceEchoCancel !== undefined) ? Config.voiceEchoCancel : false)
     readonly property bool voiceNoiseSuppress: testMode ? testVoiceNoiseSuppress
         : ((typeof Config !== "undefined" && Config.voiceNoiseSuppress !== undefined) ? Config.voiceNoiseSuppress : false)
+    property var testVoiceLanguages: ["zh", "en"]
+    property var testVoiceVocabulary: []
+    readonly property var voiceLanguages: testMode ? testVoiceLanguages
+        : ((typeof Config !== "undefined" && Config.voiceLanguages) ? Config.voiceLanguages : ["zh", "en"])
+    readonly property var voiceVocabulary: testMode ? testVoiceVocabulary
+        : ((typeof Config !== "undefined" && Config.voiceVocabulary) ? Config.voiceVocabulary : [])
 
     readonly property int voiceSilenceHangoverMs: testMode ? testVoiceSilenceHangoverMs
-        : ((typeof Config !== "undefined" && Config.voiceSilenceHangoverMs) ? Config.voiceSilenceHangoverMs : 1200)
+        : ((typeof Config !== "undefined" && Config.voiceSilenceHangoverMs) ? Config.voiceSilenceHangoverMs : 2000)
     readonly property int voiceMaxUtteranceSeconds: testMode ? testVoiceMaxUtteranceSeconds
         : ((typeof Config !== "undefined" && Config.voiceMaxUtteranceSeconds) ? Config.voiceMaxUtteranceSeconds : 30)
 
@@ -181,6 +192,12 @@ SettingsPage {
     readonly property string voiceInstallCommand: (voiceStatus && voiceStatus.engine_install_command)
                                                   ? voiceStatus.engine_install_command : ""
 
+    readonly property bool voiceGpuAccelerationAvailable: (voiceStatus && voiceStatus.gpu_acceleration_available !== undefined)
+                                                          ? voiceStatus.gpu_acceleration_available : false
+
+    readonly property string voiceGpuInstallCommand: (voiceStatus && voiceStatus.gpu_install_command)
+                                                     ? voiceStatus.gpu_install_command : ""
+
     readonly property string voiceEngineNotice: {
         const eng = root.voiceEngine;
         if (eng === "deepgram") {
@@ -195,6 +212,7 @@ SettingsPage {
             ? "whisper.cpp engine not installed. Run: " + voiceInstallCommand
             : "whisper.cpp engine not installed. Build it from https://github.com/ggml-org/whisper.cpp";
     }
+
 
     function setVoiceEnabled(enabled) {
         if (testMode) {
@@ -247,6 +265,22 @@ SettingsPage {
         }
     }
 
+    function setVoiceContinuous(enabled) {
+        if (testMode) {
+            testVoiceContinuous = enabled;
+        } else if (typeof Config !== "undefined") {
+            Config.setVoiceContinuous(enabled);
+        }
+    }
+
+    function setVoiceSilenceHangoverMs(ms) {
+        if (testMode) {
+            testVoiceSilenceHangoverMs = ms;
+        } else if (typeof Config !== "undefined") {
+            Config.setVoiceSilenceHangoverMs(ms);
+        }
+    }
+
     function setVoiceEchoCancel(enabled) {
         if (testMode) {
             testVoiceEchoCancel = enabled;
@@ -260,6 +294,32 @@ SettingsPage {
             testVoiceNoiseSuppress = enabled;
         } else if (typeof Config !== "undefined") {
             Config.setVoiceNoiseSuppress(enabled);
+        }
+    }
+
+    function toggleAllowedLanguage(code) {
+        let current = (root.voiceLanguages || []).slice();
+        const idx = current.indexOf(code);
+        if (idx >= 0) {
+            if (current.length > 1) {
+                current.splice(idx, 1);
+            }
+        } else {
+            current.push(code);
+        }
+        if (testMode) {
+            testVoiceLanguages = current;
+        } else if (typeof Config !== "undefined" && Config.setVoiceLanguages) {
+            Config.setVoiceLanguages(current);
+        }
+    }
+
+    function setVoiceVocabularyText(text) {
+        const tokens = text.split(",").map(t => t.trim()).filter(t => t.length > 0);
+        if (testMode) {
+            testVoiceVocabulary = tokens;
+        } else if (typeof Config !== "undefined" && Config.setVoiceVocabulary) {
+            Config.setVoiceVocabulary(tokens);
         }
     }
 
@@ -455,6 +515,92 @@ SettingsPage {
                     wrapMode: Text.WordWrap
                 }
             }
+
+            // GPU Acceleration & Realtime Context Polish Recommendation
+            Rectangle {
+                id: gpuCard
+                objectName: "voiceGpuNotice"
+                Layout.fillWidth: true
+                visible: root.voiceEnabled && root.voiceEngine === "whisper-cpp" && root.voiceGpuInstallCommand.length > 0
+                radius: Theme.radiusSmall
+                color: Qt.alpha(Colors.primary, 0.08)
+                border.color: Qt.alpha(Colors.primary, 0.25)
+                border.width: 1
+                implicitHeight: gpuCol.implicitHeight + root.padMediumVal * 2
+
+                ColumnLayout {
+                    id: gpuCol
+                    anchors.fill: parent
+                    anchors.margins: Theme.padMedium
+                    spacing: root.spaceSmallVal
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceSmall
+
+                        MaterialIcon {
+                            text: "bolt"
+                            size: 18
+                            color: Colors.primary
+                        }
+
+                        Text {
+                            text: "GPU Acceleration & Real-time Auto-Correct"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontLabelLarge
+                            font.weight: Font.DemiBold
+                            color: Colors.m3onSurface
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    Text {
+                        text: "Hardware GPU detected, but CUDA/Vulkan backends and llama-cpp are missing. Dictation is running in slower CPU mode. Run this command to enable instant partials and context polish:"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBodySmall
+                        color: Colors.m3onSurfaceVariant
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 34
+                        radius: Theme.radiusSmall
+                        color: Colors.surfaceContainerHighest
+                        border.color: Theme.borderSubtle
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.padSmall
+                            anchors.rightMargin: Theme.padSmall
+                            spacing: Theme.spaceSmall
+
+                            Text {
+                                text: root.voiceGpuInstallCommand
+                                font.family: Theme.fontMono
+                                font.pixelSize: Theme.fontLabelSmall
+                                color: Colors.primary
+                                Layout.fillWidth: true
+                                elide: Text.ElideMiddle
+                            }
+
+                            PillButton {
+                                label: "Copy Command"
+                                iconName: "content_copy"
+                                variant: "outlined"
+                                onClicked: {
+                                    if (typeof Quickshell !== "undefined" && Quickshell.clipboardText !== undefined) {
+                                        Quickshell.clipboardText = root.voiceGpuInstallCommand;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
 
             RowLayout {
                 Layout.fillWidth: true
@@ -902,6 +1048,156 @@ SettingsPage {
                     }
                 }
             }
+
+            // Allowed Languages (Multi-Language restriction)
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceExtraSmall
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+
+                    MaterialIcon {
+                        text: "tune"
+                        size: 16
+                        color: Colors.primary
+                    }
+
+                    Text {
+                        text: "Allowed Languages (Candidate Restriction)"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        font.weight: Font.DemiBold
+                        color: Colors.m3onSurface
+                    }
+                }
+
+                Text {
+                    text: "Restricts candidate space during auto-detection to eliminate hallucinated language switches. Mixed Chinese-English code-switching is decoded under Chinese prior."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontBodySmall
+                    color: Colors.m3onSurfaceVariant
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    readonly property var supportedList: [
+                        { "code": "zh", "label": "中文 (zh)" },
+                        { "code": "en", "label": "English (en)" },
+                        { "code": "fr", "label": "Français (fr)" },
+                        { "code": "de", "label": "Deutsch (de)" },
+                        { "code": "es", "label": "Español (es)" },
+                        { "code": "ja", "label": "日本語 (ja)" },
+                        { "code": "ko", "label": "한국어 (ko)" },
+                        { "code": "ru", "label": "Русский (ru)" }
+                    ]
+
+                    Repeater {
+                        model: parent.supportedList
+                        delegate: PillButton {
+                            label: modelData.label
+                            active: root.voiceLanguages.indexOf(modelData.code) !== -1
+                            variant: active ? "filled" : "outlined"
+                            onClicked: root.toggleAllowedLanguage(modelData.code)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Card: Custom Vocabulary & Context Biasing --------------------------
+    Rectangle {
+        id: vocabCard
+        Layout.fillWidth: true
+        radius: Theme.radiusMedium
+        color: Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+        implicitHeight: vocabCol.implicitHeight + root.padLargeVal * 2
+        Layout.preferredHeight: implicitHeight
+
+        ColumnLayout {
+            id: vocabCol
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: root.padLargeVal
+            spacing: root.spaceMediumVal
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: root.spaceSmallVal
+
+                MaterialIcon {
+                    text: "spellcheck"
+                    size: 20
+                    color: Colors.primary
+                }
+
+                Text {
+                    text: "Context Vocabulary & Technical Terms"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontTitleSmall
+                    font.weight: Font.DemiBold
+                    color: Colors.m3onSurface
+                }
+            }
+
+            Text {
+                text: "Domain vocabulary, acronyms, or technical terms to bias Whisper speech recognition and prime LLM sentence proofreading (comma-separated):"
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBodySmall
+                color: Colors.m3onSurfaceVariant
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 40
+                radius: Theme.radiusSmall
+                color: Colors.surfaceContainerHigh
+                border.width: 1
+                border.color: vocabInput.activeFocus ? Colors.primary : Theme.borderSubtle
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.padMedium
+                    anchors.rightMargin: Theme.padMedium
+                    spacing: Theme.spaceSmall
+
+                    MaterialIcon {
+                        text: "edit"
+                        size: 16
+                        color: Colors.secondary
+                    }
+
+                    TextInput {
+                        id: vocabInput
+                        objectName: "voiceVocabularyInput"
+                        Layout.fillWidth: true
+                        text: (root.voiceVocabulary || []).join(", ")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBodyMedium
+                        color: Colors.m3onSurface
+                        selectByMouse: true
+                        clip: true
+                        onEditingFinished: root.setVoiceVocabularyText(text)
+                    }
+
+                    PillButton {
+                        label: "Apply"
+                        variant: "tonal"
+                        onClicked: root.setVoiceVocabularyText(vocabInput.text)
+                    }
+                }
+            }
         }
     }
 
@@ -1218,7 +1514,7 @@ SettingsPage {
                     }
 
                     Text {
-                        text: "Finishes after " + root.voiceSilenceHangoverMs + " ms of silence, or at " + root.voiceMaxUtteranceSeconds + " s cap."
+                        text: "Finishes utterance after " + (root.voiceSilenceHangoverMs / 1000).toFixed(1) + " s of silence, or at " + root.voiceMaxUtteranceSeconds + " s cap."
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontLabelSmall
                         color: Colors.m3onSurfaceVariant
@@ -1249,6 +1545,123 @@ SettingsPage {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.setVoiceAutoFinalize(!root.voiceAutoFinalize)
+                    }
+                }
+            }
+
+            // Pause duration selector
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceMedium
+                visible: root.voiceAutoFinalize
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+
+                    Text {
+                        text: "Silence pause threshold"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBodyMedium
+                        color: Colors.m3onSurface
+                    }
+
+                    Text {
+                        text: "How long to wait before segmenting speech and transcribing."
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurfaceVariant
+                    }
+                }
+
+                RowLayout {
+                    spacing: 6
+
+                    Repeater {
+                        model: [
+                            { ms: 1500, label: "1.5s" },
+                            { ms: 2000, label: "2.0s" },
+                            { ms: 2500, label: "2.5s" },
+                            { ms: 3000, label: "3.0s" }
+                        ]
+
+                        Rectangle {
+                            id: pausePill
+                            property bool selected: root.voiceSilenceHangoverMs === modelData.ms
+                            width: 52
+                            height: 28
+                            radius: 14
+                            color: selected ? Colors.primary : Colors.surfaceContainerHighest
+                            border.color: selected ? Colors.primary : Theme.borderSubtle
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontLabelMedium
+                                font.weight: pausePill.selected ? Font.Bold : Font.Normal
+                                color: pausePill.selected ? Colors.m3onPrimary : Colors.m3onSurface
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.setVoiceSilenceHangoverMs(modelData.ms)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Continuous dictation toggle
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceMedium
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+
+                    Text {
+                        text: "Continuous dictation"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBodyMedium
+                        color: Colors.m3onSurface
+                    }
+
+                    Text {
+                        text: "Automatically transcribes when you pause and keeps listening for your next phrase."
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurfaceVariant
+                    }
+                }
+
+                Rectangle {
+                    id: voiceContinuousToggle
+                    objectName: "voiceContinuousToggle"
+                    width: 44
+                    height: 24
+                    radius: 12
+                    color: root.voiceContinuous ? Colors.primary : Colors.surfaceContainerHighest
+                    border.color: root.voiceContinuous ? Colors.primary : Theme.borderSubtle
+                    border.width: 1
+
+                    Rectangle {
+                        width: 18
+                        height: 18
+                        radius: 9
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: root.voiceContinuous ? parent.width - width - 3 : 3
+                        color: root.voiceContinuous ? Colors.m3onPrimary : Colors.m3onSurfaceVariant
+                        Behavior on x { NumberAnimation { duration: 150 } }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.setVoiceContinuous(!root.voiceContinuous)
                     }
                 }
             }

@@ -221,6 +221,129 @@ pub fn default_socket() -> PathBuf {
     crate::infrastructure::whisper_stt_adapter::models_dir().join("voice-server.sock")
 }
 
+/// Shared test mutex for tests that mutate ASTRAL_VOICE_SERVER_SOCK.
+pub fn server_env_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
+/// Checks if the whisper-server binary is present and executable.
+pub fn is_whisper_server_available() -> bool {
+    let bin = backend_binary();
+    if PathBuf::from(&bin).is_file() {
+        return true;
+    }
+    Command::new("which")
+        .arg(&bin)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Resolves the astral-plasma daemon binary.
+fn daemon_binary() -> PathBuf {
+    if let Ok(bin) = std::env::var("ASTRAL_PLASMA_BIN") {
+        if !bin.trim().is_empty() {
+            return PathBuf::from(bin);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if exe
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| s == "astral-plasma")
+            .unwrap_or(false)
+        {
+            return exe;
+        }
+        if let Some(parent) = exe.parent() {
+            let candidate = parent.join("astral-plasma");
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    let repo_bin = PathBuf::from("bin/astral-plasma");
+    if repo_bin.is_file() {
+        if let Ok(abs) = repo_bin.canonicalize() {
+            return abs;
+        }
+        return repo_bin;
+    }
+    PathBuf::from("astral-plasma")
+}
+
+/// Ensures that a resident `voice serve` daemon is available and accepting connections.
+/// If already running, returns its socket path.
+/// If not running, launches a background supervisor process with an idle linger,
+/// waits up to 2 seconds for it to start listening, and returns the socket path.
+pub fn ensure_resident_server() -> Option<PathBuf> {
+    // If an explicit engine test stub or binary override is injected without an explicit server socket,
+    // preserve test harness isolation and never auto-spawn the resident server.
+    if (std::env::var("ASTRAL_VOICE_ENGINE_BIN").is_ok() || std::env::var("ASTRAL_VOICE_WHISPER_BIN").is_ok())
+        && std::env::var("ASTRAL_VOICE_SERVER_SOCK").is_err()
+    {
+        return None;
+    }
+
+    let sock = if let Ok(s) = std::env::var("ASTRAL_VOICE_SERVER_SOCK") {
+        if !s.trim().is_empty() {
+            PathBuf::from(s)
+        } else {
+            default_socket()
+        }
+    } else {
+        default_socket()
+    };
+
+    // 1. Is the socket already active and answering?
+    if UnixStream::connect(&sock).is_ok() {
+        return Some(sock);
+    }
+
+    // 2. Can we run whisper-server?
+    if !is_whisper_server_available() {
+        return None;
+    }
+
+    // 3. Clean up dead/stale socket file if any
+    if sock.exists() {
+        let _ = std::fs::remove_file(&sock);
+    }
+
+    // 4. Resolve daemon executable
+    let exe = daemon_binary();
+
+    // 5. Spawn background resident server with 120s idle timeout
+    let mut child = Command::new(&exe)
+        .arg("voice")
+        .arg("serve")
+        .arg(&sock)
+        .arg("120")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    // 6. Poll for socket availability
+    let deadline = Instant::now() + Duration::from_millis(2000);
+    while Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+        if UnixStream::connect(&sock).is_ok() {
+            return Some(sock);
+        }
+        if let Ok(Some(_)) = child.try_wait() {
+            return None;
+        }
+    }
+
+    None
+}
+
 fn handle(mut stream: UnixStream, backend: &mut Option<Backend>) -> DynResult<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut header_line = String::new();
@@ -270,5 +393,39 @@ mod tests {
     fn free_port_is_usable() {
         let port = free_port().unwrap();
         assert!(port > 0);
+    }
+
+    #[test]
+    fn test_is_whisper_server_available() {
+        // whisper-server is installed on this system, or returns a valid bool
+        let _ = is_whisper_server_available();
+    }
+
+    #[test]
+    fn test_daemon_binary_resolves() {
+        let bin = daemon_binary();
+        assert!(!bin.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn test_ensure_resident_server_connected_socket() {
+        let _guard = server_env_lock().lock().unwrap();
+        // If an active UnixListener is listening on a custom socket, ensure_resident_server connects immediately
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("test-resident.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        
+        let old_env = std::env::var("ASTRAL_VOICE_SERVER_SOCK").ok();
+        std::env::set_var("ASTRAL_VOICE_SERVER_SOCK", &sock);
+        
+        let resolved = ensure_resident_server();
+        assert_eq!(resolved, Some(sock.clone()));
+        
+        if let Some(v) = old_env {
+            std::env::set_var("ASTRAL_VOICE_SERVER_SOCK", v);
+        } else {
+            std::env::remove_var("ASTRAL_VOICE_SERVER_SOCK");
+        }
+        drop(listener);
     }
 }

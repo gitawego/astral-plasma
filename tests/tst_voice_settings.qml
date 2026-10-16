@@ -112,9 +112,17 @@ Item {
         page.setVoiceNoiseSuppress(true);
         assert(page.voiceNoiseSuppress === true, "the noise-suppression toggle must be writable");
         page.setVoiceNoiseSuppress(false);
-        assert(page.voiceNoiseSuppress === false, "the toggle must restore");
-        assert(page.voiceSilenceHangoverMs === 1200, "default hangover must match the daemon");
+        assert(page.voiceSilenceHangoverMs === 2000, "default hangover must match the daemon");
         assert(page.voiceMaxUtteranceSeconds === 30, "default cap must match the daemon");
+        assert(page.voiceContinuous === true, "continuous dictation defaults on");
+        page.setVoiceContinuous(false);
+        assert(page.voiceContinuous === false, "continuous dictation toggle must be writable");
+        page.setVoiceContinuous(true);
+        assert(page.voiceContinuous === true, "continuous dictation toggle must restore");
+        page.setVoiceSilenceHangoverMs(2500);
+        assert(page.voiceSilenceHangoverMs === 2500, "silence hangover ms must be writable");
+        page.setVoiceSilenceHangoverMs(2000);
+        assert(page.voiceSilenceHangoverMs === 2000, "silence hangover ms must restore");
 
         // ------------------------------------------------------------------
         // 2. Options are driven by the daemon's catalog, not hardcoded (D1)
@@ -289,6 +297,25 @@ Item {
             "an unknown distribution must get the upstream build, got: " + page.voiceEngineNotice);
         page.testVoiceStatus = null;
 
+        // GPU Acceleration Recommendation notice test:
+        page.testVoiceStatus = {
+            engine: "whisper-cpp",
+            engine_available: true,
+            model_present: true,
+            setup_complete: true,
+            gap: "ready",
+            gpu_acceleration_available: false,
+            gpu_install_command: "sudo pacman -S ggml-cuda llama-cpp"
+        };
+        assert(page.voiceGpuInstallCommand === "sudo pacman -S ggml-cuda llama-cpp",
+            "voiceGpuInstallCommand must reflect status: " + page.voiceGpuInstallCommand);
+        assert(page.voiceGpuAccelerationAvailable === false, "gpu acceleration must report false when backends missing");
+        assert(page.voiceGpuCard !== undefined && page.voiceGpuCard !== null, "voiceGpuCard item must exist in page");
+        assert(page.voiceGpuCard.visible === true, "voiceGpuCard must be visible when gpu command is present");
+        page.testVoiceStatus = null;
+
+
+
         // ------------------------------------------------------------------
         // 5b. Cross-engine stale status isolation & engine notice accuracy
         // ------------------------------------------------------------------
@@ -349,6 +376,21 @@ Item {
         page.setVoiceEngine("whisper-cpp");
         page.testVoiceStatus = null;
 
+        // 5c. Allowed Languages & Custom Vocabulary
+        // ------------------------------------------------------------------
+        assert(page.voiceLanguages.indexOf("zh") !== -1, "default voice languages includes zh");
+        assert(page.voiceLanguages.indexOf("en") !== -1, "default voice languages includes en");
+        page.toggleAllowedLanguage("fr");
+        assert(page.voiceLanguages.indexOf("fr") !== -1, "toggling fr adds it to voiceLanguages");
+        page.toggleAllowedLanguage("fr");
+        assert(page.voiceLanguages.indexOf("fr") === -1, "toggling fr again removes it from voiceLanguages");
+
+        page.setVoiceVocabularyText("Quickshell, KWin, Wayland");
+        assert(page.voiceVocabulary.length === 3, "vocabulary must parse 3 tokens");
+        assert(page.voiceVocabulary[0] === "Quickshell");
+        assert(page.voiceVocabulary[1] === "KWin");
+        assert(page.voiceVocabulary[2] === "Wayland");
+
         // ------------------------------------------------------------------
         // 6. Source contracts
         // ------------------------------------------------------------------
@@ -406,6 +448,14 @@ Item {
         const configSrc = readLocalFile("../config/Config.qml");
         assert(/function setVoiceEngine\(engineId\)\s*\{\s*updateSettings\(/.test(configSrc),
             "Config.qml must use updateSettings for setVoiceEngine to ensure reactive binding updates");
+        assert(/function setVoiceLanguages\(/.test(configSrc),
+            "Config.qml must implement setVoiceLanguages");
+        assert(/function setVoiceVocabulary\(/.test(configSrc),
+            "Config.qml must implement setVoiceVocabulary");
+        assert(/Config\.setVoiceLanguages\(/.test(pageSrc),
+            "VoicePage must invoke Config.setVoiceLanguages");
+        assert(/Config\.setVoiceVocabulary\(/.test(pageSrc),
+            "VoicePage must invoke Config.setVoiceVocabulary");
 
         const shellSrc = readLocalFile("../shell.qml");
         assert(/function toggleVoice\(\)/.test(shellSrc), "shell.qml must expose a voice.toggle IPC action");

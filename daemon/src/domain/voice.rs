@@ -878,6 +878,54 @@ pub fn is_supported_language(base: &str) -> bool {
     SUPPORTED_LANGUAGES.iter().any(|(code, _)| *code == b)
 }
 
+/// Matches a candidate language tag against a user-configured allowed set.
+///
+/// If `allowed` is empty, any supported language is accepted.
+/// Region tags are normalized (e.g. `zh-CN` -> `zh`).
+pub fn filter_allowed_languages(raw: &str, allowed: &[String]) -> Option<String> {
+    let norm = normalize_language(raw);
+    if norm == LANGUAGE_AUTO || norm == LANGUAGE_UNDETERMINED {
+        return None;
+    }
+    if allowed.is_empty() {
+        return Some(norm);
+    }
+    if allowed.iter().any(|a| normalize_language(a) == norm) {
+        Some(norm)
+    } else {
+        None
+    }
+}
+
+/// Resolves the effective language from a detected tag, an allowed set, and a fallback.
+///
+/// If `detected` is in `allowed`, it stands. Otherwise, if `allowed` has languages,
+/// the first allowed language is chosen; otherwise `fallback` is used.
+pub fn resolve_effective_language(
+    detected: Option<&str>,
+    allowed: &[String],
+    fallback: &str,
+) -> String {
+    if let Some(tag) = detected {
+        if let Some(matched) = filter_allowed_languages(tag, allowed) {
+            return matched;
+        }
+    }
+    if let Some(fb) = filter_allowed_languages(fallback, allowed) {
+        if fb != LANGUAGE_AUTO {
+            return fb;
+        }
+    }
+    if let Some(first_allowed) = allowed.first() {
+        let norm = normalize_language(first_allowed);
+        if norm != LANGUAGE_AUTO {
+            return norm;
+        }
+    }
+    normalize_language(fallback)
+}
+
+
 /// Resolves a locale string such as `de_DE.UTF-8@euro` to `de`.
 ///
 /// Unknown or unsupported tags yield `None` rather than a guess, so the caller
@@ -1152,7 +1200,7 @@ pub const DEFAULT_ENGINE: &str = "whisper-cpp";
 pub const DEFAULT_MAX_UTTERANCE_SECS: u32 = 30;
 pub const MIN_MAX_UTTERANCE_SECS: u32 = 5;
 pub const MAX_MAX_UTTERANCE_SECS: u32 = 300;
-pub const DEFAULT_SILENCE_HANGOVER_MS: u64 = 1200;
+pub const DEFAULT_SILENCE_HANGOVER_MS: u64 = 2000;
 pub const MIN_SILENCE_HANGOVER_MS: u64 = 300;
 pub const MAX_SILENCE_HANGOVER_MS: u64 = 5000;
 
@@ -1178,6 +1226,9 @@ pub struct VoiceSettings {
     pub max_utterance_seconds: u32,
     pub silence_hangover_ms: u64,
     pub auto_finalize: bool,
+    /// Continuous dictation: automatically segment after pauses and keep listening.
+    #[serde(default = "default_true")]
+    pub continuous: bool,
     pub install_model_on_demand: bool,
     /// Capture through a PipeWire echo-cancelled source.
     ///
@@ -1197,6 +1248,15 @@ pub struct VoiceSettings {
     /// the default source. Opt-in per session via
     /// `ASTRAL_VOICE_NOISE_SUPPRESS_SOURCE`.
     pub noise_suppress: bool,
+    /// Allowed languages for multilingual auto-detection and code-switching.
+    ///
+    /// When specified, language detection is restricted to this set, preventing
+    /// spurious hallucinated language switching. Mixed Chinese-English is decoded as "zh".
+    #[serde(default)]
+    pub languages: Vec<String>,
+    /// User-provided custom vocabulary / technical terms for context priming.
+    #[serde(default)]
+    pub vocabulary: Vec<String>,
 }
 
 impl Default for VoiceSettings {
@@ -1209,9 +1269,12 @@ impl Default for VoiceSettings {
             max_utterance_seconds: DEFAULT_MAX_UTTERANCE_SECS,
             silence_hangover_ms: DEFAULT_SILENCE_HANGOVER_MS,
             auto_finalize: true,
+            continuous: true,
             install_model_on_demand: true,
             echo_cancel: false,
             noise_suppress: false,
+            languages: Vec::new(),
+            vocabulary: Vec::new(),
         }
     }
 }
@@ -1248,6 +1311,12 @@ impl VoiceSettings {
         } else {
             normalize_language(&self.language)
         };
+        self.languages = self
+            .languages
+            .into_iter()
+            .map(|l| normalize_language(&l))
+            .filter(|l| l != LANGUAGE_AUTO && l != LANGUAGE_UNDETERMINED)
+            .collect();
         self.max_utterance_seconds = self
             .max_utterance_seconds
             .clamp(MIN_MAX_UTTERANCE_SECS, MAX_MAX_UTTERANCE_SECS);
@@ -1256,6 +1325,7 @@ impl VoiceSettings {
             .clamp(MIN_SILENCE_HANGOVER_MS, MAX_SILENCE_HANGOVER_MS);
         self
     }
+
 
     /// Hard cap on one utterance, in milliseconds.
     pub fn max_utterance_ms(&self) -> u64 {
@@ -1365,12 +1435,26 @@ pub struct VoiceSessionConfig {
     /// *default*; a user dictating in a second language for one prompt must not
     /// silently reconfigure their shell.
     pub language_override: String,
+    /// User-specified allowed languages for detection restriction.
+    pub allowed_languages: Vec<String>,
+    /// User-specified custom vocabulary to bias speech recognition.
+    pub custom_vocabulary: Vec<String>,
     pub silence_hangover_ms: u64,
     pub max_utterance_ms: u64,
     pub auto_finalize: bool,
     /// Frame length pushed through the silence detector.
     pub frame_len: usize,
     pub sample_rate: u32,
+    /// Context prompt to bias speech recognition.
+    pub prompt: Option<String>,
+    /// Continuous dictation mode (does not close mic on short sentence pause).
+    pub continuous: bool,
+}
+
+impl Default for VoiceSessionConfig {
+    fn default() -> Self {
+        Self::from_settings(&VoiceSettings::default())
+    }
 }
 
 impl VoiceSessionConfig {
@@ -1384,8 +1468,20 @@ impl VoiceSessionConfig {
             model: settings.model.clone(),
             language: normalize_language(&settings.language),
             language_override: String::new(),
+            allowed_languages: settings.languages.clone(),
+            custom_vocabulary: settings.vocabulary.clone(),
+            prompt: if !settings.vocabulary.is_empty() {
+                Some(build_voice_prompt(&[], "", &settings.vocabulary))
+            } else {
+                None
+            },
+            continuous: settings.continuous,
             silence_hangover_ms: if settings.auto_finalize {
-                settings.silence_hangover_ms
+                if settings.continuous && settings.silence_hangover_ms == DEFAULT_SILENCE_HANGOVER_MS {
+                    800
+                } else {
+                    settings.silence_hangover_ms
+                }
             } else {
                 0
             },
@@ -1394,6 +1490,7 @@ impl VoiceSessionConfig {
             frame_len,
             sample_rate: SPEECH_SAMPLE_RATE,
         };
+
         if !is_known_model(&cfg.model) {
             cfg.model = DEFAULT_MODEL_ID.to_string();
         }
@@ -1442,6 +1539,17 @@ pub enum VoiceEvent {
     /// 1.5 GiB download sat at 0% and then jumped to "downloaded".
     Progress(f32),
     Partial { text: String },
+    /// Stabilized words/tokens committed by LocalAgreement during continuous dictation.
+    Commit {
+        sentence_id: u64,
+        text: String,
+    },
+    /// An async contextual polish pass completed for a sentence.
+    Polished {
+        sentence_id: u64,
+        original: String,
+        corrected: String,
+    },
     /// The language the session settled on, with the engine's own confidence.
     ///
     /// Emitted *before* the transcription pass, and only when the user asked for
@@ -1501,6 +1609,8 @@ impl VoiceEvent {
             VoiceEvent::Level { .. } => "Level",
             VoiceEvent::Progress(_) => "Progress",
             VoiceEvent::Partial { .. } => "Partial",
+            VoiceEvent::Commit { .. } => "Commit",
+            VoiceEvent::Polished { .. } => "Polished",
             VoiceEvent::Detected { .. } => "Detected",
             VoiceEvent::Final(_) => "Final",
             VoiceEvent::Warning { .. } => "Warning",
@@ -1583,6 +1693,7 @@ pub struct EngineCapabilities {
     pub no_prints: bool,
     pub threads: bool,
     pub translate: bool,
+    pub prompt: bool,
 }
 
 /// The result of inspecting an engine installation.
@@ -1647,10 +1758,18 @@ pub struct VoiceStatus {
     /// while the engine is missing. `None` means "no package we can name".
     #[serde(default)]
     pub engine_install_command: Option<String>,
+
+    /// Whether GPU acceleration (CUDA/Vulkan ggml backend) is available.
+    #[serde(default)]
+    pub gpu_acceleration_available: bool,
+    /// Distro-appropriate command to install GPU acceleration and llama-cpp, when hardware is present but backends are not.
+    #[serde(default)]
+    pub gpu_install_command: Option<String>,
     pub models_available: Vec<ModelDescriptor>,
     pub languages: Vec<LanguageOption>,
     pub capabilities: EngineCapabilities,
 }
+
 
 // ---------------------------------------------------------------------------
 // Installing the engine
@@ -1685,7 +1804,20 @@ impl PackageManager {
             PackageManager::Unknown => None,
         }
     }
+
+    /// The one-liner that installs GPU acceleration and the context-polish LLM (llama.cpp).
+    pub fn gpu_install_command(self) -> Option<&'static str> {
+        match self {
+            PackageManager::Pacman => Some("sudo pacman -S ggml-cuda llama-cpp"),
+            PackageManager::Apt => Some("sudo apt install libggml-cuda llama.cpp"),
+            PackageManager::Dnf => Some("sudo dnf install ggml-cuda llama-cpp"),
+            PackageManager::Zypper => Some("sudo zypper install ggml-cuda llama-cpp"),
+            PackageManager::Nix => Some("nix-shell -p ggml-cuda llama-cpp"),
+            PackageManager::Unknown => None,
+        }
+    }
 }
+
 
 /// Which package manager a distribution uses, from the text of `/etc/os-release`.
 ///
@@ -1800,6 +1932,277 @@ pub fn staged_download_paths(dir: &Path, model_id: &str) -> (PathBuf, PathBuf) {
     let final_path = dir.join(&file_name);
     let part_path = dir.join(format!("{}.part", file_name));
     (part_path, final_path)
+}
+
+// ---------------------------------------------------------------------------
+// ASR Benchmark & Accuracy Evaluation
+// ---------------------------------------------------------------------------
+
+/// Normalizes text for ASR accuracy evaluation (WER / CER calculation).
+///
+/// Strips punctuation, normalizes whitespace, and lowercases latin text.
+pub fn normalize_text_for_eval(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut last_was_space = false;
+
+    for c in text.chars() {
+        if c.is_alphanumeric() {
+            for lc in c.to_lowercase() {
+                out.push(lc);
+            }
+            last_was_space = false;
+        } else if c.is_whitespace() {
+            if !last_was_space && !out.is_empty() {
+                out.push(' ');
+                last_was_space = true;
+            }
+        }
+    }
+    out.trim().to_string()
+}
+
+/// Computes Levenshtein distance between two sequences of items.
+pub fn levenshtein_distance<T: PartialEq>(a: &[T], b: &[T]) -> usize {
+    let len_b = b.len();
+    let mut prev_row: Vec<usize> = (0..=len_b).collect();
+    let mut curr_row = vec![0; len_b + 1];
+
+    for (i, ca) in a.iter().enumerate() {
+        curr_row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            curr_row[j + 1] = (curr_row[j] + 1)
+                .min(prev_row[j + 1] + 1)
+                .min(prev_row[j] + cost);
+        }
+        prev_row.copy_from_slice(&curr_row);
+    }
+    prev_row[len_b]
+}
+
+/// Calculates Word Error Rate (WER = edit_distance / reference_word_count).
+///
+/// Returns 0.0 for an exact match. If reference is empty, returns 0.0 if hypothesis is also empty, else 1.0.
+pub fn calculate_wer(hypothesis: &str, reference: &str) -> f32 {
+    let hyp_norm = normalize_text_for_eval(hypothesis);
+    let ref_norm = normalize_text_for_eval(reference);
+
+    let hyp_words: Vec<&str> = hyp_norm.split_whitespace().collect();
+    let ref_words: Vec<&str> = ref_norm.split_whitespace().collect();
+
+    if ref_words.is_empty() {
+        return if hyp_words.is_empty() { 0.0 } else { 1.0 };
+    }
+
+    let dist = levenshtein_distance(&hyp_words, &ref_words);
+    dist as f32 / ref_words.len() as f32
+}
+
+/// Calculates Character Error Rate (CER = edit_distance / reference_char_count).
+///
+/// Ignores whitespace between characters to handle CJK and code-switched scripts cleanly.
+pub fn calculate_cer(hypothesis: &str, reference: &str) -> f32 {
+    let hyp_norm = normalize_text_for_eval(hypothesis);
+    let ref_norm = normalize_text_for_eval(reference);
+
+    let hyp_chars: Vec<char> = hyp_norm.chars().filter(|c| !c.is_whitespace()).collect();
+    let ref_chars: Vec<char> = ref_norm.chars().filter(|c| !c.is_whitespace()).collect();
+
+    if ref_chars.is_empty() {
+        return if hyp_chars.is_empty() { 0.0 } else { 1.0 };
+    }
+
+    let dist = levenshtein_distance(&hyp_chars, &ref_chars);
+    dist as f32 / ref_chars.len() as f32
+}
+
+/// Identifies whether a Unicode character falls within CJK or East Asian scripts.
+pub fn is_cjk_char(c: char) -> bool {
+    matches!(c as u32,
+        0x4E00..=0x9FFF       // CJK Unified Ideographs
+        | 0x3400..=0x4DBF     // CJK Unified Ideographs Extension A
+        | 0x20000..=0x2A6DF   // CJK Extension B
+        | 0x3040..=0x309F     // Hiragana
+        | 0x30A0..=0x30FF     // Katakana
+        | 0xAC00..=0xD7AF     // Hangul Syllables
+    )
+}
+
+/// Splits transcription text into semantic token units for agreement matching.
+///
+/// In European languages, spaces delimit words; in CJK languages, each character
+/// is an independent semantic unit. This tokenizer treats each CJK character as its
+/// own token while grouping contiguous non-CJK characters into space-delimited words.
+pub fn tokenize_for_agreement(text: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+
+    for c in text.chars() {
+        if c.is_whitespace() {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+        } else if is_cjk_char(c) {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            tokens.push(c.to_string());
+        } else {
+            current.push(c);
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+/// Joins tokens into readable text, omitting spaces between adjacent CJK characters.
+pub fn join_tokens(tokens: &[String]) -> String {
+    let mut out = String::new();
+    let mut prev_is_cjk = false;
+
+    for (i, tok) in tokens.iter().enumerate() {
+        let tok_is_cjk = tok.chars().all(is_cjk_char);
+        if i > 0 {
+            if !prev_is_cjk || !tok_is_cjk {
+                out.push(' ');
+            }
+        }
+        out.push_str(tok);
+        prev_is_cjk = tok_is_cjk;
+    }
+    out
+}
+
+/// Implements LocalAgreement-2 algorithm for rolling window streaming ASR.
+///
+/// Compares consecutive decode hypotheses from sliding audio windows.
+/// Common prefix tokens that appear in both hypotheses are confirmed/committed,
+/// while the unconfirmed tail is emitted as tentative partial text.
+#[derive(Debug, Clone, Default)]
+pub struct LocalAgreement {
+    #[allow(dead_code)]
+    pub threshold: usize,
+    confirmed_prefix_len: usize,
+    prev_tokens: Vec<String>,
+}
+
+impl LocalAgreement {
+    pub fn new(threshold: usize) -> Self {
+        Self {
+            threshold: threshold.max(1),
+            confirmed_prefix_len: 0,
+            prev_tokens: Vec::new(),
+        }
+    }
+
+    /// Feeds a new hypothesis from the sliding window.
+    /// Returns `(newly_committed_text, tentative_partial_text)`.
+    pub fn feed(&mut self, hypothesis: &str) -> (String, String) {
+        let tokens = tokenize_for_agreement(hypothesis);
+        if tokens.is_empty() {
+            return (String::new(), String::new());
+        }
+
+        // Find common prefix with previous tokens
+        let mut match_len = 0;
+        while match_len < tokens.len()
+            && match_len < self.prev_tokens.len()
+            && tokens[match_len] == self.prev_tokens[match_len]
+        {
+            match_len += 1;
+        }
+
+        let mut committed = String::new();
+        if match_len > self.confirmed_prefix_len {
+            let newly_committed = &tokens[self.confirmed_prefix_len..match_len];
+            committed = join_tokens(newly_committed);
+            self.confirmed_prefix_len = match_len;
+        }
+
+        let partial = if self.confirmed_prefix_len < tokens.len() {
+            join_tokens(&tokens[self.confirmed_prefix_len..])
+        } else {
+            String::new()
+        };
+
+        self.prev_tokens = tokens;
+        (committed, partial)
+    }
+
+    /// Resets the agreement state for a new sentence or utterance.
+    pub fn reset(&mut self) {
+        self.confirmed_prefix_len = 0;
+        self.prev_tokens.clear();
+    }
+}
+
+/// Assembles a contextual prompt string for Whisper initial prompt context biasing.
+///
+/// Merges custom technical vocabulary, recent conversation turns, and active composer text,
+/// keeping the total size within Whisper's max prompt token budget (~800 characters).
+pub fn build_voice_prompt(
+    context_history: &[String],
+    composer_text: &str,
+    custom_vocab: &[String],
+) -> String {
+    let mut parts = Vec::new();
+
+    if !custom_vocab.is_empty() {
+        parts.push(format!("Vocabulary: {}.", custom_vocab.join(", ")));
+    }
+
+    for item in context_history.iter().rev().take(3).rev() {
+        let trimmed = item.trim();
+        if !trimmed.is_empty() {
+            parts.push(trimmed.to_string());
+        }
+    }
+
+    let comp = composer_text.trim();
+    if !comp.is_empty() {
+        parts.push(comp.to_string());
+    }
+
+    let mut result = parts.join(" ");
+    if result.len() > 800 {
+        // Keep the most recent 800 characters safely at character boundary
+        let start = result
+            .char_indices()
+            .map(|(i, _)| i)
+            .find(|&i| result.len() - i <= 800)
+            .unwrap_or(0);
+        result = result[start..].trim_start().to_string();
+    }
+    result
+}
+
+/// Builds the instruction prompt for LLM sentence context correction.
+pub fn build_polish_prompt(context: &str, original: &str) -> String {
+    format!(
+        "You are an automatic speech recognition (ASR) proofreader. \
+Given the conversation context, fix homophone errors, typos, and punctuation in the transcribed speech. \
+Keep the language and meaning identical. Return ONLY the corrected sentence without any introduction, explanations, or quotes.\n\n\
+Context: {}\n\
+Transcribed: {}\n\
+Corrected:",
+        context.trim(),
+        original.trim()
+    )
+}
+
+/// Cleans and sanitizes LLM output to extract just the polished transcript text.
+pub fn parse_polished_text(raw: &str) -> String {
+    let mut text = raw.trim();
+    if let Some(stripped) = text.strip_prefix("Corrected:") {
+        text = stripped.trim();
+    }
+    let is_quote = |c: char| matches!(c, '"' | '\'' | '“' | '”' | '`');
+    if text.starts_with(is_quote) && text.ends_with(is_quote) {
+        text = text.trim_matches(is_quote).trim();
+    }
+    text.to_string()
 }
 
 #[cfg(test)]

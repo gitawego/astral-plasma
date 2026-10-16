@@ -100,6 +100,11 @@ Singleton {
     property string voiceLanguage: ""
     /** Live partial text, only ever set from a real Partial event. */
     property string voicePartialText: ""
+    /** Stabilized text committed by LocalAgreement during streaming dictation. */
+    property string voiceCommittedText: ""
+    /** Context-polished text and undo state: { original: "", corrected: "", sentenceId: 0 } */
+    property var voiceLastPolished: null
+    signal voiceSentencePolished(string original, string corrected)
     /** The most recent finalized transcript, awaiting insertion into the composer. */
     property string voiceTranscript: ""
     /**
@@ -130,6 +135,10 @@ Singleton {
      * guessed", and the second is the one worth overriding.
      */
     property real voiceLanguageConfidence: -1
+    /** Whether continuous dictation mode is actively listening across pause segments. */
+    property bool voiceContinuousActive: false
+    /** Consecutive segments that yielded no speech words. */
+    property int voiceConsecutiveEmpty: 0
     /**
      * A session-scoped language override, or "" for the configured default.
      *
@@ -495,6 +504,10 @@ Singleton {
         if (!voiceMicUsable) return;
         if (voiceSessionProc.running) return;
 
+        voiceContinuousActive = (typeof Config !== "undefined" && Config.voiceContinuous !== undefined)
+            ? Config.voiceContinuous : true;
+        voiceConsecutiveEmpty = 0;
+
         voiceState = "recording";
         voiceLevel = 0.0;
         voiceElapsedMs = 0;
@@ -502,6 +515,8 @@ Singleton {
         voiceDetectedLanguage = "";
         voiceLanguageConfidence = -1;
         voicePartialText = "";
+        voiceCommittedText = "";
+        voiceLastPolished = null;
         voiceSetupMessage = "";
         voiceWarning = "";
         voiceTranscript = "";
@@ -526,8 +541,14 @@ Singleton {
 
     /** Finalizes capture and transcribes. */
     function stopVoiceInput() {
+        voiceContinuousActive = false;
+        voiceConsecutiveEmpty = 0;
         if (voiceSessionProc.running) {
             voiceSessionProc.write("stop\n");
+        } else {
+            voiceState = "idle";
+            voiceElapsedTimer.stop();
+            root.voiceLevel = 0.0;
         }
     }
 
@@ -560,10 +581,16 @@ Singleton {
     }
 
     /** Aborts capture, discarding audio without transcribing. */
-    function cancelVoiceInput() {        if (voiceSessionProc.running) {
+    function cancelVoiceInput() {
+        voiceContinuousActive = false;
+        voiceConsecutiveEmpty = 0;
+        if (voiceSessionProc.running) {
             voiceSessionProc.write("cancel\n");
         }
         voiceState = "idle";
+        voicePartialText = "";
+        voiceCommittedText = "";
+        voiceLastPolished = null;
         voiceElapsedTimer.stop();
     }
 
@@ -1429,6 +1456,17 @@ Singleton {
                     root.voiceLevel = voiceEventCodec.level(ev);
                 } else if (ev.type === "Partial") {
                     root.voicePartialText = voiceEventCodec.partial(ev);
+                } else if (ev.type === "Commit") {
+                    const commitObj = voiceEventCodec.commit(ev);
+                    if (commitObj.text && commitObj.text.length > 0) {
+                        root.voiceCommittedText += commitObj.text;
+                    }
+                } else if (ev.type === "Polished") {
+                    const polishedObj = voiceEventCodec.polished(ev);
+                    if (polishedObj.corrected && polishedObj.corrected.length > 0) {
+                        root.voiceLastPolished = polishedObj;
+                        root.voiceSentencePolished(polishedObj.original, polishedObj.corrected);
+                    }
                 } else if (ev.type === "Warning") {
                     // Non-fatal: the session continues. Cleared on next start.
                     root.voiceWarning = (ev.payload && ev.payload.message) || "Audio input warning";
@@ -1442,39 +1480,34 @@ Singleton {
                     root.voiceLanguageConfidence = typeof ev.payload.confidence === "number"
                         ? ev.payload.confidence
                         : -1;
-                } else if (ev.type === "Final") {                    // `payload` is the transcript object itself.
-                    //
-                    // The empty case is handled here, explicitly, rather than
-                    // left to the composer's change handler. Assigning `""` to
-                    // `voiceTranscript` when it is already `""` emits no change
-                    // signal, so `onVoiceTranscriptChanged` never ran and a
-                    // session that heard nothing ended with the microphone
-                    // visibly working and the composer silently untouched. An
-                    // honest outcome still has to be reported.
+                } else if (ev.type === "Final") {
+                    // `payload` is the transcript object itself.
                     const text = ev.payload.text || "";
                     root.voiceSpeechDetected = ev.payload.speech_detected !== false;
                     if (text.trim().length > 0) {
                         root.voiceTranscript = text;
                         root.voiceEmptyNotice = "";
+                        root.voiceConsecutiveEmpty = 0;
                     } else {
                         root.voiceTranscript = "";
-                        // Two different problems, and the distinction decides
-                        // where the user's attention should go.
-                        //
-                        // Both are kept short on purpose: the strip is 46 px and
-                        // the text elides, so a long sentence loses exactly the
-                        // actionable end. The first version read "…check the
-                        // microphone, or tr…" in the rendered proof.
-                        root.voiceEmptyNotice = root.voiceSpeechDetected
-                            ? "Heard you, but got no words - try again or use a larger model"
-                            : "No speech detected - check your microphone, then try again";
+                        root.voiceConsecutiveEmpty += 1;
+                        if (!root.voiceContinuousActive) {
+                            root.voiceEmptyNotice = root.voiceSpeechDetected
+                                ? "Heard you, but got no words - try again or use a larger model"
+                                : "No speech detected - check your microphone, then try again";
+                        }
                     }
+                    root.voiceCommittedText = "";
                     root.voiceLanguage = ev.payload.language || "und";
                     root.voicePartialText = "";
-                    root.voiceState = "idle";
-                    voiceElapsedTimer.stop();
-                    root.voiceLevel = 0.0;
+                    if (!root.voiceContinuousActive) {
+                        root.voiceState = "idle";
+                        voiceElapsedTimer.stop();
+                        root.voiceLevel = 0.0;
+                    }
                 } else if (ev.type === "Error") {
+                    root.voiceContinuousActive = false;
+                    root.voiceConsecutiveEmpty = 0;
                     root.voiceState = "failed";
                     voiceElapsedTimer.stop();
                     root.voiceLevel = 0.0;
@@ -1497,11 +1530,30 @@ Singleton {
         }
 
         onExited: (exitCode, exitStatus) => {
-            // The process exiting always means the microphone has been released.
-            voiceElapsedTimer.stop();
-            root.voiceLevel = 0.0;
             // Re-arm the start handshake for the next session.
             root.voiceAwaitingStart = false;
+
+            // Continuous dictation loop: keep listening to the microphone
+            // until the user explicitly stops recording (stopVoiceInput).
+            if (root.voiceContinuousActive && root.voiceMicUsable) {
+                root.voiceState = "recording";
+                root.voiceLevel = 0.0;
+                root.voicePartialText = "";
+                root.voiceEmptyNotice = "";
+                root.voiceAwaitingStart = true;
+
+                const command = root.voiceLanguageOverride.trim().length > 0
+                    ? [daemonBin, "voice", "session", "--lang", root.voiceLanguageOverride.trim()]
+                    : [daemonBin, "voice", "session"];
+                runProc(voiceSessionProc, command);
+                return;
+            }
+
+            voiceElapsedTimer.stop();
+            root.voiceLevel = 0.0;
+            root.voiceContinuousActive = false;
+            root.voiceConsecutiveEmpty = 0;
+
             if (root.voiceState === "recording" || root.voiceState === "finalizing") {
                 // Exited mid-session without a Final: surface it rather than
                 // leaving the composer looking like it is still listening.

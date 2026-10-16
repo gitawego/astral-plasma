@@ -109,7 +109,24 @@ fn check_voice_engine() -> DependencyCheck {
                 );
             }
         }
+
+        // GPU Acceleration & Realtime Context Polish diagnostic:
+        let has_gpu = crate::infrastructure::whisper_stt_adapter::has_gpu_hardware();
+        let has_backend = crate::infrastructure::whisper_stt_adapter::has_ggml_gpu_backend();
+        let has_llama = crate::infrastructure::whisper_stt_adapter::has_llama_server();
+
+        if has_gpu && has_backend && has_llama {
+            messages.push("GPU acceleration and llama.cpp context-polish available".to_string());
+        } else if has_gpu {
+            messages.push("GPU detected, but ggml-cuda and llama-cpp are not installed (running in slower CPU mode)".to_string());
+            if let Some(cmd) = crate::application::voice_service::VoiceService::local().gpu_install_command() {
+                recommendations.push(format!(
+                    "Accelerate realtime dictation & context polish with your GPU: {cmd}"
+                ));
+            }
+        }
     }
+
 
     // Input gain staging (audit §4.1): flag a saturated ALSA capture path.
     // Warn-only: never rewrites mixer controls. Absent `amixer` means "unknown",

@@ -79,6 +79,7 @@ impl VoiceService {
     /// Resolves an engine id to its adapter (pure dispatch, unit-tested).
     pub fn adapter_for_engine(engine_id: &str) -> Arc<dyn SpeechToTextPort> {
         match engine_id.trim() {
+            "soniox" => Arc::new(crate::infrastructure::soniox_stt_adapter::SonioxSttAdapter::new()),
             "deepgram" => Arc::new(crate::infrastructure::deepgram_stt_adapter::DeepgramAdapter::new()),
             "sherpa-onnx" => Arc::new(crate::infrastructure::sherpa_stt_adapter::SherpaOnnxAdapter::new()),
             _ => Arc::new(crate::infrastructure::whisper_stt_adapter::WhisperCppAdapter::new()),
@@ -117,7 +118,9 @@ impl VoiceService {
         if engine == crate::infrastructure::sherpa_stt_adapter::SHERPA_ENGINE_ID {
             return Some("pip install sherpa-onnx".to_string());
         }
-        if engine == crate::infrastructure::deepgram_stt_adapter::DEEPGRAM_ENGINE_ID {
+        if engine == crate::infrastructure::deepgram_stt_adapter::DEEPGRAM_ENGINE_ID
+            || engine == crate::infrastructure::soniox_stt_adapter::SONIOX_ENGINE_ID
+        {
             return None;
         }
         crate::domain::voice::package_manager_for_os_release(&os_release_text())
@@ -125,19 +128,34 @@ impl VoiceService {
             .map(str::to_string)
     }
 
+    pub fn gpu_install_command(&self) -> Option<String> {
+        let engine = self.settings.engine.trim();
+        if engine == crate::infrastructure::deepgram_stt_adapter::DEEPGRAM_ENGINE_ID
+            || engine == crate::infrastructure::soniox_stt_adapter::SONIOX_ENGINE_ID
+        {
+            return None;
+        }
+        crate::domain::voice::package_manager_for_os_release(&os_release_text())
+            .gpu_install_command()
+            .map(str::to_string)
+    }
+
     pub fn status(&self) -> VoiceStatus {
         let probe = self.engine.probe().unwrap_or_else(|_| EngineProbe::missing(&self.settings.engine));
         let is_deepgram = self.settings.engine.trim() == crate::infrastructure::deepgram_stt_adapter::DEEPGRAM_ENGINE_ID;
+        let is_soniox = self.settings.engine.trim() == crate::infrastructure::soniox_stt_adapter::SONIOX_ENGINE_ID;
         let is_sherpa = self.settings.engine.trim() == crate::infrastructure::sherpa_stt_adapter::SHERPA_ENGINE_ID;
 
         // Cloud engines have no binary: availability is key presence.
         let engine_available = if is_deepgram {
             crate::infrastructure::deepgram_stt_adapter::read_key().is_some()
+        } else if is_soniox {
+            crate::infrastructure::soniox_stt_adapter::read_key().is_some()
         } else {
             probe.binary_path.is_some()
         };
 
-        let model_present = if is_deepgram {
+        let model_present = if is_deepgram || is_soniox {
             true
         } else if is_sherpa {
             crate::infrastructure::sherpa_stt_adapter::resolve_sherpa_model(&self.settings.model).is_some()
@@ -158,6 +176,17 @@ impl VoiceService {
 
         let descriptor = crate::domain::voice::model_by_id(&self.settings.model);
         let (models_available, languages) = self.catalogs();
+
+        let has_gpu_hw = crate::infrastructure::whisper_stt_adapter::has_gpu_hardware();
+        let has_backend = crate::infrastructure::whisper_stt_adapter::has_ggml_gpu_backend();
+        let has_llama = crate::infrastructure::whisper_stt_adapter::has_llama_server();
+        let gpu_available = has_backend && has_gpu_hw;
+        let gpu_cmd = if has_gpu_hw && (!has_backend || !has_llama) {
+            self.gpu_install_command()
+        } else {
+            None
+        };
+
         VoiceStatus {
             enabled: self.settings.enabled,
             engine: self.settings.engine.clone(),
@@ -178,6 +207,8 @@ impl VoiceService {
             setup_complete: gap == SetupGap::Ready,
             gap,
             engine_install_command: if engine_available { None } else { self.engine_install_command() },
+            gpu_acceleration_available: gpu_available,
+            gpu_install_command: gpu_cmd,
             models_available,
             languages,
             capabilities: probe.capabilities,
@@ -554,6 +585,23 @@ pub fn parse_curl_progress(line: &str) -> Option<u64> {
 /// Loads voice settings from the user config, falling back to shipped defaults.
 ///
 /// A missing, unreadable or malformed file yields defaults rather than an error:
+/// Parses voice settings from a JSON string, falling back to defaults if missing or invalid.
+pub fn parse_settings(raw: &str) -> VoiceSettings {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return VoiceSettings::default();
+    };
+    let block = match value.get("voice") {
+        Some(v) => v.clone(),
+        None => return VoiceSettings::default(),
+    };
+    serde_json::from_value::<VoiceSettings>(block)
+        .map(|s| s.sanitized())
+        .unwrap_or_default()
+}
+
+/// Loads voice settings from the user config, falling back to shipped defaults.
+///
+/// A missing, unreadable or malformed file yields defaults rather than an error:
 /// the shell must always start.
 pub fn load_settings() -> VoiceSettings {
     let candidates = [
@@ -566,17 +614,7 @@ pub fn load_settings() -> VoiceSettings {
         let Ok(raw) = std::fs::read_to_string(&path) else {
             continue;
         };
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
-            continue;
-        };
-        let block = match value.get("voice") {
-            Some(v) => v.clone(),
-            None => return VoiceSettings::default(),
-        };
-        return match serde_json::from_value::<VoiceSettings>(block) {
-            Ok(s) => s.sanitized(),
-            Err(_) => VoiceSettings::default(),
-        };
+        return parse_settings(&raw);
     }
     VoiceSettings::default()
 }
@@ -932,7 +970,12 @@ mod tests {
     fn load_settings_falls_back_to_defaults() {
         // Must never panic or error, whatever is on disk.
         let s = load_settings();
-        assert_eq!(s.model, crate::domain::voice::DEFAULT_MODEL_ID);
+        assert!(!s.model.is_empty());
+
+        // Explicit fallback tests for parse_settings
+        assert_eq!(parse_settings("").model, crate::domain::voice::DEFAULT_MODEL_ID);
+        assert_eq!(parse_settings("{}").model, crate::domain::voice::DEFAULT_MODEL_ID);
+        assert_eq!(parse_settings("not-valid-json").model, crate::domain::voice::DEFAULT_MODEL_ID);
     }
 
     #[test]

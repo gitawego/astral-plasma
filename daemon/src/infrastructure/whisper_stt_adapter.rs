@@ -134,7 +134,37 @@ fn is_executable(_path: &Path) -> bool {
     true
 }
 
+/// Detects whether physical discrete or integrated GPU hardware exists.
+pub fn has_gpu_hardware() -> bool {
+    if which("nvidia-smi").is_ok() {
+        return true;
+    }
+    // Check sysfs DRM render nodes
+    if std::path::Path::new("/dev/dri/renderD128").exists() {
+        return true;
+    }
+    false
+}
+
+/// Detects whether ggml GPU acceleration library (CUDA or Vulkan) is installed.
+pub fn has_ggml_gpu_backend() -> bool {
+    let candidate_dirs = ["/usr/lib/ggml", "/usr/lib", "/usr/local/lib/ggml", "/usr/local/lib"];
+    for dir in candidate_dirs {
+        let p = std::path::Path::new(dir);
+        if p.join("libggml-cuda.so").exists() || p.join("libggml-vulkan.so").exists() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Detects whether llama-server is installed.
+pub fn has_llama_server() -> bool {
+    which("llama-server").is_ok()
+}
+
 /// Resolves the models directory, honouring the test override.
+
 pub fn models_dir() -> PathBuf {
     match std::env::var(MODEL_DIR_ENV) {
         Ok(d) if !d.is_empty() => PathBuf::from(d),
@@ -175,6 +205,7 @@ pub fn probe_capabilities(help_text: &str) -> EngineCapabilities {
         no_prints: has("--no-prints") || has("-np"),
         threads: has("--threads") || has("-t "),
         translate: has("--translate"),
+        prompt: has("--prompt"),
     }
 }
 
@@ -230,6 +261,8 @@ pub struct EngineInvocation {
     /// trusted. Always a real language -- the user's locale -- so "we were not
     /// sure" resolves to the right alphabet rather than to a second guess.
     pub fallback_language: String,
+    pub allowed_languages: Vec<String>,
+    pub prompt: Option<String>,
     pub threads: usize,
     pub capabilities: EngineCapabilities,
 }
@@ -295,6 +328,14 @@ pub fn build_args(inv: &EngineInvocation, audio_path: &Path, audio_duration_ms: 
     if caps.threads {
         args.push("-t".to_string());
         args.push(inv.threads.to_string());
+    }
+    if caps.prompt {
+        if let Some(ref p) = inv.prompt {
+            if !p.trim().is_empty() {
+                args.push("--prompt".to_string());
+                args.push(p.trim().to_string());
+            }
+        }
     }
     // Size the encoder window to the utterance. whisper.cpp encodes
     // `n_audio_ctx * 20ms` per window no matter how short the clip is, so the
@@ -651,6 +692,7 @@ fn is_banner_line(line: &str) -> bool {
 }
 
 /// The local whisper.cpp speech-to-text adapter.
+#[derive(Clone)]
 pub struct WhisperCppAdapter {
     binary: Option<PathBuf>,
     capabilities: EngineCapabilities,
@@ -693,7 +735,14 @@ impl WhisperCppAdapter {
         }
     }
 
-    fn prepare(&self, model_id: &str, language: &str, fallback: &str) -> DynResult<EngineInvocation> {
+    fn prepare(
+        &self,
+        model_id: &str,
+        language: &str,
+        fallback: &str,
+        allowed_languages: &[String],
+        prompt: Option<String>,
+    ) -> DynResult<EngineInvocation> {
         let binary = self
             .binary
             .clone()
@@ -718,6 +767,8 @@ impl WhisperCppAdapter {
             } else {
                 fallback.to_string()
             },
+            allowed_languages: allowed_languages.to_vec(),
+            prompt,
             threads: self.threads,
             capabilities: self.capabilities.clone(),
         })
@@ -798,6 +849,23 @@ impl SpeechToTextPort for WhisperCppAdapter {
 }
 
 impl WhisperCppAdapter {
+    /// Transcribes an existing audio file directly without opening the capture device.
+    ///
+    /// Used by benchmarks, doctor diagnostics, and off-line evaluation.
+    pub fn transcribe_file(
+        &self,
+        audio_path: &Path,
+        model_id: &str,
+        language: &str,
+    ) -> DynResult<Transcript> {
+        let inv = self.prepare(model_id, language, "", &[], None)?;
+        let meta = std::fs::metadata(audio_path)
+            .map_err(|e| -> DynError { format!("Cannot read audio file {}: {e}", audio_path.display()).into() })?;
+        // Approximate duration from file size if WAV
+        let duration_ms = (meta.len().saturating_sub(44) as u64 * 1000) / (16000 * 2);
+        self.transcribe(&inv, audio_path, duration_ms, model_id)
+    }
+
     /// Session entry point with an explicit cancellation handle, so the CLI can
     /// wire a control channel to it.
     pub fn run_session_impl(
@@ -806,7 +874,13 @@ impl WhisperCppAdapter {
         cancel: &CancelHandle,
         sink: &mut dyn FnMut(VoiceEvent),
     ) -> DynResult<Transcript> {
-        let inv = match self.prepare(&cfg.model, &cfg.language, &cfg.fallback_language()) {
+        let inv = match self.prepare(
+            &cfg.model,
+            &cfg.language,
+            &cfg.fallback_language(),
+            &cfg.allowed_languages,
+            cfg.prompt.clone(),
+        ) {
             Ok(inv) => inv,
             Err(e) => {
                 // A missing engine or model is a setup gap the user can fix from
@@ -821,14 +895,33 @@ impl WhisperCppAdapter {
             state: crate::domain::voice::VoiceState::Recording,
         });
 
+        let resident_sock = crate::infrastructure::voice_server::ensure_resident_server();
+        let wants_streaming = std::env::var("ASTRAL_VOICE_STREAMING")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or_else(|_| resident_sock.is_some() || std::env::var("ASTRAL_VOICE_SERVER_SOCK").is_ok());
+        let mut decoder = if wants_streaming && inv.binary.is_file() {
+            Some(StreamingDecoder::new(
+                self.clone(),
+                inv.clone(),
+                cfg.clone(),
+                0,
+            ))
+        } else {
+            None
+        };
+
         let (full_pcm, energy_first, energy_last, energy_speech) =
-            match capture_utterance_shared(cfg, cancel, sink) {
+            match capture_utterance_streaming(cfg, cancel, sink, decoder.as_mut()) {
                 Ok(captured) => captured,
                 Err(e) => {
                     sink(VoiceEvent::fatal_error(e.to_string()));
                     return Err(e);
                 }
             };
+
+        if let Some(mut dec) = decoder {
+            dec.finish(sink);
+        }
 
         // Speech gating and trimming (audit §4.2): neural segment bounds win
         // when the VAD is provisioned; otherwise the energy detector's verdict
@@ -910,6 +1003,20 @@ impl WhisperCppAdapter {
         };
 
         sink(VoiceEvent::Final(transcript.clone()));
+
+        // Asynchronous contextual LLM proofreader pass (Layer 2 auto-correction)
+        let polisher = crate::infrastructure::voice_polisher::VoicePolisher::new();
+        let context = cfg.prompt.clone().unwrap_or_default();
+        let original_text = transcript.text.clone();
+        if !original_text.is_empty() {
+            if let Some(corrected) = polisher.polish(&context, &original_text) {
+                sink(VoiceEvent::Polished {
+                    sentence_id: 0,
+                    original: original_text,
+                    corrected,
+                });
+            }
+        }
         Ok(transcript)
     }
 }
@@ -970,10 +1077,14 @@ impl WhisperCppAdapter {
         sink: &mut dyn FnMut(VoiceEvent),
     ) -> DynResult<Transcript> {
         let wants_detection = inv.language == LANGUAGE_AUTO;
-        // Single prior: pinned wins outright, `auto` uses the locale fallback.
-        // No second decode is ever triggered from a low confidence reading.
+        // Single prior: pinned wins outright, `auto` uses allowed set fallback.
+        // Spurious out-of-set detections are filtered via allowed_languages.
         let prior = if wants_detection {
-            inv.fallback_language.clone()
+            crate::domain::voice::resolve_effective_language(
+                None,
+                &inv.allowed_languages,
+                &inv.fallback_language,
+            )
         } else {
             inv.language.clone()
         };
@@ -989,25 +1100,29 @@ impl WhisperCppAdapter {
         };
 
         if wants_detection {
-            // Display-only reading from the decode just finished. Confidence is
-            // `None`: single-pass decoding reports a tag, not a probability.
-            // Still emitted before `Final` so D8's strip affordance holds.
-            let detected = if transcript.language.trim().is_empty() {
+            // Display-only reading from the decode just finished.
+            // Constrained against allowed_languages so spurious detections are overridden.
+            let raw_detected = transcript.language.trim();
+            let effective_lang = if raw_detected.is_empty() {
                 prior.clone()
             } else {
-                transcript.language.clone()
+                crate::domain::voice::resolve_effective_language(
+                    Some(raw_detected),
+                    &inv.allowed_languages,
+                    &prior,
+                )
             };
-            let source = if detected == prior {
+            let source = if effective_lang == raw_detected && !raw_detected.is_empty() {
                 LanguageSource::Detected
             } else {
                 LanguageSource::DetectedOverridden
             };
             sink(VoiceEvent::Detected {
-                language: detected.clone(),
+                language: effective_lang.clone(),
                 confidence: None,
             });
             Ok(Transcript {
-                language: detected,
+                language: effective_lang,
                 language_confidence: None,
                 language_source: source,
                 ..transcript
@@ -1102,10 +1217,15 @@ impl WhisperCppAdapter {
         duration_ms: u64,
         model_id: &str,
     ) -> Option<DynResult<Transcript>> {
-        let sock = std::env::var("ASTRAL_VOICE_SERVER_SOCK").ok()?;
-        if sock.trim().is_empty() {
-            return None;
-        }
+        let sock = if let Ok(s) = std::env::var("ASTRAL_VOICE_SERVER_SOCK") {
+            if !s.trim().is_empty() {
+                PathBuf::from(s)
+            } else {
+                crate::infrastructure::voice_server::ensure_resident_server()?
+            }
+        } else {
+            crate::infrastructure::voice_server::ensure_resident_server()?
+        };
         let wav = std::fs::read(audio_path).ok()?;
         let header = serde_json::json!({
             "language": _inv.language,
@@ -1303,6 +1423,16 @@ pub(crate) fn capture_utterance_shared(
     cancel: &CancelHandle,
     sink: &mut dyn FnMut(VoiceEvent),
 ) -> DynResult<(Vec<u8>, Option<usize>, Option<usize>, bool)> {
+    capture_utterance_streaming(cfg, cancel, sink, None)
+}
+
+/// Records one utterance, supporting live sliding-window streaming partials.
+pub(crate) fn capture_utterance_streaming(
+    cfg: &VoiceSessionConfig,
+    cancel: &CancelHandle,
+    sink: &mut dyn FnMut(VoiceEvent),
+    mut streaming: Option<&mut StreamingDecoder>,
+) -> DynResult<(Vec<u8>, Option<usize>, Option<usize>, bool)> {
     // Backend selection (audit architecture table): an explicit capture-binary
     // override always takes the spawn path (it IS the test seam); otherwise
     // `ASTRAL_VOICE_CAPTURE_BACKEND=native` opts into in-process capture.
@@ -1313,7 +1443,7 @@ pub(crate) fn capture_utterance_shared(
             &std::env::var(CAPTURE_BACKEND_ENV).unwrap_or_default(),
         ) == crate::domain::voice::CaptureBackend::Native
     {
-        return capture_utterance_native(cfg, cancel, sink);
+        return capture_utterance_native(cfg, cancel, sink, streaming);
     }
     let args = match resolve_capture_node(cfg) {
         Some(node) => crate::domain::voice::pw_record_args_for_node(
@@ -1426,6 +1556,7 @@ pub(crate) fn capture_utterance_shared(
         sink,
         cfg,
         frame_bytes,
+        streaming.as_deref_mut(),
     );
 
     // Retire the watchdog, then reap the child. The order is load-bearing:
@@ -1463,6 +1594,7 @@ fn capture_utterance_native(
     cfg: &VoiceSessionConfig,
     cancel: &CancelHandle,
     sink: &mut dyn FnMut(VoiceEvent),
+    mut streaming: Option<&mut StreamingDecoder>,
 ) -> DynResult<(Vec<u8>, Option<usize>, Option<usize>, bool)> {
     if cfg.sample_rate != crate::domain::voice::SPEECH_SAMPLE_RATE {
         return Err("native capture supports 16 kHz sessions only".into());
@@ -1478,7 +1610,7 @@ fn capture_utterance_native(
     let mut noop = || {};
     let result = capture_loop(
         &mut source, &mut noop, &mut pcm, &mut detector, started, &mut speech, cancel, sink,
-        cfg, frame_bytes,
+        cfg, frame_bytes, streaming.as_deref_mut(),
     );
     drop(stream);
     result.map(|pcm| (pcm, speech.first, speech.last, detector.has_speech()))
@@ -1694,6 +1826,125 @@ impl SpeechBounds {
     }
 }
 
+/// Background rolling-window streaming decoder.
+///
+/// Periodically receives PCM snapshots from the capture loop and decodes them
+/// in a background worker thread. Emits `VoiceEvent::Commit` for stabilized tokens
+/// and `VoiceEvent::Partial` for tentative hypotheses via `LocalAgreement`.
+pub struct StreamingDecoder {
+    tx: std::sync::mpsc::SyncSender<Option<Vec<u8>>>,
+    pub rx_out: std::sync::mpsc::Receiver<String>,
+    worker_handle: Option<std::thread::JoinHandle<()>>,
+    pub agreement: crate::domain::voice::LocalAgreement,
+    pub sentence_id: u64,
+    pub committed_text: String,
+    pub partial_text: String,
+}
+
+impl StreamingDecoder {
+    pub fn new(
+        adapter: WhisperCppAdapter,
+        inv: EngineInvocation,
+        cfg: VoiceSessionConfig,
+        sentence_id: u64,
+    ) -> Self {
+        let (tx, rx_in) = std::sync::mpsc::sync_channel::<Option<Vec<u8>>>(1);
+        let (tx_out, rx_out) = std::sync::mpsc::sync_channel::<String>(8);
+
+        let model_id = cfg.model.clone();
+        let worker_handle = std::thread::spawn(move || {
+            let mut file_idx = 0usize;
+            while let Ok(Some(pcm)) = rx_in.recv() {
+                // Ignore tiny clips (< 250ms)
+                if pcm.len() < (crate::domain::voice::SPEECH_SAMPLE_RATE as usize * 2) / 4 {
+                    continue;
+                }
+                // Neural VAD gating: skip snapshot if VAD specifically judged this as silence
+                if let Some((_, false)) = apply_neural_vad(&pcm, &cfg) {
+                    continue;
+                }
+                if let Some(p) = vad_generic_prob(&pcm) {
+                    if !vad_is_speech(p) {
+                        continue;
+                    }
+                }
+
+                let spec = PcmSpec::speech();
+                let duration_ms = spec.duration_ns(pcm.len()) / 1_000_000;
+                let wav = wav_container(spec, &pcm);
+                let tmp_file = std::env::temp_dir().join(format!("astral-streaming-{}-{}.wav", std::process::id(), file_idx));
+                file_idx += 1;
+                if std::fs::write(&tmp_file, &wav).is_ok() {
+                    let text = if let Some(Ok(res)) = adapter.transcribe_via_server(&inv, &tmp_file, duration_ms, &model_id) {
+                        res.text
+                    } else if let Ok(res) = adapter.transcribe(&inv, &tmp_file, duration_ms, &model_id) {
+                        res.text
+                    } else {
+                        String::new()
+                    };
+                    let _ = std::fs::remove_file(&tmp_file);
+                    let _ = std::fs::remove_file(json_sidecar_path(&tmp_file));
+                    if !text.is_empty() {
+                        let _ = tx_out.send(text);
+                    }
+                }
+            }
+        });
+
+        Self {
+            tx,
+            rx_out,
+            worker_handle: Some(worker_handle),
+            agreement: crate::domain::voice::LocalAgreement::new(2),
+            sentence_id,
+            committed_text: String::new(),
+            partial_text: String::new(),
+        }
+    }
+
+    pub fn with_receiver(rx_out: std::sync::mpsc::Receiver<String>, sentence_id: u64) -> Self {
+        let (tx, _) = std::sync::mpsc::sync_channel::<Option<Vec<u8>>>(1);
+        Self {
+            tx,
+            rx_out,
+            worker_handle: None,
+            agreement: crate::domain::voice::LocalAgreement::new(2),
+            sentence_id,
+            committed_text: String::new(),
+            partial_text: String::new(),
+        }
+    }
+
+    pub fn push_snapshot(&self, pcm: &[u8]) {
+        let _ = self.tx.try_send(Some(pcm.to_vec()));
+    }
+
+    pub fn poll_events(&mut self, sink: &mut dyn FnMut(VoiceEvent)) {
+        while let Ok(hypothesis) = self.rx_out.try_recv() {
+            let (newly_committed, tentative_partial) = self.agreement.feed(&hypothesis);
+            if !newly_committed.is_empty() {
+                self.committed_text.push_str(&newly_committed);
+                sink(VoiceEvent::Commit {
+                    sentence_id: self.sentence_id,
+                    text: newly_committed,
+                });
+            }
+            self.partial_text = tentative_partial.clone();
+            sink(VoiceEvent::Partial {
+                text: self.partial_text.clone(),
+            });
+        }
+    }
+
+    pub fn finish(&mut self, sink: &mut dyn FnMut(VoiceEvent)) {
+        let _ = self.tx.send(None);
+        if let Some(handle) = self.worker_handle.take() {
+            let _ = handle.join();
+        }
+        self.poll_events(sink);
+    }
+}
+
 /// The frame loop, factored out so the watchdog can own the hard cap.
 #[allow(clippy::too_many_arguments)]
 fn capture_loop(
@@ -1707,10 +1958,12 @@ fn capture_loop(
     sink: &mut dyn FnMut(VoiceEvent),
     cfg: &VoiceSessionConfig,
     frame_bytes: usize,
+    mut streaming: Option<&mut StreamingDecoder>,
 ) -> DynResult<Vec<u8>> {
     let mut pending: Vec<u8> = Vec::with_capacity(frame_bytes * 2);
     let mut chunk = vec![0u8; frame_bytes * 8];
     let mut frame_index = 0usize;
+    let mut last_stream_snapshot_frame = 0usize;
     // Opening-window clipping audit (audit §4.1): collect normalized samples
     // for the first CLIPPING_WINDOW_MS, then emit one warn-only Warning event.
     // Never aborts the session; never touches ALSA.
@@ -1728,6 +1981,10 @@ fn capture_loop(
         };
         pending.extend_from_slice(&chunk[..n]);
 
+        if let Some(stream_dec) = streaming.as_deref_mut() {
+            stream_dec.poll_events(sink);
+        }
+
         let mut consumed = 0usize;
         while pending.len() - consumed >= frame_bytes {
             let frame: Vec<u8> = pending[consumed..consumed + frame_bytes].to_vec();
@@ -1740,6 +1997,14 @@ fn capture_loop(
             frame_index += 1;
             sink(VoiceEvent::Level { rms: level });
             pcm.extend_from_slice(&frame);
+
+            if let Some(stream_dec) = streaming.as_deref_mut() {
+                stream_dec.poll_events(sink);
+                if detector.has_speech() && frame_index.saturating_sub(last_stream_snapshot_frame) >= 25 {
+                    last_stream_snapshot_frame = frame_index;
+                    stream_dec.push_snapshot(pcm);
+                }
+            }
 
             if !clip_warned && clip_probe.len() < clip_probe_max {
                 clip_probe.extend_from_slice(&floats);
@@ -1989,6 +2254,8 @@ mod tests {
             model: PathBuf::from("/models/ggml-base.bin"),
             language: "auto".into(),
             fallback_language: "en".to_string(),
+            allowed_languages: Vec::new(),
+            prompt: None,
             threads: 8,
             capabilities: EngineCapabilities::default(),
         };
@@ -2014,6 +2281,8 @@ mod tests {
             model: PathBuf::from("/models/ggml-base.bin"),
             language: "zh".into(),
             fallback_language: "en".to_string(),
+            allowed_languages: Vec::new(),
+            prompt: None,
             threads: 4,
             capabilities: EngineCapabilities {
                 reads_stdin: true,
@@ -2029,6 +2298,7 @@ mod tests {
                 no_prints: true,
                 threads: true,
                 translate: true,
+                prompt: true,
             },
         };
         let args = build_args(&inv, Path::new("/tmp/u.wav"), 4_000);
@@ -2054,6 +2324,8 @@ mod tests {
             model: PathBuf::from("/m.bin"),
             language: "auto".into(),
             fallback_language: "en".to_string(),
+            allowed_languages: Vec::new(),
+            prompt: None,
             threads: 1,
             capabilities: EngineCapabilities {
                 reads_stdin: true,
@@ -2209,9 +2481,8 @@ mod tests {
         args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned()
     }
 
-    fn server_env_lock() -> &'static std::sync::Mutex<()> {
-        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        LOCK.get_or_init(|| std::sync::Mutex::new(()))
+    pub(crate) fn server_env_lock() -> &'static std::sync::Mutex<()> {
+        crate::infrastructure::voice_server::server_env_lock()
     }
 
     #[test]
@@ -2258,6 +2529,8 @@ mod tests {
                 model: PathBuf::from("/models/ggml-tiny.bin"),
                 language: "en".into(),
                 fallback_language: "en".into(),
+                allowed_languages: Vec::new(),
+                prompt: None,
                 threads: 1,
                 capabilities: EngineCapabilities::default(),
             };
@@ -2290,6 +2563,8 @@ mod tests {
             model: PathBuf::from("/models/ggml-tiny.bin"),
             language: "en".into(),
             fallback_language: "en".into(),
+            allowed_languages: Vec::new(),
+            prompt: None,
             threads: 1,
             capabilities: EngineCapabilities::default(),
         };

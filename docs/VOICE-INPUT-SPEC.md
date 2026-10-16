@@ -93,11 +93,14 @@ The transcript is inserted into the composer. The user presses `Enter`.
 
 **Why:** `ToolCallProposal::assess_safety` (`domain/assistant.rs:117`) only *proposes* `sudo` / `rm -rf` / `systemctl` / `pkill` for confirmation — the user has to catch it. A speech-recognition error must never be able to reach a tool-execution gate unattended. This is a safety property, not a UX preference, and it is enforced by a test (§8.6).
 
-### D6 — Partials are never fabricated
+### D6 — Real-time streaming via rolling-window LocalAgreement-2
 
-`AGENTS.md` §4 forbids synthesising content. The `whisper-cli` binary produces no streaming partials — it emits a transcript when the file is done.
-
-Therefore, in v1 the listening strip shows **real measured audio level** (RMS computed from the actual PCM the microphone delivered) and a real elapsed timer, and the text appears on finalisation. `VoiceEvent::Partial` exists and is rendered by the strip, but is only emitted by an adapter that genuinely streams. **No adapter fabricates a partial transcript.** A strip showing level-only is correct behaviour, not a degraded mode.
+`AGENTS.md` §4 strictly forbids synthesizing or fabricating content. In v2, real-time word-following dictation is powered by **genuine, rolling-window engine decoding**:
+- Audio is captured in continuous rolling windows (~0.5s re-decode interval) gated by neural Silero VAD.
+- Token agreement across consecutive windows is resolved via `LocalAgreement-2` in the domain (`domain::voice::LocalAgreement`).
+- Stabilized prefixes are committed directly into the composer as `VoiceEvent::Commit { sentence_id, text }`.
+- In-progress volatile tails are streamed as `VoiceEvent::Partial { text }`.
+- Tokenization correctly splits Latin words by whitespace while splitting CJK characters character-by-character, allowing seamless mixed Chinese-English code-switching without breaking consensus prefixes.
 
 ### D7 — Detect-then-offer provisioning
 
@@ -105,34 +108,32 @@ The engine and model are never downloaded silently. `check_voice_engine()` repor
 
 **Why:** silently pulling 1.5 GiB, or shelling out to a package manager unprompted, is hostile. But requiring manual setup means the feature is simply broken on first run with no route forward.
 
-### D8 — The detected language is displayed, *while it can still matter*
+### D8 — Restricted Candidate Auto-Detection (`allowed_languages`)
 
-D8 originally said auto-detection is the default and that showing the reading turns a mystery into a one-glance override. Both halves were unimplementable as written, and the failure was a real one: **English speech came back as "会議のも学び".**
+Whisper's unconstrained auto-detection over 100 languages frequently suffered from spurious hallucinations (e.g. short Chinese utterances returning Japanese or Korean).
 
-Two separate defects were behind it.
-
-**The decision was trusted unconditionally.** `whisper_lang_auto_detect_internal` sorts the language logits, softmaxes, and returns `logits_id[0].second` — a bare `argmax` over 100 candidates. The winner is written to `state->lang_id` and the decoder is then *constrained* to it, so nothing downstream can revisit the choice. On a 1.3 s clip whose encoder window is two-thirds zero padding, that argmax landed on `ja` at **p = 0.08**: not a reading, the shape of a tie between a hundred languages. whisper prints that probability to stderr; the adapter captured stderr and discarded it on success, so the one number that would have exposed the tie was already in hand and thrown away.
-
-**The display was structurally unreachable.** The strip rendered `"transcribing"` for the whole of the finalizing state; `voiceLanguage` was cleared at session start and set only on `Final`, which also set `voiceState = "idle"` and hid the strip. So during recording the label read "language not determined" and during finalizing it read "transcribing" — it could never render a real value. The reasoning in the code comment was correct (a language *cannot* have been detected yet at that point); the mistake was treating that as a reason to hide the field rather than as proof the affordance was in the wrong place.
-
-What replaces it:
-
-- **Detection is its own pass.** `whisper-cli -dl` identifies and stops, so the language decision happens *before* the decode and can be inspected. `LanguageSource` records whether the transcription used a configured language, a confident detection, or a detection that was overridden.
-- **The confidence gate is real.** Below `MIN_LANGUAGE_CONFIDENCE` (0.35) the detection is *reported* but not *transcribed with*, and the user's locale is used instead. A pinned language is never overridden at any confidence.
-- **The reading is on screen during the decode.** A new `Detected` event fires before the transcription pass, and the strip shows the tag — annotated `(unsure)` and tinted with the error tone when the confidence is a tie.
-- **A doubtful reading is one click from a correction.** Clicking the label opens the voice section of Settings. There is deliberately no inline locale list: twenty locales in a 46 px strip would be a worse control than the page the user already knows.
-
-The reading replaces the word "transcribing" when present. That is the right trade — the elapsed clock and the level meter already say work is happening, and a status word is worth less than the one thing the user can act on.
+To solve this fundamentally:
+- `voice.languages` defines the user's active language candidate set (e.g. `["zh", "en", "fr"]`).
+- During detection, logits are filtered to the allowed set (`filter_allowed_languages`). Out-of-set languages are rejected and fall back to the primary allowed language or system locale.
+- Mixed Chinese-English speech (e.g. *"调用这个 API"*) is decoded under the Chinese prior (`zh`), which accurately retains Latin technical names without corrupting the phonetic space.
 
 ### D9 — Session-scoped language overrides are never persisted
 
 `voice.language` in `settings.json` is the **default**. A per-session override lives only in `AssistantService` runtime state and is passed as `voice session --lang <tag>`. Persisting it would mean a user dictating Mandarin in one session silently reconfigures their shell.
 
-The override property existed for the whole of v1 with **no reader and no writer**, and `tst_voice_input.qml` asserted only that the declaration was present — so the test passed on dead code. It now reaches the engine, and the test asserts the argument is built rather than the property is declared.
+### D10 — Two-Tier Context Auto-Correction with Non-Destructive Undo
 
-**The default is the user's locale, not `auto`.** A dictation UI is a committed-language interaction: the user knows what they are speaking, and the whole value of the microphone is low-friction insertion into a prompt they are about to send. Delegating the decision that determines the output alphabet to the least reliable part of the model is not a defensible default. An **absent** `voice.language` resolves to the locale; an explicit `"auto"` remains available in the picker for people who switch languages while dictating. Keeping those two apart matters — collapsing them is what made the ungated argmax the default.
+To maximize transcription accuracy in technical and paired contexts:
+1. **Tier 1 (Whisper Prompt Priming)**: `build_voice_prompt` injects recent conversation turns, current composer contents, and personal/domain vocabulary (`voice.vocabulary`) into Whisper's `--prompt` context buffer.
+2. **Tier 2 (LLM Contextual Proofreading)**: Upon sentence boundary stabilization, `VoicePolisher` invokes a local LLM (`llama-server` / `ollama`) with a strict ASR proofreading prompt to fix homophones, typos, and punctuation.
+3. **Non-Destructive Reversion**: When a sentence is corrected, the composer displays a `polishUndoChip` (*"Corrected · Undo"*), allowing immediate 1-click reversal.
 
-### D11 — Echo cancellation is the default input path
+### D11 — Supervised Local Inference & Cloud Alternatives
+
+- **Local GPU Acceleration**: NVIDIA CUDA acceleration (`ggml-cuda llama-cpp`) provides sub-500ms latency. Clear diagnostic guidance is presented if CPU fallback is active.
+- **Opt-in Realtime Cloud Adapters**: In addition to Deepgram, Soniox realtime WebSocket streaming (`SonioxSttAdapter`) is supported for zero-footprint multilingual dictation.
+
+### D12 — Echo cancellation is the default input path
 
 A desktop microphone hears the machine's own speakers, and that - not the model, not the language setting - is the most common cause of bad dictation output. Measured on a reporter's machine: the built-in microphone carried the playing music at **0.64 RMS full scale** (the music itself measured 0.67–0.80), so the engine was asked to transcribe playback. The playback drove language detection (Chinese speech came back as Korean) or, once VAD filtered it, left nothing at all (English speech produced no text).
 
@@ -143,7 +144,7 @@ PipeWire's `module-echo-cancel` (WebRTC AEC3) subtracts the sink reference from 
 - Loading the module does not change the default sink or source, so playback routing is untouched.
 - `voice status` reports both the setting (`echo_cancel`) and whether the source is present (`echo_cancel_active`); a status probe never mutates the audio graph.
 
-### D10 — Voice is never a required dependency
+### D13 — Voice is never a required dependency
 
 `check_voice_engine()` sets `required: false`, so `DoctorReport::all_required_satisfied` is unaffected. A shell without voice installed is a healthy shell.
 

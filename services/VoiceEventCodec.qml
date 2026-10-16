@@ -45,4 +45,28 @@ QtObject {
         const text = (typeof payload === "object") ? payload.text : payload;
         return (typeof text === "string") ? text : "";
     }
+
+    /**
+     * Stabilized text from a `Commit` event, emitted by LocalAgreement during streaming.
+     */
+    function commit(event) {
+        if (!event || !event.payload) return { sentenceId: 0, text: "" };
+        const payload = event.payload;
+        const text = (typeof payload === "object" && typeof payload.text === "string") ? payload.text : "";
+        const sentenceId = (typeof payload === "object" && typeof payload.sentence_id === "number") ? payload.sentence_id : 0;
+        return { sentenceId: sentenceId, text: text };
+    }
+
+    /**
+     * Contextual proofreading result from a `Polished` event.
+     */
+    function polished(event) {
+        if (!event || !event.payload) return { sentenceId: 0, original: "", corrected: "" };
+        const payload = event.payload;
+        return {
+            sentenceId: (typeof payload.sentence_id === "number") ? payload.sentence_id : 0,
+            original: (typeof payload.original === "string") ? payload.original : "",
+            corrected: (typeof payload.corrected === "string") ? payload.corrected : ""
+        };
+    }
 }

@@ -1314,15 +1314,21 @@ Singleton {
     readonly property int voiceMaxUtteranceSeconds: (root.voiceSettings.maxUtteranceSeconds !== undefined)
         ? root.voiceSettings.maxUtteranceSeconds : 30
     readonly property int voiceSilenceHangoverMs: (root.voiceSettings.silenceHangoverMs !== undefined)
-        ? root.voiceSettings.silenceHangoverMs : 1200
+        ? root.voiceSettings.silenceHangoverMs : 2000
     readonly property bool voiceAutoFinalize: (root.voiceSettings.autoFinalize !== undefined)
         ? !!root.voiceSettings.autoFinalize : true
+    readonly property bool voiceContinuous: (root.voiceSettings.continuous !== undefined)
+        ? !!root.voiceSettings.continuous : true
     readonly property bool voiceInstallModelOnDemand: (root.voiceSettings.installModelOnDemand !== undefined)
         ? !!root.voiceSettings.installModelOnDemand : true
     readonly property bool voiceEchoCancel: (root.voiceSettings.echoCancel !== undefined)
         ? !!root.voiceSettings.echoCancel : false
     readonly property bool voiceNoiseSuppress: (root.voiceSettings.noiseSuppress !== undefined)
         ? !!root.voiceSettings.noiseSuppress : false
+    readonly property var voiceLanguages: (root.voiceSettings.languages && Array.isArray(root.voiceSettings.languages))
+        ? root.voiceSettings.languages : ["zh", "en"]
+    readonly property var voiceVocabulary: (root.voiceSettings.vocabulary && Array.isArray(root.voiceSettings.vocabulary))
+        ? root.voiceSettings.vocabulary : []
 
     function _ensureVoiceBlock() {
         if (!root.settings) root.settings = {};
@@ -1387,6 +1393,13 @@ Singleton {
         });
     }
 
+    function setVoiceContinuous(enabled) {
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.continuous = !!enabled;
+        });
+    }
+
     function setVoiceInstallModelOnDemand(enabled) {
         updateSettings(cfg => {
             if (!cfg.voice) cfg.voice = {};
@@ -1405,6 +1418,20 @@ Singleton {
         updateSettings(cfg => {
             if (!cfg.voice) cfg.voice = {};
             cfg.voice.noiseSuppress = !!enabled;
+        });
+    }
+
+    function setVoiceLanguages(langs) {
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.languages = Array.isArray(langs) ? langs : [];
+        });
+    }
+
+    function setVoiceVocabulary(vocab) {
+        updateSettings(cfg => {
+            if (!cfg.voice) cfg.voice = {};
+            cfg.voice.vocabulary = Array.isArray(vocab) ? vocab : [];
         });
     }
 

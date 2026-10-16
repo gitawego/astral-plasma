@@ -124,11 +124,15 @@ fn sherpa_adapter_executes_session_with_clean_capture_and_args() {
         model: SENSEVOICE_SMALL_ID.to_string(),
         language: "zh".to_string(),
         language_override: String::new(),
+        allowed_languages: Vec::new(),
+        custom_vocabulary: Vec::new(),
         silence_hangover_ms: 1200,
         max_utterance_ms: 30_000,
         auto_finalize: true,
         frame_len: 320,
         sample_rate: 16_000,
+        prompt: None,
+        continuous: false,
     };
 
     let mut events = Vec::new();
@@ -183,11 +187,15 @@ fn sherpa_adapter_handles_silence_honestly_without_hallucinating() {
         model: SENSEVOICE_SMALL_ID.to_string(),
         language: "en".to_string(),
         language_override: String::new(),
+        allowed_languages: Vec::new(),
+        custom_vocabulary: Vec::new(),
         silence_hangover_ms: 1200,
         max_utterance_ms: 30_000,
         auto_finalize: true,
         frame_len: 320,
         sample_rate: 16_000,
+        prompt: None,
+        continuous: false,
     };
 
     let mut events = Vec::new();

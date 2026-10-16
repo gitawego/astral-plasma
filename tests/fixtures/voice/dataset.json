@@ -1,0 +1,50 @@
+[
+  {
+    "id": "en_front_center",
+    "file": "front_center_16k.wav",
+    "language": "en",
+    "reference": "Front Center"
+  },
+  {
+    "id": "en_front_left",
+    "file": "front_left_16k.wav",
+    "language": "en",
+    "reference": "Front Left"
+  },
+  {
+    "id": "en_front_right",
+    "file": "front_right_16k.wav",
+    "language": "en",
+    "reference": "Front Right"
+  },
+  {
+    "id": "zh_nihao",
+    "file": "zh_nihao_16k.wav",
+    "language": "zh",
+    "reference": "你好世界"
+  },
+  {
+    "id": "zh_weather",
+    "file": "zh_weather_16k.wav",
+    "language": "zh",
+    "reference": "今天天气真好"
+  },
+  {
+    "id": "zhen_api",
+    "file": "zhen_api_16k.wav",
+    "language": "zh",
+    "reference": "我们的API性能非常好"
+  },
+  {
+    "id": "fr_bonjour",
+    "file": "fr_bonjour_16k.wav",
+    "language": "fr",
+    "reference": "Bonjour le monde comment allez vous"
+  },
+  {
+    "id": "de_gutentag",
+    "file": "de_gutentag_16k.wav",
+    "language": "de",
+    "reference": "Guten Tag wie geht es Ihnen"
+  }
+]

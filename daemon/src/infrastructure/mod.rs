@@ -38,5 +38,7 @@ pub mod noise_suppress;
 pub mod mic_check;
 pub mod desktop_entries_adapter;
 pub mod removable_devices_adapter;
+pub mod voice_polisher;
+pub mod soniox_stt_adapter;
 pub mod system_monitor;
 
