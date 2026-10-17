@@ -19,6 +19,8 @@ Item {
     // compositor-native window move instead of writing item coordinates.
     property var windowHandle: null
 
+    property bool sessionsOpen: false
+
     signal sessionsRequested()
     signal newChatRequested()
     signal closeRequested()
@@ -183,15 +185,15 @@ Item {
                 radius: 15
                 scale: sessionsMouse.pressed ? 0.92 : (sessionsMouse.containsMouse ? 1.06 : 1.0)
                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
-                color: sessionsMouse.containsMouse ? Colors.glassCardHover : "transparent"
-                border.width: sessionsMouse.containsMouse ? 1 : 0
-                border.color: Colors.glassBorderSpecular
+                color: (root.sessionsOpen || sessionsMouse.containsMouse) ? Colors.glassCardHover : "transparent"
+                border.width: (root.sessionsOpen || sessionsMouse.containsMouse) ? 1 : 0
+                border.color: root.sessionsOpen ? Colors.primary : Colors.glassBorderSpecular
 
                 MaterialIcon {
                     anchors.centerIn: parent
                     iconName: "history"
                     size: 16
-                    color: sessionsMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
+                    color: root.sessionsOpen ? Colors.primary : (sessionsMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant)
                 }
 
                 MouseArea {
@@ -201,6 +203,30 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     z: 10
                     onClicked: root.sessionsRequested()
+                }
+
+                // Tooltip on hover
+                Rectangle {
+                    z: 100
+                    visible: sessionsMouse.containsMouse
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    implicitWidth: sessionsTipText.implicitWidth + 16
+                    implicitHeight: sessionsTipText.implicitHeight + 8
+                    radius: Theme.radiusSmall
+                    color: Colors.surfaceContainerHighest
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+
+                    Text {
+                        id: sessionsTipText
+                        anchors.centerIn: parent
+                        text: root.sessionsOpen ? "Hide Sessions List (Ctrl+H)" : "Chat Sessions (Ctrl+H)"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.onSurface
+                    }
                 }
             }
 

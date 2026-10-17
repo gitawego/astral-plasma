@@ -228,6 +228,7 @@ Item {
                 id: headerItem
                 testMode: root.testMode
                 windowHandle: root.windowHandle
+                sessionsOpen: root.sessionsVisible
                 onCloseRequested: Config.closeAssistant()
                 onMinimizeRequested: Config.minimizeAssistant()
                 onAddProviderRequested: root.addProviderVisible = true
@@ -655,6 +656,21 @@ Item {
                 root.imagePickerVisible = false;
             }
             onCanceled: root.imagePickerVisible = false
+        }
+
+        // Keyboard Shortcuts
+        Shortcut {
+            sequence: "Ctrl+H"
+            onActivated: root.sessionsVisible = !root.sessionsVisible
+        }
+
+        Shortcut {
+            sequence: "Ctrl+N"
+            onActivated: {
+                if (typeof AssistantService !== "undefined") {
+                    AssistantService.createNewSession();
+                }
+            }
         }
     }
 }
