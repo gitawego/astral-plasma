@@ -175,18 +175,117 @@ pub fn theme_icon_exists(name: &str) -> bool {
     found
 }
 
+/// Determine whether a candidate file path represents a symbolic/monochrome icon.
+fn is_symbolic_path(path: &Path) -> bool {
+    let s = path.to_string_lossy().to_ascii_lowercase();
+    s.ends_with("-symbolic.svg")
+        || s.ends_with("-symbolic.png")
+        || s.ends_with(".symbolic.svg")
+        || s.ends_with(".symbolic.png")
+        || s.contains("/symbolic/")
+        || s.contains("-symbolic")
+        || s.contains(".symbolic")
+}
+
+/// Calculate a quality score for an icon path for a given query key.
+/// Full-color application icons have high scores (>= 10,000), while symbolic fallbacks
+/// have low scores (~500-3,500) unless the query explicitly requests a symbolic icon.
+pub fn score_icon_path(key: &str, path: &Path) -> u32 {
+    let key_wants_symbolic = key.ends_with("-symbolic") || key.ends_with(".symbolic");
+    let is_sym = is_symbolic_path(path);
+
+    let base = if key_wants_symbolic {
+        if is_sym { 10_000 } else { 1_000 }
+    } else {
+        if !is_sym { 10_000 } else { 500 }
+    };
+
+    let s = path.to_string_lossy().to_ascii_lowercase();
+    let cat_bonus = if s.contains("/apps/") || s.contains("/applications/") {
+        3_000
+    } else if s.contains("/pixmaps/") {
+        2_500
+    } else if s.contains("/categories/") || s.contains("/places/") || s.contains("/devices/") {
+        1_000
+    } else if s.contains("/actions/") || s.contains("/status/") || s.contains("/panel/") {
+        100
+    } else {
+        500
+    };
+
+    let res_bonus = if s.contains("/scalable/") {
+        1_500
+    } else if s.contains("/512x512/") || s.contains("/512/") {
+        1_400
+    } else if s.contains("/256x256/") || s.contains("/256/") {
+        1_300
+    } else if s.contains("/128x128/") || s.contains("/128/") {
+        1_200
+    } else if s.contains("/64x64/") || s.contains("/64/") {
+        1_000
+    } else if s.contains("/48x48/") || s.contains("/48/") {
+        900
+    } else if s.contains("/32x32/") || s.contains("/32/") {
+        600
+    } else if s.contains("/24x24/") || s.contains("/24/") {
+        400
+    } else if s.contains("/22x22/") || s.contains("/22/") {
+        200
+    } else if s.contains("/16x16/") || s.contains("/16/") {
+        100
+    } else {
+        500
+    };
+
+    let ext_bonus = if s.ends_with(".svg") || s.ends_with(".svgz") {
+        50
+    } else if s.ends_with(".png") {
+        30
+    } else {
+        10
+    };
+
+    base + cat_bonus + res_bonus + ext_bonus
+}
+
+fn insert_or_upgrade_icon(
+    key: String,
+    path: PathBuf,
+    map: &mut std::collections::HashMap<String, PathBuf>,
+) {
+    match map.get(&key) {
+        Some(existing) => {
+            let current_score = score_icon_path(&key, existing);
+            let new_score = score_icon_path(&key, &path);
+            if new_score > current_score {
+                map.insert(key, path);
+            }
+        }
+        None => {
+            map.insert(key, path);
+        }
+    }
+}
+
 /// Locate a themed icon file against an explicit set of roots (pure, testable).
 pub fn find_theme_icon_in(roots: &[PathBuf], name: &str) -> Option<PathBuf> {
     let name = name.trim().to_ascii_lowercase();
     if name.is_empty() || name.contains('/') || name.starts_with("file:") {
         return None;
     }
+    let mut best: Option<(u32, PathBuf)> = None;
     for root in roots {
         if let Some(path) = icon_map_under(root).get(&name) {
-            return Some(path.clone());
+            let score = score_icon_path(&name, path);
+            if score >= 10_000 {
+                return Some(path.clone());
+            }
+            if best.as_ref().map_or(true, |(b_score, _)| score > *b_score) {
+                best = Some((score, path.clone()));
+            }
         }
     }
-    None
+    best.map(|(_, p)| p)
 }
 
 /// `theme_icon_exists` against an explicit set of roots (pure, testable).
@@ -249,9 +348,9 @@ fn collect_icon_map(
             .strip_suffix("-symbolic")
             .or_else(|| stem.strip_suffix(".symbolic"))
         {
-            map.entry(base.to_string()).or_insert_with(|| path.clone());
+            insert_or_upgrade_icon(base.to_string(), path.clone(), map);
         }
-        map.entry(stem).or_insert(path);
+        insert_or_upgrade_icon(stem, path, map);
     }
 }
 

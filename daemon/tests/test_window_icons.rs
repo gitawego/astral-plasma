@@ -126,3 +126,39 @@ fn resolves_window_icon_for_appimage_or_wine_cache() {
     }
 }
 
+#[test]
+fn prefers_full_color_app_icons_over_symbolic_variants() {
+    let root = std::env::temp_dir().join(format!("astral-icon-priority-{}", std::process::id()));
+    let sym_dir = root.join("WhiteSur/apps/symbolic");
+    let scale_dir = root.join("WhiteSur/apps/scalable");
+    std::fs::create_dir_all(&sym_dir).expect("sym dir");
+    std::fs::create_dir_all(&scale_dir).expect("scale dir");
+
+    let sym_icon = sym_dir.join("testapp-symbolic.svg");
+    let full_icon = scale_dir.join("testapp.svg");
+    std::fs::write(&sym_icon, b"<svg id='symbolic'></svg>").expect("sym icon");
+    std::fs::write(&full_icon, b"<svg id='full-color'></svg>").expect("full icon");
+
+    let roots = vec![root.clone()];
+    let found = astral_plasma::infrastructure::window_icons::find_theme_icon_in(&roots, "testapp");
+    assert_eq!(found, Some(full_icon), "scalable full-color app icon must be preferred over symbolic");
+
+    // If query specifically requests symbolic, the symbolic variant is preferred
+    let sym_found = astral_plasma::infrastructure::window_icons::find_theme_icon_in(&roots, "testapp-symbolic");
+    assert_eq!(sym_found, Some(sym_icon), "explicit symbolic query must return symbolic icon");
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn resolves_microsoft_edge_to_full_color_icon() {
+    let p = astral_plasma::infrastructure::window_icons::find_icon_path("microsoft-edge");
+    assert!(p.is_some(), "microsoft-edge must be found on the system");
+    let path = p.unwrap();
+    let s = path.to_string_lossy().to_ascii_lowercase();
+    assert!(
+        !s.contains("-symbolic") && !s.contains(".symbolic") && !s.contains("/symbolic/"),
+        "resolved edge icon must be full-color, not symbolic: {:?}",
+        path
+    );
+}
