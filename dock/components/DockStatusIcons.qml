@@ -25,6 +25,17 @@ LiquidGlassCard {
     elevation: Config.bottomPopoutVisible ? 0 : 3
     color: Config.bottomPopoutVisible ? "transparent" : Colors.glassCard
 
+    function isIconEnabled(id) {
+        if (typeof Config === "undefined" || !Config.settings || !Config.settings.dock || !Config.settings.dock.statusIcons) return true;
+        const list = Config.settings.dock.statusIcons;
+        for (let i = 0; i < list.length; i++) {
+            if (list[i] && list[i].id === id) {
+                return list[i].enabled !== false;
+            }
+        }
+        return true;
+    }
+
     HoverHandler {
         id: groupHover
         onHoveredChanged: {
@@ -44,10 +55,11 @@ LiquidGlassCard {
         // 1. Network / Wi-Fi
         Item {
             id: netItem
-            implicitWidth: root.btnSize
-            implicitHeight: root.btnSize
-            width: root.btnSize
-            height: root.btnSize
+            visible: root.isIconEnabled("network")
+            implicitWidth: visible ? root.btnSize : 0
+            implicitHeight: visible ? root.btnSize : 0
+            width: implicitWidth
+            height: implicitHeight
 
             Rectangle {
                 anchors.fill: parent
@@ -89,10 +101,11 @@ LiquidGlassCard {
         // 2. Bluetooth
         Item {
             id: btItem
-            implicitWidth: root.btnSize
-            implicitHeight: root.btnSize
-            width: root.btnSize
-            height: root.btnSize
+            visible: root.isIconEnabled("bluetooth")
+            implicitWidth: visible ? root.btnSize : 0
+            implicitHeight: visible ? root.btnSize : 0
+            width: implicitWidth
+            height: implicitHeight
 
             Rectangle {
                 anchors.fill: parent
@@ -135,10 +148,11 @@ LiquidGlassCard {
         // 3. Audio / Master Volume
         Item {
             id: audioItem
-            implicitWidth: root.btnSize
-            implicitHeight: root.btnSize
-            width: root.btnSize
-            height: root.btnSize
+            visible: root.isIconEnabled("audio")
+            implicitWidth: visible ? root.btnSize : 0
+            implicitHeight: visible ? root.btnSize : 0
+            width: implicitWidth
+            height: implicitHeight
 
             Rectangle {
                 anchors.fill: parent
@@ -183,6 +197,114 @@ LiquidGlassCard {
                                 Config.showVolumeOsd(newVol, PipewireAudio.muted);
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // 4. Clipboard Manager
+        Item {
+            id: clipboardItem
+            visible: root.isIconEnabled("clipboard")
+            implicitWidth: visible ? root.btnSize : 0
+            implicitHeight: visible ? root.btnSize : 0
+            width: implicitWidth
+            height: implicitHeight
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusFull
+                color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clipboard")
+                    ? Colors.primary
+                    : (clipHover.hovered ? Colors.surfaceContainerHigh : "transparent")
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: "content_paste"
+                    size: root.iconSize
+                    color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "clipboard")
+                        ? Colors.textOnPrimary
+                        : Colors.textOnSurfaceVariant
+                }
+
+                HoverHandler {
+                    id: clipHover
+                    onHoveredChanged: {
+                        if (hovered) {
+                            if (typeof ClipboardService !== "undefined") ClipboardService.refresh();
+                            Config.openBottomPopout("clipboard", clipboardItem.mapToItem(null, 0, clipboardItem.height / 2).y);
+                        }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: mouse => {
+                        if (typeof ClipboardService !== "undefined") ClipboardService.refresh();
+                        Config.openBottomPopout("clipboard", clipboardItem.mapToItem(null, 0, clipboardItem.height / 2).y);
+                    }
+                }
+            }
+        }
+
+        // 5. Notification Center Bell
+        Item {
+            id: notifBellItem
+            visible: root.isIconEnabled("notifications")
+            implicitWidth: visible ? root.btnSize : 0
+            implicitHeight: visible ? root.btnSize : 0
+            width: implicitWidth
+            height: implicitHeight
+
+            readonly property int unreadCount: (typeof NotificationService !== "undefined" && NotificationService) ? NotificationService.unreadCount : 0
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusFull
+                color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "notifications")
+                    ? Colors.primary
+                    : (notifHover.hovered ? Colors.surfaceContainerHigh : "transparent")
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: notifBellItem.unreadCount > 0 ? "notifications_active" : "notifications"
+                    size: root.iconSize
+                    color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "notifications")
+                        ? Colors.textOnPrimary
+                        : (notifBellItem.unreadCount > 0 ? Colors.primary : Colors.textOnSurfaceVariant)
+                }
+
+                // Subtle unread indicator dot
+                Rectangle {
+                    visible: notifBellItem.unreadCount > 0
+                    anchors.top: parent.top
+                    anchors.right: parent.right
+                    anchors.topMargin: 4
+                    anchors.rightMargin: 4
+                    width: 7
+                    height: 7
+                    radius: 3.5
+                    color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "notifications")
+                        ? Colors.textOnPrimary
+                        : "#FF5449"
+                }
+
+                HoverHandler {
+                    id: notifHover
+                    onHoveredChanged: {
+                        if (hovered) {
+                            Config.openBottomPopout("notifications", notifBellItem.mapToItem(null, 0, notifBellItem.height / 2).y);
+                        }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Config.openBottomPopout("notifications", notifBellItem.mapToItem(null, 0, notifBellItem.height / 2).y);
                     }
                 }
             }

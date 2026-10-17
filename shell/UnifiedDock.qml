@@ -623,11 +623,15 @@ Item {
             - root.fixedDockHeight - root.listGap)
     readonly property real trayMinHeight: Math.min(trayContainer.naturalHeight,
         2 * (root.iconS - 4 + 2) + 12)
-    // The tray keeps its natural height (capped to a third of the budget, so a
-    // crowded tray can never squeeze the app list); the taskbar takes the rest and
-    // grows into it as the app count rises.
-    readonly property real trayMaxHeight: Math.max(root.trayMinHeight,
-        Math.min(trayContainer.naturalHeight, root.listBudget * 0.32))
+    // The tray expands naturally to show all icons without scrolling whenever
+    // autoExpand is enabled (default) and the budget permits. When space is constrained,
+    // it leaves at least 96px for the taskbar before scrolling.
+    readonly property bool trayAutoExpand: typeof Config !== "undefined" ? Config.dockTrayAutoExpand : true
+    readonly property real trayAvailableBudget: root.trayAutoExpand
+        ? Math.max(root.trayMinHeight,
+            Math.max(root.listBudget * 0.32, root.listBudget - Math.max(96, appsContainer.naturalHeight)))
+        : Math.max(root.trayMinHeight, root.listBudget * 0.32)
+    readonly property real trayMaxHeight: Math.min(trayContainer.naturalHeight, root.trayAvailableBudget)
     readonly property real appsMaxHeight: Math.max(96,
         Math.min(appsContainer.naturalHeight, root.listBudget - root.trayMaxHeight))
 

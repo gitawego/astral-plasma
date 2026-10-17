@@ -48,6 +48,8 @@ SettingsPage {
                     case "bluetooth": return "Bluetooth Controller (BlueZ)";
                     case "brightness": return "Display Brightness (KDE Solid)";
                     case "audio": return "Audio Volume (PipeWire)";
+                    case "clipboard": return "Clipboard Manager (KDE Klipper)";
+                    case "notifications": return "Notification Center Bell";
                     case "battery": return "Battery & Power Profiles (UPower)";
                     default: return modelData.id;
                 }

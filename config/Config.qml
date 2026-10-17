@@ -60,6 +60,7 @@ Singleton {
             ],
             "tray": {
                 "enabled": true,
+                "autoExpand": true,
                 "compact": false,
                 "hiddenIcons": []
             },
@@ -69,7 +70,9 @@ Singleton {
                 { "id": "bluetooth", "enabled": true },
                 { "id": "brightness", "enabled": true },
                 { "id": "audio", "enabled": true },
-                { "id": "battery", "enabled": true }
+                { "id": "battery", "enabled": true },
+                { "id": "clipboard", "enabled": true },
+                { "id": "notifications", "enabled": true }
             ]
         },
         "dashboard": {
@@ -163,6 +166,11 @@ Singleton {
     // many app icons and scrolls the rest (see DockScrollCapsule).
     readonly property int maxVisibleApps: (root.settings.dock && root.settings.dock.maxVisibleApps !== undefined)
         ? root.settings.dock.maxVisibleApps : 0
+
+    readonly property bool dockTrayEnabled: (root.settings.dock && root.settings.dock.tray && root.settings.dock.tray.enabled !== undefined)
+        ? Boolean(root.settings.dock.tray.enabled) : true
+    readonly property bool dockTrayAutoExpand: (root.settings.dock && root.settings.dock.tray && root.settings.dock.tray.autoExpand !== undefined)
+        ? Boolean(root.settings.dock.tray.autoExpand) : true
 
     readonly property int dockIconSize: (root.settings.dock && root.settings.dock.iconSize !== undefined) ? root.settings.dock.iconSize : 32
     readonly property int dockStatusIconSize: (root.settings.dock && root.settings.dock.statusIconSize !== undefined)
@@ -754,6 +762,14 @@ Singleton {
             if (!cfg.dock) cfg.dock = {};
             if (!cfg.dock.tray) cfg.dock.tray = {};
             cfg.dock.tray.enabled = enabled;
+        });
+    }
+
+    function setDockTrayAutoExpand(autoExpand) {
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            if (!cfg.dock.tray) cfg.dock.tray = {};
+            cfg.dock.tray.autoExpand = autoExpand;
         });
     }
 

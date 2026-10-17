@@ -9,6 +9,7 @@ import qs.theme
 import qs.config
 import qs.components
 import qs.services
+import "../../services"
 
 Item {
     id: root
@@ -43,6 +44,8 @@ Item {
             case "bluetooth": return 300;
             case "network": return 300;
             case "audio": return 280;
+            case "clipboard": return 340;
+            case "notifications": return 360;
             case "power": return 280;
             case "clock":
             case "time": return 300;
@@ -67,6 +70,8 @@ Item {
             case "bluetooth": return bluetoothSection.implicitHeight;
             case "network": return networkSection.implicitHeight;
             case "audio": return audioSection.implicitHeight;
+            case "clipboard": return clipboardSection.implicitHeight;
+            case "notifications": return notificationsSection.implicitHeight;
             case "power": return powerSection.implicitHeight;
             case "clock":
             case "time": return clockSection.implicitHeight;
@@ -594,6 +599,558 @@ Item {
                     icon: "settings"
                     label: "Audio Settings..."
                     onClicked: Quickshell.execDetached(["kcmshell6", "kcm_pulseaudio"])
+                }
+            }
+
+            // ==========================================
+            // CLIPBOARD MANAGER SECTION
+            // ==========================================
+            ColumnLayout {
+                id: clipboardSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                spacing: 8
+                readonly property bool isCurrent: root.mode === "clipboard"
+                visible: isCurrent
+                opacity: isCurrent ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
+
+                property string filterText: ""
+                readonly property var allItems: (typeof ClipboardService !== "undefined" && ClipboardService.history) ? ClipboardService.history : []
+                readonly property var filteredItems: {
+                    if (!clipboardSection.filterText.trim()) return clipboardSection.allItems;
+                    const query = clipboardSection.filterText.toLowerCase();
+                    return clipboardSection.allItems.filter(item => typeof item === "string" && item.toLowerCase().includes(query));
+                }
+
+                // Header
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    MaterialIcon {
+                        text: "content_paste"
+                        size: 20
+                        color: Colors.primary
+                    }
+
+                    Text {
+                        text: "Clipboard"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMedium
+                        font.weight: Font.DemiBold
+                        color: Colors.textOnSurface
+                        Layout.fillWidth: true
+                    }
+
+                    // Count Badge
+                    Rectangle {
+                        implicitWidth: clipCountText.implicitWidth + 12
+                        implicitHeight: 20
+                        radius: Theme.radiusFull
+                        color: Colors.surfaceContainerHighest
+                        visible: clipboardSection.allItems.length > 0
+
+                        Text {
+                            id: clipCountText
+                            anchors.centerIn: parent
+                            text: clipboardSection.allItems.length.toString()
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                            color: Colors.textOnSurfaceVariant
+                        }
+                    }
+
+                    // Clear All Button
+                    Rectangle {
+                        implicitWidth: 26
+                        implicitHeight: 26
+                        radius: Theme.radiusFull
+                        color: clearHover.hovered ? Colors.surfaceContainerHigh : "transparent"
+                        visible: clipboardSection.allItems.length > 0
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "delete_sweep"
+                            size: 16
+                            color: clearHover.hovered ? "#FF5449" : Colors.textOnSurfaceVariant
+                        }
+
+                        HoverHandler { id: clearHover }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (typeof ClipboardService !== "undefined") ClipboardService.clearHistory();
+                            }
+                        }
+                    }
+                }
+
+                // Search Filter Box
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 32
+                    radius: Theme.radiusSmall
+                    color: Colors.surfaceContainer
+                    border.color: clipSearchInput.activeFocus ? Colors.primary : Theme.borderSubtle
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 6
+
+                        MaterialIcon {
+                            text: "search"
+                            size: 16
+                            color: Colors.textOnSurfaceVariant
+                        }
+
+                        TextInput {
+                            id: clipSearchInput
+                            Layout.fillWidth: true
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            color: Colors.textOnSurface
+                            selectByMouse: true
+                            clip: true
+                            onTextChanged: clipboardSection.filterText = text
+
+                            Text {
+                                anchors.fill: parent
+                                text: "Filter clipboard..."
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSmall
+                                color: Colors.textOnSurfaceVariant
+                                opacity: 0.6
+                                visible: !clipSearchInput.text && !clipSearchInput.activeFocus
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        MaterialIcon {
+                            visible: clipSearchInput.text.length > 0
+                            text: "close"
+                            size: 14
+                            color: Colors.textOnSurfaceVariant
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: clipSearchInput.text = ""
+                            }
+                        }
+                    }
+                }
+
+                // Empty state or Scrollable List
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: clipboardSection.filteredItems.length === 0 ? 120 : Math.min(320, clipListCol.implicitHeight)
+
+                    // Empty state
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        spacing: 6
+                        visible: clipboardSection.filteredItems.length === 0
+
+                        MaterialIcon {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: clipboardSection.allItems.length === 0 ? "content_paste_off" : "search_off"
+                            size: 32
+                            color: Colors.textOnSurfaceVariant
+                            opacity: 0.5
+                        }
+
+                        Text {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: clipboardSection.allItems.length === 0 ? "Clipboard is empty" : "No matching items"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            color: Colors.textOnSurfaceVariant
+                            opacity: 0.7
+                        }
+                    }
+
+                    // Items List
+                    Flickable {
+                        id: clipFlickable
+                        anchors.fill: parent
+                        contentWidth: width
+                        contentHeight: clipListCol.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        interactive: contentHeight > height
+                        visible: clipboardSection.filteredItems.length > 0
+
+                        ColumnLayout {
+                            id: clipListCol
+                            width: parent.width - 6
+                            spacing: 4
+
+                            Repeater {
+                                model: clipboardSection.filteredItems
+
+                                delegate: Rectangle {
+                                    id: clipItemDelegate
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    implicitHeight: Math.max(34, clipItemText.implicitHeight + 14)
+                                    radius: Theme.radiusSmall
+                                    color: itemHover.hovered ? Colors.surfaceContainerHigh : Colors.surfaceContainer
+                                    border.color: itemHover.hovered ? Colors.primary : "transparent"
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 8
+                                        anchors.rightMargin: 8
+                                        spacing: 8
+
+                                        MaterialIcon {
+                                            text: "text_snippet"
+                                            size: 16
+                                            color: itemHover.hovered ? Colors.primary : Colors.textOnSurfaceVariant
+                                        }
+
+                                        Text {
+                                            id: clipItemText
+                                            Layout.fillWidth: true
+                                            text: typeof clipItemDelegate.modelData === "string" ? clipItemDelegate.modelData : ""
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: Theme.fontSmall
+                                            color: Colors.textOnSurface
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                            wrapMode: Text.WrapAnywhere
+                                        }
+
+                                        MaterialIcon {
+                                            visible: itemHover.hovered
+                                            text: "content_copy"
+                                            size: 14
+                                            color: Colors.primary
+                                        }
+                                    }
+
+                                    HoverHandler { id: itemHover }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (typeof ClipboardService !== "undefined" && clipItemDelegate.modelData) {
+                                                ClipboardService.setClipboard(clipItemDelegate.modelData);
+                                            }
+                                            Config.closeBottomPopout();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        WheelHandler {
+                            target: clipFlickable
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            onWheel: (event) => {
+                                clipFlickable.contentY = Math.max(0, Math.min(clipFlickable.contentHeight - clipFlickable.height, clipFlickable.contentY - event.angleDelta.y));
+                            }
+                        }
+                    }
+
+                    GlassScrollIndicator {
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        flickable: clipFlickable
+                        color: Colors.primary
+                        restingOpacity: 0
+                        activeOpacity: 0.8
+                        minimumBarHeight: 20
+                    }
+                }
+            }
+
+            // ==========================================
+            // NOTIFICATIONS CENTER SECTION
+            // ==========================================
+            ColumnLayout {
+                id: notificationsSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                spacing: 8
+                readonly property bool isCurrent: root.mode === "notifications"
+                visible: isCurrent
+                opacity: isCurrent ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
+
+                readonly property var notifHistory: (typeof NotificationService !== "undefined" && NotificationService.history) ? NotificationService.history : []
+                readonly property int unread: (typeof NotificationService !== "undefined" && NotificationService.unreadCount) ? NotificationService.unreadCount : 0
+
+                onIsCurrentChanged: {
+                    if (isCurrent && typeof NotificationService !== "undefined") {
+                        NotificationService.markAllRead();
+                    }
+                }
+
+                // Header
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    MaterialIcon {
+                        text: "notifications"
+                        size: 20
+                        color: Colors.primary
+                    }
+
+                    Text {
+                        text: "Notifications"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMedium
+                        font.weight: Font.DemiBold
+                        color: Colors.textOnSurface
+                        Layout.fillWidth: true
+                    }
+
+                    // Count Badge
+                    Rectangle {
+                        implicitWidth: notifCountText.implicitWidth + 12
+                        implicitHeight: 20
+                        radius: Theme.radiusFull
+                        color: Colors.surfaceContainerHighest
+                        visible: notificationsSection.notifHistory.length > 0
+
+                        Text {
+                            id: notifCountText
+                            anchors.centerIn: parent
+                            text: notificationsSection.notifHistory.length.toString()
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                            color: Colors.textOnSurfaceVariant
+                        }
+                    }
+
+                    // Clear All Button
+                    Rectangle {
+                        implicitWidth: 26
+                        implicitHeight: 26
+                        radius: Theme.radiusFull
+                        color: clearNotifHover.hovered ? Colors.surfaceContainerHigh : "transparent"
+                        visible: notificationsSection.notifHistory.length > 0
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "clear_all"
+                            size: 18
+                            color: clearNotifHover.hovered ? "#FF5449" : Colors.textOnSurfaceVariant
+                        }
+
+                        HoverHandler { id: clearNotifHover }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (typeof NotificationService !== "undefined") NotificationService.clearHistory();
+                            }
+                        }
+                    }
+                }
+
+                // Empty state or Scrollable List
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: notificationsSection.notifHistory.length === 0 ? 140 : Math.min(360, notifListCol.implicitHeight)
+
+                    // Empty state
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        spacing: 6
+                        visible: notificationsSection.notifHistory.length === 0
+
+                        MaterialIcon {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: "notifications_none"
+                            size: 36
+                            color: Colors.textOnSurfaceVariant
+                            opacity: 0.5
+                        }
+
+                        Text {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: "No notifications"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSmall
+                            color: Colors.textOnSurfaceVariant
+                            opacity: 0.7
+                        }
+                    }
+
+                    // Notifications List
+                    Flickable {
+                        id: notifFlickable
+                        anchors.fill: parent
+                        contentWidth: width
+                        contentHeight: notifListCol.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        interactive: contentHeight > height
+                        visible: notificationsSection.notifHistory.length > 0
+
+                        ColumnLayout {
+                            id: notifListCol
+                            width: parent.width - 6
+                            spacing: 6
+
+                            Repeater {
+                                model: notificationsSection.notifHistory
+
+                                delegate: Rectangle {
+                                    id: notifCard
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    implicitHeight: notifCardLayout.implicitHeight + 16
+                                    radius: Theme.radiusMedium
+                                    color: notifCardHover.hovered ? Colors.surfaceContainerHigh : Colors.surfaceContainer
+                                    border.color: notifCardHover.hovered ? Theme.borderSubtle : "transparent"
+                                    border.width: 1
+
+                                    HoverHandler { id: notifCardHover }
+
+                                    ColumnLayout {
+                                        id: notifCardLayout
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.top: parent.top
+                                        anchors.margins: 10
+                                        spacing: 4
+
+                                        // App header line
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
+
+                                            MaterialIcon {
+                                                text: (notifCard.modelData && notifCard.modelData.icon) ? notifCard.modelData.icon : "info"
+                                                size: 14
+                                                color: Colors.primary
+                                            }
+
+                                            Text {
+                                                text: (notifCard.modelData && notifCard.modelData.appName) ? notifCard.modelData.appName : "System"
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 11
+                                                font.weight: Font.DemiBold
+                                                color: Colors.textOnSurfaceVariant
+                                                Layout.fillWidth: true
+                                            }
+
+                                            Text {
+                                                text: (notifCard.modelData && notifCard.modelData.timeStr) ? notifCard.modelData.timeStr : ""
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 10
+                                                color: Colors.textOnSurfaceVariant
+                                                opacity: 0.7
+                                            }
+
+                                            // Dismiss button
+                                            Rectangle {
+                                                implicitWidth: 18
+                                                implicitHeight: 18
+                                                radius: Theme.radiusFull
+                                                color: dismissHover.hovered ? Colors.surfaceContainerHighest : "transparent"
+
+                                                MaterialIcon {
+                                                    anchors.centerIn: parent
+                                                    text: "close"
+                                                    size: 12
+                                                    color: dismissHover.hovered ? "#FF5449" : Colors.textOnSurfaceVariant
+                                                }
+
+                                                HoverHandler { id: dismissHover }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        if (typeof NotificationService !== "undefined") {
+                                                            NotificationService.removeHistoryItem(notifCard.index);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Summary
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: (notifCard.modelData && notifCard.modelData.summary) ? notifCard.modelData.summary : ""
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: Theme.fontSmall
+                                            font.weight: Font.DemiBold
+                                            color: Colors.textOnSurface
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                            wrapMode: Text.WrapAnywhere
+                                        }
+
+                                        // Body
+                                        Text {
+                                            Layout.fillWidth: true
+                                            visible: Boolean(notifCard.modelData && notifCard.modelData.body && notifCard.modelData.body.length > 0)
+                                            text: (notifCard.modelData && notifCard.modelData.body) ? notifCard.modelData.body : ""
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 11
+                                            color: Colors.textOnSurfaceVariant
+                                            maximumLineCount: 3
+                                            elide: Text.ElideRight
+                                            wrapMode: Text.WrapAnywhere
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        WheelHandler {
+                            target: notifFlickable
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            onWheel: (event) => {
+                                notifFlickable.contentY = Math.max(0, Math.min(notifFlickable.contentHeight - notifFlickable.height, notifFlickable.contentY - event.angleDelta.y));
+                            }
+                        }
+                    }
+
+                    GlassScrollIndicator {
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        flickable: notifFlickable
+                        color: Colors.primary
+                        restingOpacity: 0
+                        activeOpacity: 0.8
+                        minimumBarHeight: 20
+                    }
                 }
             }
 

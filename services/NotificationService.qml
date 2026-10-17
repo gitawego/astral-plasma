@@ -19,6 +19,31 @@ Singleton {
     property var currentActions: []
     property var defaultAction: null
     property int timeoutMs: 5000
+    property var history: []
+    property int unreadCount: 0
+
+    function markAllRead() {
+        root.unreadCount = 0;
+        let h = root.history.slice();
+        for (let i = 0; i < h.length; i++) {
+            h[i].read = true;
+        }
+        root.history = h;
+    }
+
+    function clearHistory() {
+        root.history = [];
+        root.unreadCount = 0;
+    }
+
+    function removeHistoryItem(index) {
+        if (index >= 0 && index < root.history.length) {
+            let h = root.history.slice();
+            h.splice(index, 1);
+            root.history = h;
+            root.unreadCount = Math.max(0, root.unreadCount - 1);
+        }
+    }
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
     readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
@@ -241,6 +266,20 @@ Singleton {
                 }
             }
         }
+
+        let notifItem = {
+            id: "notif_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+            summary: currentSummary,
+            body: currentBody,
+            icon: currentIcon,
+            appName: currentAppName,
+            image: currentImage,
+            timestamp: Date.now(),
+            timeStr: Qt.formatTime(new Date(), "hh:mm"),
+            read: false
+        };
+        root.history = [notifItem].concat(root.history.slice(0, 49));
+        root.unreadCount = root.unreadCount + 1;
 
         notificationReceived(currentSummary, currentBody, currentIcon, currentAppName, currentImage);
     }

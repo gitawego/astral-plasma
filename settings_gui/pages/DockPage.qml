@@ -94,6 +94,15 @@ SettingsPage {
         onToggled: val => Config.setDockTrayEnabled(val)
     }
 
+    SettingToggle {
+        Layout.fillWidth: true
+        title: "Auto-expand Tray"
+        description: "Automatically expand tray to display all icons without scrolling"
+        visible: root.trayEnabled
+        checked: typeof Config !== "undefined" ? Config.dockTrayAutoExpand : true
+        onToggled: val => Config.setDockTrayAutoExpand(val)
+    }
+
     SectionHeader {
         id: topBarHeader
         title: "Top Bar"
