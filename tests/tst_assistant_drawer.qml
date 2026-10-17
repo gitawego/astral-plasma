@@ -422,6 +422,7 @@ Item {
         assert(/delMouse[\s\S]*?z:\s*10/.test(sessionDrawerSrc) || /z:\s*10[\s\S]*?delMouse/.test(sessionDrawerSrc), "SessionListDrawer delete button must have explicit z: 10 priority");
         assert(/cardMouse[\s\S]*?z:\s*0/.test(sessionDrawerSrc), "SessionListDrawer cardMouse must have background z: 0 to avoid stealing delete clicks");
         assert(floatingDrawer.sessionsVisible === false, "AssistantDrawer sessionsVisible must default to false");
+        assert(/iconName:\s*"chevron_left"/.test(sessionDrawerSrc), "SessionListDrawer collapse button must use chevron_left icon");
         assert(testSessionDrawer !== null, "SessionListDrawer must instantiate properly");
 
         // 20. Clean Liquid Glass Header Branding & Navigation
@@ -452,6 +453,17 @@ Item {
         // The pin toggle only ever suppressed the overlay's auto-minimize; a
         // real window needs no such switch.
         assert(!/pinButton/.test(headerSrc), "AssistantHeader must not offer a pin toggle any more");
+
+        // Verify minimize button renders a crisp horizontal dash and NOT a duplicate close icon
+        assert(!/iconName:\s*"remove"/.test(headerSrc), "AssistantHeader minimizeButton must NOT use iconName remove (prevents red close cross clash)");
+        assert(/minimizeButton[\s\S]*?width:\s*12[\s\S]*?height:\s*2/.test(headerSrc), "minimizeButton must render a crisp horizontal dash bar");
+
+        // Verify left logo badge acts as an interactive sidebar toggle
+        assert(hdr.logoMouseItem !== null && hdr.logoMouseItem !== undefined, "AssistantHeader must expose logoMouseItem");
+        let logoSessionsFired = false;
+        hdr.sessionsRequested.connect(function() { logoSessionsFired = true; });
+        hdr.logoMouseItem.clicked(null);
+        assert(logoSessionsFired === true, "Clicking left logo badge must toggle sessionsRequested");
 
         let minFired = false;
         hdr.minimizeRequested.connect(function() { minFired = true; });

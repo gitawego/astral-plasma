@@ -1118,6 +1118,7 @@ Singleton {
     // Assistant State
     property bool assistantVisible: (typeof Quickshell !== "undefined" && Quickshell.env && Quickshell.env("ASTRAL_PLASMA_ASSISTANT_OPEN") === "1") ? true : false
     property bool assistantMinimized: false
+    property bool assistantSessionsVisible: true
     readonly property string assistantHarness: (root.settings && root.settings.assistant && root.settings.assistant.harness) ? root.settings.assistant.harness : "pi"
     readonly property string assistantDefaultProvider: (root.settings && root.settings.assistant && root.settings.assistant.defaultProvider) ? root.settings.assistant.defaultProvider : ""
     readonly property string assistantDefaultModel: (root.settings && root.settings.assistant && root.settings.assistant.defaultModel) ? root.settings.assistant.defaultModel : ""

@@ -56,24 +56,63 @@ Item {
         spacing: Theme.spaceMedium
         z: 1
 
-        // Left Branding & Liquid Glass Badge
+        // Left Branding & Liquid Glass Badge (Interactive toggle for sessions list)
         Rectangle {
             width: 34
             height: 34
             radius: 10
-            color: (typeof Colors !== "undefined" && Colors.isDarkMode)
-                ? Qt.rgba(Colors.primary.r, Colors.primary.g, Colors.primary.b, 0.14)
-                : Qt.rgba(Colors.primary.r, Colors.primary.g, Colors.primary.b, 0.20)
+            scale: logoMouse.pressed ? 0.94 : (logoMouse.containsMouse ? 1.05 : 1.0)
+            Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+            color: (root.sessionsOpen || logoMouse.containsMouse)
+                ? Qt.rgba(Colors.primary.r, Colors.primary.g, Colors.primary.b, 0.22)
+                : ((typeof Colors !== "undefined" && Colors.isDarkMode)
+                    ? Qt.rgba(Colors.primary.r, Colors.primary.g, Colors.primary.b, 0.14)
+                    : Qt.rgba(Colors.primary.r, Colors.primary.g, Colors.primary.b, 0.20))
             border.width: 1
-            border.color: (typeof Colors !== "undefined" && Colors.primary)
-                ? Qt.alpha(Colors.primary, 0.35)
-                : Colors.glassBorderSpecular
+            border.color: (root.sessionsOpen || logoMouse.containsMouse)
+                ? Colors.primary
+                : ((typeof Colors !== "undefined" && Colors.primary)
+                    ? Qt.alpha(Colors.primary, 0.35)
+                    : Colors.glassBorderSpecular)
 
             BotMessageSquareIcon {
                 anchors.centerIn: parent
                 size: 18
                 strokeWidth: 2.0
                 color: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#CFBCFF"
+            }
+
+            MouseArea {
+                id: logoMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                z: 10
+                onClicked: root.sessionsRequested()
+            }
+
+            // Tooltip on hover
+            Rectangle {
+                z: 100
+                visible: logoMouse.containsMouse
+                anchors.top: parent.bottom
+                anchors.topMargin: 8
+                anchors.left: parent.left
+                implicitWidth: logoTipText.implicitWidth + 16
+                implicitHeight: logoTipText.implicitHeight + 8
+                radius: Theme.radiusSmall
+                color: Colors.surfaceContainerHighest
+                border.color: Colors.outlineVariant
+                border.width: 1
+
+                Text {
+                    id: logoTipText
+                    anchors.centerIn: parent
+                    text: root.sessionsOpen ? "Hide Sessions (Ctrl+H)" : "Show Sessions (Ctrl+H)"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    color: Colors.onSurface
+                }
             }
         }
 
@@ -378,10 +417,11 @@ Item {
                 border.width: minMouse.containsMouse ? 1 : 0
                 border.color: Colors.glassBorderSpecular
 
-                MaterialIcon {
+                Rectangle {
                     anchors.centerIn: parent
-                    iconName: "remove"
-                    size: 16
+                    width: 12
+                    height: 2
+                    radius: 1
                     color: minMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
                 }
 
@@ -474,6 +514,7 @@ Item {
     }
 
     // Interactive button mouse aliases for E2E and automated testing
+    property alias logoMouseItem: logoMouse
     property alias harnessMouseItem: harnessMouse
     property alias newChatMouseItem: newChatMouse
     property alias sessionsMouseItem: sessionsMouse

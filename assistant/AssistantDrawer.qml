@@ -52,7 +52,13 @@ Item {
     property bool isOpen: (typeof Config !== "undefined") ? Config.assistantVisible : false
     property bool addProviderVisible: false
     property bool imagePickerVisible: false
-    property bool sessionsVisible: false
+    property bool sessionsVisible: root.testMode ? false : ((typeof Config !== "undefined") ? Config.assistantSessionsVisible : true)
+
+    onSessionsVisibleChanged: {
+        if (!root.testMode && typeof Config !== "undefined" && Config.assistantSessionsVisible !== sessionsVisible) {
+            Config.assistantSessionsVisible = sessionsVisible;
+        }
+    }
 
     onIsOpenChanged: {
         if (isOpen) {

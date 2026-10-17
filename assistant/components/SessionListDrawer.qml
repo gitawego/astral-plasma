@@ -125,7 +125,7 @@ Rectangle {
                 }
             }
 
-            // Close Button
+            // Collapse Sidebar Button
             Rectangle {
                 width: 28
                 height: 28
@@ -138,7 +138,7 @@ Rectangle {
 
                 MaterialIcon {
                     anchors.centerIn: parent
-                    iconName: "close"
+                    iconName: "chevron_left"
                     size: 16
                     color: closeMouse.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
                 }
@@ -149,6 +149,30 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.closed()
+                }
+
+                // Tooltip on hover
+                Rectangle {
+                    z: 100
+                    visible: closeMouse.containsMouse
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 6
+                    anchors.right: parent.right
+                    implicitWidth: collapseTipText.implicitWidth + 14
+                    implicitHeight: collapseTipText.implicitHeight + 8
+                    radius: Theme.radiusSmall
+                    color: Colors.surfaceContainerHighest
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+
+                    Text {
+                        id: collapseTipText
+                        anchors.centerIn: parent
+                        text: "Collapse Sidebar (Ctrl+H)"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.onSurface
+                    }
                 }
             }
         }
