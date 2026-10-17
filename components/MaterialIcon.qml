@@ -277,7 +277,6 @@ Item {
         if (root.iconName && (root.iconName.startsWith("/") || root.iconName.startsWith("file://"))) {
             return root.iconName.startsWith("file://") ? root.iconName : ("file://" + root.iconName);
         }
-        if (root.displaySymbol !== "") return "";
         return (root.iconName !== "" && typeof Config !== "undefined" && typeof Config.iconUrl === "function") ? Config.iconUrl(root.iconName) : "";
     }
 
