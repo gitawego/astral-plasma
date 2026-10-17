@@ -672,5 +672,10 @@ Item {
                 }
             }
         }
+
+        Shortcut {
+            sequence: "Esc"
+            onActivated: Config.closeAssistant()
+        }
     }
 }

@@ -52,6 +52,57 @@ LiquidGlassCard {
         anchors.centerIn: parent
         spacing: 4
 
+        // 0. Keyboard Language Switcher
+        Item {
+            id: kbItem
+            visible: root.isIconEnabled("kblayout")
+            implicitWidth: visible ? root.btnSize : 0
+            implicitHeight: visible ? root.btnSize : 0
+            width: implicitWidth
+            height: implicitHeight
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusFull
+                color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "kblayout")
+                    ? Colors.primary
+                    : (kbHover.hovered ? Colors.surfaceContainerHigh : "transparent")
+
+                Text {
+                    anchors.centerIn: parent
+                    text: (typeof KbLayoutService !== "undefined" && KbLayoutService.currentLayout)
+                        ? KbLayoutService.currentLayout.substring(0, 2).toUpperCase()
+                        : "US"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.Bold
+                    color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "kblayout")
+                        ? Colors.textOnPrimary
+                        : Colors.textOnSurfaceVariant
+                }
+
+                HoverHandler {
+                    id: kbHover
+                    onHoveredChanged: {
+                        if (hovered) Config.openBottomPopout("kblayout", kbItem.mapToItem(null, 0, kbItem.height / 2).y);
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton) {
+                            if (typeof KbLayoutService !== "undefined") KbLayoutService.nextLayout();
+                        } else {
+                            Config.openBottomPopout("kblayout", kbItem.mapToItem(null, 0, kbItem.height / 2).y);
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. Network / Wi-Fi
         Item {
             id: netItem
@@ -202,6 +253,56 @@ LiquidGlassCard {
             }
         }
 
+        // Display Brightness
+        Item {
+            id: brightnessItem
+            visible: root.isIconEnabled("brightness")
+            implicitWidth: visible ? root.btnSize : 0
+            implicitHeight: visible ? root.btnSize : 0
+            width: implicitWidth
+            height: implicitHeight
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusFull
+                color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "brightness")
+                    ? Colors.primary
+                    : (brightHover.hovered ? Colors.surfaceContainerHigh : "transparent")
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: (typeof BrightnessService !== "undefined" && BrightnessService.normalized < 0.5) ? "brightness_low" : "brightness_medium"
+                    size: root.iconSize
+                    color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "brightness")
+                        ? Colors.textOnPrimary
+                        : Colors.textOnSurfaceVariant
+                }
+
+                HoverHandler {
+                    id: brightHover
+                    onHoveredChanged: {
+                        if (hovered) Config.openBottomPopout("brightness", brightnessItem.mapToItem(null, 0, brightnessItem.height / 2).y);
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: {
+                        Config.openBottomPopout("brightness", brightnessItem.mapToItem(null, 0, brightnessItem.height / 2).y);
+                    }
+                    onWheel: wheel => {
+                        if (typeof BrightnessService !== "undefined") {
+                            const delta = wheel.angleDelta.y > 0 ? 0.05 : -0.05;
+                            const cur = BrightnessService.normalized;
+                            BrightnessService.setBrightness(Math.max(0.05, Math.min(1.0, cur + delta)));
+                        }
+                    }
+                }
+            }
+        }
+
         // 4. Clipboard Manager
         Item {
             id: clipboardItem
@@ -305,6 +406,48 @@ LiquidGlassCard {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         Config.openBottomPopout("notifications", notifBellItem.mapToItem(null, 0, notifBellItem.height / 2).y);
+                    }
+                }
+            }
+        }
+
+        // Battery Indicator
+        Item {
+            id: batteryItem
+            visible: root.isIconEnabled("battery") && ((typeof PowerService !== "undefined" && PowerService.hasBattery) || (typeof PowerService !== "undefined" && PowerService.batteryPercentage < 100))
+            implicitWidth: visible ? root.btnSize : 0
+            implicitHeight: visible ? root.btnSize : 0
+            width: implicitWidth
+            height: implicitHeight
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusFull
+                color: (Config.bottomPopoutVisible && (Config.bottomPopoutMode === "battery" || Config.bottomPopoutMode === "default"))
+                    ? Colors.primary
+                    : (battHover.hovered ? Colors.surfaceContainerHigh : "transparent")
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: (typeof PowerService !== "undefined") ? PowerService.getIcon() : "battery_full"
+                    size: root.iconSize
+                    color: (Config.bottomPopoutVisible && (Config.bottomPopoutMode === "battery" || Config.bottomPopoutMode === "default"))
+                        ? Colors.textOnPrimary
+                        : Colors.textOnSurfaceVariant
+                }
+
+                HoverHandler {
+                    id: battHover
+                    onHoveredChanged: {
+                        if (hovered) Config.openBottomPopout("battery", batteryItem.mapToItem(null, 0, batteryItem.height / 2).y);
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Config.openBottomPopout("battery", batteryItem.mapToItem(null, 0, batteryItem.height / 2).y);
                     }
                 }
             }

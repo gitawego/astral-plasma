@@ -71,23 +71,42 @@ Item {
         assert(statusIconsSrc.indexOf("unreadCount") >= 0,
             "DockStatusIcons.qml must show notification unread indicator");
 
+        assert(statusIconsSrc.indexOf("brightnessItem") >= 0,
+            "DockStatusIcons.qml must declare `brightnessItem`");
+        assert(statusIconsSrc.indexOf("kbItem") >= 0,
+            "DockStatusIcons.qml must declare `kbItem`");
+        assert(statusIconsSrc.indexOf("batteryItem") >= 0,
+            "DockStatusIcons.qml must declare `batteryItem`");
+
         // 4. FusedBottomPopout presentation contracts
         assert(fusedPopoutSrc.indexOf("case \"clipboard\":") >= 0,
             "FusedBottomPopout.qml must support `clipboard` mode");
         assert(fusedPopoutSrc.indexOf("case \"notifications\":") >= 0,
             "FusedBottomPopout.qml must support `notifications` mode");
+        assert(fusedPopoutSrc.indexOf("case \"brightness\":") >= 0,
+            "FusedBottomPopout.qml must support `brightness` mode");
+        assert(fusedPopoutSrc.indexOf("case \"kblayout\":") >= 0,
+            "FusedBottomPopout.qml must support `kblayout` mode");
         assert(fusedPopoutSrc.indexOf("clipboardSection") >= 0,
             "FusedBottomPopout.qml must define `clipboardSection`");
         assert(fusedPopoutSrc.indexOf("notificationsSection") >= 0,
             "FusedBottomPopout.qml must define `notificationsSection`");
+        assert(fusedPopoutSrc.indexOf("brightnessSection") >= 0,
+            "FusedBottomPopout.qml must define `brightnessSection`");
+        assert(fusedPopoutSrc.indexOf("kbLayoutSection") >= 0,
+            "FusedBottomPopout.qml must define `kbLayoutSection`");
 
         // 5. Settings configuration contract
         assert(settingsSrc.indexOf("\"id\": \"clipboard\"") >= 0,
             "settings.json must configure clipboard statusIcon");
         assert(settingsSrc.indexOf("\"id\": \"notifications\"") >= 0,
             "settings.json must configure notifications statusIcon");
+        assert(settingsSrc.indexOf("\"id\": \"brightness\"") >= 0,
+            "settings.json must configure brightness statusIcon");
+        assert(settingsSrc.indexOf("\"id\": \"kblayout\"") >= 0,
+            "settings.json must configure kblayout statusIcon");
 
-        console.log("PASS: Clipboard & Notification Center Integration Tests");
+        console.log("PASS: Full Status Parity & Notification Center Integration Tests");
         Qt.exit(0);
     }
 }

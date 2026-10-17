@@ -44,6 +44,8 @@ Item {
             case "bluetooth": return 300;
             case "network": return 300;
             case "audio": return 280;
+            case "brightness": return 280;
+            case "kblayout": return 280;
             case "clipboard": return 340;
             case "notifications": return 360;
             case "power": return 280;
@@ -70,6 +72,8 @@ Item {
             case "bluetooth": return bluetoothSection.implicitHeight;
             case "network": return networkSection.implicitHeight;
             case "audio": return audioSection.implicitHeight;
+            case "brightness": return brightnessSection.implicitHeight;
+            case "kblayout": return kbLayoutSection.implicitHeight;
             case "clipboard": return clipboardSection.implicitHeight;
             case "notifications": return notificationsSection.implicitHeight;
             case "power": return powerSection.implicitHeight;
@@ -599,6 +603,269 @@ Item {
                     icon: "settings"
                     label: "Audio Settings..."
                     onClicked: Quickshell.execDetached(["kcmshell6", "kcm_pulseaudio"])
+                }
+            }
+
+            // ==========================================
+            // DISPLAY BRIGHTNESS SECTION
+            // ==========================================
+            ColumnLayout {
+                id: brightnessSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                spacing: 12
+                readonly property bool isCurrent: root.mode === "brightness"
+                visible: isCurrent
+                opacity: isCurrent ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
+
+                readonly property real norm: (typeof BrightnessService !== "undefined") ? BrightnessService.normalized : 1.0
+
+                // Header
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    MaterialIcon {
+                        text: brightnessSection.norm < 0.5 ? "brightness_low" : "brightness_medium"
+                        size: 20
+                        color: Colors.primary
+                    }
+
+                    Text {
+                        text: "Display Brightness"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMedium
+                        font.weight: Font.DemiBold
+                        color: Colors.textOnSurface
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: Math.round(brightnessSection.norm * 100) + "%"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSmall
+                        font.weight: Font.DemiBold
+                        color: Colors.primary
+                    }
+                }
+
+                // Interactive Slider Groove
+                Rectangle {
+                    id: brightSliderTrack
+                    Layout.fillWidth: true
+                    implicitHeight: 28
+                    radius: Theme.radiusFull
+                    color: Colors.surfaceContainerHighest
+                    border.color: Theme.borderSubtle
+                    border.width: 1
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: Math.max(28, parent.width * Math.min(1.0, Math.max(0.05, brightnessSection.norm)))
+                        radius: Theme.radiusFull
+                        color: Colors.primary
+
+                        MaterialIcon {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "brightness_5"
+                            size: 16
+                            color: Colors.textOnPrimary
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+
+                        function applyBrightness(mx) {
+                            if (typeof BrightnessService !== "undefined") {
+                                const ratio = Math.max(0.05, Math.min(1.0, mx / brightSliderTrack.width));
+                                BrightnessService.setBrightness(ratio);
+                            }
+                        }
+
+                        onPressed: mouse => applyBrightness(mouse.x)
+                        onPositionChanged: mouse => { if (pressed) applyBrightness(mouse.x); }
+                        onWheel: wheel => {
+                            if (typeof BrightnessService !== "undefined") {
+                                const delta = wheel.angleDelta.y > 0 ? 0.05 : -0.05;
+                                const cur = BrightnessService.normalized;
+                                BrightnessService.setBrightness(Math.max(0.05, Math.min(1.0, cur + delta)));
+                            }
+                        }
+                    }
+                }
+
+                // Quick Preset Pills
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Repeater {
+                        model: [
+                            { label: "25%", val: 0.25 },
+                            { label: "50%", val: 0.50 },
+                            { label: "75%", val: 0.75 },
+                            { label: "100%", val: 1.00 }
+                        ]
+
+                        delegate: Rectangle {
+                            id: presetPill
+                            required property var modelData
+                            Layout.fillWidth: true
+                            implicitHeight: 26
+                            radius: Theme.radiusFull
+                            color: presetHover.hovered ? Colors.surfaceContainerHigh : Colors.surfaceContainer
+                            border.color: Theme.borderSubtle
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: presetPill.modelData.label
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: Colors.textOnSurface
+                            }
+
+                            HoverHandler { id: presetHover }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof BrightnessService !== "undefined") {
+                                        BrightnessService.setBrightness(presetPill.modelData.val);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // KEYBOARD LANGUAGE LAYOUT SECTION
+            // ==========================================
+            ColumnLayout {
+                id: kbLayoutSection
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                spacing: 12
+                readonly property bool isCurrent: root.mode === "kblayout"
+                visible: isCurrent
+                opacity: isCurrent ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                    }
+                }
+
+                readonly property string curLayout: (typeof KbLayoutService !== "undefined" && KbLayoutService.currentLayout) ? KbLayoutService.currentLayout : "US"
+
+                // Header
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    MaterialIcon {
+                        text: "language"
+                        size: 20
+                        color: Colors.primary
+                    }
+
+                    Text {
+                        text: "Keyboard Layout"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontMedium
+                        font.weight: Font.DemiBold
+                        color: Colors.textOnSurface
+                        Layout.fillWidth: true
+                    }
+                }
+
+                // Active Layout Card
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 48
+                    radius: Theme.radiusMedium
+                    color: Colors.surfaceContainer
+                    border.color: Colors.primary
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 8
+
+                        Text {
+                            text: kbLayoutSection.curLayout
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontMedium
+                            font.weight: Font.Bold
+                            color: Colors.textOnSurface
+                            Layout.fillWidth: true
+                        }
+
+                        // Cycle Pill Button
+                        Rectangle {
+                            implicitWidth: cycleText.implicitWidth + 18
+                            implicitHeight: 28
+                            radius: Theme.radiusFull
+                            color: cycleHover.hovered ? Colors.primary : Colors.surfaceContainerHighest
+                            border.color: cycleHover.hovered ? "transparent" : Theme.borderSubtle
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 4
+
+                                MaterialIcon {
+                                    text: "sync"
+                                    size: 14
+                                    color: cycleHover.hovered ? Colors.textOnPrimary : Colors.textOnSurface
+                                }
+
+                                Text {
+                                    id: cycleText
+                                    text: "Switch"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: Font.DemiBold
+                                    color: cycleHover.hovered ? Colors.textOnPrimary : Colors.textOnSurface
+                                }
+                            }
+
+                            HoverHandler { id: cycleHover }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof KbLayoutService !== "undefined") {
+                                        KbLayoutService.nextLayout();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

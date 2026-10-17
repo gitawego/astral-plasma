@@ -176,6 +176,30 @@ Item {
                     z: 10
                     onClicked: root.newChatRequested()
                 }
+
+                // Tooltip on hover
+                Rectangle {
+                    z: 100
+                    visible: newChatMouse.containsMouse
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    implicitWidth: newChatTipText.implicitWidth + 16
+                    implicitHeight: newChatTipText.implicitHeight + 8
+                    radius: Theme.radiusSmall
+                    color: Colors.surfaceContainerHighest
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+
+                    Text {
+                        id: newChatTipText
+                        anchors.centerIn: parent
+                        text: "New Chat (Ctrl+N)"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.onSurface
+                    }
+                }
             }
 
             // Sessions List Button
@@ -260,6 +284,30 @@ Item {
                         }
                     }
                 }
+
+                // Tooltip on hover
+                Rectangle {
+                    z: 100
+                    visible: clearMouse.containsMouse
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    implicitWidth: clearTipText.implicitWidth + 16
+                    implicitHeight: clearTipText.implicitHeight + 8
+                    radius: Theme.radiusSmall
+                    color: Colors.surfaceContainerHighest
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+
+                    Text {
+                        id: clearTipText
+                        anchors.centerIn: parent
+                        text: "Clear Messages"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.onSurface
+                    }
+                }
             }
 
             // Settings Button
@@ -292,6 +340,30 @@ Item {
                         }
                     }
                 }
+
+                // Tooltip on hover
+                Rectangle {
+                    z: 100
+                    visible: settingsMouse.containsMouse
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    implicitWidth: settingsTipText.implicitWidth + 16
+                    implicitHeight: settingsTipText.implicitHeight + 8
+                    radius: Theme.radiusSmall
+                    color: Colors.surfaceContainerHighest
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+
+                    Text {
+                        id: settingsTipText
+                        anchors.centerIn: parent
+                        text: "AI Settings"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.onSurface
+                    }
+                }
             }
 
             // Minimize Button
@@ -321,6 +393,30 @@ Item {
                     z: 10
                     onClicked: root.minimizeRequested()
                 }
+
+                // Tooltip on hover
+                Rectangle {
+                    z: 100
+                    visible: minMouse.containsMouse
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    implicitWidth: minTipText.implicitWidth + 16
+                    implicitHeight: minTipText.implicitHeight + 8
+                    radius: Theme.radiusSmall
+                    color: Colors.surfaceContainerHighest
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+
+                    Text {
+                        id: minTipText
+                        anchors.centerIn: parent
+                        text: "Minimize"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.onSurface
+                    }
+                }
             }
 
             // Close Button
@@ -348,6 +444,30 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     z: 10
                     onClicked: root.closeRequested()
+                }
+
+                // Tooltip on hover
+                Rectangle {
+                    z: 100
+                    visible: closeMouse.containsMouse
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 8
+                    anchors.right: parent.right
+                    implicitWidth: closeTipText.implicitWidth + 16
+                    implicitHeight: closeTipText.implicitHeight + 8
+                    radius: Theme.radiusSmall
+                    color: Colors.surfaceContainerHighest
+                    border.color: Colors.outlineVariant
+                    border.width: 1
+
+                    Text {
+                        id: closeTipText
+                        anchors.centerIn: parent
+                        text: "Close (Esc)"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.onSurface
+                    }
                 }
             }
         }
