@@ -150,7 +150,7 @@ Inspect the resulting image using `view_file` to verify alignment, centering, co
 
 ---
 
-## 6. Mandatory Visual Proof of Work & First-Round Completeness Policy
+## 7. Mandatory Visual Proof of Work & First-Round Completeness Policy
 
 > [!CAUTION]
 > ### WHY FIRST ROUNDS FAIL & HOW TO PREVENT IT
@@ -183,7 +183,27 @@ Inspect the resulting image using `view_file` to verify alignment, centering, co
 
 ---
 
-## 7. QML Coding Standards & Best Practices
+## 8. Mandatory Post-Work Verification & Non-Regression Gate (Never Break Existing Features)
+
+> [!CAUTION]
+> ### CRITICAL MANDATORY RULE: VERIFY AFTER EACH WORK DONE TO ENSURE NOTHING IS BROKEN
+> Fixing one issue or adding a feature must NEVER break another existing feature, degrade surfaces, or swap out ground-truth data. Every modification MUST pass this non-regression gate before being declared complete:
+>
+> 1. **Zero Side-Effects on Shared Primitives (No Monkey Patching)**:
+>    - You must NEVER fix a localized problem by applying a broad short-circuit, heuristic bypass, or monkey patch in low-level primitives (such as `MaterialIcon.qml`, `ThemedIcon.qml`, `ThemedImage.qml`, or `Config.qml`).
+>    - Low-level primitives serve multiple consumers across the shell (Dock, Taskbar, App Launchers, System Tray, Popouts, Copilot). Any change to a shared primitive MUST be audited against all its consumers.
+> 2. **Never Fabricate or Hardcode Fallback Content**:
+>    - Real application desktop entries, icons, and system telemetry are authoritative ground truth. Never intercept or replace valid application icons, window titles, or status telemetry with synthetic or hardcoded fallbacks.
+> 3. **Mandatory 360-Degree Shell Verification**:
+>    - After each code modification, do not just test the one component you changed.
+>    - You MUST verify that other shell surfaces (Dock icons, taskbar pins, active window indicators, status group, tray, dashboard) remain fully operational and intact.
+> 4. **Live Visual Capture & Self-Inspection**:
+>    - Take a full-resolution screenshot using `spectacle -b -n -o /tmp/screen_verify.png`.
+>    - Inspect the captured screenshot with `view_file` to confirm that all application icons (e.g. Edge, VS Code, Terminal, Dolphin), badges, and geometries are displaying their authentic, intended visuals.
+
+---
+
+## 9. QML Coding Standards & Best Practices
 
 1. **Explicit Sizing & No Circular Anchors**:
    - Never combine `anchors.fill: parent` with an item whose parent's `implicitHeight` depends on its children.
