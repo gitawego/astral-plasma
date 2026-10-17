@@ -936,28 +936,47 @@ Item {
                         }
                     }
 
-                    // Clear All Button
+                    // Clear All Button Pill
                     Rectangle {
-                        implicitWidth: 26
-                        implicitHeight: 26
+                        implicitHeight: 24
+                        implicitWidth: clearClipRow.implicitWidth + 14
                         radius: Theme.radiusFull
-                        color: clearHover.hovered ? Colors.surfaceContainerHigh : "transparent"
+                        scale: clearClipMouse.pressed ? 0.94 : (clearClipMouse.containsMouse ? 1.04 : 1.0)
+                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                        color: clearClipMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.16) : Colors.surfaceContainerHighest
+                        border.width: 1
+                        border.color: clearClipMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.40) : Colors.glassBorderSpecular
                         visible: clipboardSection.allItems.length > 0
 
-                        MaterialIcon {
+                        RowLayout {
+                            id: clearClipRow
                             anchors.centerIn: parent
-                            text: "delete_sweep"
-                            size: 16
-                            color: clearHover.hovered ? "#FF5449" : Colors.textOnSurfaceVariant
+                            spacing: 4
+
+                            MaterialIcon {
+                                text: "delete_sweep"
+                                size: 14
+                                color: clearClipMouse.containsMouse ? Colors.m3error : Colors.textOnSurfaceVariant
+                            }
+
+                            Text {
+                                text: "Clear all"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: clearClipMouse.containsMouse ? Colors.m3error : Colors.textOnSurfaceVariant
+                            }
                         }
 
-                        HoverHandler { id: clearHover }
-
                         MouseArea {
+                            id: clearClipMouse
                             anchors.fill: parent
+                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (typeof ClipboardService !== "undefined") ClipboardService.clearHistory();
+                                if (typeof ClipboardService !== "undefined") {
+                                    ClipboardService.clearHistory();
+                                }
                             }
                         }
                     }
@@ -1217,28 +1236,47 @@ Item {
                         }
                     }
 
-                    // Clear All Button
+                    // Clear All Button Pill
                     Rectangle {
-                        implicitWidth: 26
-                        implicitHeight: 26
+                        implicitHeight: 24
+                        implicitWidth: clearNotifRow.implicitWidth + 14
                         radius: Theme.radiusFull
-                        color: clearNotifHover.hovered ? Colors.surfaceContainerHigh : "transparent"
+                        scale: clearNotifMouse.pressed ? 0.94 : (clearNotifMouse.containsMouse ? 1.04 : 1.0)
+                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                        color: clearNotifMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.16) : Colors.surfaceContainerHighest
+                        border.width: 1
+                        border.color: clearNotifMouse.containsMouse ? Qt.alpha(Colors.m3error, 0.40) : Colors.glassBorderSpecular
                         visible: notificationsSection.notifHistory.length > 0
 
-                        MaterialIcon {
+                        RowLayout {
+                            id: clearNotifRow
                             anchors.centerIn: parent
-                            text: "clear_all"
-                            size: 18
-                            color: clearNotifHover.hovered ? "#FF5449" : Colors.textOnSurfaceVariant
+                            spacing: 4
+
+                            MaterialIcon {
+                                text: "clear_all"
+                                size: 14
+                                color: clearNotifMouse.containsMouse ? Colors.m3error : Colors.textOnSurfaceVariant
+                            }
+
+                            Text {
+                                text: "Clear all"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: clearNotifMouse.containsMouse ? Colors.m3error : Colors.textOnSurfaceVariant
+                            }
                         }
 
-                        HoverHandler { id: clearNotifHover }
-
                         MouseArea {
+                            id: clearNotifMouse
                             anchors.fill: parent
+                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (typeof NotificationService !== "undefined") NotificationService.clearHistory();
+                                if (typeof NotificationService !== "undefined") {
+                                    NotificationService.clearHistory();
+                                }
                             }
                         }
                     }

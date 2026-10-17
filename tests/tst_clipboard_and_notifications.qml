@@ -95,6 +95,10 @@ Item {
             "FusedBottomPopout.qml must define `brightnessSection`");
         assert(fusedPopoutSrc.indexOf("kbLayoutSection") >= 0,
             "FusedBottomPopout.qml must define `kbLayoutSection`");
+        assert(/notificationsSection[\s\S]*?Text\s*\{\s*text:\s*"Clear all"/.test(fusedPopoutSrc),
+            "notificationsSection must have a visible 'Clear all' button");
+        assert(/clipboardSection[\s\S]*?Text\s*\{\s*text:\s*"Clear all"/.test(fusedPopoutSrc),
+            "clipboardSection must have a visible 'Clear all' button");
 
         // 5. Settings configuration contract
         assert(settingsSrc.indexOf("\"id\": \"clipboard\"") >= 0,

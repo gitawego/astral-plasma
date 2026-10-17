@@ -227,6 +227,8 @@ Item {
         "content_paste": "󰆒",
         "select_all": "󰒆",
         "delete_sweep": "󰗩",
+        "clear_all": "󰎟",
+        "notification_clear_all": "󰎟",
         "download": "󰇚",
         "cloud_download": "󰅢",
         "file_download": "󰥥",
