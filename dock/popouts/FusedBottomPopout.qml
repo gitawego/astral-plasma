@@ -879,6 +879,11 @@ Item {
                 anchors.top: parent.top
                 spacing: 8
                 readonly property bool isCurrent: root.mode === "clipboard"
+                onIsCurrentChanged: {
+                    if (isCurrent && typeof ClipboardService !== "undefined") {
+                        ClipboardService.refresh();
+                    }
+                }
                 visible: isCurrent
                 opacity: isCurrent ? 1.0 : 0.0
                 Behavior on opacity {
@@ -894,7 +899,14 @@ Item {
                 readonly property var filteredItems: {
                     if (!clipboardSection.filterText.trim()) return clipboardSection.allItems;
                     const query = clipboardSection.filterText.toLowerCase();
-                    return clipboardSection.allItems.filter(item => typeof item === "string" && item.toLowerCase().includes(query));
+                    return clipboardSection.allItems.filter(item => {
+                        if (typeof item === "string") return item.toLowerCase().includes(query);
+                        if (item && item.type === "image") {
+                            return "image".includes(query) || (item.text && item.text.toLowerCase().includes(query));
+                        }
+                        if (item && typeof item.text === "string") return item.text.toLowerCase().includes(query);
+                        return false;
+                    });
                 }
 
                 // Header
@@ -1091,8 +1103,9 @@ Item {
                                     id: clipItemDelegate
                                     required property var modelData
                                     required property int index
+                                    readonly property bool isImage: Boolean(clipItemDelegate.modelData && typeof clipItemDelegate.modelData === "object" && clipItemDelegate.modelData.type === "image")
                                     Layout.fillWidth: true
-                                    implicitHeight: Math.max(34, clipItemText.implicitHeight + 14)
+                                    implicitHeight: isImage ? 56 : Math.max(34, clipItemText.implicitHeight + 14)
                                     radius: Theme.radiusSmall
                                     color: itemHover.hovered ? Colors.surfaceContainerHigh : Colors.surfaceContainer
                                     border.color: itemHover.hovered ? Colors.primary : "transparent"
@@ -1104,16 +1117,72 @@ Item {
                                         anchors.rightMargin: 8
                                         spacing: 8
 
+                                        // 1. Image Thumbnail Preview
+                                        Rectangle {
+                                            visible: clipItemDelegate.isImage
+                                            implicitWidth: 40
+                                            implicitHeight: 40
+                                            radius: 6
+                                            color: Colors.surfaceContainerHighest
+                                            clip: true
+                                            border.width: 1
+                                            border.color: Colors.glassBorderSpecular
+
+                                            Image {
+                                                anchors.fill: parent
+                                                anchors.margins: 2
+                                                source: clipItemDelegate.isImage ? (clipItemDelegate.modelData.preview || ("file://" + clipItemDelegate.modelData.path)) : ""
+                                                fillMode: Image.PreserveAspectFit
+                                                smooth: true
+                                                asynchronous: true
+                                            }
+                                        }
+
+                                        // 2. Text Icon
                                         MaterialIcon {
+                                            visible: !clipItemDelegate.isImage
                                             text: "text_snippet"
                                             size: 16
                                             color: itemHover.hovered ? Colors.primary : Colors.textOnSurfaceVariant
                                         }
 
+                                        // 3. Image Details (Label & Format)
+                                        ColumnLayout {
+                                            visible: clipItemDelegate.isImage
+                                            Layout.fillWidth: true
+                                            spacing: 2
+
+                                            RowLayout {
+                                                spacing: 4
+                                                MaterialIcon {
+                                                    text: "image"
+                                                    size: 13
+                                                    color: Colors.primary
+                                                }
+                                                Text {
+                                                    text: clipItemDelegate.isImage ? (clipItemDelegate.modelData.text || "Image") : ""
+                                                    font.family: Theme.fontFamily
+                                                    font.pixelSize: Theme.fontSmall
+                                                    font.weight: Font.Medium
+                                                    color: Colors.textOnSurface
+                                                }
+                                            }
+
+                                            Text {
+                                                text: clipItemDelegate.isImage ? (clipItemDelegate.modelData.mime || "PNG Image") : ""
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 10
+                                                color: Colors.textOnSurfaceVariant
+                                                opacity: 0.7
+                                            }
+                                        }
+
+                                        // 4. Text Snippet
                                         Text {
                                             id: clipItemText
+                                            visible: !clipItemDelegate.isImage
                                             Layout.fillWidth: true
-                                            text: typeof clipItemDelegate.modelData === "string" ? clipItemDelegate.modelData : ""
+                                            text: typeof clipItemDelegate.modelData === "string" ? clipItemDelegate.modelData : (clipItemDelegate.modelData && clipItemDelegate.modelData.text ? clipItemDelegate.modelData.text : "")
                                             font.family: Theme.fontFamily
                                             font.pixelSize: Theme.fontSmall
                                             color: Colors.textOnSurface

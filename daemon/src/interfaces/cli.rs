@@ -252,6 +252,38 @@ pub async fn run_cli() -> DynResult<()> {
         "notifs" => {
             crate::application::notif_monitor::run_notif_monitor().await?;
         }
+        "clipboard" => {
+            use crate::infrastructure::clipboard_adapter::{
+                read_clipboard, set_clipboard, clear_clipboard,
+            };
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("read");
+            match sub {
+                "read" => {
+                    let item = read_clipboard();
+                    println!("{}", serde_json::to_string(&item)?);
+                }
+                "set" => {
+                    let is_image = args.iter().any(|a| a == "--image");
+                    let text_args: Vec<&str> = args
+                        .iter()
+                        .skip(3)
+                        .filter(|a| !a.starts_with("--"))
+                        .map(|s| s.as_str())
+                        .collect();
+                    let content = text_args.join(" ");
+                    let ok = set_clipboard(&content, is_image);
+                    println!(r#"{{"success":{}}}"#, ok);
+                }
+                "clear" => {
+                    let ok = clear_clipboard();
+                    println!(r#"{{"success":{}}}"#, ok);
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma clipboard <read|set|clear> [content] [--image]");
+                    std::process::exit(2);
+                }
+            }
+        }
         "device" => {
             use crate::infrastructure::removable_devices_adapter::RemovableDevicesAdapter;
             let adapter = RemovableDevicesAdapter::new();
@@ -2039,6 +2071,7 @@ fn print_usage() {
     eprintln!("  visualizer              - Stream real-time audio spectrum & energy JSON");
     eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
     eprintln!("  calendar <resolve|open [YYYY-MM-DD]> - Open the default calendar application");
+    eprintln!("  clipboard <read|set|clear> [content] [--image] - Rich clipboard operations");
     eprintln!("  workspaces <cmd>        - Virtual desktops: query, switch, ensure");
     eprintln!("  preview <window_id>     - Capture live window thumbnail");
     eprintln!("  desktop <install|cleanup> - Manage KWin authorization desktop entries");

@@ -41,4 +41,5 @@ pub mod removable_devices_adapter;
 pub mod voice_polisher;
 pub mod soniox_stt_adapter;
 pub mod system_monitor;
+pub mod clipboard_adapter;
 
