@@ -2303,6 +2303,8 @@ Item {
 
                 readonly property var currentApp: WindowService.activePreviewApp
                 readonly property bool isRunning: currentApp ? (Boolean(currentApp.isRunning) || Boolean(currentApp.id)) : false
+                readonly property var winList: (currentApp && currentApp.windows && currentApp.windows.length > 0) ? currentApp.windows : (currentApp && currentApp.id ? [currentApp] : [])
+                readonly property bool hasMultipleWindows: winList.length > 1
 
                 // Live preview auto-refresh while hovering over app or drawer
                 Timer {
@@ -2364,6 +2366,7 @@ Item {
                             text: {
                                 const app = appSection.currentApp;
                                 if (!app) return "";
+                                if (appSection.hasMultipleWindows) return appSection.winList.length + " Open Windows";
                                 if (app.isActive) return "Active Window";
                                 if (appSection.isRunning) return "Running";
                                 if (app.isPinned) return "Pinned to Dock";
@@ -2379,10 +2382,11 @@ Item {
 
                 ActionDivider {}
 
-                // 2. Window / App Preview Card
+                // 2a. Single Window / App Preview Card (when 1 window or not running)
                 Rectangle {
                     id: appPreviewCard
                     Layout.fillWidth: true
+                    visible: !appSection.hasMultipleWindows
                     implicitHeight: (appSection.currentApp && appSection.isRunning) ? 200 : 96
                     radius: Theme.radiusSmall
                     color: Colors.surfaceContainerLowest
@@ -2484,9 +2488,6 @@ Item {
                             color: Colors.surfaceContainer
                             clip: true
 
-                            // Double-buffered live thumbnail (shared component;
-                            // the same flicker-free slot swap the drawer always
-                            // had - extracted so the overview grid reuses it).
                             LiveWindowThumbnail {
                                 id: livePreviewBufContainer
                                 anchors.fill: parent
@@ -2554,16 +2555,183 @@ Item {
                     }
                 }
 
+                // 2b. Multiple Windows Instances List
+                ColumnLayout {
+                    id: multipleWindowsContainer
+                    Layout.fillWidth: true
+                    spacing: 8
+                    visible: appSection.hasMultipleWindows
+
+                    Repeater {
+                        model: appSection.winList
+
+                        delegate: Rectangle {
+                            id: instanceCard
+                            required property var modelData
+                            required property int index
+
+                            Layout.fillWidth: true
+                            implicitHeight: 96
+                            radius: Theme.radiusSmall
+                            color: Colors.surfaceContainerLowest
+                            border.color: (Boolean(modelData.isActive) || (String(modelData.id).replace(/[{}]/g, "") === String(WindowService.activeId).replace(/[{}]/g, ""))) ? Colors.primary : Theme.borderSubtle
+                            border.width: (Boolean(modelData.isActive) || (String(modelData.id).replace(/[{}]/g, "") === String(WindowService.activeId).replace(/[{}]/g, ""))) ? 1.5 : 1
+                            clip: true
+
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onEntered: Config.keepBottomPopout()
+                                onClicked: {
+                                    if (modelData && modelData.id) {
+                                        WindowService.activateWindow(modelData.id);
+                                    }
+                                    Config.closeBottomPopout();
+                                }
+                            }
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 6
+
+                                // Mini Titlebar
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 5
+
+                                    Rectangle { width: 8; height: 8; radius: 4; color: "#ff5f56" }
+                                    Rectangle { width: 8; height: 8; radius: 4; color: "#ffbd2e" }
+                                    Rectangle { width: 8; height: 8; radius: 4; color: "#27c93f" }
+                                    Item { Layout.preferredWidth: 4 }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: (modelData.title && modelData.title.trim() !== "") ? modelData.title : ((appSection.currentApp ? appSection.currentApp.appName : "Window") + " " + (index + 1))
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.fontLabelSmall
+                                        font.weight: Font.Medium
+                                        color: Colors.textOnSurface
+                                        elide: Text.ElideRight
+                                    }
+
+                                    // Active badge indicator
+                                    RowLayout {
+                                        spacing: 4
+                                        readonly property bool isWinActive: Boolean(modelData.isActive) || (String(modelData.id).replace(/[{}]/g, "") === String(WindowService.activeId).replace(/[{}]/g, ""))
+
+                                        Rectangle {
+                                            width: 6
+                                            height: 6
+                                            radius: 3
+                                            color: parent.isWinActive ? "#27c93f" : Colors.primary
+                                        }
+
+                                        Text {
+                                            text: parent.isWinActive ? "ACTIVE" : "LIVE"
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                            color: parent.isWinActive ? "#27c93f" : Colors.primary
+                                        }
+                                    }
+
+                                    // Close window instance button
+                                    Item {
+                                        Layout.preferredWidth: 20
+                                        Layout.preferredHeight: 20
+                                        Layout.alignment: Qt.AlignVCenter
+
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            radius: 10
+                                            color: closeInstMouse.containsMouse ? Colors.surfaceContainerHighest : "transparent"
+                                        }
+
+                                        MaterialIcon {
+                                            anchors.centerIn: parent
+                                            text: "close"
+                                            size: 13
+                                            color: closeInstMouse.containsMouse ? "#ff5f56" : Colors.textOnSurfaceVariant
+                                        }
+
+                                        MouseArea {
+                                            id: closeInstMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (modelData && modelData.id) {
+                                                    WindowService.closeWindow(modelData.id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Window Content / Thumbnail preview
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: 4
+                                    color: Colors.surfaceContainer
+                                    clip: true
+
+                                    LiveWindowThumbnail {
+                                        anchors.fill: parent
+                                        source: (WindowService._previewCache && WindowService._previewCache[modelData.id.toString()])
+                                            ? WindowService._previewCache[modelData.id.toString()]
+                                            : ((modelData.id.toString() === String(WindowService.activePreviewApp ? WindowService.activePreviewApp.id : "")) ? WindowService.activePreviewThumbnail : "")
+                                        identity: modelData.id
+                                    }
+
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        visible: !parent.children[0].hasImage
+
+                                        MaterialIcon {
+                                            text: (appSection.currentApp && appSection.currentApp.materialIcon) ? appSection.currentApp.materialIcon : "desktop_windows"
+                                            size: 16
+                                            color: Colors.primary
+                                        }
+
+                                        Text {
+                                            text: "Click to bring to front"
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: Theme.fontSmall
+                                            color: Colors.textOnSurfaceVariant
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 ActionDivider {}
 
                 // 3. Quick Actions
                 ActionItem {
-                    visible: appSection.currentApp && appSection.isRunning
+                    visible: appSection.currentApp && appSection.isRunning && !appSection.hasMultipleWindows
                     label: "Bring to Front"
                     icon: "open_in_new"
                     onClicked: {
                         if (appSection.currentApp && appSection.currentApp.id) {
                             WindowService.activateWindow(appSection.currentApp.id);
+                        }
+                        Config.closeBottomPopout();
+                    }
+                }
+
+                ActionItem {
+                    visible: appSection.currentApp && appSection.isRunning
+                    label: "New Window"
+                    icon: "add"
+                    onClicked: {
+                        if (appSection.currentApp) {
+                            WindowService.launchApp(appSection.currentApp.desktopFile || appSection.currentApp.appId);
                         }
                         Config.closeBottomPopout();
                     }
@@ -2598,12 +2766,20 @@ Item {
 
                 ActionItem {
                     visible: appSection.currentApp && appSection.isRunning
-                    label: "Close Window"
+                    label: appSection.hasMultipleWindows ? "Close All Windows" : "Close Window"
                     icon: "close"
                     iconColor: "#ffb4ab"
                     onClicked: {
-                        if (appSection.currentApp && appSection.currentApp.id) {
-                            WindowService.closeWindow(appSection.currentApp.id);
+                        if (appSection.currentApp) {
+                            if (appSection.hasMultipleWindows) {
+                                for (let cIdx = 0; cIdx < appSection.winList.length; cIdx++) {
+                                    if (appSection.winList[cIdx] && appSection.winList[cIdx].id) {
+                                        WindowService.closeWindow(appSection.winList[cIdx].id);
+                                    }
+                                }
+                            } else if (appSection.currentApp.id) {
+                                WindowService.closeWindow(appSection.currentApp.id);
+                            }
                         }
                         Config.closeBottomPopout();
                     }

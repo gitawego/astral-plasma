@@ -17,6 +17,68 @@ Item {
     signal requestContextMenu(var app, real globalY)
     signal requestTrayContextMenu(var item, real globalY)
 
+    function matchApp(p, w) {
+        if (!p || !w) return false;
+        const pId = (p.appId || "").toLowerCase();
+        const pDesk = (p.desktopFile || "").toLowerCase().replace(/\.desktop$/, "");
+        const pName = (p.appName || "").toLowerCase();
+
+        const wId = (w.appId || "").toLowerCase();
+        const wDesk = (w.desktopFile || "").toLowerCase().replace(/\.desktop$/, "");
+        const wName = (w.appName || "").toLowerCase();
+        const wCls = (w.cls || "").toLowerCase();
+
+        // 1. Direct equality
+        if (pId && (wId === pId || wDesk === pId || wCls === pId)) return true;
+        if (pDesk && (wDesk === pDesk || wId === pDesk || wCls === pDesk)) return true;
+        if (pName && wName && pName === wName) return true;
+
+        // 2. Token / reverse-DNS stems
+        const extractStems = (str) => {
+            if (!str) return [];
+            const s = str.toLowerCase().replace(/\.desktop$/, "");
+            const stems = [s];
+            const parts = s.split(".");
+            if (parts.length > 1) {
+                stems.push(parts[parts.length - 1]);
+                stems.push(parts.slice(-2).join("-"));
+                stems.push(parts.slice(-2).join(""));
+            }
+            const hyphenParts = s.split("-");
+            if (hyphenParts.length > 1) {
+                stems.push(hyphenParts[hyphenParts.length - 1]);
+            }
+            return stems;
+        };
+
+        const pStems = extractStems(pId).concat(extractStems(pDesk));
+        const wStems = extractStems(wId).concat(extractStems(wDesk)).concat(extractStems(wCls));
+
+        for (let i = 0; i < pStems.length; i++) {
+            const ps = pStems[i];
+            if (!ps || ps.length < 3) continue;
+            for (let j = 0; j < wStems.length; j++) {
+                const ws = wStems[j];
+                if (!ws || ws.length < 3) continue;
+                if (ps === ws) return true;
+                if (ps.length >= 4 && ws.length >= 4 && (ps.endsWith(ws) || ws.endsWith(ps))) return true;
+            }
+        }
+
+        // 3. App Name matching (excluding generic words)
+        if (pName && wName) {
+            const generic = ["window", "app", "application", "file", "files"];
+            if (!generic.includes(pName) && !generic.includes(wName)) {
+                if (wName.includes(pName) || pName.includes(wName)) return true;
+                const pNorm = pName.replace(/\s+/g, "");
+                const wNorm = wName.replace(/\s+/g, "");
+                if (pNorm.includes(wNorm) || wNorm.includes(pNorm)) return true;
+            }
+        }
+
+        return false;
+    }
+
     readonly property var pinnedList: {
         const _actId = WindowService.activeId;
         const _actApp = WindowService.activeAppId;
@@ -28,81 +90,73 @@ Item {
 
         for (let i = 0; i < pinned.length; i++) {
             const p = pinned[i];
-            const pId = (p.appId || "").toLowerCase();
-            const pDesk = (p.desktopFile || "").toLowerCase();
-            const pName = (p.appName || "").toLowerCase();
-            let found = null;
-
+            const matchingWindows = [];
             for (let j = 0; j < wins.length; j++) {
                 const w = wins[j];
-                if (matchedWinIds.has(w.id)) continue;
-                const wId = (w.appId || "").toLowerCase();
-                const wDesk = (w.desktopFile || "").toLowerCase();
-                const wName = (w.appName || "").toLowerCase();
-                const wCls = (w.cls || "").toLowerCase();
-
-                if ((pId && (wId === pId || wDesk === pId || wCls === pId))
-                    || (pDesk && (wDesk === pDesk || wId === pDesk))
-                    || (pName && wName === pName)) {
-                    found = w;
-                    break;
+                if (root.matchApp(p, w)) {
+                    matchingWindows.push(w);
+                    matchedWinIds.add(w.id);
                 }
             }
 
+            const isRunning = matchingWindows.length > 0;
             let isPendingLaunch = false;
-            if (!found) {
+            if (!isRunning) {
                 for (let k = 0; k < pending.length; k++) {
                     const pl = pending[k];
-                    const plId = (pl.appId || "").toLowerCase();
-                    const plDesk = (pl.desktopFile || "").toLowerCase();
-                    const plTarget = (pl.target || "").toLowerCase();
-                    if ((pId && (plId === pId || plDesk === pId || plTarget === pId))
-                        || (pDesk && (plDesk === pDesk || plId === pDesk || plTarget === pDesk))) {
+                    if (root.matchApp(p, pl) || (pl.target && root.matchApp(p, { appId: pl.target, desktopFile: pl.target }))) {
                         isPendingLaunch = true;
                         break;
                     }
                 }
             }
 
-            if (found) {
-                matchedWinIds.add(found.id);
-                const isAct = Boolean(found.isActive)
-                    || (Boolean(_actId) && String(found.id).replace(/[{}]/g, "") === String(_actId).replace(/[{}]/g, ""))
-                    || (Boolean(_actApp) && (String(p.appId).toLowerCase() === String(_actApp).toLowerCase() || String(found.appId).toLowerCase() === String(_actApp).toLowerCase()));
-                // If the pinned app's icon does not resolve via iconUrl (e.g. not in active theme),
-                // or if the live running window published an extracted/resolved file icon, use the live icon.
-                const pIconResolves = Boolean(p.iconName && Config.iconUrl(p.iconName) !== "");
-                const foundIsFile = Boolean(found.iconName && (found.iconName.startsWith("/") || found.iconName.startsWith("file:")));
-                const effectiveIcon = (!pIconResolves || foundIsFile) && found.iconName ? found.iconName : (p.iconName || found.iconName);
-
-                result.push({
-                    isPinned: true,
-                    isRunning: true,
-                    isLoading: false,
-                    id: found.id,
-                    appId: p.appId,
-                    appName: p.appName || found.appName,
-                    iconName: effectiveIcon,
-                    materialIcon: p.materialIcon || found.materialIcon,
-                    desktopFile: p.desktopFile || found.desktopFile || p.appId,
-                    title: found.title,
-                    isActive: isAct
-                });
-            } else {
-                result.push({
-                    isPinned: true,
-                    isRunning: false,
-                    isLoading: isPendingLaunch,
-                    id: null,
-                    appId: p.appId,
-                    appName: p.appName,
-                    iconName: p.iconName,
-                    materialIcon: p.materialIcon,
-                    desktopFile: p.desktopFile || p.appId,
-                    title: "",
-                    isActive: false
-                });
+            let activeWin = null;
+            if (isRunning) {
+                for (let m = 0; m < matchingWindows.length; m++) {
+                    const mw = matchingWindows[m];
+                    if (Boolean(mw.isActive)
+                        || (Boolean(_actId) && String(mw.id).replace(/[{}]/g, "") === String(_actId).replace(/[{}]/g, ""))) {
+                        activeWin = mw;
+                        break;
+                    }
+                }
+                if (!activeWin && Boolean(_actApp)) {
+                    for (let m = 0; m < matchingWindows.length; m++) {
+                        if (String(matchingWindows[m].appId).toLowerCase() === String(_actApp).toLowerCase()) {
+                            activeWin = matchingWindows[m];
+                            break;
+                        }
+                    }
+                }
             }
+            const isAct = Boolean(activeWin);
+            const primaryWin = activeWin || (isRunning ? matchingWindows[0] : null);
+
+            let effectiveIcon = p.iconName || "";
+            if (primaryWin && primaryWin.iconName) {
+                const pIconResolves = Boolean(p.iconName && Config.iconUrl(p.iconName) !== "");
+                const foundIsFile = Boolean(primaryWin.iconName && (primaryWin.iconName.startsWith("/") || primaryWin.iconName.startsWith("file:")));
+                if (!pIconResolves || foundIsFile) {
+                    effectiveIcon = primaryWin.iconName;
+                }
+            }
+
+            result.push({
+                isPinned: true,
+                isRunning: isRunning,
+                isLoading: !isRunning && isPendingLaunch,
+                id: primaryWin ? primaryWin.id : null,
+                appId: p.appId,
+                appName: p.appName || (primaryWin ? primaryWin.appName : ""),
+                iconName: effectiveIcon,
+                materialIcon: p.materialIcon || (primaryWin ? primaryWin.materialIcon : "desktop_windows"),
+                desktopFile: p.desktopFile || (primaryWin ? primaryWin.desktopFile : p.appId),
+                title: primaryWin ? primaryWin.title : "",
+                isActive: isAct,
+                windows: matchingWindows,
+                windowCount: matchingWindows.length
+            });
         }
         return result;
     }
@@ -118,63 +172,89 @@ Item {
 
         for (let i = 0; i < pinned.length; i++) {
             const p = pinned[i];
-            const pId = (p.appId || "").toLowerCase();
-            const pDesk = (p.desktopFile || "").toLowerCase();
-            const pName = (p.appName || "").toLowerCase();
-
             for (let j = 0; j < wins.length; j++) {
                 const w = wins[j];
                 if (matchedWinIds.has(w.id)) continue;
-                const wId = (w.appId || "").toLowerCase();
-                const wDesk = (w.desktopFile || "").toLowerCase();
-                const wName = (w.appName || "").toLowerCase();
-                const wCls = (w.cls || "").toLowerCase();
-
-                if ((pId && (wId === pId || wDesk === pId || wCls === pId))
-                    || (pDesk && (wDesk === pDesk || wId === pDesk))
-                    || (pName && wName === pName)) {
+                if (root.matchApp(p, w)) {
                     matchedWinIds.add(w.id);
-                    break;
                 }
             }
         }
 
+        const unpinnedGroups = [];
         for (let k = 0; k < wins.length; k++) {
             const w = wins[k];
-            if (!matchedWinIds.has(w.id)) {
-                const isAct = Boolean(w.isActive)
-                    || (Boolean(_actId) && String(w.id).replace(/[{}]/g, "") === String(_actId).replace(/[{}]/g, ""))
-                    || (Boolean(_actApp) && String(w.appId).toLowerCase() === String(_actApp).toLowerCase());
-                result.push({
+            if (matchedWinIds.has(w.id)) continue;
+
+            let targetGroup = null;
+            for (let g = 0; g < unpinnedGroups.length; g++) {
+                if (root.matchApp(unpinnedGroups[g], w)) {
+                    targetGroup = unpinnedGroups[g];
+                    break;
+                }
+            }
+
+            if (!targetGroup) {
+                targetGroup = {
                     isPinned: false,
-                    isRunning: true,
                     isLoading: false,
-                    id: w.id,
                     appId: w.appId || (w.appName ? w.appName.toLowerCase() : "window"),
                     appName: w.appName,
                     iconName: w.iconName,
                     materialIcon: w.materialIcon,
                     desktopFile: w.desktopFile || w.appId,
-                    title: w.title,
-                    isActive: isAct
-                });
+                    windows: []
+                };
+                unpinnedGroups.push(targetGroup);
             }
+            targetGroup.windows.push(w);
+        }
+
+        for (let g = 0; g < unpinnedGroups.length; g++) {
+            const grp = unpinnedGroups[g];
+            let activeWin = null;
+            for (let m = 0; m < grp.windows.length; m++) {
+                const mw = grp.windows[m];
+                if (Boolean(mw.isActive)
+                    || (Boolean(_actId) && String(mw.id).replace(/[{}]/g, "") === String(_actId).replace(/[{}]/g, ""))) {
+                    activeWin = mw;
+                    break;
+                }
+            }
+            if (!activeWin && Boolean(_actApp)) {
+                for (let m = 0; m < grp.windows.length; m++) {
+                    if (String(grp.windows[m].appId).toLowerCase() === String(_actApp).toLowerCase()) {
+                        activeWin = grp.windows[m];
+                        break;
+                    }
+                }
+            }
+            const isAct = Boolean(activeWin);
+            const primaryWin = activeWin || grp.windows[0];
+
+            result.push({
+                isPinned: false,
+                isRunning: true,
+                isLoading: false,
+                id: primaryWin.id,
+                appId: grp.appId,
+                appName: grp.appName,
+                iconName: primaryWin.iconName || grp.iconName,
+                materialIcon: primaryWin.materialIcon || grp.materialIcon,
+                desktopFile: primaryWin.desktopFile || grp.desktopFile,
+                title: primaryWin.title,
+                isActive: isAct,
+                windows: grp.windows,
+                windowCount: grp.windows.length
+            });
         }
 
         // Add unpinned pending launches
         for (let pIdx = 0; pIdx < pending.length; pIdx++) {
             const pl = pending[pIdx];
-            const plId = (pl.appId || "").toLowerCase();
-            const plDesk = (pl.desktopFile || "").toLowerCase();
-            const plTarget = (pl.target || "").toLowerCase();
-
             let isPinnedApp = false;
             for (let i = 0; i < pinned.length; i++) {
-                const p = pinned[i];
-                const pId = (p.appId || "").toLowerCase();
-                const pDesk = (p.desktopFile || "").toLowerCase();
-                if ((pId && (plId === pId || plDesk === pId || plTarget === pId))
-                    || (pDesk && (plDesk === pDesk || plId === pDesk || plTarget === pDesk))) {
+                if (root.matchApp(pinned[i], pl) || (pl.target && root.matchApp(pinned[i], { appId: pl.target, desktopFile: pl.target }))) {
                     isPinnedApp = true;
                     break;
                 }
@@ -182,15 +262,8 @@ Item {
             if (isPinnedApp) continue;
 
             let isRunningApp = false;
-            for (let j = 0; j < wins.length; j++) {
-                const w = wins[j];
-                const wId = (w.appId || "").toLowerCase();
-                const wDesk = (w.desktopFile || "").toLowerCase();
-                const wName = (w.appName || "").toLowerCase();
-                const wCls = (w.cls || "").toLowerCase();
-                if ((plId && (wId === plId || wDesk === plId || wCls === plId))
-                    || (plDesk && (wDesk === plDesk || wId === plDesk || wCls === plDesk))
-                    || (plTarget && (wId === plTarget || wDesk === plTarget || wCls === plTarget))) {
+            for (let g = 0; g < unpinnedGroups.length; g++) {
+                if (root.matchApp(unpinnedGroups[g], pl) || (pl.target && root.matchApp(unpinnedGroups[g], { appId: pl.target, desktopFile: pl.target }))) {
                     isRunningApp = true;
                     break;
                 }
@@ -208,7 +281,9 @@ Item {
                 materialIcon: pl.materialIcon,
                 desktopFile: pl.desktopFile,
                 title: "Starting...",
-                isActive: false
+                isActive: false,
+                windows: [],
+                windowCount: 0
             });
         }
 
@@ -818,16 +893,23 @@ Item {
                         }
                     }
 
-                    // Running dot indicator
-                    Rectangle {
+                    // Running indicator: stacked dots when inactive (multiple dots for multiple instances)
+                    Column {
                         anchors.left: parent.left
                         anchors.leftMargin: metrics.indicatorMargin
                         anchors.verticalCenter: parent.verticalCenter
-                        width: metrics.indicatorWidth
-                        height: 3
-                        radius: 1.5
-                        color: Colors.textMuted
+                        spacing: 2
                         visible: modelData.isRunning && !modelData.isActive
+
+                        Repeater {
+                            model: Math.min(3, Math.max(1, modelData.windowCount || 1))
+                            Rectangle {
+                                width: metrics.indicatorWidth
+                                height: 3
+                                radius: 1.5
+                                color: Colors.textMuted
+                            }
+                        }
                     }
 
                     // Loading Pulsing Ring (Material 3 Expressive motion tokens)
@@ -899,7 +981,22 @@ Item {
                                 Config.closeBottomPopout();
                             } else {
                                 if (modelData.isRunning) {
-                                    WindowService.activateWindow(modelData.id);
+                                    if (modelData.windows && modelData.windows.length > 1) {
+                                        // Multiple instances: cycle to next window
+                                        let curIdx = -1;
+                                        const actIdStr = String(WindowService.activeId || "").replace(/[{}]/g, "");
+                                        for (let wIdx = 0; wIdx < modelData.windows.length; wIdx++) {
+                                            const wIdStr = String(modelData.windows[wIdx].id || "").replace(/[{}]/g, "");
+                                            if (modelData.windows[wIdx].isActive || (actIdStr && wIdStr === actIdStr)) {
+                                                curIdx = wIdx;
+                                                break;
+                                            }
+                                        }
+                                        const nextIdx = (curIdx + 1) % modelData.windows.length;
+                                        WindowService.activateWindow(modelData.windows[nextIdx].id);
+                                    } else {
+                                        WindowService.activateWindow(modelData.id);
+                                    }
                                 } else {
                                     WindowService.launchApp(modelData.desktopFile || modelData.appId, modelData);
                                 }
@@ -928,6 +1025,8 @@ Item {
                             text: {
                                 if (modelData.isLoading) {
                                     return modelData.appName + " (Starting...)";
+                                } else if (modelData.windowCount > 1) {
+                                    return modelData.appName + " (" + modelData.windowCount + " windows)";
                                 } else if (modelData.isPinned && modelData.isRunning) {
                                     return (modelData.appName + (modelData.title ? (" — " + modelData.title.slice(0, 32)) : "")) + " (Pinned)";
                                 } else if (modelData.isPinned && !modelData.isRunning) {

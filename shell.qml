@@ -324,6 +324,12 @@ ShellRoot {
             const wins = WindowService.windows || [];
             if (wins.length > index) {
                 const w = wins[index];
+                const matchingWins = [];
+                for (let i = 0; i < wins.length; i++) {
+                    if (wins[i].appId === w.appId || (w.appName && wins[i].appName === w.appName)) {
+                        matchingWins.push(wins[i]);
+                    }
+                }
                 const appObj = {
                     id: w.id,
                     appId: w.appId,
@@ -334,7 +340,9 @@ ShellRoot {
                     title: w.title,
                     isActive: w.isActive,
                     isRunning: true,
-                    isPinned: false
+                    isPinned: false,
+                    windows: matchingWins,
+                    windowCount: matchingWins.length
                 };
                 WindowService.loadAppPreview(appObj);
                 const y = (customY !== undefined && customY > 0) ? customY : 650;
