@@ -201,6 +201,47 @@ fn test_tray_item_without_icon_is_not_fabricated() {
 }
 
 #[test]
+fn test_tray_item_resolves_stem_and_title_from_identity_index() {
+    use astral_plasma::domain::app_identity::{AppIdentityIndex, DesktopApp};
+    use astral_plasma::infrastructure::tray_adapter::TrayAdapter;
+
+    let index = AppIdentityIndex::from_entries(vec![DesktopApp {
+        desktop_id: "zcode".to_string(),
+        name: "ZCode".to_string(),
+        icon: "zcode".to_string(),
+        wm_class: Some("zcode".to_string()),
+        material_icon: "code".to_string(),
+        comment: String::new(),
+        exec: String::new(),
+        no_display: false,
+    }]);
+
+    // When SNI id has a suffix like ZCode_status_icon_1 and no wire icon,
+    // it resolves to the real installed app's icon and material glyph:
+    let (title, icon, m_icon) = TrayAdapter::resolve_tray_meta_with(
+        Some(&index),
+        "ZCode_status_icon_1",
+        "ZCode",
+        "",
+    );
+    assert_eq!(title, "ZCode");
+    assert_eq!(icon, "zcode");
+    assert_eq!(m_icon, "code");
+
+    // When raw icon is already provided (e.g. from IconPixmap file:// URL),
+    // the provided wire icon is preserved, while the material glyph reflects the app:
+    let (title2, icon2, m_icon2) = TrayAdapter::resolve_tray_meta_with(
+        Some(&index),
+        "ZCode_status_icon_1",
+        "ZCode",
+        "file:///tmp/tray_icon.png",
+    );
+    assert_eq!(title2, "ZCode");
+    assert_eq!(icon2, "file:///tmp/tray_icon.png");
+    assert_eq!(m_icon2, "code");
+}
+
+#[test]
 fn test_kwin_watcher_dbus_casing() {
     let script = astral_plasma::application::watch_events::get_kwin_watcher_script();
     // Must call WindowActivated with capital W to match zbus default CamelCase

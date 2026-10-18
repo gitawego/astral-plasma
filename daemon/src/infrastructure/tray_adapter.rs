@@ -175,12 +175,12 @@ fn sni_get_pixmap(svc: &str, path: &str) -> Option<String> {
                                     let h = arr[1].as_i64().unwrap_or(0) as u32;
                                     if let Some(bytes) = arr[2].as_array() {
                                         if w > 0 && h > 0 && bytes.len() == (w * h * 4) as usize {
-                                            let score = if w >= 32 && w <= 64 {
-                                                1000 - (w as i32 - 48).abs()
-                                            } else if w < 32 {
-                                                w as i32
+                                            let score = if (32..=64).contains(&w) {
+                                                10_000 - (w as i32 - 48).abs()
+                                            } else if w > 64 {
+                                                5_000 - (w as i32 - 64).min(4_000)
                                             } else {
-                                                500 - (w as i32 - 64)
+                                                100 + (w as i32) * 10
                                             };
                                             if score > best_score {
                                                 best_score = score;
@@ -222,7 +222,19 @@ fn sni_get_pixmap(svc: &str, path: &str) -> Option<String> {
 
                             if !file_path.exists() {
                                 if let Some(img) = image::RgbaImage::from_raw(w, h, rgba) {
-                                    let _ = img.save(&file_path);
+                                    if w > 128 || h > 128 {
+                                        let target_w = 64;
+                                        let target_h = (h * target_w) / w;
+                                        let resized = image::imageops::resize(
+                                            &img,
+                                            target_w,
+                                            target_h.max(1),
+                                            image::imageops::FilterType::Lanczos3,
+                                        );
+                                        let _ = resized.save(&file_path);
+                                    } else {
+                                        let _ = img.save(&file_path);
+                                    }
                                 }
                             }
 
@@ -272,32 +284,34 @@ fn resolve_desktop_icon(svc: &str, item_id: &str) -> Option<String> {
     if !sanitized_id.is_empty() && !candidate_names.contains(&sanitized_id) {
         candidate_names.push(sanitized_id);
     }
+    let lower_id = item_id.to_lowercase();
+    if !lower_id.is_empty() && !candidate_names.contains(&lower_id) {
+        candidate_names.push(lower_id);
+    }
 
+    let index = shared_index();
     for cand in &candidate_names {
-        for dir in ["/usr/share/applications", "/usr/local/share/applications"] {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
-                        let fname_lower = fname.to_lowercase();
-                        if fname_lower.ends_with(".desktop") && fname_lower.contains(cand) {
-                            if let Ok(content) = std::fs::read_to_string(&path) {
-                                for line in content.lines() {
-                                    if let Some(rest) = line.strip_prefix("Icon=") {
-                                        let icon_val = rest.trim();
-                                        if !icon_val.is_empty() {
-                                            return Some(icon_val.to_string());
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        if let Some(entry) = index.resolve(cand, cand) {
+            let icon = if entry.icon.is_empty() {
+                entry.desktop_id.clone()
+            } else {
+                entry.icon.clone()
+            };
+            if !icon.is_empty() {
+                return Some(icon);
             }
         }
+    }
 
-        if std::path::Path::new(&format!("/usr/share/icons/hicolor/48x48/apps/{}.png", cand)).exists()
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".into());
+    let user_icons = std::path::PathBuf::from(&home).join(".local/share/icons");
+
+    for cand in &candidate_names {
+        if user_icons.join(format!("{}.png", cand)).exists()
+            || user_icons.join(format!("{}.svg", cand)).exists()
+            || user_icons.join(format!("hicolor/512x512/apps/{}.png", cand)).exists()
+            || user_icons.join(format!("hicolor/scalable/apps/{}.svg", cand)).exists()
+            || std::path::Path::new(&format!("/usr/share/icons/hicolor/48x48/apps/{}.png", cand)).exists()
             || std::path::Path::new(&format!("/usr/share/pixmaps/{}.png", cand)).exists()
         {
             return Some(cand.clone());
@@ -388,7 +402,30 @@ impl TrayAdapter {
         let mut icon = item_icon.to_string();
         let mut m_icon = "circle".to_string();
 
-        if let Some(entry) = index.and_then(|i| i.resolve(item_id, item_id)) {
+        let resolved_entry = index.and_then(|i| {
+            i.resolve(item_id, item_id)
+                .or_else(|| {
+                    let sanitized = item_id
+                        .split(|c: char| !c.is_alphanumeric())
+                        .next()
+                        .unwrap_or("");
+                    if !sanitized.is_empty() && sanitized != item_id {
+                        i.resolve(sanitized, sanitized)
+                    } else {
+                        None
+                    }
+                })
+                .or_else(|| {
+                    let t = item_title.trim();
+                    if !t.is_empty() {
+                        i.resolve(t, t)
+                    } else {
+                        None
+                    }
+                })
+        });
+
+        if let Some(entry) = resolved_entry {
             if icon.trim().is_empty() {
                 icon = if entry.icon.is_empty() {
                     entry.desktop_id.clone()
