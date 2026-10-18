@@ -11,6 +11,9 @@ Item {
     id: root
 
     required property real iconS
+    readonly property int appIconSize: (typeof Config !== "undefined" && Config.dockAppIconSize !== undefined)
+        ? Config.dockAppIconSize
+        : Math.round(root.iconS * 0.75)
     signal requestContextMenu(var app, real globalY)
     signal requestTrayContextMenu(var item, real globalY)
 
@@ -482,8 +485,8 @@ Item {
             id: activeIconContainer
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
-            width: root.iconS + 4
-            height: root.iconS + 4
+            width: root.appIconSize + 6
+            height: root.appIconSize + 6
 
             // The shared MaterialIcon resolves every app-icon archetype the same
             // way: full-colour art, theme-tinted symbolic art, Material fallback.
@@ -491,7 +494,7 @@ Item {
                 anchors.centerIn: parent
                 iconName: WindowService.activeIconName
                 text: WindowService.activeMaterialIcon || "desktop_windows"
-                size: root.iconS
+                size: root.appIconSize
                 color: Colors.primary
             }
         }
@@ -786,7 +789,7 @@ Item {
                     // Indicator gutter + centred icon geometry (see DockItemMetrics).
                     DockItemMetrics {
                         id: metrics
-                        iconSize: root.iconS
+                        iconSize: root.appIconSize
                     }
 
                     width: itemSize
@@ -805,7 +808,7 @@ Item {
                         anchors.leftMargin: metrics.indicatorMargin
                         anchors.verticalCenter: parent.verticalCenter
                         width: metrics.indicatorWidth
-                        height: modelData.isActive ? Math.round(root.iconS * 0.65) : 0
+                        height: modelData.isActive ? Math.round(root.appIconSize * 0.75) : 0
                         radius: 1.5
                         color: Colors.primary
                         visible: modelData.isActive
@@ -831,8 +834,8 @@ Item {
                     Rectangle {
                         id: loadingRing
                         anchors.centerIn: parent
-                        width: root.iconS + 4
-                        height: root.iconS + 4
+                        width: root.appIconSize + 6
+                        height: root.appIconSize + 6
                         radius: width / 2
                         color: "transparent"
                         border.color: Colors.primary
@@ -859,7 +862,7 @@ Item {
                         anchors.centerIn: parent
                         iconName: modelData.iconName
                         text: modelData.materialIcon || "desktop_windows"
-                        size: root.iconS
+                        size: root.appIconSize
                         opacity: modelData.isRunning ? 1.0 : (modelData.isLoading ? 0.95 : 0.65)
                         color: modelData.isActive ? Colors.primary : Colors.onSurfaceVariant
 

@@ -173,6 +173,9 @@ Singleton {
         ? Boolean(root.settings.dock.tray.autoExpand) : true
 
     readonly property int dockIconSize: (root.settings.dock && root.settings.dock.iconSize !== undefined) ? root.settings.dock.iconSize : 32
+    readonly property int dockAppIconSize: (root.settings.dock && root.settings.dock.appIconSize !== undefined)
+        ? root.settings.dock.appIconSize
+        : Math.round(root.dockIconSize * 0.75)
     readonly property int dockStatusIconSize: (root.settings.dock && root.settings.dock.statusIconSize !== undefined)
         ? root.settings.dock.statusIconSize
         : root.dockIconSize
@@ -778,6 +781,14 @@ Singleton {
         updateSettings(cfg => {
             if (!cfg.dock) cfg.dock = {};
             cfg.dock.iconSize = size;
+        });
+    }
+
+    function setDockAppIconSize(size) {
+        if (!size || size < 14) return;
+        updateSettings(cfg => {
+            if (!cfg.dock) cfg.dock = {};
+            cfg.dock.appIconSize = size;
         });
     }
 

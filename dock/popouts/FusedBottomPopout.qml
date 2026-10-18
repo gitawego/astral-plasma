@@ -2502,8 +2502,8 @@ Item {
 
                                 Item {
                                     Layout.alignment: Qt.AlignHCenter
-                                    Layout.preferredWidth: 44
-                                    Layout.preferredHeight: 44
+                                    Layout.preferredWidth: 32
+                                    Layout.preferredHeight: 32
 
                                     Image {
                                         anchors.fill: parent
@@ -2516,7 +2516,7 @@ Item {
                                     MaterialIcon {
                                         anchors.centerIn: parent
                                         text: (appSection.currentApp && appSection.currentApp.materialIcon) ? appSection.currentApp.materialIcon : "desktop_windows"
-                                        size: 36
+                                        size: 28
                                         color: Colors.primary
                                         opacity: 0.85
                                         visible: !parent.children[0].visible
