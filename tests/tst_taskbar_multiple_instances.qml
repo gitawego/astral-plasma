@@ -28,65 +28,89 @@ Item {
         return true;
     }
 
+    function normalizeId(str) {
+        if (!str) return "";
+        let s = String(str).trim().toLowerCase();
+        s = s.replace(/\.desktop$/, "");
+        const slashIdx = s.lastIndexOf("/");
+        if (slashIdx !== -1) {
+            s = s.substring(slashIdx + 1);
+        }
+        return s;
+    }
+
+    function getCanonicalAliases(rawId) {
+        const id = normalizeId(rawId);
+        if (!id) return [];
+        const aliases = [id];
+        
+        // Reverse-DNS to hyphenated: e.g. "com.microsoft.edge" -> "microsoft-edge"
+        const parts = id.split(".");
+        if (parts.length >= 3 && ["com", "org", "net", "io", "app"].indexOf(parts[0]) !== -1) {
+            const hyphenated = parts.slice(1).join("-");
+            if (hyphenated && aliases.indexOf(hyphenated) === -1) {
+                aliases.push(hyphenated);
+            }
+            if (parts[0] === "org" && parts[1] === "kde") {
+                const kdeName = parts.slice(2).join("-");
+                if (kdeName && aliases.indexOf(kdeName) === -1) {
+                    aliases.push(kdeName);
+                }
+            }
+        }
+        // Hyphenated to reverse-DNS: e.g. "microsoft-edge" -> "com.microsoft.edge"
+        if (id.indexOf("-") !== -1 && id.indexOf(".") === -1) {
+            const rDns = "com." + id.replace(/-/g, ".");
+            if (aliases.indexOf(rDns) === -1) {
+                aliases.push(rDns);
+            }
+        }
+        return aliases;
+    }
+
+    // Mock canonical lookup mirroring WindowService / freedesktop metadata
+    function mockCanonicalAppId(rawId) {
+        const s = normalizeId(rawId);
+        if (s === "code" || s === "com.microsoft.vscode" || s === "microsoft-vscode") {
+            return "com.microsoft.vscode";
+        }
+        if (s === "zcode") {
+            return "zcode";
+        }
+        if (s === "microsoft-edge" || s === "com.microsoft.edge") {
+            return "microsoft-edge";
+        }
+        return s;
+    }
+
     // Pure matching logic matching UnifiedDock.qml
     function matchApp(p, w) {
         if (!p || !w) return false;
-        const pId = (p.appId || "").toLowerCase();
-        const pDesk = (p.desktopFile || "").toLowerCase().replace(/\.desktop$/, "");
-        const pName = (p.appName || "").toLowerCase();
+        const pId = normalizeId(p.appId);
+        const pDesk = normalizeId(p.desktopFile);
+        const wId = normalizeId(w.appId);
+        const wDesk = normalizeId(w.desktopFile);
+        const wCls = normalizeId(w.cls);
 
-        const wId = (w.appId || "").toLowerCase();
-        const wDesk = (w.desktopFile || "").toLowerCase().replace(/\.desktop$/, "");
-        const wName = (w.appName || "").toLowerCase();
-        const wCls = (w.cls || "").toLowerCase();
-
-        // 1. Direct equality
+        // 1. Direct exact equality between declared identifiers
         if (pId && (wId === pId || wDesk === pId || wCls === pId)) return true;
         if (pDesk && (wDesk === pDesk || wId === pDesk || wCls === pDesk)) return true;
-        if (pName && wName && pName === wName) return true;
 
-        // 2. Token / reverse-DNS stems
-        const extractStems = (str) => {
-            if (!str) return [];
-            const s = str.toLowerCase().replace(/\.desktop$/, "");
-            const stems = [s];
-            const parts = s.split(".");
-            if (parts.length > 1) {
-                stems.push(parts[parts.length - 1]);
-                stems.push(parts.slice(-2).join("-"));
-                stems.push(parts.slice(-2).join(""));
-            }
-            const hyphenParts = s.split("-");
-            if (hyphenParts.length > 1) {
-                stems.push(hyphenParts[hyphenParts.length - 1]);
-            }
-            return stems;
-        };
-
-        const pStems = extractStems(pId).concat(extractStems(pDesk));
-        const wStems = extractStems(wId).concat(extractStems(wDesk)).concat(extractStems(wCls));
-
-        for (let i = 0; i < pStems.length; i++) {
-            const ps = pStems[i];
-            if (!ps || ps.length < 3) continue;
-            for (let j = 0; j < wStems.length; j++) {
-                const ws = wStems[j];
-                if (!ws || ws.length < 3) continue;
-                if (ps === ws) return true;
-                if (ps.length >= 4 && ws.length >= 4 && (ps.endsWith(ws) || ws.endsWith(ps))) return true;
-            }
+        // 2. Canonical reverse-DNS alias intersection
+        const pAliases = getCanonicalAliases(pDesk || pId);
+        const wAliases = getCanonicalAliases(wDesk || wId || wCls);
+        for (let i = 0; i < pAliases.length; i++) {
+            if (wAliases.indexOf(pAliases[i]) !== -1) return true;
         }
 
-        // 3. App Name matching (excluding generic words)
-        if (pName && wName) {
-            const generic = ["window", "app", "application", "file", "files"];
-            if (!generic.includes(pName) && !generic.includes(wName)) {
-                if (wName.includes(pName) || pName.includes(wName)) return true;
-                const pNorm = pName.replace(/\s+/g, "");
-                const wNorm = wName.replace(/\s+/g, "");
-                if (pNorm.includes(wNorm) || wNorm.includes(pNorm)) return true;
-            }
-        }
+        // 3. Freedesktop SSOT Canonical Resolution
+        const pCanon = mockCanonicalAppId(pDesk || pId);
+        const wCanon = mockCanonicalAppId(wDesk || wId || wCls);
+        if (pCanon && wCanon && pCanon === wCanon) return true;
+
+        const pCanon2 = mockCanonicalAppId(pId || pDesk);
+        const wCanon2 = mockCanonicalAppId(wId || wCls || wDesk);
+        if (pCanon2 && wCanon2 && pCanon2 === wCanon2) return true;
 
         return false;
     }
@@ -367,6 +391,43 @@ Item {
         assert(winList.length === 2, "Popout winList must have length 2");
         assert(winList[0].id === "win-edge-1" && winList[1].id === "win-edge-2", "Popout winList must contain both windows");
         assert(winList[1].isActive === true, "Active window badge in popout must be active");
+
+        // 7. Critical Non-Regression: ZCode and VS Code MUST NEVER collide
+        const vsCodePin = pinnedConfig[2]; // { appId: "code", desktopFile: "code", appName: "VS Code" }
+        const zcodeWin = {
+            id: "win-zcode-1",
+            appId: "zcode",
+            appName: "ZCode",
+            desktopFile: "zcode",
+            cls: "zcode",
+            iconName: "zcode",
+            title: "ZCode Editor",
+            isActive: false
+        };
+        const vsCodeWin = {
+            id: "win-vscode-1",
+            appId: "com.microsoft.VSCode",
+            appName: "Visual Studio Code",
+            desktopFile: "com.microsoft.VSCode",
+            cls: "com.microsoft.VSCode",
+            iconName: "vscode",
+            title: "VS Code - Project",
+            isActive: false
+        };
+
+        assert(!matchApp(vsCodePin, zcodeWin), "ZCode window must NEVER match pinned VS Code (code)");
+        assert(!matchApp(vsCodeWin, zcodeWin), "ZCode window must NEVER match VS Code window (com.microsoft.VSCode)");
+        assert(matchApp(vsCodePin, vsCodeWin), "VS Code window must match pinned VS Code");
+
+        // When both VS Code and ZCode windows exist, they must be in separate items
+        const winsWithCodeAndZCode = [vsCodeWin, zcodeWin];
+        const pinnedWithBoth = computePinnedList(pinnedConfig, winsWithCodeAndZCode, [], "", "");
+        const unpinnedWithBoth = computeUnpinnedList(pinnedConfig, winsWithCodeAndZCode, [], "", "", pinnedWithBoth.matchedWinIds);
+
+        assert(pinnedWithBoth.list[2].windowCount === 1, "Pinned VS Code must contain only VS Code window, NOT ZCode");
+        assert(pinnedWithBoth.list[2].windows[0].id === "win-vscode-1", "Pinned VS Code window must be win-vscode-1");
+        assert(unpinnedWithBoth.length === 1, "ZCode must appear as separate unpinned app item");
+        assert(unpinnedWithBoth[0].appId === "zcode", "Unpinned item must be zcode");
 
         console.log("PASS: Taskbar Multiple Instances & Identity Normalization Tests passed successfully!");
         Qt.exit(0);

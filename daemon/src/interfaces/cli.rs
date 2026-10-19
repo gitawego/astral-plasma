@@ -104,6 +104,14 @@ pub async fn run_cli() -> DynResult<()> {
                 }
                 "restore" => {
                     let restored = plasma.restore()?;
+                    // Always restore shortcuts and blur as well when restoring Plasma,
+                    // so the full KDE desktop session and keyboard shortcuts are restored.
+                    use crate::domain::ports::ShortcutControlPort;
+                    let shortcut_port = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
+                    let _ = shortcut_port.restore_relevant_shortcuts();
+                    if !branding::test_mode() {
+                        let _ = crate::infrastructure::kwin_blur::KWinBlurAdapter::new().restore();
+                    }
                     println!(r#"{{"success":true,"restored":{}}}"#, restored);
                 }
                 "watchdog" => {

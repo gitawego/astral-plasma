@@ -128,6 +128,72 @@ Singleton {
         }
     }
 
+    // Canonical application identity index derived from freedesktop desktop entries
+    property var _canonicalMap: ({})
+
+    function _rebuildCanonicalMap() {
+        const map = {};
+        const apps = root.installedApps || [];
+        for (let i = 0; i < apps.length; i++) {
+            const a = apps[i];
+            const desk = (a.desktop_file || "").toLowerCase().replace(/\.desktop$/, "");
+            if (!desk) continue;
+            map[desk] = desk;
+
+            // Reverse-DNS to hyphenated and vice-versa
+            const parts = desk.split(".");
+            if (parts.length >= 3 && ["com", "org", "net", "io", "app"].indexOf(parts[0]) !== -1) {
+                const hyphenated = parts.slice(1).join("-");
+                if (hyphenated) map[hyphenated] = desk;
+                if (parts[0] === "org" && parts[1] === "kde") {
+                    const kdeName = parts.slice(2).join("-");
+                    if (kdeName) map[kdeName] = desk;
+                }
+            } else if (desk.indexOf("-") !== -1 && desk.indexOf(".") === -1) {
+                map["com." + desk.replace(/-/g, ".")] = desk;
+            }
+
+            // Exec binary mapping (e.g. "code %F" -> "code" maps to "com.microsoft.vscode")
+            if (a.exec) {
+                let bin = a.exec.trim();
+                if (bin.startsWith("\"")) {
+                    bin = bin.substring(1).split("\"")[0];
+                } else if (bin.startsWith("'")) {
+                    bin = bin.substring(1).split("'")[0];
+                } else {
+                    bin = bin.split(/\s+/)[0];
+                }
+                const slashIdx = bin.lastIndexOf("/");
+                if (slashIdx !== -1) bin = bin.substring(slashIdx + 1);
+                bin = bin.toLowerCase().replace(/\.desktop$/, "").trim();
+                if (bin && !map[bin]) {
+                    map[bin] = desk;
+                }
+            }
+        }
+        root._canonicalMap = map;
+    }
+
+    function canonicalAppId(rawId) {
+        if (!rawId) return "";
+        let s = String(rawId).trim().toLowerCase().replace(/\.desktop$/, "");
+        const slashIdx = s.lastIndexOf("/");
+        if (slashIdx !== -1) s = s.substring(slashIdx + 1);
+        if (root._canonicalMap && root._canonicalMap[s]) {
+            return root._canonicalMap[s];
+        }
+        // Direct reverse-DNS / hyphenated fallback if not in installedApps map
+        const parts = s.split(".");
+        if (parts.length >= 3 && ["com", "org", "net", "io", "app"].indexOf(parts[0]) !== -1) {
+            const hyphenated = parts.slice(1).join("-");
+            if (root._canonicalMap && root._canonicalMap[hyphenated]) {
+                return root._canonicalMap[hyphenated];
+            }
+            return hyphenated;
+        }
+        return s;
+    }
+
     // Background process to populate and cache all installed system applications
     Process {
         id: installedAppsProc
@@ -143,12 +209,17 @@ Singleton {
                             a._searchKey = ((a.name || "") + " " + (a.comment || "") + " " + (a.exec || "") + " " + (a.desktop_file || "")).toLowerCase();
                         }
                         root.installedApps = parsed;
+                        root._rebuildCanonicalMap();
                     }
                 } catch (e) {
                     console.warn("WindowService installedApps parse error:", e);
                 }
             }
         }
+    }
+
+    onInstalledAppsChanged: {
+        root._rebuildCanonicalMap();
     }
 
     function reloadInstalledApps() {

@@ -163,7 +163,58 @@ fn identity_keys(raw: &str) -> Vec<String> {
         Some(_) => {}
         None => keys.push(format!("{base}.exe")),
     }
+
+    // Reverse-DNS to hyphenated: e.g. "com.microsoft.edge" -> "microsoft-edge"
+    let parts: Vec<&str> = base.split('.').collect();
+    if parts.len() >= 3 && ["com", "org", "net", "io", "app"].contains(&parts[0]) {
+        let hyphenated = parts[1..].join("-");
+        if !hyphenated.is_empty() && !keys.contains(&hyphenated) {
+            keys.push(hyphenated);
+        }
+        if parts[0] == "org" && parts[1] == "kde" && parts.len() >= 3 {
+            let kde_name = parts[2..].join("-");
+            if !kde_name.is_empty() && !keys.contains(&kde_name) {
+                keys.push(kde_name);
+            }
+        }
+    }
+
+    // Hyphenated to reverse-DNS: e.g. "microsoft-edge" -> "com.microsoft.edge"
+    if base.contains('-') && !base.contains('.') {
+        let r_dns = format!("com.{}", base.replace('-', "."));
+        if !keys.contains(&r_dns) {
+            keys.push(r_dns);
+        }
+    }
+
     keys
+}
+
+/// Extract the executable binary name from an `Exec=` string.
+///
+/// Strips quotes, path components, and command line arguments.
+/// E.g. `"code %F"` -> `Some("code")`
+/// E.g. `"/usr/bin/microsoft-edge-stable %U"` -> `Some("microsoft-edge-stable")`
+/// E.g. `"\"/mnt/data/Applications/ZCode\" %U"` -> `Some("zcode")`
+pub fn extract_exec_binary(exec: &str) -> Option<String> {
+    let trimmed = exec.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let first_token = if trimmed.starts_with('"') {
+        trimmed.strip_prefix('"')?.split('"').next()?
+    } else if trimmed.starts_with('\'') {
+        trimmed.strip_prefix('\'')?.split('\'').next()?
+    } else {
+        trimmed.split_whitespace().next()?
+    };
+    let bin_name = first_token.rsplit('/').next()?.trim();
+    let norm = normalize_identity(bin_name);
+    if norm.is_empty() {
+        None
+    } else {
+        Some(norm)
+    }
 }
 
 /// Parse one desktop file's `[Desktop Entry]` group.
@@ -276,6 +327,8 @@ pub fn parse_desktop_entry(content: &str, desktop_id: &str) -> Option<DesktopApp
 pub struct AppIdentityIndex {
     by_wm_class: HashMap<String, DesktopApp>,
     by_desktop_id: HashMap<String, DesktopApp>,
+    by_alias: HashMap<String, DesktopApp>,
+    by_exec: HashMap<String, DesktopApp>,
 }
 
 impl AppIdentityIndex {
@@ -300,7 +353,15 @@ impl AppIdentityIndex {
         }
         let id = normalize_identity(&app.desktop_id);
         if !id.is_empty() {
-            self.by_desktop_id.entry(id).or_insert(app);
+            for key in identity_keys(&id) {
+                if key != id {
+                    self.by_alias.entry(key).or_insert_with(|| app.clone());
+                }
+            }
+            self.by_desktop_id.entry(id).or_insert_with(|| app.clone());
+        }
+        if let Some(bin) = extract_exec_binary(&app.exec) {
+            self.by_exec.entry(bin).or_insert_with(|| app.clone());
         }
     }
 
@@ -320,6 +381,20 @@ impl AppIdentityIndex {
         for candidate in [app, cls] {
             for key in identity_keys(candidate) {
                 if let Some(found) = self.by_desktop_id.get(&key) {
+                    return Some(found);
+                }
+            }
+        }
+        for candidate in [app, cls] {
+            for key in identity_keys(candidate) {
+                if let Some(found) = self.by_alias.get(&key) {
+                    return Some(found);
+                }
+            }
+        }
+        for candidate in [app, cls] {
+            for key in identity_keys(candidate) {
+                if let Some(found) = self.by_exec.get(&key) {
                     return Some(found);
                 }
             }

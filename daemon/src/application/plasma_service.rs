@@ -268,14 +268,12 @@ pub async fn run_watchdog_loop_with_ports(
         loop {
             tokio::select! {
                 _ = sigterm.recv() => {
-                    eprintln!("[astral-plasma watchdog] Received SIGTERM signal, exiting cleanly without restoring.");
-                    let _ = fs::remove_file(pid_file);
-                    return Ok(());
+                    eprintln!("[astral-plasma watchdog] Received SIGTERM signal, restoring original Plasma state...");
+                    break;
                 }
                 _ = sigint.recv() => {
-                    eprintln!("[astral-plasma watchdog] Received SIGINT signal, exiting cleanly without restoring.");
-                    let _ = fs::remove_file(pid_file);
-                    return Ok(());
+                    eprintln!("[astral-plasma watchdog] Received SIGINT signal, restoring original Plasma state...");
+                    break;
                 }
                 _ = tokio::time::sleep(Duration::from_millis(500)) => {
                     let alive = unsafe { libc::kill(target_pid as i32, 0) == 0 };

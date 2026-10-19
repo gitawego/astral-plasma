@@ -343,6 +343,69 @@ fn identities_resolve_only_through_their_own_declared_metadata() {
 }
 
 #[test]
+fn edge_wayland_reverse_dns_resolves_to_microsoft_edge() {
+    let index = AppIdentityIndex::from_entries(vec![DesktopApp {
+        desktop_id: "microsoft-edge".into(),
+        name: "Microsoft Edge".into(),
+        icon: "microsoft-edge".into(),
+        wm_class: None,
+        material_icon: "language".into(),
+        comment: String::new(),
+        exec: "/usr/bin/microsoft-edge-stable %U".into(),
+        no_display: false,
+    }]);
+
+    // On Wayland, Edge reports `com.microsoft.Edge`
+    let meta = resolve_window_meta_with(Some(&index), "Edge", "com.microsoft.Edge", "com.microsoft.Edge", "");
+    assert_eq!(meta.app_id, "microsoft-edge");
+    assert_eq!(meta.desktop_file, "microsoft-edge");
+    assert_eq!(meta.app_name, "Microsoft Edge");
+}
+
+#[test]
+fn vs_code_resolves_by_exec_binary_and_never_collides_with_zcode() {
+    let index = AppIdentityIndex::from_entries(vec![
+        DesktopApp {
+            desktop_id: "com.microsoft.VSCode".into(),
+            name: "Visual Studio Code".into(),
+            icon: "vscode".into(),
+            wm_class: Some("com.microsoft.VSCode".into()),
+            material_icon: "code".into(),
+            comment: String::new(),
+            exec: "code %F".into(),
+            no_display: false,
+        },
+        DesktopApp {
+            desktop_id: "zcode".into(),
+            name: "ZCode".into(),
+            icon: "zcode".into(),
+            wm_class: Some("zcode".into()),
+            material_icon: "code".into(),
+            comment: String::new(),
+            exec: "\"/mnt/data/Applications/ZCode\" %U".into(),
+            no_display: false,
+        },
+    ]);
+
+    // Lookup with binary name "code" (as in pinned settings)
+    let found_code = index.resolve("code", "code").expect("code binary must resolve to VS Code");
+    assert_eq!(found_code.desktop_id, "com.microsoft.VSCode");
+
+    // ZCode window
+    let meta_zcode = resolve_window_meta_with(Some(&index), "ZCode", "zcode", "zcode", "");
+    assert_eq!(meta_zcode.app_id, "zcode");
+    assert_eq!(meta_zcode.desktop_file, "zcode");
+    assert_ne!(meta_zcode.app_id, "com.microsoft.VSCode");
+    assert_ne!(meta_zcode.app_name, "Visual Studio Code");
+
+    // VS Code window
+    let meta_vscode = resolve_window_meta_with(Some(&index), "Code", "com.microsoft.VSCode", "com.microsoft.VSCode", "");
+    assert_eq!(meta_vscode.app_id, "com.microsoft.VSCode");
+    assert_eq!(meta_vscode.desktop_file, "com.microsoft.VSCode");
+    assert_ne!(meta_vscode.app_id, "zcode");
+}
+
+#[test]
 fn keywords_do_not_match_inside_other_words() {
     // "edge" must not match "knowledge"; "code" must not match "encode".
     let a = resolve_window_meta("Knowledge Base", "knowledge", "knowledge", "");

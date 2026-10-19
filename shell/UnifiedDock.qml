@@ -17,63 +17,74 @@ Item {
     signal requestContextMenu(var app, real globalY)
     signal requestTrayContextMenu(var item, real globalY)
 
-    function matchApp(p, w) {
-        if (!p || !w) return false;
-        const pId = (p.appId || "").toLowerCase();
-        const pDesk = (p.desktopFile || "").toLowerCase().replace(/\.desktop$/, "");
-        const pName = (p.appName || "").toLowerCase();
+    function normalizeId(str) {
+        if (!str) return "";
+        let s = String(str).trim().toLowerCase();
+        s = s.replace(/\.desktop$/, "");
+        const slashIdx = s.lastIndexOf("/");
+        if (slashIdx !== -1) {
+            s = s.substring(slashIdx + 1);
+        }
+        return s;
+    }
 
-        const wId = (w.appId || "").toLowerCase();
-        const wDesk = (w.desktopFile || "").toLowerCase().replace(/\.desktop$/, "");
-        const wName = (w.appName || "").toLowerCase();
-        const wCls = (w.cls || "").toLowerCase();
-
-        // 1. Direct equality
-        if (pId && (wId === pId || wDesk === pId || wCls === pId)) return true;
-        if (pDesk && (wDesk === pDesk || wId === pDesk || wCls === pDesk)) return true;
-        if (pName && wName && pName === wName) return true;
-
-        // 2. Token / reverse-DNS stems
-        const extractStems = (str) => {
-            if (!str) return [];
-            const s = str.toLowerCase().replace(/\.desktop$/, "");
-            const stems = [s];
-            const parts = s.split(".");
-            if (parts.length > 1) {
-                stems.push(parts[parts.length - 1]);
-                stems.push(parts.slice(-2).join("-"));
-                stems.push(parts.slice(-2).join(""));
+    function getCanonicalAliases(rawId) {
+        const id = root.normalizeId(rawId);
+        if (!id) return [];
+        const aliases = [id];
+        
+        // Reverse-DNS to hyphenated: e.g. "com.microsoft.edge" -> "microsoft-edge"
+        const parts = id.split(".");
+        if (parts.length >= 3 && ["com", "org", "net", "io", "app"].indexOf(parts[0]) !== -1) {
+            const hyphenated = parts.slice(1).join("-");
+            if (hyphenated && aliases.indexOf(hyphenated) === -1) {
+                aliases.push(hyphenated);
             }
-            const hyphenParts = s.split("-");
-            if (hyphenParts.length > 1) {
-                stems.push(hyphenParts[hyphenParts.length - 1]);
-            }
-            return stems;
-        };
-
-        const pStems = extractStems(pId).concat(extractStems(pDesk));
-        const wStems = extractStems(wId).concat(extractStems(wDesk)).concat(extractStems(wCls));
-
-        for (let i = 0; i < pStems.length; i++) {
-            const ps = pStems[i];
-            if (!ps || ps.length < 3) continue;
-            for (let j = 0; j < wStems.length; j++) {
-                const ws = wStems[j];
-                if (!ws || ws.length < 3) continue;
-                if (ps === ws) return true;
-                if (ps.length >= 4 && ws.length >= 4 && (ps.endsWith(ws) || ws.endsWith(ps))) return true;
+            if (parts[0] === "org" && parts[1] === "kde") {
+                const kdeName = parts.slice(2).join("-");
+                if (kdeName && aliases.indexOf(kdeName) === -1) {
+                    aliases.push(kdeName);
+                }
             }
         }
-
-        // 3. App Name matching (excluding generic words)
-        if (pName && wName) {
-            const generic = ["window", "app", "application", "file", "files"];
-            if (!generic.includes(pName) && !generic.includes(wName)) {
-                if (wName.includes(pName) || pName.includes(wName)) return true;
-                const pNorm = pName.replace(/\s+/g, "");
-                const wNorm = wName.replace(/\s+/g, "");
-                if (pNorm.includes(wNorm) || wNorm.includes(pNorm)) return true;
+        // Hyphenated to reverse-DNS: e.g. "microsoft-edge" -> "com.microsoft.edge"
+        if (id.indexOf("-") !== -1 && id.indexOf(".") === -1) {
+            const rDns = "com." + id.replace(/-/g, ".");
+            if (aliases.indexOf(rDns) === -1) {
+                aliases.push(rDns);
             }
+        }
+        return aliases;
+    }
+
+    function matchApp(p, w) {
+        if (!p || !w) return false;
+        const pId = root.normalizeId(p.appId);
+        const pDesk = root.normalizeId(p.desktopFile);
+        const wId = root.normalizeId(w.appId);
+        const wDesk = root.normalizeId(w.desktopFile);
+        const wCls = root.normalizeId(w.cls);
+
+        // 1. Direct exact equality between declared identifiers
+        if (pId && (wId === pId || wDesk === pId || wCls === pId)) return true;
+        if (pDesk && (wDesk === pDesk || wId === pDesk || wCls === pDesk)) return true;
+
+        // 2. Canonical reverse-DNS alias intersection
+        const pAliases = root.getCanonicalAliases(pDesk || pId);
+        const wAliases = root.getCanonicalAliases(wDesk || wId || wCls);
+        for (let i = 0; i < pAliases.length; i++) {
+            if (wAliases.indexOf(pAliases[i]) !== -1) return true;
+        }
+
+        // 3. Freedesktop SSOT Canonical Resolution via WindowService
+        if (typeof WindowService !== "undefined" && WindowService.canonicalAppId) {
+            const pCanon = WindowService.canonicalAppId(pDesk || pId);
+            const wCanon = WindowService.canonicalAppId(wDesk || wId || wCls);
+            if (pCanon && wCanon && pCanon === wCanon) return true;
+
+            const pCanon2 = WindowService.canonicalAppId(pId || pDesk);
+            const wCanon2 = WindowService.canonicalAppId(wId || wCls || wDesk);
+            if (pCanon2 && wCanon2 && pCanon2 === wCanon2) return true;
         }
 
         return false;
