@@ -120,6 +120,20 @@ Item {
         const popout = readLocalFile("../dock/popouts/AiTokensSection.qml");
         assert(popout.indexOf("DshWebService.open()") !== -1,
             "the AI popout must offer an Open DSH Web entry point");
+        // A server the shell started must be stoppable from the UI, and only a
+        // server the shell owns may be offered that way.
+        assert(service.indexOf("readonly property bool canStop") !== -1,
+            "the service must expose that Astral owns (and may stop) the server");
+        assert(popout.indexOf("DshWebService.stopServer()") !== -1,
+            "the AI popout must let the user stop a server Astral started");
+        assert(popout.indexOf("DshWebService.canStop") !== -1,
+            "the stop affordance must be gated on Astral owning the server");
+        assert(popout.indexOf("!DshWebService.canStop") !== -1,
+            "clicking stop must re-check ownership, not only visibility");
+        assert(service.indexOf("browserProc") !== -1
+                && service.indexOf("parseBrowserRecords") !== -1
+                && service.indexOf("resolveBrowsers") !== -1,
+            "browser detection must resolve the desktop's registrations before PATH");
 
         // --- icon archetypes stay consistent across every surface -----------
         const materialIcon = readLocalFile("../components/MaterialIcon.qml");
@@ -147,8 +161,31 @@ Item {
             "the service must have a procfs fallback for environments without XHR file reads");
         assert(service.indexOf('Quickshell.env("QML_XHR_ALLOW_FILE_READ") === "1"') !== -1,
             "the service must gate local-file XMLHttpRequest on QML_XHR_ALLOW_FILE_READ=1 to avoid live session warnings");
-        assert(service.indexOf("WindowService.activate") !== -1,
-            "the service must activate existing open window when requested");
+        assert(service.indexOf("WindowService.activateWindow") !== -1,
+            "the service must activate an open window through WindowService.activateWindow");
+        // The launcher once called WindowService.activate() - a method that does
+        // not exist - from inside open(), so every click threw a TypeError before
+        // the server was probed and a stopped dsh was never restarted.
+        assert(service.indexOf("WindowService.activate(") === -1,
+            "WindowService exposes activateWindow/closeWindow; a bare activate() throws");
+        assert(service.indexOf("WindowService.closeWindow") !== -1,
+            "a window whose server died must be closable before it is reloaded");
+        assert(service.indexOf("invalidateServer") !== -1,
+            "dead servers must be invalidated, not remembered");
+        assert(service.indexOf("serverOpenStep") !== -1,
+            "reopening must only reuse a server a live child proves, else probe");
+        assert(service.indexOf("windowOpenStep") !== -1,
+            "reopening must decide between raising and reloading the app window");
+        assert(service.indexOf("windowPageStale") !== -1,
+            "the service must remember that the open window lost its server");
+        assert(/readonly property bool live:[^\n]*windowPageStale/.test(service),
+            "the live mark must not claim a window whose server is gone is live");
+        assert(service.indexOf("restartPending") !== -1,
+            "a restart must be sequenced through the dead child's exit, not raced against it");
+        assert(/function open\(\)[\s\S]*?\n    }/.exec(service)[0].indexOf("startOpenFlow") !== -1,
+            "open() must probe/start the server first, not short-circuit on the window");
+        assert(/function open\(\)[\s\S]*?\n    }/.exec(service)[0].indexOf("activateWindow") === -1,
+            "open() must not raise the window before the server is known to answer");
         assert(service.indexOf("interval: 20000") !== -1,
             "the watcher must be slow and idle-only (no busy polling)");
 
@@ -172,6 +209,10 @@ Item {
         const page = readLocalFile("../settings_gui/pages/AiPage.qml");
         assert(page.indexOf("Open DSH Web") !== -1,
             "Settings > AI must offer an Open DSH Web action");
+        assert(page.indexOf("DshWebService.stopServer()") !== -1,
+            "Settings > AI must let the user stop a server Astral started");
+        assert(page.indexOf("DshWebService.canStop") !== -1,
+            "Settings > AI must only offer stopping for a server Astral owns");
 
         const shortcut = readLocalFile("../shortcuts/astral-dsh-web.desktop");
         assert(shortcut.indexOf("toggle_dsh_web.sh") !== -1,

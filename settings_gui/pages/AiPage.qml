@@ -1703,6 +1703,61 @@ ColumnLayout {
         }
     }
 
+    // Stop the DSH web server again. Only shown while Astral owns the server it
+    // started: a dsh the user runs in a terminal is theirs to stop, so offering
+    // the action there would be a lie about who controls it.
+    Rectangle {
+        Layout.fillWidth: true
+        visible: !root.testMode && (typeof DshWebService !== "undefined") && DshWebService.canStop
+        implicitHeight: 44
+        radius: Theme.radiusMedium
+        color: dshStopHover.hovered ? Colors.surfaceContainerHigh : Colors.surfaceContainer
+        border.color: Theme.borderSubtle
+        border.width: 1
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.padLarge
+            anchors.rightMargin: Theme.padLarge
+            spacing: Theme.spaceSmall
+
+            MaterialIcon {
+                text: "stop_circle"
+                size: 18
+                color: dshStopHover.hovered ? Colors.error : Colors.m3onSurfaceVariant
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Stop DSH server"
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBodyMedium
+                font.weight: Font.DemiBold
+                color: Colors.m3onSurface
+            }
+
+            Text {
+                text: "started by Astral"
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontLabelSmall
+                color: Colors.m3onSurfaceVariant
+            }
+        }
+
+        HoverHandler { id: dshStopHover }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (root.testMode) return;
+                if (typeof DshWebService === "undefined") return;
+                if (!DshWebService.canStop) return;
+                DshWebService.stopServer();
+            }
+        }
+    }
+
 
     // --- SETUP -------------------------------------------------------------
     SectionHeader {

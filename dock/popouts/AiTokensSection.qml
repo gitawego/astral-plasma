@@ -343,6 +343,40 @@ Item {
                     }
                 }
             }
+
+            // Stop DSH: only exists while Astral owns the server it started, so
+            // the button reports real ownership, never a guess. A dsh the user
+            // runs in a terminal is theirs; this never appears for it.
+            Rectangle {
+                visible: (typeof DshWebService !== "undefined") && DshWebService.canStop
+                width: 28
+                height: 28
+                radius: 14
+                color: dshStopHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.16) : Qt.rgba(1.0, 1.0, 1.0, 0.06)
+                border.color: (typeof Colors !== "undefined" && Colors.glassBorderSpecular)
+                    ? Qt.alpha(Colors.glassBorderSpecular, 0.25)
+                    : Qt.rgba(1.0, 1.0, 1.0, 0.12)
+                border.width: 1
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: "stop_circle"
+                    size: 15
+                    color: dshStopHover.containsMouse ? Colors.error : Colors.m3onSurfaceVariant
+                }
+
+                MouseArea {
+                    id: dshStopHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof DshWebService === "undefined") return;
+                        if (!DshWebService.canStop) return;   // not ours to stop
+                        DshWebService.stopServer();
+                    }
+                }
+            }
         }
 
         // Horizontal Segmented Provider Tabs (Responsive Chip Bar for 2, 3, 4, 5+ providers)

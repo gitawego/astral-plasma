@@ -73,10 +73,117 @@ Item {
         assert(DshLogic.needsCookieInjection(false, false) === false,
             "a down server needs starting, not a cookie");
 
+        // --- reopening after the server went away --------------------------
+        // A remembered URL is not proof that a server still answers: a `dsh web`
+        // started in a terminal can be stopped by the user at any moment, and a
+        // child the shell spawned can die. Only a child we can still see running
+        // may skip the probe, or the launcher opens a dead page instead of
+        // restarting the server.
+        assert(DshLogic.serverOpenStep(true, true) === "reuse",
+            "a managed child that is still running is ground truth: reuse its token URL");
+        assert(DshLogic.serverOpenStep(true, false) === "probe",
+            "a managed child that exited must be probed, not reused");
+        assert(DshLogic.serverOpenStep(false, true) === "probe",
+            "a server the user started can vanish at any moment: probe it");
+        assert(DshLogic.serverOpenStep(false, false) === "probe",
+            "nothing running means probing before anything is reused");
+
+        // A browser window outlives its server, so its presence is not readiness.
+        assert(DshLogic.windowOpenStep(false, false) === "launch", "no window means launch");
+        assert(DshLogic.windowOpenStep(false, true) === "launch", "a stale marker without a window means launch");
+        assert(DshLogic.windowOpenStep(true, false) === "activate",
+            "a window whose server is alive must only be raised");
+        assert(DshLogic.windowOpenStep(true, true) === "reload",
+            "a window whose server died must be reloaded, not raised");
+
         // --- browser app-mode detection -----------------------------------
+        // Why this matters: a PATH lookup can find an automation-only build
+        // (Chrome for Testing - it even injects a "for automated testing" banner
+        // and is not installed as a browser). The desktop's own browser
+        // registration is the authority on browsers a user can browse with, so
+        // registered entries outrank bare PATH hits.
+        assert(DshLogic.execProgram("Exec=/usr/bin/microsoft-edge-stable %U") === "/usr/bin/microsoft-edge-stable",
+            "execProgram must read argv[0] and drop field codes");
+        assert(DshLogic.execProgram("Exec=env FOO=bar /opt/browser/browser %u") === "/opt/browser/browser",
+            "execProgram must skip env and VAR=VAL prefixes");
+        assert(DshLogic.execProgram("Exec=xdg-open %u") === "xdg-open",
+            "execProgram must return a bare program name too");
+        assert(DshLogic.execProgram("") === "", "execProgram must tolerate an empty Exec line");
+
+        assert(DshLogic.browserIdFromExecPath("/usr/bin/microsoft-edge-stable") === "edge",
+            "the Edge binary identifies the edge family");
+        assert(DshLogic.browserIdFromExecPath("/usr/lib/firefox/firefox") === "firefox",
+            "the Firefox binary identifies the firefox family");
+        assert(DshLogic.browserIdFromExecPath("/usr/bin/chromium") === "chromium",
+            "the Chromium binary identifies the chromium family");
+        assert(DshLogic.browserIdFromExecPath("/opt/chrome-linux64/chrome") === "chrome",
+            "a Chrome binary identifies the chrome family");
+        assert(DshLogic.browserIdFromExecPath("/usr/bin/xdg-open") === "",
+            "a URL dispatcher is not a browser");
+        assert(DshLogic.browserIdFromExecPath("/usr/bin/torbrowser-launcher") === "",
+            "an unknown program is not a browser we can drive");
+
+        var records = DshLogic.parseBrowserRecords(
+            "R\t/usr/share/applications/microsoft-edge.desktop\tExec=/usr/bin/microsoft-edge-stable %U\n"
+            + "R\t/usr/share/applications/firefox.desktop\tExec=/usr/lib/firefox/firefox %u\n"
+            + "R\t/home/u/.local/share/applications/tor.desktop\tExec=torbrowser-launcher %u\n"
+            + "P\tchrome:/home/u/.local/bin/google-chrome-stable\n"
+            + "P\tedge:/usr/bin/microsoft-edge-stable\n");
+        assert(records.registrations.length === 3, "parseBrowserRecords must read every registration record");
+        assert(records.registrations[0].desktopId === "microsoft-edge.desktop",
+            "a registration must keep its desktop id");
+        assert(records.registrations[0].path === "/usr/bin/microsoft-edge-stable",
+            "a registration must keep the program its Exec line launches");
+        assert(records.pathHits.length === 2 && records.pathHits[0].id === "chrome",
+            "parseBrowserRecords must read the PATH fallback records");
+
+        // The exact reported failure: Chrome for Testing is on PATH, Edge is the
+        // browser the desktop actually offers. The app window must be Edge.
+        var chosenList = DshLogic.resolveBrowsers(records.registrations, records.pathHits);
+        assert(chosenList.length === 3 && chosenList[0].id === "edge" && chosenList[0].path === "/usr/bin/microsoft-edge-stable",
+            "a registered browser must outrank a PATH-only build");
+        assert(chosenList[1].id === "firefox" && chosenList[2].id === "chrome",
+            "registered families keep the family order; PATH-only families follow them");
+        assert(DshLogic.selectBrowser(chosenList, "").id === "edge",
+            "without an override the launcher picks the first registered browser");
+
+        // The same environment with only Edge registered (what the user has).
+        var edgeOnly = DshLogic.resolveBrowsers(
+            [{ desktopId: "microsoft-edge.desktop", path: "/usr/bin/microsoft-edge-stable" }],
+            records.pathHits);
+        assert(edgeOnly.length === 2 && edgeOnly[0].id === "edge" && edgeOnly[1].id === "chrome",
+            "an automation-only Chrome on PATH must never beat the registered Edge");
+        assert(DshLogic.selectBrowser(edgeOnly, "").path === "/usr/bin/microsoft-edge-stable",
+            "the launch must use the registered browser's own Exec path, not a PATH symlink");
+
+        // Within one tier the documented family order still decides.
+        var bothRegistered = DshLogic.resolveBrowsers([
+            { desktopId: "firefox.desktop", path: "/usr/lib/firefox/firefox" },
+            { desktopId: "google-chrome.desktop", path: "/usr/bin/google-chrome-stable" }
+        ], []);
+        assert(bothRegistered.length === 2 && bothRegistered[0].id === "chrome" && bothRegistered[1].id === "firefox",
+            "two registered browsers keep the chrome-before-firefox order");
+
+        // Nothing registered (a bare environment): behave as before.
+        var pathOnly = DshLogic.resolveBrowsers([], [
+            { id: "chromium", path: "/usr/bin/chromium" },
+            { id: "firefox", path: "/usr/bin/firefox" }
+        ]);
+        assert(pathOnly.length === 2 && pathOnly[0].id === "chromium" && pathOnly[1].id === "firefox",
+            "without any registration the PATH order is preserved");
+        assert(DshLogic.resolveBrowsers([], []).length === 0,
+            "no registrations and no PATH hits means no candidate");
+
+        assert(DshLogic.browserOrder().length === 4, "the family preference order must stay defined");
         assert(JSON.stringify(DshLogic.browserOrder()) === JSON.stringify(["chrome", "chromium", "edge", "firefox"]),
             "preference order must be chrome, chromium, edge, firefox");
         var script = DshLogic.detectionScript();
+        assert(script.indexOf("WebBrowser") !== -1,
+            "detection script must read the desktop's own WebBrowser registrations");
+        assert(script.indexOf("XDG_DATA_DIRS") !== -1 && script.indexOf("flatpak") !== -1,
+            "registration scan must cover every XDG application directory");
+        assert(script.indexOf("$r/applications") !== -1,
+            "XDG_DATA_DIRS lists data roots: `applications` must be appended to each");
         assert(script.indexOf("google-chrome-stable") !== -1 && script.indexOf("chromium") !== -1
             && script.indexOf("microsoft-edge-stable") !== -1 && script.indexOf("firefox") !== -1,
             "detection script must look for every family");

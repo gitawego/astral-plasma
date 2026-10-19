@@ -11,8 +11,12 @@ import "DshWebLogic.js" as DshLogic
 //
 // Two ways to show the UI, chosen by config ai.dshWeb.mode:
 //   * "browser" (default): open the DSH URL in the user's own browser as a
-//     chromeless app window. Preference order is fixed: Chrome, Chromium, Edge,
-//     Firefox. No native code, no Quickshell rebuild.
+//     chromeless app window. The browser is resolved from the desktop's own
+//     WebBrowser registrations first (default browser / installed browsers), and
+//     only then from PATH, in family preference order Chrome, Chromium, Edge,
+//     Firefox. Registration first matters: an automation-only build such as
+//     Chrome for Testing sits on PATH without being installed as a browser, and
+//     it stamps a "for automated testing" banner over every page it shows.
 //   * "embedded": the in-shell QtWebEngine view (dsh/DshWebWindow.qml), which
 //     needs a WebEngine-enabled Quickshell (scripts/build-quickshell-webengine.sh
 //     or scripts/install-quickshell-webengine-shim.sh).
@@ -20,6 +24,13 @@ import "DshWebLogic.js" as DshLogic
 // Server handling is shared by both: reuse a running dsh web (its own browser
 // cookie authenticates the app window), or start one and use the authenticated
 // URL it prints.
+//
+// One rule keeps every path honest: a remembered server is never assumed to be
+// alive. A `dsh web` the user started in a terminal can be stopped at any moment
+// and a child we spawned can die, so every observation of death (child exit,
+// failed probe, the idle watcher seeing the port close) invalidates the cached
+// readiness. Reopening therefore probes before it reuses a URL, and a browser
+// window whose server died is reloaded instead of being raised onto a dead page.
 Singleton {
     id: root
 
@@ -73,8 +84,13 @@ Singleton {
     // ------------------------------------------------------------------
     readonly property bool running: root.serverUp && root.state === "ready"
     readonly property bool failed: root.state === "error"
-    /// The web UI is live in any form: its server answers, or its window is up.
-    readonly property bool live: root.running || root.windowOpen
+    /// The web UI is live in any form: its server answers, or a window that still
+    /// belongs to a live server is up. A window left showing a dead server's
+    /// connection error is not live.
+    readonly property bool live: root.running || (root.windowOpen && !root.windowPageStale)
+    /// The shell owns the server on screen, so it is also the one that can stop
+    /// it again (a server the user started in a terminal is theirs to stop).
+    readonly property bool canStop: root.managed
 
     readonly property bool windowOpen: {
         if (typeof WindowService === "undefined" || !WindowService) return false;
@@ -83,6 +99,15 @@ Singleton {
             if (DshLogic.isDshAppId(wins[i].appId, root.host)) return true;
         }
         return false;
+    }
+
+    // The window on screen belongs to a server that is gone, so its page shows a
+    // connection error. Reopening must reload it, not raise it.
+    property bool windowPageStale: false
+
+    onWindowOpenChanged: {
+        if (!root.windowOpen) root.windowPageStale = false;      // closed: nothing to reload
+        else if (!root.serverUp) root.windowPageStale = true;    // appeared without a live server
     }
 
     // User-started server announcement: see the watcher at the bottom.
@@ -161,7 +186,8 @@ Singleton {
         command: ["sh", "-c", DshLogic.detectionScript()]
         stdout: StdioCollector {
             onStreamFinished: {
-                root.browsers = DshLogic.parseBrowsers(this.text);
+                const records = DshLogic.parseBrowserRecords(this.text);
+                root.browsers = DshLogic.resolveBrowsers(records.registrations, records.pathHits);
                 var chosen = DshLogic.selectBrowser(root.browsers, root.browserOverride);
                 root.browserId = chosen ? chosen.id : "";
                 root.browserPath = chosen ? chosen.path : "";
@@ -258,8 +284,29 @@ Singleton {
         if (root.serverUp) {
             root.adoptExisting();
         } else {
+            // Nothing answered, so whatever we remembered is dead: forget it and
+            // start a server instead of reusing a URL that no longer loads.
+            root.invalidateServer("probe " + line);
             root.startServer();
         }
+    }
+
+    /**
+     * Forget a server that is gone. Every observation of death funnels here - the
+     * managed child exiting, the health probe failing, the idle watcher seeing the
+     * port closed - so `serverUp` is never a stale memory that makes the launcher
+     * open a dead page instead of restarting the server.
+     */
+    function invalidateServer(reason) {
+        if (!root.managed && !root.serverUp) return;   // nothing remembered: nothing to forget
+        const hadWindow = root.windowOpen;
+        root.serverUp = false;
+        root.managed = false;
+        root.authUrl = "";            // a launch token dies with its server
+        if (root.state === "ready" || root.state === "probing") root.state = "idle";
+        if (hadWindow) root.windowPageStale = true;
+        if (typeof Log !== "undefined" && Log.debugEnabled && Log.debugEnabled("dshweb"))
+            Log.debug("dshweb", "server gone: " + reason);
     }
 
     /** A server answered: reuse our token URL, or adopt the running one. */
@@ -278,6 +325,11 @@ Singleton {
     // ------------------------------------------------------------------
     // Managed server: dsh web --no-open prints the authenticated URL
     // ------------------------------------------------------------------
+    // Stopping a Process emits its exit *after* the replacement would have
+    // started, so a restart is sequenced through that exit (see onExited) instead
+    // of racing a late exit against the new server's state.
+    property bool restartPending: false
+
     Process {
         id: serverProc
         stdout: SplitParser {
@@ -287,13 +339,29 @@ Singleton {
                 if (url.length > 0) root.onServerReady(url);
             }
         }
+        // A failure to start used to be invisible; keep the child's own words.
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: line => {
+                const text = String(line).trim();
+                if (text.length > 0 && typeof Log !== "undefined") Log.debug("dshweb", "dsh: " + text);
+            }
+        }
         onExited: (code, status) => {
-            if (root.managed && root.state === "starting") {
+            const wasStarting = root.managed && root.state === "starting";
+            if (root.restartPending) {
+                // The old child is observed gone: now the replacement is safe.
+                root.restartPending = false;
+                root.invalidateServer("restart (child exited with code " + code + ")");
+                root.startServer();
+                return;
+            }
+            root.invalidateServer("child exited with code " + code);
+            if (wasStarting) {
                 root.state = "error";
                 root.errorMessage = "dsh web exited before printing its URL (code " + code + ")";
                 root.statusText = root.errorMessage;
             }
-            root.managed = false;
         }
     }
 
@@ -301,11 +369,18 @@ Singleton {
         root.state = "starting";
         root.errorMessage = "";
         root.statusText = "Starting DSH web server...";
+        root.managed = true;
+        if (serverProc.running) {
+            // A previous child is still alive (a server that stopped answering, or
+            // an explicit restart): stop it and let onExited spawn the successor.
+            root.restartPending = true;
+            serverProc.running = false;
+            return;
+        }
+        root.restartPending = false;
         var cmd = DshLogic.resolveCommand(root.configuredCommand, root.dshAvailable, root.port);
-        serverProc.running = false;
         serverProc.command = ["sh", "-c", "exec " + cmd];
         serverProc.running = true;
-        root.managed = true;
     }
 
     function onServerReady(url) {
@@ -318,27 +393,66 @@ Singleton {
         root.finishOpen();
     }
 
+    /** Stop the server the shell started, and forget it. A server the user
+     *  started in a terminal is left alone: it is not ours to kill. */
     function stopServer() {
-        if (root.managed) {
-            serverProc.running = false;
-            root.managed = false;
-        }
+        root.restartPending = false;
+        if (serverProc.running) serverProc.running = false;
+        root.invalidateServer("stopped");
     }
 
     // ------------------------------------------------------------------
     // Presentation
     // ------------------------------------------------------------------
+    /** The DSH browser app window on screen, or null (embedded mode has none). */
+    function dshWindow() {
+        if (root.mode === "embedded") return null;
+        if (typeof WindowService === "undefined" || !WindowService) return null;
+        const wins = WindowService.windows || [];
+        for (let i = 0; i < wins.length; i++) {
+            if (DshLogic.isDshAppId(wins[i].appId, root.host)) return wins[i];
+        }
+        return null;
+    }
+
+    /** Raise the DSH window: its server is alive, so its page is still valid. */
+    function activateWindow() {
+        const win = root.dshWindow();
+        if (win && win.id !== undefined && win.id !== null) WindowService.activateWindow(win.id);
+    }
+
+    /** Close a window whose page belonged to a dead server, before relaunching. */
+    function closeStaleWindow() {
+        const win = root.dshWindow();
+        if (win && win.id !== undefined && win.id !== null) WindowService.closeWindow(win.id);
+    }
+
     /** Open the resolved URL: the embedded view, or a browser app window. */
     function finishOpen() {
         if (root.mode === "embedded" && root.webEngineSupported) {
             root.visible = true;
             root.statusText = root.managed ? "Connected (managed server)" : "Connected to running DSH";
-        } else {
-            // An adopted server's cookie lives in the default browser; a token
-            // URL from our own server authenticates anywhere, so only then does
-            // the configured preference order apply.
-            root.launchBrowser(root.targetUrl, !root.managed);
+            return;
         }
+        // A browser window outlives its server, so it is only reused when this
+        // opening did not have to revive the server behind it.
+        const step = DshLogic.windowOpenStep(root.windowOpen, root.windowPageStale);
+        if (step === "activate") {
+            root.activateWindow();
+            root.state = "ready";
+            root.statusText = "DSH is already on screen";
+            return;
+        }
+        if (step === "reload") {
+            // The window shows the connection error of the server that died;
+            // relaunching it on the fresh URL is what makes it work again.
+            root.closeStaleWindow();
+        }
+        root.windowPageStale = false;
+        // An adopted server's cookie lives in the default browser; a token URL
+        // from our own server authenticates anywhere, so only then does the
+        // configured preference order apply.
+        root.launchBrowser(root.targetUrl, !root.managed);
     }
 
     /**
@@ -377,16 +491,10 @@ Singleton {
     // ------------------------------------------------------------------
     function open() {
         if (!root.enabled) return;
-        // If the window is already open on screen, activate it directly
-        if (root.mode !== "embedded" && typeof WindowService !== "undefined" && WindowService) {
-            const wins = WindowService.windows || [];
-            for (let i = 0; i < wins.length; i++) {
-                if (DshLogic.isDshAppId(wins[i].appId, root.host)) {
-                    WindowService.activate(wins[i].id);
-                    return;
-                }
-            }
-        }
+        // Server first, window second. A window on screen proves nothing about the
+        // server behind it - the user can stop a dsh they started in a terminal at
+        // any moment - so opening always goes through the probe/start flow, and
+        // finishOpen decides from live state whether to raise or reload the window.
         root.startOpenFlow();
     }
 
@@ -397,7 +505,15 @@ Singleton {
             Qt.callLater(root.startOpenFlow);
             return;
         }
-        if (root.state === "ready" && root.targetUrl.length > 0 && root.serverUp) {
+        // A child we started is alive but has not printed its URL yet (or is being
+        // replaced): let it, instead of probing the port it has not opened yet.
+        if (root.managed && root.state === "starting" && (serverProc.running || root.restartPending)) return;
+        // Only a managed child we can still see running proves the remembered URL
+        // answers; anything else (including a state that says "ready") is memory.
+        if (DshLogic.serverOpenStep(root.managed, serverProc.running) === "reuse"
+            && root.targetUrl.length > 0) {
+            root.serverUp = true;
+            root.state = "ready";
             root.finishOpen();
             return;
         }
@@ -487,6 +603,9 @@ Singleton {
         if (!isListening) {
             root.externalNotified = false;     // a later start is a new episode
             root.externalSeenDown = true;
+            // The port is closed: whatever we remembered answered is gone, so the
+            // icon stops claiming the UI is live and the next open restarts it.
+            root.invalidateServer("port closed");
             return;
         }
         // A server that was already running when the shell started is not news.

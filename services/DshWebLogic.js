@@ -75,11 +75,43 @@ function needsCookieInjection(serverUp, haveOwnAuthUrl) {
     return !!serverUp && !haveOwnAuthUrl;
 }
 
+/**
+ * What reopening must do about the *server*, given what the shell remembers.
+ *
+ * A remembered URL is not proof that a server still answers: a `dsh web` the user
+ * started in a terminal can be stopped at any moment, and a child the shell
+ * spawned can die. Only a child process we can still see running is ground
+ * truth; everything else has to be probed, or the launcher "opens" a dead page
+ * instead of restarting the server.
+ *
+ *   "reuse" - our managed child is alive: its token URL still answers
+ *   "probe" - ask the server before reusing anything
+ */
+function serverOpenStep(managed, procRunning) {
+    return (!!managed && !!procRunning) ? "reuse" : "probe";
+}
+
+/**
+ * What reopening must do about the *window* once the server is known to answer.
+ *
+ * A browser window outlives its server, so a window on screen is not readiness:
+ * after the server is stopped, the window keeps showing a connection error.
+ *
+ *   "launch"   - no window yet
+ *   "activate" - the window on screen belongs to the live server: raise it
+ *   "reload"   - the window belongs to a server that died: relaunch it
+ */
+function windowOpenStep(windowOpen, pageStale) {
+    if (!windowOpen) return "launch";
+    return pageStale ? "reload" : "activate";
+}
+
 // ---------------------------------------------------------------------------
 // Browser app-mode launch
 //
 // The DSH UI is shown in the user's own browser as a chromeless "app" window.
-// Preference order is fixed: chrome, chromium, edge, firefox.
+// Browsers the desktop registers as WebBrowser handlers rank first, then PATH
+// hits; within each tier the preference order is chrome, chromium, edge, firefox.
 // ---------------------------------------------------------------------------
 
 var BROWSER_CANDIDATES = [
@@ -94,19 +126,123 @@ function browserOrder() {
     return BROWSER_CANDIDATES.map(function (b) { return b.id; });
 }
 
-/** Shell script that prints "id:path" for each installed candidate, in order. */
+/** The data roots whose `applications` subdirectory holds desktop entries. */
+function applicationRoots() {
+    return "\"${XDG_DATA_HOME:-$HOME/.local/share}\" "
+        + "$(printf '%s' \"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}\" | tr ':' ' ') "
+        + "\"$HOME/.local/share/flatpak/exports/share\" \"/var/lib/flatpak/exports/share\"";
+}
+
+/**
+ * Shell script that prints two tab separated record kinds:
+ *
+ *   R<TAB><desktop file><TAB>Exec=...   a desktop entry declaring WebBrowser
+ *   P<TAB><family>:<path>               a PATH hit, in family preference order
+ *
+ * The registrations are what the desktop itself offers as a browser. A PATH hit
+ * is only a hint: automation-only builds (Chrome for Testing) live on PATH
+ * without being installed as a browser, and they are not meant for interactive
+ * use - Chrome for Testing even paints a "for automated testing" banner over
+ * every page it shows.
+ */
 function detectionScript() {
     var parts = [];
+    // XDG_DATA_DIRS names data *roots*, so `applications` is appended to each.
+    parts.push("for r in " + applicationRoots() + "; do d=\"$r/applications\"; "
+        + "for f in \"$d\"/*.desktop; do "
+        + "[ -f \"$f\" ] || continue; "
+        + "grep -q '^Categories=.*WebBrowser' \"$f\" 2>/dev/null || continue; "
+        + "e=$(grep -m1 '^Exec=' \"$f\" 2>/dev/null) || continue; "
+        + "printf 'R\\t%s\\t%s\\n' \"$f\" \"$e\"; done; done");
     for (var i = 0; i < BROWSER_CANDIDATES.length; i++) {
         var b = BROWSER_CANDIDATES[i];
         var names = b.commands.map(function (c) { return "'" + c + "'"; }).join(" ");
-        parts.push("for c in " + names + "; do p=$(command -v \"$c\" 2>/dev/null) && { echo \""
-            + b.id + ":$p\"; break; }; done");
+        parts.push("for c in " + names + "; do p=$(command -v \"$c\" 2>/dev/null) && { printf 'P\\t"
+            + b.id + ":%s\\n' \"$p\"; break; }; done");
     }
     return parts.join("; ");
 }
 
-/** Parse the detection output into an ordered list of {id, path}. */
+/**
+ * The program a desktop entry's Exec line launches (argv[0]), or "" when there is
+ * none. Field codes (%u, %U, ...) only ever appear after it, and `env` /
+ * `VAR=value` prefixes are skipped, so the first real token is the program.
+ */
+function execProgram(execLine) {
+    var line = String(execLine || "").trim();
+    if (line.indexOf("Exec=") === 0) line = line.slice(5);
+    var tokens = line.split(/\s+/);
+    for (var i = 0; i < tokens.length; i++) {
+        var t = tokens[i];
+        if (!t) continue;
+        if (t === "env" || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) continue;
+        return t;
+    }
+    return "";
+}
+
+/**
+ * Browser family of an executable path, by vendor identity, or "" when it is not
+ * a browser this launcher can drive (a URL dispatcher such as xdg-open, a
+ * launcher stub, ...).
+ */
+function browserIdFromExecPath(path) {
+    var base = String(path || "").split("/").pop().toLowerCase();
+    if (!base) return "";
+    if (base.indexOf("microsoft-edge") === 0 || base.indexOf("msedge") === 0) return "edge";
+    if (base.indexOf("chromium") === 0) return "chromium";
+    if (base.indexOf("google-chrome") === 0 || base === "chrome" || base.indexOf("chrome-") === 0) return "chrome";
+    if (base.indexOf("firefox") === 0) return "firefox";
+    return "";
+}
+
+/** Parse the detection output into {registrations, pathHits}. */
+function parseBrowserRecords(text) {
+    var registrations = [];
+    var pathLines = [];
+    var lines = String(text || "").split("\n");
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.indexOf("R\t") === 0) {
+            var parts = line.split("\t");
+            if (parts.length < 3) continue;
+            var program = execProgram(parts[2]);
+            if (program.length === 0) continue;
+            registrations.push({ desktopId: parts[1].split("/").pop(), path: program });
+        } else if (line.indexOf("P\t") === 0) {
+            pathLines.push(line.slice(2));
+        }
+    }
+    return { registrations: registrations, pathHits: parseBrowsers(pathLines.join("\n")) };
+}
+
+/**
+ * Launch candidates, most trustworthy first: browsers the desktop registers as
+ * WebBrowser handlers (family order decides within that tier), then families only
+ * found on PATH. A registered family's own Exec path is used, so a decorative
+ * PATH symlink cannot redirect the launch to a different build.
+ */
+function resolveBrowsers(registrations, pathHits) {
+    var order = browserOrder();
+    var registered = {};
+    var hits = pathHits || [];
+    for (var i = 0; i < (registrations || []).length; i++) {
+        var family = browserIdFromExecPath(registrations[i].path);
+        if (order.indexOf(family) === -1) continue;      // not a browser we can drive
+        if (!registered[family]) registered[family] = registrations[i].path;
+    }
+    var out = [];
+    for (var k = 0; k < order.length; k++) {
+        if (registered[order[k]]) out.push({ id: order[k], path: registered[order[k]] });
+    }
+    for (var j = 0; j < hits.length; j++) {
+        if (registered[hits[j].id]) continue;            // the registration wins
+        out.push({ id: hits[j].id, path: hits[j].path });
+    }
+    return out;
+}
+
+/** Parse the PATH records ("family:path" lines) into an ordered list. */
 function parseBrowsers(text) {
     var out = [];
     if (!text) return out;
