@@ -393,13 +393,38 @@ Item {
         assert(winList[1].isActive === true, "Active window badge in popout must be active");
 
         // Hover expansion contract:
-        let hoveredWinId = "win-edge-1";
+        let hoveredWinId = "";
+        assert((hoveredWinId === winList[0].id) === false, "Initial state: instance 0 must start collapsed");
+        assert((hoveredWinId === winList[1].id) === false, "Initial state: instance 1 must start collapsed");
+
+        hoveredWinId = "win-edge-1";
         assert((hoveredWinId === winList[0].id) === true, "Hovered instance 0 must be expanded");
         assert((hoveredWinId === winList[1].id) === false, "Unhovered instance 1 must be collapsed");
 
         hoveredWinId = "win-edge-2";
         assert((hoveredWinId === winList[0].id) === false, "Instance 0 must collapse when mouse leaves");
         assert((hoveredWinId === winList[1].id) === true, "Instance 1 must expand when hovered");
+
+        // Non-regression: child window hover must NOT clobber activePreviewApp or wipe out other instances
+        const multiApp = {
+            id: "win-edge-1",
+            appId: "microsoft-edge",
+            appName: "Microsoft Edge",
+            isRunning: true,
+            windows: [winList[0], winList[1]]
+        };
+        let activeApp = multiApp;
+        function simulateLoadAppPreview(incoming) {
+            const isChild = Boolean(activeApp && activeApp.windows && activeApp.windows.length > 1 &&
+                incoming.id && activeApp.windows.some(w => w && w.id && w.id.toString() === incoming.id.toString()));
+            if (!isChild) {
+                activeApp = incoming;
+            }
+        }
+        simulateLoadAppPreview(winList[0]);
+        assert(activeApp.windows && activeApp.windows.length === 2, "activeApp must NOT be clobbered by child window hover");
+        simulateLoadAppPreview(winList[1]);
+        assert(activeApp.windows && activeApp.windows.length === 2, "activeApp must NOT be clobbered by second child window hover");
 
         // 7. Critical Non-Regression: ZCode and VS Code MUST NEVER collide
         const vsCodePin = pinnedConfig[2]; // { appId: "code", desktopFile: "code", appName: "VS Code" }

@@ -2308,22 +2308,23 @@ Item {
                 property string hoveredWinId: ""
 
                 onWinListChanged: {
+                    hoveredWinId = "";
                     if (winList.length > 0) {
-                        let activeFound = "";
                         for (let i = 0; i < winList.length; i++) {
                             const w = winList[i];
-                            if (w && (w.isActive || (String(w.id).replace(/[{}]/g, "") === String(WindowService.activeId).replace(/[{}]/g, "")))) {
-                                activeFound = w.id.toString();
-                                break;
+                            if (w && w.id) {
+                                WindowService.loadWindowPreview(w);
                             }
                         }
-                        hoveredWinId = activeFound || (winList[0].id ? winList[0].id.toString() : "");
-                        if (hoveredWinId) {
-                            const targetWin = activeFound ? winList.find(w => w && w.id && w.id.toString() === activeFound) : winList[0];
-                            if (targetWin) WindowService.loadAppPreview(targetWin);
+                    }
+                }
+
+                Connections {
+                    target: Config
+                    function onBottomPopoutVisibleChanged() {
+                        if (!Config.bottomPopoutVisible) {
+                            appSection.hoveredWinId = "";
                         }
-                    } else {
-                        hoveredWinId = "";
                     }
                 }
 
@@ -2604,6 +2605,7 @@ Item {
 
                             Layout.fillWidth: true
                             implicitHeight: isExpanded ? 190 : 46
+                            Layout.preferredHeight: implicitHeight
 
                             Behavior on implicitHeight {
                                 NumberAnimation {
@@ -2748,7 +2750,7 @@ Item {
                                         anchors.fill: parent
                                         source: (WindowService._previewCache && WindowService._previewCache[modelData.id.toString()])
                                             ? WindowService._previewCache[modelData.id.toString()]
-                                            : ((modelData.id.toString() === String(WindowService.activePreviewApp ? WindowService.activePreviewApp.id : "")) ? WindowService.activePreviewThumbnail : "")
+                                            : ((appSection.hoveredWinId === modelData.id.toString() || modelData.id.toString() === String(WindowService.activePreviewApp ? WindowService.activePreviewApp.id : "")) ? WindowService.activePreviewThumbnail : "")
                                         identity: modelData.id
                                     }
 

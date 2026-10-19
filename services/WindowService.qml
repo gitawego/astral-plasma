@@ -466,9 +466,28 @@ Singleton {
     }
 
     function loadAppPreview(app) {
-        root.activePreviewApp = app;
-        const isRunning = app ? (Boolean(app.isRunning) || Boolean(app.id)) : false;
-        if (!app || !isRunning || !app.id) {
+        if (!app) {
+            root.activePreviewApp = null;
+            root.activePreviewThumbnail = "";
+            root.activePreviewLoading = false;
+            previewCaptureProc.running = false;
+            previewCaptureProc.requestedWinKey = "";
+            return;
+        }
+
+        // If root.activePreviewApp already represents a multi-window app, and the incoming 'app'
+        // is one of its child windows, DO NOT clobber root.activePreviewApp!
+        // Preserve the parent app representation (with its .windows list) so multi-instance
+        // popouts never collapse into a single-window view while hovering window cards.
+        const isChildWindow = Boolean(root.activePreviewApp && root.activePreviewApp.windows && root.activePreviewApp.windows.length > 1 &&
+            app.id && root.activePreviewApp.windows.some(w => w && w.id && w.id.toString() === app.id.toString()));
+
+        if (!isChildWindow) {
+            root.activePreviewApp = app;
+        }
+
+        const isRunning = Boolean(app.isRunning) || Boolean(app.id);
+        if (!isRunning || !app.id) {
             root.activePreviewThumbnail = "";
             root.activePreviewLoading = false;
             previewCaptureProc.running = false;
@@ -496,6 +515,20 @@ Singleton {
 
         root.activePreviewLoading = true;
         previewCaptureProc.running = false;
+        previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
+        previewCaptureProc.running = true;
+    }
+
+    function loadWindowPreview(win) {
+        if (!win || !win.id) return;
+        const winKey = win.id.toString();
+        const cached = root._previewCache[winKey];
+        if (cached) {
+            root.activePreviewThumbnail = cached;
+        }
+        if (previewCaptureProc.running) return;
+        previewCaptureProc.requestedWinKey = winKey;
+        root.activePreviewLoading = true;
         previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
         previewCaptureProc.running = true;
     }
