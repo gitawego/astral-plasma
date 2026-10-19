@@ -276,10 +276,11 @@ Item {
             z: 5
             radius: 2.5
             color: "transparent"
+            opacity: 0.8 + 0.2 * root.pulse
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.50; color: root.safeAlpha(root.energizedColor, 0.45 * (0.8 + 0.2 * root.pulse)) }
+                GradientStop { position: 0.50; color: root.safeAlpha(root.energizedColor, 0.45) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
             x: Math.round(root.currentTravelProgress * (bottomBorderSection.width - width))
@@ -347,10 +348,11 @@ Item {
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                     font.pixelSize: 9
                     font.weight: Font.Bold
+                    opacity: 0.8 + 0.2 * root.pulse
                     color: {
                         // Degradation from left (faint) to right (brighter)
                         const alpha = Math.min(0.9, Math.max(0.08, (index + 1) / 12 * 0.9));
-                        return root.safeAlpha(root.brandColor, alpha * (0.8 + 0.2 * root.pulse));
+                        return root.safeAlpha(root.brandColor, alpha);
                     }
                 }
             }
@@ -633,10 +635,11 @@ Item {
             z: 5
             radius: 2.5
             color: "transparent"
+            opacity: 0.8 + 0.2 * root.pulse
             gradient: Gradient {
                 orientation: Gradient.Vertical
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.50; color: root.safeAlpha(root.energizedColor, 0.45 * (0.8 + 0.2 * root.pulse)) }
+                GradientStop { position: 0.50; color: root.safeAlpha(root.energizedColor, 0.45) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
             y: Math.round(root.currentTravelProgress * (rightBorderSection.height - height))

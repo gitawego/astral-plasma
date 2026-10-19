@@ -906,6 +906,7 @@ PanelWindow {
     // Logging every region-driving rect makes such a case self-reporting: turn the
     // category up, reproduce it, and read the offending rect out of the log.
     readonly property var blurDebugRects: {
+        if (!Log.debugEnabled("blur")) return [];
         const app = appContextMenu;
         const tray = trayContextMenu;
         const popFloating = root.blurPopoutFloating;
@@ -936,7 +937,7 @@ PanelWindow {
     }
     property int _blurAuditTick: 0
     Timer {
-        interval: 700; running: true; repeat: true
+        interval: 700; running: Log.debugEnabled("blur"); repeat: true
         onTriggered: {
             if (!Log.debugEnabled("blur")) return;
             root._blurAuditTick++;

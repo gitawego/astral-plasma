@@ -590,6 +590,10 @@ impl WineMprisService {
         }
     }
 
+    pub async fn is_playing(&self) -> bool {
+        self.state.lock().await.is_playing
+    }
+
     pub async fn update_playback_status(&self, is_playing: bool) -> DynResult<()> {
         let changed = {
             let mut st = self.state.lock().await;

@@ -126,6 +126,26 @@ Item {
         assert(/id:\s*pulsePacer[\s\S]{0,220}running:\s*root\.active\s*&&/.test(dlSrc),
             "DownloadBorderEffect pulse pacer must be gated on root.active && speed");
 
+        // ---- 5. Visualizer canvases repaint on 30 Hz displayBands mirror, not 180 Hz raw stream ----
+        const canvasVizFiles = [
+            "../components/CyberOscilloscope.qml",
+            "../components/HeatmapCoverRing.qml",
+            "../components/HeatmapSpeakerPlayer.qml"
+        ];
+        for (let j = 0; j < canvasVizFiles.length; j++) {
+            const vFile = canvasVizFiles[j];
+            const vSrc = readLocalFile(vFile);
+            assert(/onDisplayBandsChanged/.test(vSrc),
+                vFile + " must repaint on 30 Hz onDisplayBandsChanged mirror");
+            assert(!/onFrameUpdated/.test(vSrc) && !/onBandsChanged/.test(vSrc),
+                vFile + " must not double-repaint on raw 90 Hz onFrameUpdated/onBandsChanged");
+        }
+
+        // ---- 6. DashboardTab gates animated GIF decoding on isTargetVisible ----
+        const dashTabSrc = readLocalFile("../dashboard/tabs/DashboardTab.qml");
+        assert(/id:\s*mascotImg[\s\S]{0,260}playing:\s*root\.isTargetVisible\s*&&/.test(dashTabSrc),
+            "DashboardTab mascotImg AnimatedImage must pause decoding when dashboard tab is hidden");
+
         console.log("PASS: Decorative frame budget contracts passed");
         Qt.exit(0);
     }

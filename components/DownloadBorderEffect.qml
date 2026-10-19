@@ -154,15 +154,15 @@ Item {
     // Breathing pulse driven by MotionPacer (Theme.decorativeMaxFps) for 0% idle CPU
     MotionPacer {
         id: pulsePacer
-        running: root.active && root.growthProgress > 0.01
+        running: root.active && !root.isPaused && root.growthProgress > 0.01
         period: root.isPaused ? 3600 : Math.max(1200, Math.min(2800, Math.round(2800 / (1.0 + 2.0 * root.speedNorm))))
     }
     readonly property real pulse: pulsePacer.breath
 
-    // Traveling packet motion: speed-modulated liveness (flows calmly when paused/stalled, accelerates with speed)
+    // Traveling packet motion: speed-modulated liveness (frozen when paused, accelerates with speed)
     MotionPacer {
         id: travelPacer
-        running: root.active && root.growthProgress > 0.01
+        running: root.active && !root.isPaused && root.growthProgress > 0.01
         period: root.travelDuration
     }
     readonly property real travelProgress: travelPacer.phase
@@ -216,7 +216,7 @@ Item {
     Connections {
         target: MotionClock
         function onTickChanged() {
-            if (!root.active || root.growthProgress <= 0.01) {
+            if (!root.active || root.isPaused || root.growthProgress <= 0.01) {
                 root.lastRainMs = MotionClock.elapsedMs;
                 return;
             }
@@ -387,10 +387,11 @@ Item {
             z: 20
             radius: 2.5
             color: "transparent"
+            opacity: 0.8 + 0.2 * root.pulse
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.50; color: root.safeAlpha(root.stateColor, 0.45 * (0.8 + 0.2 * root.pulse)) }
+                GradientStop { position: 0.50; color: root.safeAlpha(root.stateColor, 0.45) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
             x: Math.round(root.travelProgress * (topBorderSection.width - width))
@@ -458,9 +459,10 @@ Item {
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                     font.pixelSize: 9
                     font.weight: Font.Bold
+                    opacity: 0.8 + 0.2 * root.pulse
                     color: {
                         const alpha = Math.min(0.85, Math.max(0.08, (index + 1) / 8 * 0.85));
-                        return root.safeAlpha(root.stateColor, alpha * (0.8 + 0.2 * root.pulse));
+                        return root.safeAlpha(root.stateColor, alpha);
                     }
                 }
             }
@@ -725,10 +727,11 @@ Item {
             z: 20
             radius: 2.5
             color: "transparent"
+            opacity: 0.8 + 0.2 * root.pulse
             gradient: Gradient {
                 orientation: Gradient.Vertical
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.50; color: root.safeAlpha(root.stateColor, 0.45 * (0.8 + 0.2 * root.pulse)) }
+                GradientStop { position: 0.50; color: root.safeAlpha(root.stateColor, 0.45) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
             y: Math.round((1.0 - root.travelProgress) * (rightTopSection.height - height))

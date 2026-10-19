@@ -163,6 +163,10 @@ Item {
             "fusedTopNexus uses explicit item width/height in ShapePath to avoid Qt Quick parent resolution failure");
         assert(/direction:\s*PathArc\.Counterclockwise/.test(fxSrc),
             "fusedTopNexus fillet arc uses Counterclockwise direction to ensure smooth corner curve without edge cropping");
+        assert(/running:\s*root\.active\s*&&\s*!root\.isPaused/.test(fxSrc),
+            "pacers freeze when download is paused (0% idle CPU on paused downloads)");
+        assert(/opacity:\s*0\.8\s*\+\s*0\.2\s*\*\s*root\.pulse/.test(fxSrc),
+            "packet glow and trailing glyphs breathe via node opacity, avoiding per-frame gradient-stop churn");
 
         console.log("PASS: All DownloadBorderEffect Unit Tests passed successfully!");
         Qt.exit(0);

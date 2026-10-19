@@ -103,9 +103,24 @@ pub fn read_clipboard() -> ClipboardItem {
                 }
             }
 
-            let (width, height) = match image::load_from_memory(&bytes) {
-                Ok(img) => (img.width(), img.height()),
-                Err(_) => (0, 0),
+            use std::sync::{Mutex, OnceLock};
+            static LAST_IMG_DIMS: OnceLock<Mutex<Option<(u64, u32, u32)>>> = OnceLock::new();
+            let dims_cache = LAST_IMG_DIMS.get_or_init(|| Mutex::new(None));
+            let cached_dims = dims_cache.lock().ok().and_then(|g| {
+                g.filter(|(h, _, _)| *h == hash).map(|(_, w, h)| (w, h))
+            });
+            let (width, height) = match cached_dims {
+                Some(dims) => dims,
+                None => {
+                    let dims = match image::load_from_memory(&bytes) {
+                        Ok(img) => (img.width(), img.height()),
+                        Err(_) => (0, 0),
+                    };
+                    if let Ok(mut g) = dims_cache.lock() {
+                        *g = Some((hash, dims.0, dims.1));
+                    }
+                    dims
+                }
             };
 
             let label = if width > 0 && height > 0 {

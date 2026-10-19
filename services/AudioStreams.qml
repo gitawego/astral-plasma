@@ -26,14 +26,21 @@ Singleton {
         streams: root.streams
     }
 
+    property string _lastRaw: ""
+
     Process {
         id: streamsProc
         command: [Config.daemonBin, "audio", "streams"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
-                    const parsed = JSON.parse(this.text.trim());
+                    const raw = this.text.trim();
+                    if (raw === root._lastRaw && root.available) {
+                        return;
+                    }
+                    const parsed = JSON.parse(raw);
                     if (Array.isArray(parsed)) {
+                        root._lastRaw = raw;
                         root.streams = parsed;
                         root.available = true;
                     }

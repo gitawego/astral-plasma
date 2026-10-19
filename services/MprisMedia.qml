@@ -140,7 +140,7 @@ Singleton {
     Timer {
         interval: 250
         repeat: true
-        running: true
+        running: root.audioFlowing || (typeof AudioVisualizer !== "undefined" && AudioVisualizer !== null && (AudioVisualizer.isStreaming || AudioVisualizer.active))
         triggeredOnStart: true
         onTriggered: {
             const viz = (typeof AudioVisualizer !== "undefined") ? AudioVisualizer : null;
@@ -470,12 +470,12 @@ Singleton {
         }
     }
 
-    // 300ms heartbeat to ensure player transitions (play/pause/new player) are reactively tracked
+    // Fallback heartbeat when players exist (Instantiator already handles reactive signals)
     Timer {
         id: playerWatcher
-        interval: 300
+        interval: 1000
         repeat: true
-        running: true
+        running: root.players !== null && root.players !== undefined && root.players.length > 0
         triggeredOnStart: true
         onTriggered: root.updateActivePlayer()
     }

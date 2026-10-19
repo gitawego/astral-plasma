@@ -121,12 +121,7 @@ Item {
 
         Connections {
             target: (typeof AudioVisualizer !== "undefined") ? AudioVisualizer : null
-            function onFrameUpdated() {
-                if (root.isTargetVisible && root.isVisualizerActive) {
-                    coronaCanvas.requestPaint();
-                }
-            }
-            function onBandsChanged() {
+            function onDisplayBandsChanged() {
                 if (root.isTargetVisible && root.isVisualizerActive) {
                     coronaCanvas.requestPaint();
                 }

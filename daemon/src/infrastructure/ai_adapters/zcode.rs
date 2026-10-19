@@ -160,55 +160,95 @@ impl AgentSessionAdapter for ZCodeAdapter {
 
     fn query_external_store(&self, home: &Path) -> Option<SessionParseResult> {
         let db_path = home.join(".zcode/cli/db/db.sqlite");
-        if !db_path.exists() {
-            return None;
+        let meta = db_path.metadata().ok()?;
+        let db_mtime_ns = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let db_len = meta.len();
+
+        let mut wal_os = db_path.as_os_str().to_os_string();
+        wal_os.push("-wal");
+        let wal_path = PathBuf::from(wal_os);
+        let (wal_mtime_ns, wal_len) = match wal_path.metadata() {
+            Ok(wmeta) => {
+                let mtime = wmeta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                (mtime, wmeta.len())
+            }
+            Err(_) => (0, 0),
+        };
+
+        let stamp = (db_path.clone(), db_mtime_ns, db_len, wal_mtime_ns, wal_len);
+        type StampKey = (PathBuf, u128, u64, u128, u64);
+        static CACHE: std::sync::OnceLock<
+            std::sync::Mutex<Option<(StampKey, Option<SessionParseResult>)>>,
+        > = std::sync::OnceLock::new();
+        let cache = CACHE.get_or_init(|| std::sync::Mutex::new(None));
+
+        if let Ok(guard) = cache.lock() {
+            if let Some((ref cached_stamp, ref cached_res)) = *guard {
+                if *cached_stamp == stamp {
+                    return cached_res.clone();
+                }
+            }
         }
 
         let uri = format!("file:{}?mode=ro", db_path.to_string_lossy());
-        let output = std::process::Command::new("sqlite3")
+        let parsed = std::process::Command::new("sqlite3")
             .arg(&uri)
             .arg("SELECT model_id, status, started_at, coalesce(completed_at, started_at), output_tokens, finish_reason FROM model_usage ORDER BY started_at DESC LIMIT 1;")
             .output()
-            .ok()?;
+            .ok()
+            .and_then(|output| {
+                if !output.status.success() {
+                    return None;
+                }
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let trimmed = stdout.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                let parts: Vec<&str> = trimmed.split('|').collect();
+                if parts.len() < 5 {
+                    return None;
+                }
+                let raw_model = parts[0].trim();
+                let status = parts[1].trim();
+                let time_updated: u64 = parts[3].trim().parse().unwrap_or(0);
+                let tokens: u64 = parts[4].trim().parse().unwrap_or(0);
+                let finish_reason = parts.get(5).map(|s| s.trim()).unwrap_or("");
 
-        if !output.status.success() {
-            return None;
+                let model_id = if let Some(slash_pos) = raw_model.rfind('/') {
+                    raw_model[slash_pos + 1..].to_string()
+                } else {
+                    raw_model.to_string()
+                };
+
+                let is_completed = (status == "completed" && (finish_reason == "stop" || finish_reason.is_empty()))
+                    || status == "error"
+                    || status == "cancelled";
+
+                Some(SessionParseResult {
+                    model_id,
+                    tool_source: "zcode".to_string(),
+                    tokens: Some(tokens),
+                    is_turn_completed: is_completed,
+                    timestamp_ms: Some(time_updated),
+                })
+            });
+
+        if let Ok(mut guard) = cache.lock() {
+            *guard = Some((stamp, parsed.clone()));
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let trimmed = stdout.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-
-        let parts: Vec<&str> = trimmed.split('|').collect();
-        if parts.len() < 5 {
-            return None;
-        }
-
-        let raw_model = parts[0].trim();
-        let status = parts[1].trim();
-        let time_updated: u64 = parts[3].trim().parse().unwrap_or(0);
-        let tokens: u64 = parts[4].trim().parse().unwrap_or(0);
-        let finish_reason = parts.get(5).map(|s| s.trim()).unwrap_or("");
-
-        let model_id = if let Some(slash_pos) = raw_model.rfind('/') {
-            raw_model[slash_pos + 1..].to_string()
-        } else {
-            raw_model.to_string()
-        };
-
-        let is_completed = (status == "completed" && (finish_reason == "stop" || finish_reason.is_empty()))
-            || status == "error"
-            || status == "cancelled";
-
-        Some(SessionParseResult {
-            model_id,
-            tool_source: "zcode".to_string(),
-            tokens: Some(tokens),
-            is_turn_completed: is_completed,
-            timestamp_ms: Some(time_updated),
-        })
+        parsed
     }
 
     fn read_default_settings(&self, home: &Path) -> Option<(String, String)> {

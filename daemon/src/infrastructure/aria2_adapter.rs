@@ -419,25 +419,55 @@ pub fn scan_download_directory(dir: &std::path::Path) -> Vec<DownloadTask> {
     tasks
 }
 
-/// Checks whether the aria2c binary is present in PATH and executable.
-pub fn is_aria2_installed() -> bool {
-    Command::new("aria2c")
+#[derive(Clone)]
+struct Aria2ProbeCache {
+    checked_at: std::time::Instant,
+    installed: bool,
+    version: Option<String>,
+}
+
+fn probe_aria2_cached() -> (bool, Option<String>) {
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<Option<Aria2ProbeCache>>> = OnceLock::new();
+    let mutex = CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(guard) = mutex.lock() {
+        if let Some(entry) = guard.as_ref() {
+            if entry.checked_at.elapsed() < std::time::Duration::from_secs(30) {
+                return (entry.installed, entry.version.clone());
+            }
+        }
+    }
+    let output = Command::new("aria2c")
         .arg("--version")
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .output()
+        .ok();
+    let (installed, version) = match output {
+        Some(out) if out.status.success() => {
+            let ver = crate::domain::downloads::parse_aria2_version(&String::from_utf8_lossy(&out.stdout));
+            (true, ver)
+        }
+        _ => (false, None),
+    };
+    if let Ok(mut guard) = mutex.lock() {
+        *guard = Some(Aria2ProbeCache {
+            checked_at: std::time::Instant::now(),
+            installed,
+            version: version.clone(),
+        });
+    }
+    (installed, version)
+}
+
+/// Checks whether the aria2c binary is present in PATH and executable.
+pub fn is_aria2_installed() -> bool {
+    probe_aria2_cached().0
 }
 
 /// The installed engine's version, read from its own probe output.
 pub fn engine_version() -> Option<String> {
-    let output = Command::new("aria2c").arg("--version").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    crate::domain::downloads::parse_aria2_version(&String::from_utf8_lossy(&output.stdout))
+    probe_aria2_cached().1
 }
 
 /// Whether the desktop's privilege helper is usable.
@@ -447,14 +477,18 @@ pub fn engine_version() -> Option<String> {
 /// runs without needing a prompt; a misconfigured helper (not setuid root) is
 /// treated exactly like a missing one, so the caller guides instead of failing.
 pub fn pkexec_available() -> bool {
-    Command::new("pkexec")
-        .arg("--version")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+    use std::sync::OnceLock;
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        Command::new("pkexec")
+            .arg("--version")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    })
 }
 
 /// Runs the package manager through polkit, returning the helper's exit code.
@@ -482,13 +516,18 @@ pub fn apply_global_options(secret: &str, settings: &EngineSettings) -> DynResul
 
 /// Derives the tailored installation command for the current distribution.
 pub fn aria2_install_command() -> String {
-    let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
-    let package_manager = crate::domain::voice::package_manager_for_os_release(&os_release);
-    // A distribution we cannot name a package for gets the upstream build, never
-    // an invented command.
-    crate::domain::downloads::aria2_install_command(package_manager)
-        .unwrap_or("https://aria2.github.io/")
-        .to_string()
+    use std::sync::OnceLock;
+    static CMD: OnceLock<String> = OnceLock::new();
+    CMD.get_or_init(|| {
+        let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+        let package_manager = crate::domain::voice::package_manager_for_os_release(&os_release);
+        // A distribution we cannot name a package for gets the upstream build, never
+        // an invented command.
+        crate::domain::downloads::aria2_install_command(package_manager)
+            .unwrap_or("https://aria2.github.io/")
+            .to_string()
+    })
+    .clone()
 }
 
 

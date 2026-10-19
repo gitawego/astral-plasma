@@ -618,7 +618,7 @@ impl TrayPort for TrayAdapter {
         };
 
         let now = Instant::now();
-        let cache_ttl = Duration::from_secs(3);
+        let cache_ttl = Duration::from_secs(30);
         let mut active_keys = HashSet::new();
 
         let mut cache_guard = TRAY_CACHE.lock().unwrap();

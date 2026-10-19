@@ -1015,6 +1015,11 @@ pub async fn run_event_daemon() -> DynResult<()> {
                 let Some(mpris_audio) = slot.read().ok().and_then(|guard| guard.clone()) else {
                     continue;
                 };
+                // Only arbitrate when the Wine bridge currently claims to be playing;
+                // otherwise update_playback_status(false) is a no-op and spawning pactl is wasted.
+                if !mpris_audio.is_playing().await {
+                    continue;
+                }
                 // The sound server decides who owns the audio. Asking the other
                 // MPRIS players (as this used to) let a browser session that
                 // merely claims Playing silence the bridge while the bridge was
@@ -1189,16 +1194,18 @@ pub async fn run_event_daemon() -> DynResult<()> {
     let ai_activity_port = crate::infrastructure::desktop_factory::create_ai_activity_port();
     ai_activity_port.start_background_watcher();
 
-    // Spawn periodic tray poller
+    // Spawn periodic tray poller (registrations are already checked every 3s above;
+    // this 5s pass refreshes cached items and input-method badge state without 1Hz subprocess churn)
     let tray_state = Arc::clone(&state);
     let tray_poller_port = Arc::clone(&tray_port);
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(1000));
+        let mut interval = tokio::time::interval(Duration::from_millis(5000));
         loop {
             interval.tick().await;
             let poll_port = Arc::clone(&tray_poller_port);
             if let Ok(new_tray) = blocking(move || poll_port.query_tray()).await {
                 let mut st = tray_state.lock().await;
+                st.tray_registered_keys = tray_item_keys(&new_tray);
                 if new_tray != st.cached_tray {
                     st.cached_tray = new_tray.clone();
                     let payload = TrayPayload {

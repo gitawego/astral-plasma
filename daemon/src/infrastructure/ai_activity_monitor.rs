@@ -486,6 +486,7 @@ impl AiActivityMonitor {
         let mut buffer = [0u8; 8192];
         let mut last_heartbeat_epoch_ms: u64 = 0;
         let mut last_dir_scan_ms: u64 = 0;
+        let mut last_poll_scan_ms: u64 = 0;
 
         loop {
             tokio::select! {
@@ -628,16 +629,24 @@ impl AiActivityMonitor {
                     let mut should_emit = false;
                     let now_ms = current_epoch_ms();
 
-                    // Heartbeat: while an agent is active in-flight, emit state every 500ms so QML is never starved
-                    if self.get_state().await.is_active && now_ms.saturating_sub(last_heartbeat_epoch_ms) >= 500 {
+                    // Heartbeat: while an agent is active in-flight, emit keepalive every 2000ms
+                    // (well below QML's 25s watchdog) without flooding stdout when state is unchanged.
+                    if self.get_state().await.is_active && now_ms.saturating_sub(last_heartbeat_epoch_ms) >= 2000 {
                         last_heartbeat_epoch_ms = now_ms;
                         should_emit = true;
                     }
 
-                    // Dynamically scan for newly created adapter watch directories every 5s
-                    if now_ms.saturating_sub(last_dir_scan_ms) >= 5000 {
+                    // Dynamically scan for newly created adapter watch directories every 15s
+                    // (inotify IN_CREATE | IN_ISDIR already registers subdirectories immediately).
+                    if now_ms.saturating_sub(last_dir_scan_ms) >= 15000 {
                         last_dir_scan_ms = now_ms;
-                        let latest_dirs = self.registry.all_watch_directories(&home);
+                        let scan_reg = Arc::clone(&self.registry);
+                        let scan_home = home.clone();
+                        let latest_dirs = tokio::task::spawn_blocking(move || {
+                            scan_reg.all_watch_directories(&scan_home)
+                        })
+                        .await
+                        .unwrap_or_default();
                         for dir in latest_dirs {
                             if dir.exists() && dir.is_dir() && !watch_map.values().any(|v| v == &dir) {
                                 if let Ok(c_str) = std::ffi::CString::new(dir.to_string_lossy().as_bytes()) {
@@ -658,29 +667,31 @@ impl AiActivityMonitor {
                         }
                     }
 
-                    // 1. Concurrent poll: scan active session files across all adapters.
-                    // Walking the session directories is filesystem work: run it on the
-                    // blocking pool so the runtime keeps polling its drivers.
-                    let scan_registry = Arc::clone(&self.registry);
-                    let scan_home = home.clone();
-                    let active_files = tokio::task::spawn_blocking(move || {
-                        let files = scan_registry.scan_all_active_files(&scan_home, ACTIVE_AGENT_WINDOW_MS);
-                        let parsed: Vec<_> = files
-                            .iter()
-                            .map(|info| scan_registry.parse_file(&info.path))
-                            .collect();
-                        (files, parsed)
-                    })
-                    .await
-                    .unwrap_or_default();
-                    let (active_files, parsed_files) = active_files;
-                    for (file_info, parsed) in active_files.iter().zip(parsed_files.into_iter()) {
-                        let prev = seen_sessions.get(&file_info.path).copied();
-                        let is_new_event = match prev {
-                            None => true,
-                            Some((prev_mtime, prev_size)) => file_info.mtime > prev_mtime || file_info.size != prev_size,
-                        };
-                        if is_new_event {
+                    // Fallback poll every 2s (inotify delivers real-time events; only parse files
+                    // whose (mtime, size) actually changed in seen_sessions).
+                    if now_ms.saturating_sub(last_poll_scan_ms) >= 2000 {
+                        last_poll_scan_ms = now_ms;
+                        let scan_registry = Arc::clone(&self.registry);
+                        let scan_home = home.clone();
+                        let known_sessions = seen_sessions.clone();
+                        let changed_files = tokio::task::spawn_blocking(move || {
+                            let files = scan_registry.scan_all_active_files(&scan_home, ACTIVE_AGENT_WINDOW_MS);
+                            files
+                                .into_iter()
+                                .filter(|info| match known_sessions.get(&info.path).copied() {
+                                    None => true,
+                                    Some((prev_mtime, prev_size)) => info.mtime > prev_mtime || info.size != prev_size,
+                                })
+                                .map(|info| {
+                                    let parsed = scan_registry.parse_file(&info.path);
+                                    (info, parsed)
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .await
+                        .unwrap_or_default();
+
+                        for (file_info, parsed) in changed_files {
                             seen_sessions.insert(file_info.path.clone(), (file_info.mtime, file_info.size));
                             if let Some(parsed) = parsed {
                                 let now_ms = current_epoch_ms();
@@ -691,35 +702,34 @@ impl AiActivityMonitor {
                                 }
                             }
                         }
-                    }
 
-                    // 2. Poll external stores across all adapters. Each adapter shells
-                    // out (`sqlite3`), so this belongs on the blocking pool as well.
-                    let store_registry = Arc::clone(&self.registry);
-                    let store_home = home.clone();
-                    let store_results = tokio::task::spawn_blocking(move || {
-                        store_registry.query_all_external_stores(&store_home)
-                    })
-                    .await
-                    .unwrap_or_default();
-                    for store_res in store_results {
-                        let time_updated = store_res.timestamp_ms.unwrap_or(0);
-                        let tokens = store_res.tokens.unwrap_or(0);
-                        let prev_time = last_seen_store_time.get(&store_res.tool_source).copied().unwrap_or(0);
-                        let prev_tokens = last_seen_store_tokens.get(&store_res.tool_source).copied().unwrap_or(0);
-                        let now_epoch = current_epoch_ms();
-                        let window = if store_res.is_turn_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
+                        // 2. Poll external stores across all adapters (cached by DB/WAL mtime stamp).
+                        let store_registry = Arc::clone(&self.registry);
+                        let store_home = home.clone();
+                        let store_results = tokio::task::spawn_blocking(move || {
+                            store_registry.query_all_external_stores(&store_home)
+                        })
+                        .await
+                        .unwrap_or_default();
+                        for store_res in store_results {
+                            let time_updated = store_res.timestamp_ms.unwrap_or(0);
+                            let tokens = store_res.tokens.unwrap_or(0);
+                            let prev_time = last_seen_store_time.get(&store_res.tool_source).copied().unwrap_or(0);
+                            let prev_tokens = last_seen_store_tokens.get(&store_res.tool_source).copied().unwrap_or(0);
+                            let now_epoch = current_epoch_ms();
+                            let window = if store_res.is_turn_completed { COMPLETED_WINDOW_MS } else { ACTIVE_AGENT_WINDOW_MS };
 
-                        if now_epoch.saturating_sub(time_updated) < window
-                            && (time_updated > prev_time || tokens != prev_tokens)
-                        {
-                            let delta = tokens.saturating_sub(prev_tokens);
-                            last_seen_store_time.insert(store_res.tool_source.clone(), time_updated);
-                            last_seen_store_tokens.insert(store_res.tool_source.clone(), tokens);
-                            let reported = if delta > 0 { delta } else { tokens.min(5000) };
-                            let session_key = store_res.tool_source.clone();
-                            self.record_activity_full_with_session(&session_key, &store_res.model_id, &store_res.tool_source, Some(reported), store_res.is_turn_completed).await;
-                            should_emit = true;
+                            if now_epoch.saturating_sub(time_updated) < window
+                                && (time_updated > prev_time || tokens != prev_tokens)
+                            {
+                                let delta = tokens.saturating_sub(prev_tokens);
+                                last_seen_store_time.insert(store_res.tool_source.clone(), time_updated);
+                                last_seen_store_tokens.insert(store_res.tool_source.clone(), tokens);
+                                let reported = if delta > 0 { delta } else { tokens.min(5000) };
+                                let session_key = store_res.tool_source.clone();
+                                self.record_activity_full_with_session(&session_key, &store_res.model_id, &store_res.tool_source, Some(reported), store_res.is_turn_completed).await;
+                                should_emit = true;
+                            }
                         }
                     }
 

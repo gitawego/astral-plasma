@@ -367,6 +367,7 @@ impl DownloadsUseCase {
     /// completed files in the target download directory.
     pub fn reconcile_history(&self, snap: &mut DownloadsSnapshot) -> DynResult<()> {
         let mut history = self.port.load_history().unwrap_or_default();
+        let original_history = history.clone();
         let now_secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -376,7 +377,21 @@ impl DownloadsUseCase {
         for stopped_task in &mut snap.stopped {
             history.dismissed.retain(|d| d != &stopped_task.gid && d != &stopped_task.name);
             if stopped_task.completed_at.is_none() {
-                stopped_task.completed_at = Some(now_secs);
+                if let Some(existing_ts) = history
+                    .items
+                    .iter()
+                    .find(|t| {
+                        t.gid == stopped_task.gid
+                            || (!stopped_task.name.is_empty()
+                                && t.name == stopped_task.name
+                                && t.dir == stopped_task.dir)
+                    })
+                    .and_then(|t| t.completed_at)
+                {
+                    stopped_task.completed_at = Some(existing_ts);
+                } else {
+                    stopped_task.completed_at = Some(now_secs);
+                }
             }
             history.add_or_update(stopped_task.clone());
         }
@@ -400,8 +415,10 @@ impl DownloadsUseCase {
             history.items.truncate(100);
         }
 
-        // 6. Save persistent state
-        let _ = self.port.save_history(&history);
+        // 6. Save persistent state only when history changed
+        if history != original_history {
+            let _ = self.port.save_history(&history);
+        }
 
         // 7. Update snap.stopped with the complete history
         snap.stopped = history.items;
@@ -557,6 +574,10 @@ pub fn should_start_engine(previous_available: Option<bool>, current_available: 
 /// Bounded blocking RPC calls run via `watch_events::blocking` so no tokio
 /// worker parks (the documented daemon failure mode).
 pub async fn run_downloads_watch(use_case: DownloadsUseCase) -> DynResult<()> {
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+    }
     use crate::application::watch_events::blocking;
     let _ = blocking({
         let dir = use_case.default_dir.clone();

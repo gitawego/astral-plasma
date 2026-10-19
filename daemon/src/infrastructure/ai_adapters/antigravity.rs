@@ -146,16 +146,19 @@ impl AgentSessionAdapter for AntigravityAdapter {
                     }
 
                     // Check if tasks in .system_generated/tasks were modified more recently
-                    let tasks_dir = p.join(".system_generated/tasks");
-                    if let Ok(entries) = std::fs::read_dir(&tasks_dir) {
-                        for entry in entries.flatten() {
-                            let ep = entry.path();
-                            if ep.extension().map(|e| e == "log").unwrap_or(false) {
-                                if let Ok(meta) = ep.metadata() {
-                                    if let Ok(mtime) = meta.modified() {
-                                        let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-                                        if epoch > latest_mtime {
-                                            latest_mtime = epoch;
+                    // (only for conversations active within a recent window to avoid stat-ing thousands of historical task logs)
+                    if latest_mtime > 0 && now.saturating_sub(latest_mtime) < max_age_ms.saturating_mul(15) {
+                        let tasks_dir = p.join(".system_generated/tasks");
+                        if let Ok(entries) = std::fs::read_dir(&tasks_dir) {
+                            for entry in entries.flatten() {
+                                let ep = entry.path();
+                                if ep.extension().map(|e| e == "log").unwrap_or(false) {
+                                    if let Ok(meta) = ep.metadata() {
+                                        if let Ok(mtime) = meta.modified() {
+                                            let epoch = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                                            if epoch > latest_mtime {
+                                                latest_mtime = epoch;
+                                            }
                                         }
                                     }
                                 }

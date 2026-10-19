@@ -704,7 +704,14 @@ Item {
                         visible: mediaCard.showOrbitalRing && !mediaCard.isCyberpunk
                         property real prog: MprisMedia.progress
 
-                        onProgChanged: requestPaint()
+                        onProgChanged: if (root.isTargetVisible && visible) requestPaint()
+                        onVisibleChanged: if (visible && root.isTargetVisible) requestPaint()
+                        Connections {
+                            target: root
+                            function onIsTargetVisibleChanged() {
+                                if (root.isTargetVisible && mediaProgRing.visible) mediaProgRing.requestPaint();
+                            }
+                        }
                         onPaint: {
                             var ctx = getContext("2d");
                             ctx.reset();
@@ -1069,7 +1076,7 @@ Item {
                     Layout.preferredWidth: 76
                     Layout.preferredHeight: 44
                     source: root.mascotSource
-                    playing: (typeof MprisMedia !== "undefined") ? MprisMedia.isPlaying : false
+                    playing: root.isTargetVisible && ((typeof MprisMedia !== "undefined") ? MprisMedia.isPlaying : false)
                     fillMode: Image.PreserveAspectFit
                 }
             }

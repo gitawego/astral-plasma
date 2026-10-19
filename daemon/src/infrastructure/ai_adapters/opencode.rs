@@ -60,57 +60,132 @@ impl AgentSessionAdapter for OpenCodeAdapter {
 
     fn query_external_store(&self, home: &Path) -> Option<SessionParseResult> {
         let db_path = home.join(".local/share/opencode/opencode.db");
-        if !db_path.exists() {
-            return None;
+        let stamp = DbFileStamp::capture(&db_path)?;
+
+        static CACHE: std::sync::OnceLock<
+            std::sync::Mutex<Option<(DbFileStamp, Option<(String, u64, u64)>)>>,
+        > = std::sync::OnceLock::new();
+        let cache = CACHE.get_or_init(|| std::sync::Mutex::new(None));
+
+        if let Ok(guard) = cache.lock() {
+            if let Some((ref cached_stamp, ref cached_row)) = *guard {
+                if *cached_stamp == stamp {
+                    let (model_id, total_tokens, time_updated) = cached_row.clone()?;
+                    let now_epoch = current_epoch_ms();
+                    return Some(SessionParseResult {
+                        model_id,
+                        tool_source: "opencode".to_string(),
+                        tokens: Some(total_tokens),
+                        is_turn_completed: now_epoch.saturating_sub(time_updated) >= 3_000,
+                        timestamp_ms: Some(time_updated),
+                    });
+                }
+            }
         }
 
-        let uri = format!("file:{}?mode=ro", db_path.to_string_lossy());
-        let output = std::process::Command::new("sqlite3")
-            .arg(&uri)
-            .arg("SELECT model, tokens_input, tokens_output, time_updated FROM session_v2 ORDER BY time_updated DESC LIMIT 1;")
-            .output()
-            .ok()?;
-
-        if !output.status.success() {
-            return None;
+        let row = query_opencode_sqlite(&db_path);
+        if let Ok(mut guard) = cache.lock() {
+            *guard = Some((stamp, row.clone()));
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let trimmed = stdout.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-
-        let parts: Vec<&str> = trimmed.split('|').collect();
-        if parts.len() < 4 {
-            return None;
-        }
-
-        let raw_model = parts[0].trim();
-        let tokens_in: u64 = parts[1].trim().parse().unwrap_or(0);
-        let tokens_out: u64 = parts[2].trim().parse().unwrap_or(0);
-        let time_updated: u64 = parts[3].trim().parse().unwrap_or(0);
-
-        let model_id = if raw_model.starts_with('{') {
-            serde_json::from_str::<serde_json::Value>(raw_model)
-                .ok()
-                .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
-                .unwrap_or_else(|| raw_model.to_string())
-        } else {
-            raw_model.to_string()
-        };
-
+        let (model_id, total_tokens, time_updated) = row?;
         let now_epoch = current_epoch_ms();
         let is_completed = now_epoch.saturating_sub(time_updated) >= 3_000;
 
         Some(SessionParseResult {
             model_id,
             tool_source: "opencode".to_string(),
-            tokens: Some(tokens_in + tokens_out),
+            tokens: Some(total_tokens),
             is_turn_completed: is_completed,
             timestamp_ms: Some(time_updated),
         })
     }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct DbFileStamp {
+    path: PathBuf,
+    db_mtime_ns: u128,
+    db_len: u64,
+    wal_mtime_ns: u128,
+    wal_len: u64,
+}
+
+impl DbFileStamp {
+    fn capture(db_path: &Path) -> Option<Self> {
+        let meta = db_path.metadata().ok()?;
+        let db_mtime_ns = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let db_len = meta.len();
+
+        let mut wal_os = db_path.as_os_str().to_os_string();
+        wal_os.push("-wal");
+        let wal_path = PathBuf::from(wal_os);
+        let (wal_mtime_ns, wal_len) = match wal_path.metadata() {
+            Ok(wmeta) => {
+                let mtime = wmeta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                (mtime, wmeta.len())
+            }
+            Err(_) => (0, 0),
+        };
+
+        Some(Self {
+            path: db_path.to_path_buf(),
+            db_mtime_ns,
+            db_len,
+            wal_mtime_ns,
+            wal_len,
+        })
+    }
+}
+
+fn query_opencode_sqlite(db_path: &Path) -> Option<(String, u64, u64)> {
+    let uri = format!("file:{}?mode=ro", db_path.to_string_lossy());
+    let output = std::process::Command::new("sqlite3")
+        .arg(&uri)
+        .arg("SELECT model, tokens_input, tokens_output, time_updated FROM session_v2 ORDER BY time_updated DESC LIMIT 1;")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let parts: Vec<&str> = trimmed.split('|').collect();
+    if parts.len() < 4 {
+        return None;
+    }
+
+    let raw_model = parts[0].trim();
+    let tokens_in: u64 = parts[1].trim().parse().unwrap_or(0);
+    let tokens_out: u64 = parts[2].trim().parse().unwrap_or(0);
+    let time_updated: u64 = parts[3].trim().parse().unwrap_or(0);
+
+    let model_id = if raw_model.starts_with('{') {
+        serde_json::from_str::<serde_json::Value>(raw_model)
+            .ok()
+            .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
+            .unwrap_or_else(|| raw_model.to_string())
+    } else {
+        raw_model.to_string()
+    };
+
+    Some((model_id, tokens_in + tokens_out, time_updated))
 }
 
 fn current_epoch_ms() -> u64 {
