@@ -2305,6 +2305,27 @@ Item {
                 readonly property bool isRunning: currentApp ? (Boolean(currentApp.isRunning) || Boolean(currentApp.id)) : false
                 readonly property var winList: (currentApp && currentApp.windows && currentApp.windows.length > 0) ? currentApp.windows : (currentApp && currentApp.id ? [currentApp] : [])
                 readonly property bool hasMultipleWindows: winList.length > 1
+                property string hoveredWinId: ""
+
+                onWinListChanged: {
+                    if (winList.length > 0) {
+                        let activeFound = "";
+                        for (let i = 0; i < winList.length; i++) {
+                            const w = winList[i];
+                            if (w && (w.isActive || (String(w.id).replace(/[{}]/g, "") === String(WindowService.activeId).replace(/[{}]/g, "")))) {
+                                activeFound = w.id.toString();
+                                break;
+                            }
+                        }
+                        hoveredWinId = activeFound || (winList[0].id ? winList[0].id.toString() : "");
+                        if (hoveredWinId) {
+                            const targetWin = activeFound ? winList.find(w => w && w.id && w.id.toString() === activeFound) : winList[0];
+                            if (targetWin) WindowService.loadAppPreview(targetWin);
+                        }
+                    } else {
+                        hoveredWinId = "";
+                    }
+                }
 
                 // Live preview auto-refresh while hovering over app or drawer
                 Timer {
@@ -2313,6 +2334,13 @@ Item {
                     repeat: true
                     running: appSection.isCurrent && appSection.isRunning && Config.bottomPopoutVisible
                     onTriggered: {
+                        if (appSection.hoveredWinId) {
+                            const target = appSection.winList.find(w => w && w.id && w.id.toString() === appSection.hoveredWinId);
+                            if (target) {
+                                WindowService.refreshAppPreview(target);
+                                return;
+                            }
+                        }
                         if (appSection.currentApp && appSection.currentApp.id) {
                             WindowService.refreshAppPreview(appSection.currentApp);
                         }
@@ -2570,19 +2598,44 @@ Item {
                             required property var modelData
                             required property int index
 
+                            readonly property bool isHovered: instanceHoverArea.containsMouse
+                            readonly property bool isExpanded: appSection.hoveredWinId === modelData.id.toString()
+                            readonly property bool isWinActive: Boolean(modelData.isActive) || (String(modelData.id).replace(/[{}]/g, "") === String(WindowService.activeId).replace(/[{}]/g, ""))
+
                             Layout.fillWidth: true
-                            implicitHeight: 96
+                            implicitHeight: isExpanded ? 190 : 46
+
+                            Behavior on implicitHeight {
+                                NumberAnimation {
+                                    duration: Theme.animExpressiveDefaultSpatial
+                                    easing.type: Easing.BezierSpline
+                                    easing.bezierCurve: Theme.curveExpressiveDefaultSpatial
+                                }
+                            }
+
                             radius: Theme.radiusSmall
-                            color: Colors.surfaceContainerLowest
-                            border.color: (Boolean(modelData.isActive) || (String(modelData.id).replace(/[{}]/g, "") === String(WindowService.activeId).replace(/[{}]/g, ""))) ? Colors.primary : Theme.borderSubtle
-                            border.width: (Boolean(modelData.isActive) || (String(modelData.id).replace(/[{}]/g, "") === String(WindowService.activeId).replace(/[{}]/g, ""))) ? 1.5 : 1
+                            color: isExpanded ? Colors.surfaceContainerLowest : (isHovered ? Colors.surfaceContainerLow : Colors.surfaceContainerLowest)
+                            border.color: isWinActive ? Colors.primary : (isHovered ? Colors.primary : Theme.borderSubtle)
+                            border.width: isWinActive ? 1.5 : (isHovered ? 1.2 : 1)
                             clip: true
 
+                            Behavior on border.color {
+                                ColorAnimation { duration: Theme.animDurationFast }
+                            }
+                            Behavior on color {
+                                ColorAnimation { duration: Theme.animDurationFast }
+                            }
+
                             MouseArea {
+                                id: instanceHoverArea
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onEntered: Config.keepBottomPopout()
+                                onEntered: {
+                                    Config.keepBottomPopout();
+                                    appSection.hoveredWinId = modelData.id.toString();
+                                    WindowService.loadAppPreview(modelData);
+                                }
                                 onClicked: {
                                     if (modelData && modelData.id) {
                                         WindowService.activateWindow(modelData.id);
@@ -2599,6 +2652,7 @@ Item {
                                 // Mini Titlebar
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.preferredHeight: 20
                                     spacing: 5
 
                                     Rectangle { width: 8; height: 8; radius: 4; color: "#ff5f56" }
@@ -2642,6 +2696,7 @@ Item {
                                         Layout.preferredWidth: 20
                                         Layout.preferredHeight: 20
                                         Layout.alignment: Qt.AlignVCenter
+                                        z: 10
 
                                         Rectangle {
                                             anchors.fill: parent
@@ -2672,13 +2727,24 @@ Item {
 
                                 // Window Content / Thumbnail preview
                                 Rectangle {
+                                    id: thumbWrapper
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     radius: 4
                                     color: Colors.surfaceContainer
                                     clip: true
+                                    visible: opacity > 0.001
+                                    opacity: instanceCard.isExpanded ? 1.0 : 0.0
+
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: Theme.animDurationFast
+                                            easing.type: Easing.OutQuad
+                                        }
+                                    }
 
                                     LiveWindowThumbnail {
+                                        id: liveThumbnail
                                         anchors.fill: parent
                                         source: (WindowService._previewCache && WindowService._previewCache[modelData.id.toString()])
                                             ? WindowService._previewCache[modelData.id.toString()]
@@ -2689,7 +2755,7 @@ Item {
                                     RowLayout {
                                         anchors.centerIn: parent
                                         spacing: 6
-                                        visible: !parent.children[0].hasImage
+                                        visible: !liveThumbnail.hasImage
 
                                         MaterialIcon {
                                             text: (appSection.currentApp && appSection.currentApp.materialIcon) ? appSection.currentApp.materialIcon : "desktop_windows"
@@ -2698,7 +2764,7 @@ Item {
                                         }
 
                                         Text {
-                                            text: "Click to bring to front"
+                                            text: WindowService.activePreviewLoading ? "Loading preview..." : "Click to bring to front"
                                             font.family: Theme.fontFamily
                                             font.pixelSize: Theme.fontSmall
                                             color: Colors.textOnSurfaceVariant

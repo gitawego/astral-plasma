@@ -392,6 +392,15 @@ Item {
         assert(winList[0].id === "win-edge-1" && winList[1].id === "win-edge-2", "Popout winList must contain both windows");
         assert(winList[1].isActive === true, "Active window badge in popout must be active");
 
+        // Hover expansion contract:
+        let hoveredWinId = "win-edge-1";
+        assert((hoveredWinId === winList[0].id) === true, "Hovered instance 0 must be expanded");
+        assert((hoveredWinId === winList[1].id) === false, "Unhovered instance 1 must be collapsed");
+
+        hoveredWinId = "win-edge-2";
+        assert((hoveredWinId === winList[0].id) === false, "Instance 0 must collapse when mouse leaves");
+        assert((hoveredWinId === winList[1].id) === true, "Instance 1 must expand when hovered");
+
         // 7. Critical Non-Regression: ZCode and VS Code MUST NEVER collide
         const vsCodePin = pinnedConfig[2]; // { appId: "code", desktopFile: "code", appName: "VS Code" }
         const zcodeWin = {

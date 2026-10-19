@@ -445,6 +445,7 @@ Singleton {
                     const reqKey = previewCaptureProc.requestedWinKey;
                     if (reqKey) {
                         root._previewCache[reqKey] = fileUrl;
+                        root._previewCache = Object.assign({}, root._previewCache);
                     }
                     if (root.activePreviewApp && root.activePreviewApp.id && root.activePreviewApp.id.toString() === reqKey) {
                         root.activePreviewThumbnail = fileUrl;
