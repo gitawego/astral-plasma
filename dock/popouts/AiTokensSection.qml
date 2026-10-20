@@ -28,6 +28,29 @@ Item {
         return "normal";
     }
 
+    readonly property int providerErrorCount: {
+        let count = 0;
+        const list = providersList || [];
+        for (let i = 0; i < list.length; i++) {
+            if (list[i] && list[i].error_message) count++;
+        }
+        return count;
+    }
+
+    // The subtitle must never claim health while a provider is failing to authenticate.
+    readonly property string statusText: {
+        if (warningLevel === "critical") return "Critical Quota Alert (>= 95%)";
+        if (warningLevel === "warning") return "Quota Warning (>= 80%)";
+        if (providerErrorCount > 0) return "Sign-in required";
+        return "All Quotas Healthy";
+    }
+
+    readonly property color statusColor: {
+        if (warningLevel === "critical") return "#E05353";
+        if (warningLevel === "warning" || providerErrorCount > 0) return "#F59E0B";
+        return Colors.m3onSurfaceVariant;
+    }
+
     readonly property bool isRefreshing: {
         if (typeof AiTokenService !== "undefined") return AiTokenService.isRefreshing;
         return false;
@@ -127,6 +150,14 @@ Item {
         return activeAccount;
     }
 
+    readonly property string providerErrorMessage: (currentProvider && currentProvider.error_message)
+        ? currentProvider.error_message : ""
+
+    readonly property bool hasProviderError: providerErrorMessage !== ""
+        && (!currentWindows || currentWindows.length === 0)
+
+    readonly property Item providerErrorBanner: providerErrorBannerItem
+
     readonly property var currentWindows: {
         if (selectedAccount && selectedAccount.windows && selectedAccount.windows.length > 0) {
             return selectedAccount.windows;
@@ -200,16 +231,11 @@ Item {
                 }
 
                 Text {
-                    text: (root.warningLevel === "critical")
-                        ? "Critical Quota Alert (>= 95%)"
-                        : ((root.warningLevel === "warning")
-                            ? "Quota Warning (>= 80%)"
-                            : "All Quotas Healthy")
+                    objectName: "quotaStatusText"
+                    text: root.statusText
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
-                    color: (root.warningLevel === "critical")
-                        ? "#E05353"
-                        : ((root.warningLevel === "warning") ? "#F59E0B" : Colors.m3onSurfaceVariant)
+                    color: root.statusColor
                 }
             }
 
@@ -713,6 +739,33 @@ Item {
                 }
 
                 // 4. Subtle Hairline Divider before Quotas
+                // 4b. Credential failure: the provider answered, but with no quota windows.
+                // Without this the panel rendered a blank provider with nothing to act on.
+                RowLayout {
+                    id: providerErrorBannerItem
+                    objectName: "providerErrorBanner"
+                    Layout.fillWidth: true
+                    spacing: 8
+                    visible: root.hasProviderError
+
+                    MaterialIcon {
+                        text: "error"
+                        size: 14
+                        color: Colors.error
+                        Layout.alignment: Qt.AlignTop
+                    }
+
+                    Text {
+                        objectName: "providerErrorText"
+                        Layout.fillWidth: true
+                        text: root.providerErrorMessage
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Colors.error
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
                 Rectangle {
                     Layout.fillWidth: true
                     height: 1

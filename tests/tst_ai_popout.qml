@@ -63,11 +63,12 @@ Item {
                 provider: "minimax-cn",
                 display_name: "MiniMax",
                 plan_type: "Pay-as-you-go",
-                is_available: true,
+                is_available: false,
                 account_email: "",
                 accounts: [
                     { id: "default", label: "Default Account", is_active: true }
                 ],
+                error_message: "Session expired — sign in again",
                 windows: []
             }
         ]
@@ -119,6 +120,20 @@ Item {
         assert(aiSection.currentProvider.provider === "minimax-cn", "MiniMax must be 3rd provider");
         assert(aiSection.currentWindows.length === 0, "MiniMax pay-as-you-go should have empty windows");
 
+        // 6b. A provider that answered without quota must explain itself, not render blank
+        assert(aiSection.hasProviderError === true, "A provider with error_message and no windows must flag an error state");
+        assert(aiSection.providerErrorMessage === "Session expired — sign in again", "Provider error text must surface verbatim, got: " + aiSection.providerErrorMessage);
+        assert(aiSection.currentProvider.error_message === aiSection.providerErrorMessage, "Banner text must come from the provider snapshot");
+
+        assert(aiSection.providerErrorBanner !== null && aiSection.providerErrorBanner !== undefined, "AiTokensSection must define a providerErrorBanner");
+        assert(aiSection.providerErrorBanner.visible === true, "Provider error banner must be visible for a failed provider");
+
+        // 6c. The header must not claim health while a provider needs a sign-in
+        aiSection.testWarningLevel = "normal";
+        assert(aiSection.providerErrorCount === 1, "Exactly one provider must be counted as failed, got " + aiSection.providerErrorCount);
+        assert(aiSection.statusText === "Sign-in required", "Header must report sign-in required, got: " + aiSection.statusText);
+        assert(Qt.colorEqual(aiSection.statusColor, "#F59E0B"), "Sign-in state must use the attention colour, got: " + aiSection.statusColor);
+
         // 7. Test critical warning tier
         aiSection.testWarningLevel = "critical";
         assert(aiSection.warningLevel === "critical", "warningLevel must update to critical");
@@ -129,6 +144,18 @@ Item {
         assert(aiSection.currentProvider.accounts.length === 2, "Expected 2 gemini accounts in test data");
         assert(aiSection.currentProvider.accounts[0].is_active === true, "First account must be active in test model");
         assert(aiSection.currentProvider.accounts[1].is_active === false, "Second account must be inactive in test model");
+
+        // 8b. A healthy provider must not show the failure banner
+        assert(aiSection.hasProviderError === false, "A provider with quota windows must not flag an error state");
+        assert(aiSection.providerErrorBanner !== null && aiSection.providerErrorBanner !== undefined, "Provider error banner node must exist even when hidden");
+        assert(aiSection.providerErrorBanner.visible === false, "Provider error banner must be hidden for a healthy provider");
+
+        // 8c. The header reports the failing provider set, regardless of which tab is selected
+        aiSection.testWarningLevel = "normal";
+        assert(aiSection.statusText === "Sign-in required", "Other providers still failed, so the header must stay honest, got: " + aiSection.statusText);
+        aiSection.activeProviderIndex = 2;
+        assert(aiSection.statusText === "Sign-in required", "Header must not depend on the selected tab");
+        aiSection.activeProviderIndex = 0;
 
         // 9. Provider brand icon URL resolution & asset availability
         const cfgSrc = readLocalFile("../config/Config.qml");

@@ -379,5 +379,175 @@ fn test_token_cache_stats_hit_rate() {
     assert_eq!(stats.uncached_input_tokens, 1000);
 }
 
+// --- Passive `agy` quota probe: fail-closed guard ---------------------------
+//
+// Regression guard: the shell polled `agy -p='/quota'` every few minutes. When the
+// stored token had expired, `agy` escalated its failed silent auth into an
+// interactive OAuth window in the user's browser, so the desktop was hit by a
+// recurring Google sign-in popup. The probe must refuse to run unless the stored
+// token can be used without any human interaction.
+
+#[test]
+fn test_agy_probe_timeout_outlives_cli_silent_auth_budget() {
+    assert!(
+        AGY_PROBE_TIMEOUT_SECS > AGY_SILENT_AUTH_BUDGET_SECS,
+        "probe timeout ({}s) must exceed agy's silent-auth budget ({}s); otherwise the CLI is \
+         killed mid-refresh and escalates to interactive OAuth",
+        AGY_PROBE_TIMEOUT_SECS,
+        AGY_SILENT_AUTH_BUDGET_SECS
+    );
+}
+
+#[test]
+fn test_agy_token_allows_probe_for_valid_token() {
+    let json = r#"{"auth_method":"consumer","token":{"access_token":"ya29.abc","expiry":"2026-10-20T18:55:33Z","refresh_token":"1//rt","token_type":"Bearer"}}"#;
+    let now = parse_rfc3339_utc_secs("2026-10-20T18:00:00Z").unwrap();
+    assert!(
+        agy_token_allows_probe(json, now),
+        "a token that expires in the future must allow the probe"
+    );
+}
+
+#[test]
+fn test_agy_token_allows_probe_rejects_expired_token() {
+    let json = r#"{"token":{"access_token":"ya29.abc","expiry":"2026-10-19T21:53:30Z","refresh_token":"1//rt"}}"#;
+    let now = parse_rfc3339_utc_secs("2026-10-20T13:43:43Z").unwrap();
+    assert!(
+        !agy_token_allows_probe(json, now),
+        "an expired token must fail closed instead of letting the CLI open a browser"
+    );
+}
+
+#[test]
+fn test_agy_token_allows_probe_rejects_expiry_equal_to_now() {
+    let json = r#"{"token":{"access_token":"ya29.abc","expiry":"2026-10-20T13:43:43Z"}}"#;
+    let now = parse_rfc3339_utc_secs("2026-10-20T13:43:43Z").unwrap();
+    assert!(!agy_token_allows_probe(json, now), "a token expiring now is already unusable");
+}
+
+#[test]
+fn test_agy_token_allows_probe_rejects_unusable_documents() {
+    let now = parse_rfc3339_utc_secs("2026-10-20T13:43:43Z").unwrap();
+
+    assert!(!agy_token_allows_probe("", now), "empty file must fail closed");
+    assert!(!agy_token_allows_probe("not json", now), "garbage must fail closed");
+    assert!(
+        !agy_token_allows_probe(r#"{"auth_method":"consumer"}"#, now),
+        "a document without token/expiry must fail closed"
+    );
+    assert!(
+        !agy_token_allows_probe(r#"{"token":{"expiry":"2026-10-20T18:55:33Z"}}"#, now),
+        "a token without an access_token must fail closed"
+    );
+    assert!(
+        !agy_token_allows_probe(r#"{"token":{"access_token":"ya29.abc"}}"#, now),
+        "a token without an expiry must fail closed"
+    );
+    assert!(
+        !agy_token_allows_probe(
+            r#"{"token":{"access_token":"ya29.abc","expiry":"2026-10-20T18:55:33Z"}}"#,
+            parse_rfc3339_utc_secs("2026-10-21T00:00:00Z").unwrap()
+        ),
+        "expiry must be re-evaluated against the supplied clock"
+    );
+}
+
+#[test]
+fn test_parse_rfc3339_utc_secs_accepts_z_fraction_and_offsets() {
+    let base = parse_rfc3339_utc_secs("2026-10-20T18:00:00Z").expect("Z form must parse");
+    assert_eq!(
+        parse_rfc3339_utc_secs("2026-10-20T18:00:00.123456789Z").expect("fractional form must parse"),
+        base,
+        "fractional seconds must not shift the timestamp"
+    );
+    assert_eq!(
+        parse_rfc3339_utc_secs("2026-10-20T20:00:00+02:00").expect("positive offset must parse"),
+        base,
+        "+02:00 must normalise to UTC"
+    );
+    assert_eq!(
+        parse_rfc3339_utc_secs("2026-10-20T13:00:00-05:00").expect("negative offset must parse"),
+        base,
+        "-05:00 must normalise to UTC"
+    );
+    assert_eq!(
+        parse_rfc3339_utc_secs("1970-01-01T00:00:00Z"),
+        Some(0),
+        "the epoch itself must parse to 0"
+    );
+    assert_eq!(parse_rfc3339_utc_secs("2026-10-13T17:55:33Z").map(|s| s > 0), Some(true));
+}
+
+// --- Provider failure surfacing --------------------------------------------
+//
+// Regression: a provider whose stored session was rejected returned `None`, so the
+// panel showed a completely blank provider with nothing telling the user to sign in.
+
+#[test]
+fn test_provider_failure_message_detects_opencode_auth_error() {
+    let body = r#"{"type":"error","error":{"type":"AuthError","message":"Unauthorized"}}"#;
+    assert_eq!(
+        provider_failure_message(body).as_deref(),
+        Some("Session expired — sign in again"),
+        "OpenCode answers 401 with an error envelope, not a quota payload"
+    );
+}
+
+#[test]
+fn test_provider_failure_message_detects_minimax_cookie_error() {
+    let body = r#"{"base_resp":{"status_code":1004,"status_msg":"cookie is missing, log in again"}}"#;
+    assert_eq!(
+        provider_failure_message(body).as_deref(),
+        Some("Session expired — sign in again"),
+        "MiniMax answers 200 with a base_resp error, which must not read as a healthy payload"
+    );
+}
+
+#[test]
+fn test_minimax_error_envelope_parses_to_empty_quota() {
+    let body = r#"{"base_resp":{"status_code":1004,"status_msg":"cookie is missing, log in again"}}"#;
+    let parsed = parse_minimax_usage(body);
+    assert!(
+        parsed.map(|q| q.windows.is_empty()).unwrap_or(true),
+        "the lenient coding-plan parser yields no windows for an error envelope, \
+         which is exactly why the failure envelope must be inspected first"
+    );
+    assert!(provider_failure_message(body).is_some());
+}
+
+#[test]
+fn test_provider_failure_message_ignores_healthy_bodies() {
+    for healthy in [
+        "",
+        "not json",
+        r#"{"groups":[{"buckets":[]}]}"#,
+        r#"{"base_resp":{"status_code":0}}"#,
+        r#"{"error":{}}"#,
+    ] {
+        assert_eq!(
+            provider_failure_message(healthy),
+            None,
+            "{healthy:?} must not be reported as a failure"
+        );
+    }
+}
+
+#[test]
+fn test_provider_failure_message_reports_non_auth_errors_verbatim() {
+    let body = r#"{"base_resp":{"status_code":2062,"status_msg":"plan not found"}}"#;
+    assert_eq!(
+        provider_failure_message(body).as_deref(),
+        Some("Provider error: plan not found"),
+        "non-auth failures must keep the provider's own wording"
+    );
+}
+
+#[test]
+fn test_parse_rfc3339_utc_secs_rejects_malformed_input() {
+    for bad in ["", "not-a-date", "2026-10-20", "2026-10-20T18:00:00", "2026-13-20T18:00:00Z", "2026-10-20T25:00:00Z"] {
+        assert_eq!(parse_rfc3339_utc_secs(bad), None, "{bad:?} must be rejected");
+    }
+}
+
 
 

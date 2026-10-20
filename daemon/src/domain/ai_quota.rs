@@ -119,6 +119,56 @@ pub fn provider_icon(slug: &str) -> &'static str {
     }
 }
 
+/// Extracts an actionable failure message from a provider's quota response body.
+///
+/// Several providers answer HTTP 200 with an error envelope, so a body that parses
+/// but carries no quota windows is indistinguishable from a healthy empty payload
+/// unless the envelope is read. The panel would otherwise render a blank provider
+/// with no explanation. `None` means "this body reports nothing wrong".
+pub fn provider_failure_message(body: &str) -> Option<String> {
+    let root: serde_json::Value = serde_json::from_str(body).ok()?;
+
+    if let Some(message) = root.pointer("/error/message").and_then(|m| m.as_str()) {
+        let message = message.trim();
+        if !message.is_empty() {
+            return Some(actionable_provider_message(message));
+        }
+    }
+
+    if let Some(code) = root
+        .pointer("/base_resp/status_code")
+        .and_then(|c| c.as_i64())
+    {
+        if code != 0 {
+            let message = root
+                .pointer("/base_resp/status_msg")
+                .and_then(|m| m.as_str())
+                .unwrap_or("provider rejected the stored credentials");
+            return Some(actionable_provider_message(message));
+        }
+    }
+
+    None
+}
+
+/// Collapses a provider's raw error text into one sentence a user can act on.
+fn actionable_provider_message(server_message: &str) -> String {
+    const AUTH_HINTS: [&str; 6] = [
+        "unauthorized",
+        "cookie",
+        "login",
+        "auth",
+        "expired",
+        "credential",
+    ];
+    let lowered = server_message.to_lowercase();
+    if AUTH_HINTS.iter().any(|hint| lowered.contains(hint)) {
+        "Session expired — sign in again".to_string()
+    } else {
+        format!("Provider error: {}", server_message)
+    }
+}
+
 /// Parses the output of `agy --output-format json -p='/quota'` into an `AiProviderQuota`.
 pub fn parse_agy_quota(json_str: &str, active_email: Option<String>) -> Result<AiProviderQuota, String> {
     let root: serde_json::Value = serde_json::from_str(json_str)
@@ -280,6 +330,185 @@ pub fn parse_opencode_usage(json_str: &str) -> Result<AiProviderQuota, String> {
         error_message: None,
         cache_stats: None,
     })
+}
+
+/// Wall-clock budget `agy` gives its own silent (non-interactive) auth path.
+///
+/// Observed in `~/.gemini/antigravity-cli/log/cli-*.log` as
+/// `keyringAuth: timed out after 10s, skipping keyring auth`. Once this budget is
+/// exhausted the CLI abandons silent auth and, in print mode, escalates to an
+/// interactive OAuth window in the user's browser.
+pub const AGY_SILENT_AUTH_BUDGET_SECS: u64 = 10;
+
+/// Hard bound for the passive `agy` quota probe.
+///
+/// Must stay strictly above [`AGY_SILENT_AUTH_BUDGET_SECS`]: a probe bounded at or
+/// below the CLI's own auth budget is killed before it can answer, and the
+/// orphaned OAuth escalation still opens a browser window afterwards.
+pub const AGY_PROBE_TIMEOUT_SECS: u64 = 20;
+
+/// Wall-clock budget for the Antigravity token endpoint (`oauth2.googleapis.com/token`).
+///
+/// Measured on this desktop: a cold TLS handshake alone reaches 9.6s and a refresh
+/// POST has taken 60s on a congested link, while a 5s bound failed five consecutive
+/// attempts. A timeout that short is not a hint — it silently leaves every stored
+/// Gemini account holding a dead access token, so the quota panel goes blank for
+/// every account except whichever one happens to refresh during a lucky window.
+pub const GEMINI_HTTP_TIMEOUT_SECS: u64 = 30;
+
+/// Wall-clock budget for the Cloud Code quota calls (`loadCodeAssist` and
+/// `retrieveUserQuotaSummary`). Healthy responses measure 0.6-2.4s; this keeps
+/// roughly 4x headroom without letting one degraded account stall a whole poll.
+pub const GEMINI_QUOTA_TIMEOUT_SECS: u64 = 10;
+
+/// Number of days in a proleptic Gregorian month.
+fn agy_days_in_month(year: i64, month: i64) -> i64 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+/// Days since the Unix epoch for a proleptic Gregorian date (Howard Hinnant's civil algorithm).
+fn agy_days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = if month > 2 { month - 3 } else { month + 9 };
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
+/// Parses an RFC3339 / ISO-8601 timestamp into epoch seconds (UTC).
+///
+/// Accepts `YYYY-MM-DDTHH:MM:SS` followed by `Z`, a `+HH:MM` / `-HH:MM` offset, and
+/// an optional fractional-second part. Returns `None` for anything malformed, so a
+/// corrupt credential file can never be mistaken for a usable one.
+pub fn parse_rfc3339_utc_secs(value: &str) -> Option<i64> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 20 {
+        return None;
+    }
+    let byte_at = |i: usize| -> Option<u8> { bytes.get(i).copied() };
+    let digits = |from: usize, len: usize| -> Option<i64> {
+        let part = value.get(from..from + len)?;
+        if !part.bytes().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        part.parse::<i64>().ok()
+    };
+
+    if byte_at(4) != Some(b'-')
+        || byte_at(7) != Some(b'-')
+        || !matches!(byte_at(10), Some(b'T') | Some(b't'))
+        || byte_at(13) != Some(b':')
+        || byte_at(16) != Some(b':')
+    {
+        return None;
+    }
+
+    let year = digits(0, 4)?;
+    let month = digits(5, 2)?;
+    let day = digits(8, 2)?;
+    let hour = digits(11, 2)?;
+    let minute = digits(14, 2)?;
+    let second = digits(17, 2)?;
+
+    if !(1..=12).contains(&month)
+        || day < 1
+        || day > agy_days_in_month(year, month)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+    // A leap second (60) still belongs to the second that just elapsed.
+    let second = second.min(59);
+
+    let mut idx = 19;
+    if byte_at(idx) == Some(b'.') {
+        idx += 1;
+        let frac_start = idx;
+        while matches!(byte_at(idx), Some(c) if c.is_ascii_digit()) {
+            idx += 1;
+        }
+        if idx == frac_start {
+            return None;
+        }
+    }
+
+    let offset_secs = match byte_at(idx) {
+        Some(b'Z') | Some(b'z') => {
+            idx += 1;
+            0
+        }
+        Some(sign @ (b'+' | b'-')) => {
+            let hours = digits(idx + 1, 2)?;
+            if byte_at(idx + 3) != Some(b':') {
+                return None;
+            }
+            let minutes = digits(idx + 4, 2)?;
+            if hours > 23 || minutes > 59 {
+                return None;
+            }
+            idx += 6;
+            let magnitude = hours * 3600 + minutes * 60;
+            if sign == b'-' {
+                -magnitude
+            } else {
+                magnitude
+            }
+        }
+        _ => return None,
+    };
+
+    if idx != bytes.len() {
+        return None;
+    }
+
+    Some(
+        agy_days_from_civil(year, month, day) * 86400 + hour * 3600 + minute * 60 + second
+            - offset_secs,
+    )
+}
+
+/// Decides whether the passive `agy` quota probe may run.
+///
+/// `agy` answers `-p='/quota'` non-interactively only while its stored credential is
+/// usable; an expired or missing token makes it escalate to an interactive OAuth
+/// window in the user's browser. A background quota refresh must never hijack the
+/// desktop like that, so anything other than a present, unexpired access token
+/// fails closed.
+pub fn agy_token_allows_probe(token_json: &str, now_secs: i64) -> bool {
+    let root: serde_json::Value = match serde_json::from_str(token_json) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    let access_token = root
+        .pointer("/token/access_token")
+        .or_else(|| root.get("access_token"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("");
+    if access_token.trim().is_empty() {
+        return false;
+    }
+
+    let expiry = root
+        .pointer("/token/expiry")
+        .or_else(|| root.get("expiry"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("");
+
+    match parse_rfc3339_utc_secs(expiry) {
+        Some(expires_at) => expires_at > now_secs,
+        None => false,
+    }
 }
 
 /// Converts epoch milliseconds to an RFC3339 / ISO-8601 UTC timestamp string without external dependencies.

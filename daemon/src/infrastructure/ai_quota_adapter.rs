@@ -1,6 +1,8 @@
 use crate::domain::ai_quota::{
-    epoch_millis_to_rfc3339, parse_agy_quota, parse_minimax_usage, parse_opencode_usage,
-    parse_xiaomi_usage, AiProviderQuota, AiQuotaSnapshot, ProviderAccount, QuotaWindow,
+    agy_token_allows_probe, epoch_millis_to_rfc3339, parse_agy_quota, parse_minimax_usage,
+    provider_display_name, provider_failure_message, provider_icon,
+    parse_opencode_usage, parse_xiaomi_usage, AiProviderQuota, AiQuotaSnapshot, ProviderAccount,
+    QuotaWindow, AGY_PROBE_TIMEOUT_SECS, GEMINI_HTTP_TIMEOUT_SECS, GEMINI_QUOTA_TIMEOUT_SECS,
 };
 use crate::infrastructure::scanners::ToolConfigAggregator;
 use crate::infrastructure::token_cache_analytics::TokenCacheAnalytics;
@@ -1659,29 +1661,52 @@ impl AiQuotaAdapter {
     }
 
     /// Queries live OpenCode Go usage
+    /// Builds an empty provider entry that explains why it has no quota windows.
+    ///
+    /// A provider that fails to authenticate must still be reported. Returning
+    /// `None` instead hid it behind a blank panel with nothing to act on.
+    fn provider_failure_quota(provider_id: &str, message: &str) -> AiProviderQuota {
+        AiProviderQuota {
+            provider_id: provider_id.to_string(),
+            display_name: provider_display_name(provider_id).to_string(),
+            icon: provider_icon(provider_id).to_string(),
+            plan_type: None,
+            account_email: None,
+            account_name: None,
+            is_available: false,
+            windows: Vec::new(),
+            accounts: Vec::new(),
+            error_message: Some(message.to_string()),
+            cache_stats: None,
+        }
+    }
+
     fn query_opencode_usage(&self) -> Option<AiProviderQuota> {
         let key = self.get_provider_api_key(
             "opencode-go",
             "TOKEN_OPENCODE_GO",
             &["opencode-go", "opencode"],
         )?;
-        let output = Command::new("curl")
-            .args([
-                "-s",
-                "-m",
-                "5",
-                "-H",
-                &format!("Authorization: Bearer {}", key),
-                "https://opencode.ai/zen/go/v1/usage",
-            ])
-            .output()
-            .ok()?;
+        // OpenCode stores a browser cookie session (`provider=<jwt>`), not a bearer token.
+        let is_cookie = key.contains('=') && !key.contains(' ');
+        let mut cmd = Command::new("curl");
+        cmd.args(["-s", "-m", "5"]);
+        if is_cookie {
+            cmd.args(["-H", &format!("Cookie: {}", key)]);
+        } else {
+            cmd.args(["-H", &format!("Authorization: Bearer {}", key)]);
+        }
+        cmd.arg("https://opencode.ai/zen/go/v1/usage");
+        let output = cmd.output().ok()?;
 
         if output.status.success() {
             let body = String::from_utf8_lossy(&output.stdout);
             if let Ok(mut quota) = parse_opencode_usage(&body) {
                 quota.accounts = self.load_provider_accounts("opencode-go");
                 return Some(quota);
+            }
+            if let Some(message) = provider_failure_message(&body) {
+                return Some(Self::provider_failure_quota("opencode-go", &message));
             }
         }
         None
@@ -1718,14 +1743,23 @@ impl AiQuotaAdapter {
             .first()
             .map(|a| if !a.label.is_empty() { a.label.clone() } else { a.identity.clone() });
 
+        let mut failure_message: Option<String> = None;
         if output.status.success() {
             let body = String::from_utf8_lossy(&output.stdout);
-            if let Ok(mut quota) = parse_minimax_usage(&body) {
-                quota.accounts = accounts;
-                if quota.account_name.is_none() {
-                    quota.account_name = acc_name;
+            // The lenient coding-plan parser happily accepts an error envelope as an
+            // empty quota, which is how a rejected cookie used to render as a blank
+            // provider. The failure envelope wins.
+            match provider_failure_message(&body) {
+                Some(message) => failure_message = Some(message),
+                None => {
+                    if let Ok(mut quota) = parse_minimax_usage(&body) {
+                        quota.accounts = accounts;
+                        if quota.account_name.is_none() {
+                            quota.account_name = acc_name;
+                        }
+                        return Some(quota);
+                    }
                 }
-                return Some(quota);
             }
         }
 
@@ -1750,6 +1784,9 @@ impl AiQuotaAdapter {
             {
                 if sum_out.status.success() {
                     let sum_body = String::from_utf8_lossy(&sum_out.stdout);
+                    if failure_message.is_none() {
+                        failure_message = provider_failure_message(&sum_body);
+                    }
                     if let Ok(sum_v) = serde_json::from_str::<serde_json::Value>(&sum_body) {
                         if let Some(tokens) =
                             sum_v.get("total_token_consumed").and_then(|t| t.as_str())
@@ -1776,6 +1813,11 @@ impl AiQuotaAdapter {
                     }
                 }
             }
+        }
+
+        // Still report the provider so the panel can explain why it is empty.
+        if let Some(message) = failure_message {
+            return Some(Self::provider_failure_quota("minimax-cn", &message));
         }
 
         // Strictly return None if provider is not authenticated or has no valid coding plan/usage
@@ -1812,6 +1854,48 @@ impl AiQuotaAdapter {
     }
 
     /// Refreshes Gemini OAuth2 access token if needed using stored refresh_token.
+    /// POSTs an `application/x-www-form-urlencoded` body and returns the response body.
+    ///
+    /// `timeout_secs` bounds the whole exchange. The budget must never be pinned to an
+    /// optimistic value: a timeout here is indistinguishable from a dead credential and
+    /// silently strands the account instead of surfacing an error.
+    pub fn gemini_http_post_form(
+        url: &str,
+        form: &[(&str, &str)],
+        timeout_secs: u64,
+    ) -> Option<String> {
+        let budget = timeout_secs.to_string();
+        let mut cmd = Command::new("curl");
+        cmd.args(["-s", "-m", budget.as_str(), "-X", "POST", url]);
+        for (key, value) in form {
+            cmd.args(["-d", &format!("{}={}", key, value)]);
+        }
+        let output = cmd.output().ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        Some(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    /// Repeats a token-endpoint POST while the link is dropping requests.
+    ///
+    /// One dropped connection used to blank an account for a whole poll cycle:
+    /// the failure is indistinguishable from a revoked credential, so the account
+    /// simply rendered nothing until the next refresh happened to land.
+    pub fn gemini_http_post_form_retrying(
+        url: &str,
+        form: &[(&str, &str)],
+        timeout_secs: u64,
+        attempts: u32,
+    ) -> Option<String> {
+        for _ in 0..attempts.max(1) {
+            if let Some(body) = Self::gemini_http_post_form(url, form, timeout_secs) {
+                return Some(body);
+            }
+        }
+        None
+    }
+
     fn refresh_gemini_token(
         cred_obj: &mut serde_json::Value,
         account_path: Option<&std::path::Path>,
@@ -1847,59 +1931,48 @@ impl AiQuotaAdapter {
             ];
             let client_id: String = id_bytes.iter().map(|&b| (b ^ 0x5A) as char).collect();
             let client_secret: String = sec_bytes.iter().map(|&b| (b ^ 0x5A) as char).collect();
-            if let Ok(output) = Command::new("curl")
-                .args([
-                    "-s",
-                    "-m",
-                    "5",
-                    "-X",
-                    "POST",
-                    "https://oauth2.googleapis.com/token",
-                    "-d",
-                    &format!("client_id={}", client_id),
-                    "-d",
-                    &format!("client_secret={}", client_secret),
-                    "-d",
-                    &format!("refresh_token={}", refresh_tok),
-                    "-d",
-                    "grant_type=refresh_token",
-                ])
-                .output()
-            {
-                if output.status.success() {
-                    let body = String::from_utf8_lossy(&output.stdout);
-                    if let Ok(res_obj) = serde_json::from_str::<serde_json::Value>(&body) {
-                        if let Some(new_access) =
-                            res_obj.get("access_token").and_then(|t| t.as_str())
-                        {
-                            access_tok = new_access.to_string();
-                            let exp_in = res_obj
-                                .get("expires_in")
-                                .and_then(|i| i.as_i64())
-                                .unwrap_or(3600);
-                            let new_exp = now_sec + exp_in;
+            let form = [
+                ("client_id", client_id.as_str()),
+                ("client_secret", client_secret.as_str()),
+                ("refresh_token", refresh_tok),
+                ("grant_type", "refresh_token"),
+            ];
+            if let Some(body) = Self::gemini_http_post_form_retrying(
+                "https://oauth2.googleapis.com/token",
+                &form,
+                GEMINI_HTTP_TIMEOUT_SECS,
+                2,
+            ) {
+                if let Ok(res_obj) = serde_json::from_str::<serde_json::Value>(&body) {
+                    if let Some(new_access) = res_obj.get("access_token").and_then(|t| t.as_str())
+                    {
+                        access_tok = new_access.to_string();
+                        let exp_in = res_obj
+                            .get("expires_in")
+                            .and_then(|i| i.as_i64())
+                            .unwrap_or(3600);
+                        let new_exp = now_sec + exp_in;
 
-                            if let Some(obj) = cred_obj.as_object_mut() {
-                                obj.insert(
-                                    "access_token".to_string(),
-                                    serde_json::Value::String(access_tok.clone()),
-                                );
-                                obj.insert(
-                                    "expires_at".to_string(),
-                                    serde_json::Value::Number(new_exp.into()),
+                        if let Some(obj) = cred_obj.as_object_mut() {
+                            obj.insert(
+                                "access_token".to_string(),
+                                serde_json::Value::String(access_tok.clone()),
+                            );
+                            obj.insert(
+                                "expires_at".to_string(),
+                                serde_json::Value::Number(new_exp.into()),
+                            );
+                        }
+
+                        if let (Some(p), Some(a_val)) = (account_path, account_val) {
+                            if let Some(a_obj) = a_val.as_object_mut() {
+                                a_obj.insert(
+                                    "credential".to_string(),
+                                    serde_json::Value::String(cred_obj.to_string()),
                                 );
                             }
-
-                            if let (Some(p), Some(a_val)) = (account_path, account_val) {
-                                if let Some(a_obj) = a_val.as_object_mut() {
-                                    a_obj.insert(
-                                        "credential".to_string(),
-                                        serde_json::Value::String(cred_obj.to_string()),
-                                    );
-                                }
-                                if let Ok(s) = serde_json::to_string_pretty(&*a_val) {
-                                    let _ = fs::write(p, s);
-                                }
+                            if let Ok(s) = serde_json::to_string_pretty(&*a_val) {
+                                let _ = fs::write(p, s);
                             }
                         }
                     }
@@ -1926,12 +1999,13 @@ impl AiQuotaAdapter {
         for base_url in endpoints {
             let mut project_id = "aicode-consumers".to_string();
             let mut detected_plan = None;
+            let quota_timeout = GEMINI_QUOTA_TIMEOUT_SECS.to_string();
 
             if let Ok(lca_out) = Command::new("curl")
                 .args([
                     "-s",
                     "-m",
-                    "5",
+                    quota_timeout.as_str(),
                     "-X",
                     "POST",
                     &format!("{}/v1internal:loadCodeAssist", base_url),
@@ -1972,7 +2046,7 @@ impl AiQuotaAdapter {
                 .args([
                     "-s",
                     "-m",
-                    "5",
+                    quota_timeout.as_str(),
                     "-X",
                     "POST",
                     &format!("{}/v1internal:retrieveUserQuotaSummary", base_url),
@@ -2119,10 +2193,22 @@ impl AiQuotaAdapter {
         Some(quota)
     }
 
-    /// Queries live Gemini quota using `timeout 3 agy --output-format json -p='/quota'`
+    /// Queries live Gemini quota using `timeout 20 agy --output-format json -p='/quota'`.
+    ///
+    /// Guarded so a background quota refresh can never take over the desktop. `agy`
+    /// answers `-p` non-interactively only while its stored credential is usable;
+    /// once that credential expires it abandons silent auth and escalates to an
+    /// interactive OAuth window in the user's browser. The probe therefore fails
+    /// closed when the token is expired or unreadable, and its bound sits above the
+    /// CLI's own silent-auth budget so a healthy call is never killed mid-refresh.
     fn query_agy_quota(&self, active_email: Option<String>) -> Option<AiProviderQuota> {
+        if !self.agy_probe_allowed() {
+            return None;
+        }
+
+        let timeout_secs = AGY_PROBE_TIMEOUT_SECS.to_string();
         let output = Command::new("timeout")
-            .args(["3", "agy", "--output-format", "json", "-p=/quota"])
+            .args([timeout_secs.as_str(), "agy", "--output-format", "json", "-p=/quota"])
             .output()
             .ok()?;
 
@@ -2134,6 +2220,23 @@ impl AiQuotaAdapter {
         } else {
             None
         }
+    }
+
+    /// Reads the Antigravity CLI credential and reports whether a passive probe may run.
+    fn agy_probe_allowed(&self) -> bool {
+        let token_path = match Self::get_gemini_cli_token_file() {
+            Some(path) => path,
+            None => return false,
+        };
+        let token_json = match fs::read_to_string(&token_path) {
+            Ok(json) => json,
+            Err(_) => return false,
+        };
+        let now_secs = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        agy_token_allows_probe(&token_json, now_secs)
     }
 
     fn query_gemini_quota(&self, active_email: Option<String>) -> Option<AiProviderQuota> {
