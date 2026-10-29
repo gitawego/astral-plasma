@@ -269,6 +269,34 @@ fn app_list_entries_carry_the_full_desktop_entry_data() {
     assert_eq!(info.icon, "ai.opencode.desktop");
     assert_eq!(info.comment, "OpenCode desktop");
     assert_eq!(info.exec, "opencode-desktop %U");
+    assert_eq!(info.wm_class, "ai.opencode.desktop");
+}
+
+#[test]
+fn app_list_exposes_startup_wm_class_so_a_pin_can_resolve_to_the_running_app() {
+    use astral_plasma::infrastructure::launcher::app_info_from_entry;
+
+    // A Wine application installs a menu entry whose stable identity is the
+    // window class it declares. A dock pin may be keyed by the executable
+    // ("cloudmusic") while the running window resolves through the entry
+    // ("网易云音乐"). Publishing StartupWMClass in the app listing is what
+    // lets the shell map one to the other without an app-specific table.
+    let app = DesktopApp {
+        desktop_id: "网易云音乐".to_string(),
+        name: "网易云音乐".to_string(),
+        icon: "C18B_cloudmusic.0".to_string(),
+        wm_class: Some("cloudmusic.exe".to_string()),
+        material_icon: "window".to_string(),
+        comment: String::new(),
+        exec: "wine C:/ProgramData/NetEase/CloudMusic/cloudmusic.lnk".to_string(),
+        no_display: false,
+    };
+
+    let info = app_info_from_entry(&app);
+    assert_eq!(
+        info.wm_class, "cloudmusic.exe",
+        "the launcher listing must carry StartupWMClass so pins resolve through it"
+    );
 }
 
 #[test]

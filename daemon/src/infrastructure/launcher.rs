@@ -69,6 +69,7 @@ pub fn app_info_from_entry(entry: &DesktopApp) -> AppInfo {
         icon: entry.icon.clone(),
         comment: entry.comment.clone(),
         exec: entry.exec.clone(),
+        wm_class: entry.wm_class.clone().unwrap_or_default(),
     }
 }
 

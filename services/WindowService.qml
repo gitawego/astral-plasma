@@ -129,6 +129,7 @@ Singleton {
     }
 
     // Canonical application identity index derived from freedesktop desktop entries
+    // (desktop id, Exec binary and the entry's declared StartupWMClass).
     property var _canonicalMap: ({})
 
     function _rebuildCanonicalMap() {
@@ -168,6 +169,23 @@ Singleton {
                 bin = bin.toLowerCase().replace(/\.desktop$/, "").trim();
                 if (bin && !map[bin]) {
                     map[bin] = desk;
+                }
+            }
+
+            // StartupWMClass: the class the application itself declares it
+            // reports. A pin may be keyed by the executable ("cloudmusic")
+            // while the running window resolves through the entry
+            // ("网易云音乐"), so indexing the declared class is what reconciles
+            // the two into one dock icon. Wine's ".exe" suffix is a property of
+            // the data format, not knowledge about any application.
+            const wmClass = ("" + (a.wm_class || "")).trim().toLowerCase().replace(/\.desktop$/, "");
+            if (wmClass) {
+                if (!map[wmClass]) map[wmClass] = desk;
+                if (wmClass.length > 4 && wmClass.slice(-4) === ".exe") {
+                    const stem = wmClass.slice(0, -4);
+                    if (stem && !map[stem]) map[stem] = desk;
+                } else if (!map[wmClass + ".exe"]) {
+                    map[wmClass + ".exe"] = desk;
                 }
             }
         }

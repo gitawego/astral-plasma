@@ -19,6 +19,14 @@ pub struct AppInfo {
     pub icon: String,
     pub comment: String,
     pub exec: String,
+    /// `StartupWMClass=` - the window class the application declares it reports.
+    ///
+    /// The shell's identity index needs this to reconcile a pinned entry with
+    /// the running window it represents: a pin may be keyed by the executable
+    /// ("cloudmusic") while the window resolves through its desktop entry
+    /// ("网易云音乐"). Empty when the entry declares no class.
+    #[serde(default)]
+    pub wm_class: String,
 }
 
 pub trait WindowManagerPort: Send + Sync {
