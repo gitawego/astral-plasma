@@ -360,7 +360,8 @@ doctor [--json]              Diagnose all system dependencies
 Configuration lives in `config/` and `theme/`:
 
 - **`config/settings.json`** — shipped defaults. Top-level sections:
-  `dock` (width, entries, pinned apps, tray, status icons), `dashboard` (tabs, weather, avatars), `topBar`, `theme` (mode, preset, blur strength, corner radius, dynamic colors), `border`, `plasma` (panel/notification takeover), `debugMode`, `logging` (diagnostic verbosity), `media` (visualizer style), `display` (refresh rate: 60 by default, or any target rate / `max`).
+  `dock` (width, entries, pinned apps, tray, status icons), `dashboard` (tabs, weather, avatars), `topBar`, `theme` (mode, preset, blur strength, corner radius, dynamic colors), `border`, `plasma` (panel/notification takeover), `debugMode`, `logging` (diagnostic verbosity), `media` (visualizer style).
+  The shell never changes the session's display mode or refresh rate; scanout stays exactly as the compositor configured it.
   Your live settings live in `~/.config/astral-plasma/settings.json` — the only file the shell writes (updated atomically via `astral-plasma config write`).
 
 ### Diagnostic logging

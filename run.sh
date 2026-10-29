@@ -114,19 +114,14 @@ cleanup() {
             # Blur is tuned for the shell's glass; the desktop must not keep it.
             "$DIR/bin/astral-plasma" blur restore || true
         fi
-        # The refresh preference is the shell's; hand the session back the mode it
-        # was running before (no-op when it never changed).
-        "$DIR/bin/astral-plasma" display restore || true
     fi
 }
 trap cleanup EXIT INT TERM
 
-# Run quickshell and monitor process
+# Run quickshell and monitor process.
 #
-# The display refresh preference is applied before the shell exists, so the
-# session never renders a frame at a rate the user asked not to pay for (and the
-# single mode switch happens once, at startup, instead of flickering later).
-"$DIR/bin/astral-plasma" display apply auto || true
+# The display mode is the session's: the shell never changes the refresh rate,
+# at startup or on exit.
 quickshell -n -p "$DIR" &
 QS_PID=$!
 

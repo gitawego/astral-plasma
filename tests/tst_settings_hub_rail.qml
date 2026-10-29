@@ -125,7 +125,7 @@ Item {
             // A long page: every declared zone resolves in order
             // --------------------------------------------------------------
             const zones = hub.pageZones;
-            assert(zones.length === 6, "the system page declares six zones (got " + zones.length + ")");
+            assert(zones.length === 5, "the system page declares five zones (got " + zones.length + ")");
             let previous = -1;
             for (let i = 0; i < zones.length; ++i) {
                 const y = hub.pageZoneOffsets[zones[i].id];
@@ -140,10 +140,10 @@ Item {
             // Without motion tokens (no Theme offscreen), a jump is a jump: the
             // *destination* is what matters here, and the trailing zone still
             // becomes current although its anchor cannot reach the viewport top.
-            hub.scrollTo(hub.pageZoneOffsets.display);
+            hub.scrollTo(hub.pageZoneOffsets.logging);
             assert(hub.contentOffset === hub.contentMaxOffset,
                 "the view reaches the end of the page (" + hub.contentOffset + " of " + hub.contentMaxOffset + ")");
-            assert(hub.activePageSection === "display",
+            assert(hub.activePageSection === "logging",
                 "the trailing zone the reader asked for is current (got \"" + hub.activePageSection + "\")");
 
             // Back to the top, then hand the hub the tokens its harness cannot
@@ -168,14 +168,14 @@ Item {
             // The failing report: clicking a pill in the pinned header did
             // nothing at all, because the page's request never reached the hub.
             assert(hub.contentOffset === 0, "the click test starts from the top of the page");
-            const pill = testRoot.findPill(hub.contentPaneItem, "Display");
+            const pill = testRoot.findPill(hub.contentPaneItem, "Logging");
             assert(pill !== null,
                 "the pinned header renders the zone pills (" + testRoot.pillLabels(hub.contentPaneItem).join(", ") + ")");
-            const target = Math.min(hub.pageZoneOffsets.display, hub.contentMaxOffset);
+            const target = Math.min(hub.pageZoneOffsets.logging, hub.contentMaxOffset);
             const expected = ScrollMotion.motionFor(hub.motionTokens, target - hub.contentOffset);
             assert(expected !== null, "the expected motion resolves from the tokens");
             pill.clicked();
-            assert(hub.pendingSectionId === "display",
+            assert(hub.pendingSectionId === "logging",
                 "the pressed pill's request reaches the hub (nothing arrived before this test existed)");
             testRoot.expectedLongRung = expected.duration;
             break;
@@ -183,7 +183,7 @@ Item {
         case 7: {
             // The request is honoured one turn later, once the offsets it reads
             // are the settled ones; one tick in, the tween is in transit.
-            const target = Math.min(hub.pageZoneOffsets.display, hub.contentMaxOffset);
+            const target = Math.min(hub.pageZoneOffsets.logging, hub.contentMaxOffset);
             assert(hub.scrollAnimating === true, "the request started a scroll");
             assert(hub.scrollAnimationDuration === testRoot.expectedLongRung,
                 "and it takes the token its distance earns (" + hub.scrollAnimationDuration
@@ -194,11 +194,11 @@ Item {
             break;
         }
         case 8: {
-            const target = Math.min(hub.pageZoneOffsets.display, hub.contentMaxOffset);
+            const target = Math.min(hub.pageZoneOffsets.logging, hub.contentMaxOffset);
             assert(hub.contentOffset === target,
                 "the click lands on the zone's anchor (offset " + hub.contentOffset
                     + " of " + target + ")");
-            assert(hub.activePageSection === "display",
+            assert(hub.activePageSection === "logging",
                 "and the spy marks the pressed zone current (got \"" + hub.activePageSection + "\")");
 
             // A nearer zone takes the snappy rung instead.
@@ -287,9 +287,9 @@ Item {
             // A zone near the end of a long page: its anchor cannot become the
             // top of the viewport, so the view clamps to the page end. The pill
             // the reader pressed must stay lit - the geometry would call that
-            // position "display", a zone they did not ask for.
-            hub.scrollToSection("logging");
-            assert(hub.pendingSectionId === "logging", "the request is parked");
+            // position "logging", a zone they did not ask for.
+            hub.scrollToSection("developer");
+            assert(hub.pendingSectionId === "developer", "the request is parked");
             break;
         }
         case 19:
@@ -301,19 +301,19 @@ Item {
             assert(hub.contentOffset === hub.contentMaxOffset,
                 "a low zone clamps to the end of the page (offset " + hub.contentOffset
                     + " of " + hub.contentMaxOffset + ")");
-            assert(geometric === "display",
+            assert(geometric === "logging",
                 "the geometry alone would report the trailing zone (got \"" + geometric + "\")");
-            assert(hub.activePageSection === "logging",
+            assert(hub.activePageSection === "developer",
                 "but the pressed zone stays current (got \"" + hub.activePageSection + "\")");
 
             // The reader takes over: the request highlight yields to the geometry.
-            hub.userScrolled(-80);
+            hub.userScrolled(80);
             const after = SectionSpy.sectionAt(hub.pageZones, hub.pageZoneOffsets,
                 hub.contentOffset + 16, hub.contentMaxOffset);
             assert(hub.activePageSection === after,
                 "a wheel scroll hands the highlight back to the geometry (got \""
                     + hub.activePageSection + "\", expected \"" + after + "\")");
-            assert(after !== "logging", "and the geometry is genuinely elsewhere (" + after + ")");
+            assert(after !== "developer", "and the geometry is genuinely elsewhere (" + after + ")");
 
             // A page switch clears any outstanding request too.
             hub.scrollToSection("logging");

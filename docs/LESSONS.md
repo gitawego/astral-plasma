@@ -2950,10 +2950,12 @@ application - scales with it:
 
 Two lessons, one technical and one about measurement:
 
-- **Cap the output before optimising the client.** Nothing in the shell's code
-  could buy the 4x that `kscreen-doctor output.eDP-1.mode.38` bought, and the cap
-  also pays for every other process on the machine. A shell whose motion budget is
-  30 fps has no use for 240 Hz scanout.
+- **Measure at the rate the user chose - never change it for them.** The 4x was
+  a *manual* `kscreen-doctor` experiment. It was then briefly shipped as an
+  automatic 60 Hz cap, which silently downgraded a 240 Hz session on every start;
+  that was wrong and is removed (§35). A shell whose motion budget is 30 fps has
+  no use for 240 Hz on its own surfaces, but scanout is shared with every other
+  application, and its smoothness is the user's choice.
 - **The number a user reads may not be the number you are optimising.** On Intel
   the shell derives "GPU %" from the GT frequency, which any wake-up ramps and
   which decays slowly - it read 78-100 % with the dashboard *closed*. Optimising
@@ -3028,32 +3030,32 @@ idle-capable):
 
 ---
 
-## 35. A Performance Trade-Off The User Can See Belongs In Settings
+## 35. The Shell Must Never Change The Display Refresh Rate
 
-Capping the panel to 60 Hz was the single largest win in this whole audit
-(§33) - and it is the one change a user *feels*, because it slows the cursor,
-scrolling and games rather than the shell. That makes it a preference, not a
-decision for the code to take:
+§33 measured the cost of 240 Hz scanout by capping the panel by hand. The
+follow-up turned that experiment into a product feature: `display.refreshRate` in
+`settings.json` defaulted to `"60"`, `run.sh` called
+`astral-plasma display apply auto` *before* starting Quickshell, a
+`DisplayService` re-applied it on startup and on every settings change, and a
+journal restored the old mode on exit. On a 240 Hz panel, simply starting Astral
+silently replaced the user's 240 Hz choice with 60 Hz - a session-wide setting
+the shell had no business managing. The user's report was blunt: **never modify
+the refresh rate.**
 
-- `display.refreshRate` in `settings.json`, defaulting to `"60"`, offering any
-  target rate or `"max"`.
-- The daemon owns the switch (`astral-plasma display apply|restore|get`, pure
-  choice logic in `domain/display_modes.rs`), because it outlives the shell and
-  already owns every other session-level change.
-- **The resolution is never touched.** The chosen mode is the highest refresh at
-  the output's *current* size; reaching a rate by dropping to a smaller mode would
-  be a different, far more invasive change than the one asked for.
-- **The round trip is automatic.** The first switch journals the modes the session
-  was running, and `run.sh` puts them back when the shell exits - so `max` does not
-  have to mean "stop managing my display", and no "keep as-is" option is needed.
-- A no-op stays a no-op: an output already at the requested rate is never
-  re-switched, because a mode switch blanks the screen for a moment.
+The write path is gone, and `tests/tst_display_refresh_never_modified.qml` is the
+gate that keeps it gone:
 
-**Lesson.** When a performance fix changes something the user perceives - colour,
-smoothness, resolution, latency - ship the default that is safe and give them the
-dial. The disciplined version of that is: the choice is data, the *journal* makes
-it reversible, and the switch is applied by the component that owns the session
-(not the one that happened to trigger it).
+- No `display.refreshRate` key, setter, picker, service, CLI command, mode
+  journal, or `kscreen-doctor` invocation anywhere in the shell.
+- `run.sh` starts and stops Quickshell without touching the display mode.
+- The session/compositor owns the rate. The shell controls its own cost through
+  its 30 fps motion budget (§30-34), not by degrading every other application.
+- Reading a rate (Hyprland's monitor telemetry) is fine; writing one is not.
+
+**Lesson.** A benchmark experiment is not a product feature. If you must change a
+session-wide setting to measure something, do it in the lab and put it back.
+Never ship that change as an automatic startup step - the user's chosen display
+mode outranks the shell's performance budget.
 
 ---
 

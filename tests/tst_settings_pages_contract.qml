@@ -162,7 +162,7 @@ Item {
             name: "SystemPage",
             source: "../settings_gui/pages/SystemPage.qml",
             page: systemPage,
-            zones: ["services", "desktop", "session", "developer", "logging", "display"]
+            zones: ["services", "desktop", "session", "developer", "logging"]
         },
         {
             name: "TimePage",

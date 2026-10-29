@@ -1520,7 +1520,13 @@ motion budget is 30 fps, so 240 Hz scanout bought it nothing.
 
 ---
 
-## 24. Making The Refresh Cap A Setting (Default 60 Hz)
+## 24. Making The Refresh Cap A Setting (Default 60 Hz) — Superseded
+
+> **Superseded.** The automatic apply described below was removed after a user
+> reported that starting Astral knocked a 240 Hz session down to 60 Hz. The shell
+> must never modify the refresh rate; see `docs/LESSONS.md` §35 and
+> `tests/tst_display_refresh_never_modified.qml`. The rest of this section records
+> the original implementation.
 
 The 60 Hz cap from §23 was the biggest single win of the audit and the only change
 a user *feels* - it slows the cursor, scrolling and games, not the shell, whose
@@ -1549,10 +1555,12 @@ $ astral-plasma display restore      -> {"restored":true}
 $ astral-plasma display get          -> eDP-1 2560x1600@60
 ```
 
-Tests: `daemon/tests/test_display_modes.rs` (parsing, the ≤-target choice, the
-resolution invariant, no-op suppression, snapshot resolution preferring mode names
-over ids), `tests/tst_display_refresh_setting.qml` (setting default, service
-apply-on-start/on-change, settings UI wiring, run.sh apply-then-restore ordering).
+Historical tests: `daemon/tests/test_display_modes.rs` (parsing, the ≤-target
+choice, the resolution invariant, no-op suppression, snapshot resolution
+preferring mode names over ids) and `tests/tst_display_refresh_setting.qml`
+(setting default, service apply-on-start/on-change, settings UI wiring, run.sh
+apply-then-restore ordering). Both were removed with the feature; the gate that
+replaced them is `tests/tst_display_refresh_never_modified.qml`.
 
 ---
 
@@ -1584,7 +1592,7 @@ rail pill assigned `contentY` directly - a teleport.
   (Wi-Fi off, no app streams, adapter off) leaves the rail with it.
 - **Section headers carry state.** `components/SectionHeader.qml` now marks every
   zone: eyebrow = live telemetry ("13 networks in range", "6 of 6 shown",
-  "service · not installed", "chosen: 60 Hz"), title = the section's name. The
+  "service · not installed"), title = the section's name. The
   eyebrow is never a decorative index.
 - **The jump is a spatial transition.** `settings_gui/ScrollMotion.js`: the
   `animExpressive*Spatial` tokens, the fast/default rung picked by distance, and
