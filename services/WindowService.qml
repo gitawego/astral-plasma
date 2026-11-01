@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import "."
 import "../components"
+import "PreviewAppState.js" as PreviewAppState
 
 Singleton {
     id: root
@@ -445,10 +446,56 @@ Singleton {
         }
     }
 
+    // ---- App preview drawer ------------------------------------------------
+    // The drawer's subject is deliberately split in two:
+    //   * `_previewAppSeed` / `_previewWindowIds` / `_previewAnchorId` are the
+    //     snapshot taken when the drawer opens (the app's labels, the windows it
+    //     stands for, and the window the preview is about);
+    //   * `activePreviewApp` is re-derived from the live window model on every
+    //     push, so a window closed from the drawer leaves it at once instead of
+    //     lingering as a ghost row (a cached list of live things is stale - see
+    //     docs/LESSONS.md §29).
     property var activePreviewApp: null
     property string activePreviewThumbnail: ""
     property bool activePreviewLoading: false
     property var _previewCache: ({})
+    property var _previewAppSeed: null
+    property var _previewWindowIds: []
+    property string _previewAnchorId: ""
+    property string _previewAppSignature: ""
+
+    function syncPreviewApp() {
+        const derived = PreviewAppState.derive(root._previewAppSeed, root._previewWindowIds, root.windows, root._previewAnchorId);
+        const sig = PreviewAppState.signature(derived);
+        if (sig === root._previewAppSignature) return;
+        root._previewAppSignature = sig;
+        root.activePreviewApp = derived;
+    }
+
+    // The window model is pushed by the watcher daemon on every change (close,
+    // focus, retitle). The single `onWindowsChanged` handler below re-derives the
+    // drawer's subject from it - one handler per signal, because a second one is
+    // not an override: it fails the entire configuration with "Property value set
+    // multiple times" and the running shell silently keeps the previous code.
+
+    // One capture at a time, latest request wins (see PreviewAppState.captureQueue).
+    property var _previewQueue: PreviewAppState.captureQueue()
+
+    /// Show whatever is already cached for `winKey`, then capture it if needed.
+    function _dispatchPreview(winKey) {
+        const key = PreviewAppState.windowKey(winKey);
+        if (key === "") return;
+        const cached = root._previewCache[key];
+        root.activePreviewThumbnail = cached ? cached : "";
+
+        const dispatch = PreviewAppState.captureRequest(root._previewQueue, previewCaptureProc.running, key);
+        if (dispatch === "") return; // A capture is in flight; this one is queued.
+
+        previewCaptureProc.requestedWinKey = dispatch;
+        root.activePreviewLoading = true;
+        previewCaptureProc.command = [root.daemonBin, "preview", dispatch, "320"];
+        previewCaptureProc.running = true;
+    }
 
     Process {
         id: previewCaptureProc
@@ -480,34 +527,44 @@ Singleton {
         }
         onExited: (exitCode, exitStatus) => {
             root.activePreviewLoading = false;
+            // A row that was hovered while this capture ran still wants a frame.
+            const next = PreviewAppState.captureFinished(root._previewQueue);
+            if (next !== "") root._dispatchPreview(next);
         }
     }
 
     function loadAppPreview(app) {
         if (!app) {
-            root.activePreviewApp = null;
+            root._previewAppSeed = null;
+            root._previewWindowIds = [];
+            root._previewAnchorId = "";
+            root.syncPreviewApp();
             root.activePreviewThumbnail = "";
             root.activePreviewLoading = false;
+            root._previewQueue.pending = "";
             previewCaptureProc.running = false;
             previewCaptureProc.requestedWinKey = "";
             return;
         }
 
-        // If root.activePreviewApp already represents a multi-window app, and the incoming 'app'
-        // is one of its child windows, DO NOT clobber root.activePreviewApp!
-        // Preserve the parent app representation (with its .windows list) so multi-instance
-        // popouts never collapse into a single-window view while hovering window cards.
-        const isChildWindow = Boolean(root.activePreviewApp && root.activePreviewApp.windows && root.activePreviewApp.windows.length > 1 &&
-            app.id && root.activePreviewApp.windows.some(w => w && w.id && w.id.toString() === app.id.toString()));
-
-        if (!isChildWindow) {
-            root.activePreviewApp = app;
+        // A bare window (the drawer's own window rows) must not collapse a
+        // multi-window app into a single card: it only moves the preview's
+        // anchor. Only a group - a dock icon hover - re-seeds the tracked set.
+        const anchorKey = PreviewAppState.windowKey(app.id);
+        const isTrackedRow = !PreviewAppState.isGroup(app) && anchorKey !== "" && root._previewWindowIds.indexOf(anchorKey) !== -1;
+        if (!isTrackedRow) {
+            root._previewAppSeed = app;
+            root._previewWindowIds = PreviewAppState.trackedIds(app);
         }
+        root._previewAnchorId = anchorKey; // "" for a pinned-but-unlaunched app
+        root.syncPreviewApp();
 
-        const isRunning = Boolean(app.isRunning) || Boolean(app.id);
-        if (!isRunning || !app.id) {
+        const subject = root.activePreviewApp || app;
+        const isRunning = Boolean(subject.isRunning) || Boolean(subject.id);
+        if (!isRunning || !subject.id) {
             root.activePreviewThumbnail = "";
             root.activePreviewLoading = false;
+            root._previewQueue.pending = "";
             previewCaptureProc.running = false;
             previewCaptureProc.requestedWinKey = "";
             return;
@@ -517,46 +574,26 @@ Singleton {
         if (typeof DesktopSessionFacade !== "undefined" && DesktopSessionFacade.profile !== "kde") {
             root.activePreviewThumbnail = "";
             root.activePreviewLoading = false;
+            root._previewQueue.pending = "";
             previewCaptureProc.running = false;
             previewCaptureProc.requestedWinKey = "";
             return;
         }
 
-        const winKey = app.id.toString();
-        previewCaptureProc.requestedWinKey = winKey;
-        const cached = root._previewCache[winKey];
-        if (cached) {
-            root.activePreviewThumbnail = cached;
-        } else {
-            root.activePreviewThumbnail = "";
-        }
-
-        root.activePreviewLoading = true;
-        previewCaptureProc.running = false;
-        previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
-        previewCaptureProc.running = true;
+        // Never restart the capture process for a passing hover: queue it instead
+        // (a forced restart was killing the preview while moving between rows).
+        root._dispatchPreview(subject.id);
     }
 
     function loadWindowPreview(win) {
         if (!win || !win.id) return;
-        const winKey = win.id.toString();
-        const cached = root._previewCache[winKey];
-        if (cached) {
-            root.activePreviewThumbnail = cached;
-        }
-        if (previewCaptureProc.running) return;
-        previewCaptureProc.requestedWinKey = winKey;
-        root.activePreviewLoading = true;
-        previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
-        previewCaptureProc.running = true;
+        root._dispatchPreview(win.id);
     }
 
     function refreshAppPreview(app) {
-        if (!app || !app.id || previewCaptureProc.running) return;
-        const winKey = app.id.toString();
-        previewCaptureProc.requestedWinKey = winKey;
-        previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
-        previewCaptureProc.running = true;
+        if (!app || !app.id) return;
+        if (previewCaptureProc.running) return; // The steady-state tick catches up.
+        root._dispatchPreview(app.id);
     }
 
     // ---- Active-apps overview thumbnails ---------------------------------
@@ -782,6 +819,9 @@ Singleton {
     }
 
     onWindowsChanged: {
+        // The drawer's app is a view over this list: a window closed from the
+        // drawer must leave it on the same push that removes it everywhere else.
+        root.syncPreviewApp();
         if (root.overviewActive) root.refreshOverviewThumbnails();
         root._resolvePendingLaunches();
     }

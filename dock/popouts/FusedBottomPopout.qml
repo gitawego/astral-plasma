@@ -10,6 +10,7 @@ import qs.config
 import qs.components
 import qs.services
 import "../../services"
+import "../../services/PreviewAppState.js" as PreviewAppState
 
 Item {
     id: root
@@ -2307,14 +2308,29 @@ Item {
                 readonly property bool hasMultipleWindows: winList.length > 1
                 property string hoveredWinId: ""
 
+                // Which row shows the live preview. A multi-window drawer used to
+                // expand only the row under the pointer, so it showed no preview at
+                // all until the user happened to hover one ("some apps have no
+                // preview"). The hovered row still wins; with nothing hovered the
+                // drawer's own subject is expanded, exactly like the single-window
+                // card (the policy lives in PreviewAppState.js, unit-tested).
+                readonly property string expandedId: PreviewAppState.expandedWindowId(hoveredWinId, winList, currentApp ? currentApp.id : "")
+
+                // The rows are re-derived on every window push, so this handler sees
+                // a new array constantly. Only a change in *which* windows are
+                // listed may end a hover or start new captures - a retitled browser
+                // tab must not collapse the row under the pointer.
+                property string rowsSignature: ""
+
                 onWinListChanged: {
-                    hoveredWinId = "";
-                    if (winList.length > 0) {
-                        for (let i = 0; i < winList.length; i++) {
-                            const w = winList[i];
-                            if (w && w.id) {
-                                WindowService.loadWindowPreview(w);
-                            }
+                    const sig = PreviewAppState.rowsSignature(winList);
+                    if (sig === rowsSignature) return;
+                    rowsSignature = sig;
+                    hoveredWinId = PreviewAppState.hoverAfterRowsChange(hoveredWinId, winList);
+                    for (let i = 0; i < winList.length; i++) {
+                        const w = winList[i];
+                        if (w && w.id) {
+                            WindowService.loadWindowPreview(w);
                         }
                     }
                 }
@@ -2600,7 +2616,7 @@ Item {
                             required property int index
 
                             readonly property bool isHovered: instanceHoverArea.containsMouse
-                            readonly property bool isExpanded: appSection.hoveredWinId === modelData.id.toString()
+                            readonly property bool isExpanded: PreviewAppState.windowKey(modelData.id) === PreviewAppState.windowKey(appSection.expandedId)
                             readonly property bool isWinActive: Boolean(modelData.isActive) || (String(modelData.id).replace(/[{}]/g, "") === String(WindowService.activeId).replace(/[{}]/g, ""))
 
                             Layout.fillWidth: true
@@ -2840,9 +2856,12 @@ Item {
                     onClicked: {
                         if (appSection.currentApp) {
                             if (appSection.hasMultipleWindows) {
-                                for (let cIdx = 0; cIdx < appSection.winList.length; cIdx++) {
-                                    if (appSection.winList[cIdx] && appSection.winList[cIdx].id) {
-                                        WindowService.closeWindow(appSection.winList[cIdx].id);
+                                // The row list is live: closing the first window
+                                // shrinks it under the loop, so iterate a copy.
+                                const targets = appSection.winList.slice();
+                                for (let cIdx = 0; cIdx < targets.length; cIdx++) {
+                                    if (targets[cIdx] && targets[cIdx].id) {
+                                        WindowService.closeWindow(targets[cIdx].id);
                                     }
                                 }
                             } else if (appSection.currentApp.id) {

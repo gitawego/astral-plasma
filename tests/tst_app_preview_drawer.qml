@@ -331,8 +331,11 @@ Item {
 
         const windowServiceSrc = readLocalFile("../services/WindowService.qml");
         assert(windowServiceSrc.length > 500, "services/WindowService.qml must be readable");
-        assert(/\[root\.daemonBin,\s*"preview",\s*winKey,\s*"320"\]/.test(windowServiceSrc),
-            "WindowService loadAppPreview must execute astral-plasma preview CLI command");
+        // The capture runs through WindowService._dispatchPreview (single-slot
+        // queue), so the command is built there rather than inline in
+        // loadAppPreview - the contract stays: preview via the daemon CLI, 320px.
+        assert(/\[root\.daemonBin,\s*"preview",\s*\w+,\s*"320"\]/.test(windowServiceSrc),
+            "WindowService must execute the astral-plasma preview CLI command for a window");
         assert(/root\._previewCache\[reqKey\]\s*=\s*fileUrl/.test(windowServiceSrc),
             "WindowService must cache captured preview file URL");
         assert(/root\.activePreviewThumbnail\s*=\s*fileUrl/.test(windowServiceSrc),
