@@ -21,3 +21,6 @@ bin/
 
 # Exported pi session transcripts (not repository content)
 pi-session-*.html
+
+# Visual proof captures: verified locally, never repository content
+docs/proof/

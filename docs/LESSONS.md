@@ -2734,7 +2734,7 @@ if icon.starts_with('/') || icon.starts_with("file:") { return false; }
 
 Result on the live session: `steam_app_default` resolved from the generic glyph
 to `~/.cache/astral-plasma/window-icons/steam_app_default.png`, decoded from the
-window's own 32x32 `_NET_WM_ICON` (`docs/proof/tray/`).
+window's own 32x32 `_NET_WM_ICON`.
 
 **Lesson.** When a fallback path is gated by a heuristic about an identifier
 (`.exe`, a prefix, a vendor string), the gate is the bug. Gate on the property
@@ -2785,7 +2785,7 @@ Three details decide whether this works:
 **Proof (live, while the shell was running).** A probe `StatusNotifierItem` was
 registered on the session bus; the dock's tray went **5 -> 6 items in ≤1.4 s**
 with no interaction, and back to 5 in ≤1.4 s when the probe exited. The probe's
-glyph appeared in the tray next to the others (`docs/proof/tray/`).
+glyph appeared in the tray next to the others.
 
 **Lesson.** For any list that mirrors another process's state, ask what its
 *cheap change signal* is before choosing a refresh interval. Poll the signal;
@@ -2813,6 +2813,87 @@ PROBE cloudmusic       | icon=/mnt/data/cache/astral-plasma/window-icons/cloudmu
 **Lesson.** When the same domain decision is reachable from several entry points,
 read the *other* entry points before declaring a fix done - and then make each of
 them impossible to diverge.
+
+**The same snapshot, one layer up.** The XDG application index had already been
+given this treatment in the daemon: `search_dirs_stamp()` re-stamps the shared
+index when the `applications/` directory's mtime moves, precisely so a running
+shell can pick up an app the moment it is installed. The shell still asked it
+once. `CommandLauncher` ran `astral-plasma apps` at `Component.onCompleted`,
+and on open **only** while `installedApps.length === 0`.
+
+Consequence, reported by a user who had just installed Herdr: the entry existed,
+`astral-plasma apps` listed it in the same second, and the launcher kept offering
+the pre-install list - with no way to search an app it had never heard of - until
+the shell restarted. `ActiveAppsOverview` carried the identical
+`length === 0` gate around `WindowService.reloadInstalledApps()`.
+
+```qml
+// before: the refresh fires only on a machine whose cache never filled
+if (root.installedApps.length === 0 && !root.testMode) {
+    appsProc.running = true;
+}
+```
+
+The trigger has to be the *event the user performed*, not a property of the
+cache. The shell now re-reads on every open, with three details that make an
+always-refresh cheap and invisible:
+
+1. **Coalesce, don't queue.** A query already in flight is fresh enough; opening
+   again within its lifetime must not spawn a second process.
+2. **Keep the old list on screen** until the new one lands, and keep the last good
+   list when a query fails - a launcher that blanks itself on a transient error is
+   worse than a stale one.
+3. **Re-anchor the highlighted row by identity** (`desktop_file`), because one
+   new entry shifts every index after it. Position is not identity.
+
+**Confirmed live, shell running throughout.** A throwaway desktop entry was written
+into `~/.local/share/applications/`; the already-open launcher did not show it.
+After the fix the same entry appeared at the top of the open launcher with no
+restart, and deleting the file made it disappear on the next open. Herdr itself is
+found at its alphabetical slot with its own icon.
+
+**Lesson.** "Read it once at startup" and "read it when the cache is empty" are the
+same bug wearing different clothes: the second only hides on a machine whose cache
+never fills, and it hides from exactly the user who just installed the thing.
+
+**The third time, in the dock's app drawer.** Hovering a dock icon opens a drawer
+listing that application's windows, each with its own close button. Closing one
+left its row behind: the drawer held `activePreviewApp`, an object with a
+`windows` array captured at hover time, while the dock's own icons - rebuilt from
+the live window model on every push - updated correctly. Two rows, one window.
+
+The split is the fix, not a patch: the drawer keeps a **seed** (the app's labels
+and `_previewWindowIds`: which windows it stands for) and an **anchor** (the window
+the preview is about, moved when a row is hovered), and `activePreviewApp` is
+re-derived from the live list on every push by one pure module
+(`services/PreviewAppState.js`). Details that decide whether it holds:
+
+- **Membership by id, never by name.** Two applications can share a display name
+  and Wine/XWayland clients can publish none, so a name match would let a foreign
+  window into the drawer (`trackedIds`).
+- **The anchor keeps the preview still.** Prefer the window the drawer opened on
+  (and the row under the pointer), then the focused one, then the first survivor -
+  otherwise the preview jumps windows whenever focus changes.
+- **No churn.** The derived object is only handed to consumers when its
+  `signature` (ids, titles, focus) actually changed, so the drawer's one-second
+  preview capture is not restarted by every unrelated window push.
+- **Iterate a copy.** "Close All Windows" walks a list that is now live, so it
+  takes `winList.slice()` first.
+- **Always expand one row.** A drawer with two or more windows rendered nothing but
+  title bars until the pointer happened to rest on a row - the single-window card
+  showed a preview, the multi-window list showed none, which reads as "the preview
+  is broken for some apps". The expanded row is now the hovered one, or the
+  drawer's subject when nothing is hovered (`expandedWindowId`), so a preview is
+  always visible.
+- **A hover outlives a list update.** Because the rows are re-derived on every
+  push, the list is a new array even when nothing visible moved; resetting the
+  hover on arrival collapsed the expanded row under the pointer whenever a browser
+  tab retitled itself. Only a change in *which* windows are listed ends a hover
+  (`rowsSignature`, `hoverAfterRowsChange`).
+
+**Confirmed live.** Two terminals, drawer open: 2 rows. Closing one gave one row
+and "Active Window" with a live thumbnail on the next push; closing the last gave
+"Ready to launch" and no rows.
 
 ---
 
@@ -3208,8 +3289,8 @@ pages got a real test instead of a promise.
   press emits `zoneRequested` and that the scaffold carries no `Config` write.
 - `tests/tst_settings_pages_contract.qml` - the per-page contract, including
   "a rail press asks the host for that zone" for every page.
-- Live proof: `docs/proof/settings-pages/` (each page's pinned header and rail,
-  the trailing-zone jump, and the audio page whose rail used to lie).
+- Live check: each page's pinned header and rail, the trailing-zone jump, and the
+  audio page whose rail used to lie.
 
 ---
 
@@ -3265,3 +3346,97 @@ just the absence of a crash:
 now reported as `✗ FAILED (Exit 0)`; the ten repaired suites and the whole
 116-suite run are green with the strict harness; `make test` is 796 Rust tests +
 116 QML suites.
+
+---
+
+## 38. A Failed Reload Is A Silent Rollback
+
+Fixing the dock drawer, the edit loaded, the shell stayed alive, the dock icons
+kept updating - and the drawer behaved exactly as before. The natural conclusion
+("my derivation never fires") is wrong, and chasing it wastes an hour: the shell
+was not running the new code at all.
+
+The cause was in the edit:
+
+```qml
+// WindowService.qml already had an onWindowsChanged handler 340 lines below
+onWindowsChanged: root.syncPreviewApp()
+```
+
+Quickshell reloads the whole configuration on a file change. A second handler for
+the same signal is **not** an override - it fails the load with
+
+```
+caused by @services/WindowService.qml[815:5]: Property value set multiple times
+```
+
+and a failed reload is a rollback: the previously loaded tree keeps running, still
+watching files, still serving IPC, still updating everything it already did. From
+the outside it is indistinguishable from "the change had no effect", which is the
+most expensive possible failure mode for a UI fix.
+
+Three habits make it cheap:
+
+1. **Ask whether the code is running before asking why it misbehaves.** An
+   observable only the new code can produce is a reload oracle: a temporary
+   `IpcHandler` target showed up in `quickshell ipc ... show` within a second
+   when the load succeeded, and never when it failed.
+2. **The error is in the instance log, not on the screen.** Quickshell writes
+   `/run/user/<uid>/quickshell/by-id/<instance>/log.qslog`; `strings` over it
+   yields the `caused by` chain. The reload *history* is there too, so a load that
+   failed ten minutes ago is still readable.
+3. **One handler per signal.** When adding behaviour to a property change, search
+   for the existing handler and put the call inside it. `grep -n 'onWindowsChanged'`
+   costs a second and would have caught this.
+
+A related trap in the same investigation: a *stale* shell still runs the *old*
+code, so a "before" screenshot taken after an edit proves nothing unless the edit
+is known to be live. Capture the before/after with the reload there or not at all.
+
+**Lesson.** Hot reload has two states - it worked, or the old process is still
+serving you - and only one of them is visible on screen. Verify that the change is
+loaded before you debug why it does not do what it says.
+
+---
+
+## 39. A Restart In Flight Is A Race You Will Lose
+
+The drawer's live preview is one `astral-plasma preview <id>` process at a time.
+Every hover asked for a frame, and the code did what looks natural for a
+"cancel and replace" interaction:
+
+```qml
+previewCaptureProc.running = false;
+previewCaptureProc.command = [root.daemonBin, "preview", winKey, "320"];
+previewCaptureProc.running = true;
+```
+
+Moving the pointer quickly between two rows of the same app exposes it: the second
+assignment lands while the first instance is still terminating, the start is
+dropped, and nothing ever captures again - the drawer keeps its last (or empty)
+thumbnail until some unrelated action starts a capture. The user's report was
+exact: *"when I quickly move between 2 instances, the preview doesn't work
+anymore."* The same pattern also silently mis-cached: a stdout arriving after
+`requestedWinKey` was overwritten attributed window A's frame to window B.
+
+The fix is not a timeout or a retry - it is to stop restarting a live process:
+
+```js
+// services/PreviewAppState.js - single-slot queue
+function captureRequest(queue, running, key) {
+    if (running) { queue.pending = key; return ""; }   // in flight: remember, do not touch
+    queue.pending = "";
+    return key;
+}
+function captureFinished(queue) { const next = queue.pending || ""; queue.pending = ""; return next; }
+```
+
+and one dispatch point that asks the queue, with `onExited` handing the pending
+request to the next capture. Only `finish` may start the next one, so the
+in-flight key is never overwritten and no request is lost.
+
+**Lesson.** `running = false; ...; running = true` is not a restart primitive - it
+is two state changes racing a process that has not exited yet. If work must be
+replaced, queue it behind the completion of the work already in flight. And when
+the state you are racing is "which window is the subject", tie the async result to
+the key it was requested for, never to the current subject.

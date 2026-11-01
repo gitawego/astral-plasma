@@ -992,8 +992,6 @@ every tab, waits for the spatial slide to settle, and asserts the strip position
 pane visibility, pane layout, indicator index, and Config persistence. The suite
 was written first and failed on the deleted lines before the fix.
 
-![Downloads tab](docs/proof/tab-switching/dropdown-downloads-tab.png)
-![Media tab](docs/proof/tab-switching/dropdown-media-tab.png)
 
 ### 20.2 The "totally broken and ugly" Downloads design
 
@@ -1018,8 +1016,6 @@ was written first and failed on the deleted lines before the fix.
 - The add sheet replaces the list while open: URL field with a Paste button,
   a 1..16 connections stepper, the destination, and Cancel/Download.
 
-![Empty state](docs/proof/downloads/empty-state.png)
-![Active download](docs/proof/downloads/active-download.png)
 
 ### 20.3 "I can't paste with Ctrl+V — it pastes into another app"
 
@@ -1046,7 +1042,6 @@ focused — the user's editor.
 field reported `inputFocus: true`, and a real `wl-copy` URL pasted through
 `TextEdit.paste()` landed in the field byte-for-byte.
 
-![Add sheet with pasted URL](docs/proof/downloads/add-sheet-paste.png)
 
 ### 20.4 Live end-to-end proof (real aria2, throttled local source)
 
@@ -1054,13 +1049,11 @@ A 300 MiB file served from a throttled local HTTP server, added with
 `--split 4`, then a second 3 MiB file to trigger the completion edge:
 
 - aggregate header (`58% · 1.6 MiB/s · ETA 1m`), segment counts, per-row
-  progress and actions all tracked live events (see 20.2 image);
+  progress and actions all tracked live events;
 - the top-right border HUD filled with aggregate progress (idle vs active,
   pixel-verified);
 - the completion notification fired exactly once.
 
-![Border HUD idle vs active](docs/proof/downloads/border-hud-idle-vs-active.png)
-![Completion toast](docs/proof/downloads/completion-toast.png)
 
 `make test` is green: full Rust suite + all QML suites, including the new
 `tst_dropdown_tab_switching.qml` and the extended Downloads/material-icon
@@ -1181,9 +1174,6 @@ from the uncapped baseline by mean 0.067/255 (0.12 % of pixels, animation phase
 only), while consecutive capped frames differ by 0.18 % of pixels — i.e. it still
 animates.
 
-![AI border, capped — frame 1](docs/proof/performance/ai-border-capped-frame-1.png)
-![AI border, capped — frame 2 (packets advanced)](docs/proof/performance/ai-border-capped-frame-2.png)
-![AI border, original animation (fidelity baseline)](docs/proof/performance/ai-border-uncapped-baseline.png)
 
 ### 21.7 Regression guards
 
@@ -1249,8 +1239,7 @@ inversion (`theme_icon_exists` + a memoized icon index).
 
 Result: `steam_app_default` now resolves to
 `~/.cache/astral-plasma/window-icons/steam_app_default.png`, and the taskbar shows
-the game's own icon — `docs/proof/tray/before-generic-window-glyph.png` vs
-`after-window-icon-and-live-tray.png`.
+the game's own icon, before and after.
 
 ### Bug 2 - the tray was a snapshot, so late icons never rendered
 
@@ -1293,9 +1282,8 @@ probe up,   t+1.4s: 6 items -> [Fcitx, Cachy-Update, dropbox-client-5113, Sunshi
 probe down, t+1.4s: 5 items -> [Fcitx, Cachy-Update, dropbox-client-5113, Sunshine, cloudmusic]
 ```
 
-No clicks, no reload. Screenshot with the probe glyph in the tray:
-`docs/proof/tray/after-window-icon-and-live-tray.png` (bottom of the tray column,
-Firefox glyph; the game's own icon one capsule above).
+No clicks, no reload. The probe glyph appeared at the bottom of the tray column
+(Firefox glyph; the game's own icon one capsule above).
 
 ### Tests
 
@@ -1378,7 +1366,7 @@ curves from the design tokens (`animExpressiveFastEffects`, `animExpressiveFastS
 | After, closed | 0.3-1.1 % | 1.9 % |
 
 Visual check: the tab still draws its trace, grid, labels, per-card meters and
-metric values correctly - `docs/proof/perf-tab/performance-tab-on-the-motion-budget.png`.
+metric values correctly.
 
 ### Why the reading can still look high
 
@@ -1612,28 +1600,20 @@ rail pill assigned `contentY` directly - a teleport.
 
 ### Visual proof
 
-The pinned header and the zone rail, live, on the System page (six zones, state
-eyebrows) and the Dock page (three sections, hatched from a flat list of
-switches):
+The pinned header and the zone rail, live, were checked on the System page (six
+zones, state eyebrows) and the Dock page (three sections, hatched from a flat list
+of switches).
 
-![System & Services: pinned header, six-zone rail, live eyebrows](docs/proof/settings-pages/system-section-rail.png)
-![Dock & Layout: three sections with state eyebrows](docs/proof/settings-pages/dock-sections.png)
 
 The scroll spy's input is live per page: the audio page (short, fits the window)
 sits on "Output" instead of lighting the last pill, and the trailing-zone rule
-lands "Display" after a deep link to the end of the System page:
+lands "Display" after a deep link to the end of the System page.
 
-![Audio: a short page stays on its first zone](docs/proof/settings-pages/audio-top-zone.png)
-![System: deep link to the trailing Display zone](docs/proof/settings-pages/system-jump-to-trailing-zone.png)
 
-The same contract on the other surfaces - section headers with live state, the
-rail on pages with more than one zone, no rail where there is nothing to
-navigate:
+The same contract holds on the other surfaces - section headers with live state,
+the rail on pages with more than one zone, no rail where there is nothing to
+navigate.
 
-![Network: "13 networks in range" with the Rescan action in the header](docs/proof/settings-pages/network-networks-section.png)
-![Dashboard: "6 of 6 shown" over the tab switches](docs/proof/settings-pages/dashboard-tabs.png)
-![Wallpaper & Style: four zones, live eyebrow per section](docs/proof/settings-pages/wallpaper-zone-rail.png)
-![Status Icons: one zone means a title, not a rail](docs/proof/settings-pages/status-single-zone.png)
 
 ### Tests
 
@@ -1681,7 +1661,7 @@ that the spy follows. `tst_settings_pages_contract.qml` asserts every page emits
 the request; `tst_settings_page_scaffold.qml` asserts the scaffold carries no
 `Config` write. Live, the parked path was exercised end-to-end from the AI page:
 `settings openSection system display` switches page and lands at the trailing zone
-with its pill lit (`docs/proof/settings-pages/system-jump-to-trailing-zone.png`).
+with its pill lit.
 `make test` green: 796 Rust tests + 116 QML suites.
 
 ---
@@ -1737,3 +1717,136 @@ broke something" into silence.
 **Verification.** The ten suites pass with no `FAIL:` lines; the whole run is
 green: `make test` = 796 Rust tests + 116 QML suites, now with a harness that
 cannot report a failing suite as passing.
+
+---
+
+# Astral Plasma — Installed Apps Are Discovered Without Restarting The Shell
+
+> [!NOTE]
+> **Issue**: After installing Herdr desktop (`herdr-app.desktop` in
+> `~/.local/share/applications/`, `herdr-app.svg` in the hicolor theme), Herdr
+> launched fine from the system and appeared in `astral-plasma apps`, but the
+> Astral command launcher never offered it - searching `herdr` returned nothing.
+>
+> **Root cause**: the launcher's application list is a cache, and it was only
+> invalidated while empty. `CommandLauncher` ran `astral-plasma apps` at
+> `Component.onCompleted` and on open **only if** `installedApps.length === 0`;
+> a cache that is already populated therefore never saw an entry installed later
+> in the same session. `ActiveAppsOverview` wrapped
+> `WindowService.reloadInstalledApps()` in the identical empty-cache gate. The
+> daemon half was already correct - its index re-stamps on the `applications/`
+> directory's mtime - so the shell had a fresh answer available and never asked
+> for it. See [LESSONS §29](docs/LESSONS.md).
+>
+> **Solution**:
+> 1. **Re-read on every open** (`shell/CommandLauncher.qml`): a new
+>    `refreshInstalledApps()` is the single entry point for both startup and open.
+>    It coalesces an in-flight query instead of spawning a second process.
+> 2. **Never blank the launcher**: a failed or unparseable payload keeps the last
+>    good list, and the previous list stays on screen until the fresh one arrives,
+>    so typing is never blocked by the spawn.
+> 3. **Selection follows identity, not position**: applying a payload re-anchors
+>    `selectedAppIndex` on the highlighted row's `desktop_file` (a single new
+>    entry shifts every index after it) and clamps when the row is gone.
+> 4. **One policy for both surfaces** (`shell/ActiveAppsOverview.qml`): the
+>    overview calls `WindowService.reloadInstalledApps()` on every open, so the
+>    shared index behind the dock's identity mapping is refreshed by use as well.
+> 5. **Tests** (`tests/tst_launcher_app_discovery.qml`): source contracts (no
+>    empty-cache gate, coalescing, `desktop_file` re-anchoring, overview policy)
+>    plus a deterministic model of the cache: warm-cache open still queries,
+>    re-open during an in-flight query does not double-spawn, a newly installed
+>    entry becomes searchable, a failed query keeps the list, and the highlighted
+>    row follows its app across an insertion and clamps when it is removed.
+>
+> **Verified live** with the shell running throughout: a throwaway desktop entry
+> written into `~/.local/share/applications/` was absent from the already-open
+> launcher, then appeared on the next open after the fix, and disappeared again
+> when its file was removed. Herdr is found at its alphabetical slot with its own
+> hicolor icon.
+
+---
+
+# Astral Plasma — The App Drawer's Windows Are Live, Not Remembered
+
+> [!NOTE]
+> **Issue**: Hovering the Edge icon in the dock opened the app drawer showing
+> "2 Open Windows". Clicking the × on the second window closed the window, but the
+> drawer kept the row - and its "2 Open Windows" header, and "Close All Windows" -
+> while the dock itself (fed by the same push) had already noticed.
+>
+> **Root cause**: the drawer displayed `WindowService.activePreviewApp`, an object
+> whose `windows` array was a snapshot taken when the drawer opened. Every other
+> surface rebuilds from the live window model; the drawer alone compared against a
+> photograph. See [LESSONS §29](docs/LESSONS.md).
+>
+> **Solution**:
+> 1. **Split seed from state** (`services/WindowService.qml`): `_previewAppSeed`
+>    (labels), `_previewWindowIds` (which windows the drawer stands for) and
+>    `_previewAnchorId` (which window the preview is about) are the snapshot;
+>    `activePreviewApp` is re-derived from `windows` on every push.
+> 2. **One pure module** (`services/PreviewAppState.js`): `trackedIds`,
+>    `derive` and `signature` are exercised directly by the offscreen suite, so the
+>    behaviour is tested as written rather than re-implemented in the test.
+> 3. **Identity, anchor, churn** - membership is by window id (a display name would
+>    let a foreign window in); the preview stays on the window the drawer opened on
+>    (or the row under the pointer) and only falls back to focus when that window
+>    closes; a `signature` keeps consumers from being handed a new object when
+>    nothing visible moved, so the 1 s preview capture is not restarted needlessly.
+> 4. **Close All iterates a copy** (`dock/popouts/FusedBottomPopout.qml`) - the row
+>    list is live now, and a live list must not shrink under its own loop.
+> 5. **Tests** (`tests/tst_app_preview_live_state.qml`): a closed window leaves the
+>    drawer, the last close ends the app view ("Ready to launch") while keeping its
+>    labels, focus only takes over when the anchor dies, a same-named foreign window
+>    cannot enter, braced KWin uuids match, the signature is stable for identical
+>    data, and exactly one `onWindowsChanged` handler exists (a duplicate silently
+>    fails the whole configuration load - see [LESSONS §38](docs/LESSONS.md)).
+>
+> **Verified live**, drawer left open across every step: two windows gave two rows;
+> closing one left one row and the header "Active Window"; closing the last gave
+> "Ready to launch" with no rows. Before the fix the rows and the "2 Open Windows"
+> header survived even with zero windows left.
+
+---
+
+# Astral Plasma — The Drawer Always Shows A Preview, Even When The Pointer Moves Fast
+
+> [!NOTE]
+> **Issue**: A drawer with two or more windows showed nothing but title bars - the
+> single-window card had a live preview, the multi-window list had none ("in some
+> cases, the preview is not showing"). And moving the pointer quickly between the
+> two rows made the preview stop appearing altogether.
+>
+> **Root causes**:
+> 1. A row only expanded while it was *the hovered row*, so with the pointer on the
+>    dock icon (or between rows) the drawer had no preview at all.
+> 2. Every hover force-restarted the capture process
+>    (`running = false; command = ...; running = true`), which drops the start while
+>    the previous instance is still terminating - the preview then stayed empty
+>    until something else triggered a capture. The same pattern mis-cached a frame
+>    if stdout arrived after the requested window changed.
+> 3. Because the rows are re-derived on every window push, the drawer reset its
+>    hover on every list update, collapsing the expanded row under the pointer
+>    whenever a browser tab retitled itself.
+>
+> **Solution**:
+> 1. **One expanded row, always** (`PreviewAppState.expandedWindowId`): the hovered
+>    row wins; with nothing hovered the drawer's subject is expanded, so a
+>    multi-window drawer reads like the single-window card.
+> 2. **A hover survives a list update** (`rowsSignature` + `hoverAfterRowsChange`):
+>    only a change in *which* windows are listed can end a hover - not a retitle or
+>    a focus change.
+> 3. **Single-slot capture queue** (`PreviewAppState.captureRequest` /
+>    `captureFinished` + `WindowService._dispatchPreview`): a request that arrives
+>    during a capture is remembered and dispatched when it finishes; nothing ever
+>    restarts a live process, and a frame is always attributed to the key it was
+>    requested for.
+> 4. **Tests** (`tests/tst_app_preview_live_state.qml`): the expansion policy
+>    (hover, subject, stale hover, empty list), hover survival across retitles,
+>    signature changes on membership only, and the queue (idle dispatch, in-flight
+>    request remembered, latest-wins, exactly one hand-over on finish) - plus
+>    contracts that `loadAppPreview` goes through the queue and never starts the
+>    capture process directly.
+>
+> **Verified live**: a two-window drawer now opens with one row expanded and its
+> live thumbnail, and two back-to-back preview requests (the fast-hover race) still
+> leave the second application with a working preview.

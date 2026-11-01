@@ -179,7 +179,7 @@ Inspect the resulting image using `view_file` to verify alignment, centering, co
 > ### MANDATORY PROTOCOL BEFORE DECLARING WORK COMPLETE:
 > 1. **Capture Visual Proof**: Use `spectacle` to capture full-resolution screenshots of EVERY affected view and state (Launcher, Dashboard, Media Drawer, Popout).
 > 2. **Self-Inspect the Proof**: Use `view_file` on the captured images to rigorously verify corner radii, transparency, typography, and contrast.
-> 3. **Deliver Proof to User**: Embed the verified screenshots in `walkthrough.md` and present them as concrete evidence of completion.
+> 3. **Report The Evidence, Never Commit It**: proof screenshots are local-only. Capture them outside the repository (e.g. `/tmp` or `~/Pictures/astral-plasma-proof/`) and describe what was verified in the conversation and in `walkthrough.md` prose - image files are never committed (`docs/proof/` is git-ignored).
 
 ---
 
