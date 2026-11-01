@@ -53,7 +53,9 @@ PanelWindow {
         onClicked: root.closeLauncher()
     }
 
-    // Installed apps cached from daemon
+    // Installed applications: a cache of the system's desktop entries, re-read
+    // on every open (see refreshInstalledApps). Entries appear and disappear
+    // while the shell runs, so this list may never outlive a single open.
     property var installedApps: []
     property int selectedAppIndex: 0
     property int selectedSuggestionIndex: 0
@@ -1142,18 +1144,51 @@ PanelWindow {
         command: [(typeof Config !== "undefined" && Config.daemonBin) ? Config.daemonBin : "./bin/astral-plasma", "apps"]
         stdout: StdioCollector {
             onStreamFinished: {
+                let parsed;
                 try {
-                    const parsed = JSON.parse(this.text.trim());
-                    if (Array.isArray(parsed)) {
-                        for (let i = 0; i < parsed.length; i++) {
-                            const a = parsed[i];
-                            a._searchKey = ((a.name || "") + " " + (a.comment || "") + " " + (a.exec || "")).toLowerCase();
+                    parsed = JSON.parse(this.text.trim());
+                } catch (e) {
+                    return; // A failed query keeps the last good list.
+                }
+                if (!Array.isArray(parsed)) return;
+
+                for (let i = 0; i < parsed.length; i++) {
+                    const a = parsed[i];
+                    a._searchKey = ((a.name || "") + " " + (a.comment || "") + " " + (a.exec || "")).toLowerCase();
+                }
+
+                // Installing or removing a desktop entry shifts every index after
+                // it, so the highlighted row is carried across by identity - the
+                // desktop file - not by position.
+                const previous = root.filteredApps[root.selectedAppIndex];
+                root.installedApps = parsed;
+                const visible = root.filteredApps;
+                if (previous && previous.desktop_file) {
+                    for (let i = 0; i < visible.length; i++) {
+                        if (visible[i].desktop_file === previous.desktop_file) {
+                            root.selectedAppIndex = i;
+                            return;
                         }
-                        root.installedApps = parsed;
                     }
-                } catch (e) {}
+                }
+                root.selectedAppIndex = Math.max(0, Math.min(root.selectedAppIndex, visible.length - 1));
             }
         }
+    }
+
+    /// Re-read the installed applications from the daemon.
+    ///
+    /// The launcher is the only place an application installed *during* a shell
+    /// session can be found, so its list must not be a startup snapshot: opening
+    /// the launcher always asks again. The daemon re-stamps its own index on the
+    /// applications directory's mtime, so this costs one directory stat per entry
+    /// in the common case and a full parse only after an install. The previous
+    /// list stays on screen until the fresh one arrives, so typing is never
+    /// blocked by the spawn.
+    function refreshInstalledApps() {
+        if (root.testMode) return;
+        if (appsProc.running) return; // Coalesce: the answer already on its way is fresh enough.
+        appsProc.running = true;
     }
 
     function syncWithConfig() {
@@ -1170,18 +1205,16 @@ PanelWindow {
 
     Component.onCompleted: {
         syncWithConfig();
-        if (!root.testMode && appsProc.command) {
-            appsProc.running = true;
-        }
+        root.refreshInstalledApps();
     }
 
     onActiveVisibleChanged: {
         if (activeVisible) {
             syncWithConfig();
             searchInput.forceActiveFocus();
-            if (root.installedApps.length === 0 && !root.testMode) {
-                appsProc.running = true;
-            }
+            // Always re-read: an application installed since the shell started
+            // must be launchable without restarting the shell.
+            root.refreshInstalledApps();
         }
     }
 }

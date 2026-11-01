@@ -413,7 +413,11 @@ PanelWindow {
                 searchInput.text = "";
                 searchInput.forceActiveFocus();
                 WindowService.startOverviewThumbnails();
-                if ((!root.installedApps || root.installedApps.length === 0) && typeof WindowService !== "undefined" && WindowService.reloadInstalledApps) {
+                // The shared app index caches live desktop entries, so it is
+                // re-read on every open: an application installed while the shell
+                // runs must be searchable here too (a cached list of live things
+                // is a stale list).
+                if (typeof WindowService !== "undefined" && WindowService.reloadInstalledApps) {
                     WindowService.reloadInstalledApps();
                 }
             } else {
