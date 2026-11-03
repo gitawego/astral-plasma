@@ -644,6 +644,18 @@ When building sliding edge drawers on the right screen border (e.g. `RightEdgeCo
 - **Do not confuse the two drawers**: the *right-edge rail* is `RightEdgeControl` + `rightEdgeControlWrapper`; the *in-dock drawer* is `FusedBottomPopout`. They are separate components with separate lifecycles, and "the sidebar" in this repo means the dock in some docs and the right rail in others.
 - **A screenshot decides the subject.** When the user attaches a picture, the change is to what is *in* the picture; the caption names the surface to keep ("they are at right sidebar" = the rail survives). An earlier attempt read the caption as the subject, deleted the rail, passed a green suite written against that misreading, and had to be reverted in full — proof that tests validate the contract, never its fidelity to the request. Deletion of a user-facing surface stops for a one-line confirmation first. Full account: [`docs/POST-MORTEM-2026-11-03-control-home.md`](POST-MORTEM-2026-11-03-control-home.md).
 
+### 8.12. A Frequency Ratio Is Not Utilisation
+- **The Symptom**: the dashboard reported the Intel iGPU at 60–100 % on an idle machine, while the discrete NVIDIA card correctly showed 0 %. Users reasonably read it as "high GPU usage".
+- **Root Cause**: `parse_intel_gpu_freq()` computed `(act − min) / (max − min)` over the RPS clock counters and was presented as *usage*. A GPU clock is a governor decision, not a workload: on a 240 Hz panel the iGPU stays near its ceiling almost permanently (60 % of samples at `gt_max_freq_mhz` in 10 s), so the ratio sat at 60–100 % while the render engine was ~5–33 % busy.
+- **The Rule**: publish utilisation only from a **busy-time counter over a known window**. For Linux DRM that is `drm-engine-<name>: <ns>` in `/proc/<pid>/fdinfo/<fd>`, attributed by `drm-pdev`. No `CAP_PERFMON` and no `debugfs` needed (unlike `intel_gpu_top`).
+- **Accounting details that bite**:
+  1. **Busiest engine, not the sum** — render and copy run in parallel; adding them can exceed wall time.
+  2. **One DRM client = many fds** — they repeat the same client-wide totals; max per client, then sum across clients.
+  3. **A rate needs cross-process state** — the shell runs `metrics` as a fresh CLI per tick, so persist counters + timestamp in `/dev/shm` (see `/dev/shm/astral_cpu_stat`) and treat a missing/old sample as **no measurement**, never as 0 %.
+  4. **A restarted counter is not a negative load** — if `busy_now < busy_prev`, skip the device for that interval.
+  5. **PCI slot matching tolerates the domain prefix** (`0000:00:02.0` ≡ `00:02.0`) and must never treat an empty slot as a wildcard.
+- **Contract Tests**: `daemon/tests/test_gpu_engine_usage.rs`, `tests/tst_gpu_usage_is_measured.qml`.
+
 ## 9. The Definitive Engineering Guide to Building the Liquid Glass Theme Correctly
 
 ### 9.1. The Optical Anatomy of Authentic Liquid Glass

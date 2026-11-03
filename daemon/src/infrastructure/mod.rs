@@ -1,4 +1,5 @@
 pub mod avatar_fs;
+pub mod gpu_engine_probe;
 pub mod proc_metrics;
 pub mod launcher;
 pub mod calendar;

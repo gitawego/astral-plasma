@@ -1,3 +1,33 @@
+# Astral Plasma — GPU "Usage" Is Measured Engine Time, Not A Clock Ratio
+
+> [!NOTE]
+> **Issue**: The dashboard showed **GPU 0 at 60 %** (and later 100 %) while the machine was idle and the NVIDIA card sat at 0 %. The user asked *"why there is high gpu usage?"*
+>
+> **Root cause**: For Intel GPUs the daemon derived "usage" from the RPS frequency counters:
+>
+> ```
+> usage = (gt_act_freq_mhz − gt_min_freq_mhz) / (gt_max_freq_mhz − gt_min_freq_mhz)
+> ```
+>
+> That is a *clock ratio*, not utilisation. On this laptop the panel runs at **240 Hz**, so the iGPU governor parks near `gt_max_freq_mhz` almost continuously: 60 % of 10 s of samples sat at the 1550 MHz ceiling. Measured independently from `/proc/<pid>/fdinfo`, the render engine was only ~33 % busy — and 0 % in `quickshell`. The number was a frequency ratio wearing a utilisation label.
+>
+> **Fix** — measure real engine time:
+> 1. **`daemon/src/domain/gpu_engine.rs`**: parse `drm-pdev` + `drm-engine-{render,copy,video}: <ns>` from fdinfo; a client's busy time is its *busiest* engine (engines run in parallel, so summing them can exceed wall time); deltas are clamped to 0..=1; satellite PCI-slot forms (`0000:00:02.0` vs `00:02.0`) are matched explicitly, never by prefix.
+> 2. **`daemon/src/infrastructure/gpu_engine_probe.rs`**: scan `/proc/*/fdinfo/*` unprivileged, fold several fds of one DRM client into one sample (they repeat the same client-wide totals), and persist the counters to `/dev/shm/astral_gpu_engine` — the shell runs `metrics` as a fresh process every tick, so a rate needs cross-process state (same pattern as `/dev/shm/astral_cpu_stat`).
+> 3. **`proc_metrics.rs`**: `resolve_usage(measured, fallback)` — measurement wins; the clock ratio (Intel) and `gpu_busy_percent` (AMD) remain only as fallbacks. NVIDIA already reported real engine utilisation via `nvidia-smi`, which is why only GPU 0 looked wrong.
+>
+> **Tests** (TDD, red first — `cargo test --test test_gpu_engine_usage` failed to compile before the module existed):
+> - `daemon/tests/test_gpu_engine_usage.rs` (12 tests): fdinfo parsing, non-DRM fds ignored, malformed/negative counters degrade to 0, busiest-engine accounting, fd duplication, clamping, slot matching, cache round-trip, partial cache corruption, counter restart (no negative load), non-monotonic timestamps.
+> - `tests/tst_gpu_usage_is_measured.qml`: the daemon contract at source level — measured value feeds `usage`, `/dev/shm` cache exists, restarted counters yield no rate. Verified to fail against `HEAD` (no `gpu_engine` module, no `drm-engine-render` read, no cache).
+>
+> **Verified live** (rebuilt `bin/astral-plasma`):
+> - Before: `GPU 0 100 %` while `gt_act_freq_mhz` sat at max and the engine was ~5–33 % busy.
+> - After: `GPU 0 18–28 %` **while the clock still reads 1.55 GHz** — the number no longer follows the clock; it follows the engine, and it agrees with the independent fdinfo probe (33 % over the same period).
+> - `metrics` latency unchanged (avg 117 ms vs 136 ms baseline), despite reading ~16 000 fdinfo files per tick.
+> - `make test`: all Rust suites green (77), all 144 QML suites green.
+
+---
+
 # Astral Plasma — Volume & Brightness Leave The Dock; The Right Rail Owns Them
 
 > [!NOTE]

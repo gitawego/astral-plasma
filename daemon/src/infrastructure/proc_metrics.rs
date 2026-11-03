@@ -1,4 +1,5 @@
 use crate::domain::model::{BatteryMetrics, CpuMetrics, DiskMetrics, GpuMetrics, SystemMetrics};
+use crate::domain::gpu_engine::resolve_usage;
 use crate::domain::ports::{DynResult, MetricsPort};
 use crate::domain::sys_parser::{
     calculate_cpu_usage_with_state, calculate_disk_metrics, parse_all_nvidia_gpus, parse_amdgpu_metrics, parse_battery_uevent,
@@ -123,6 +124,13 @@ impl MetricsPort for ProcMetricsAdapter {
             fetch_and_cache_lspci(&pci_cache_path)
         };
 
+        // Measured GPU engine time for this call. Scanned once and reused for
+        // every card: each device's rate is a delta against the previous
+        // invocation, so the scan must not be interleaved with the reads below.
+        let engine_rates = crate::infrastructure::gpu_engine_probe::measure_engine_usage(
+            &crate::infrastructure::gpu_engine_probe::engine_state_path(),
+        );
+
         let mut discovered_gpus = Vec::new();
 
         // 1. Query NVIDIA GPUs via nvidia-smi
@@ -204,7 +212,17 @@ impl MetricsPort for ProcMetricsAdapter {
                         .or_else(|_| fs::read_to_string(card_path.join("gt/gt0/rps_max_freq_mhz")))
                         .unwrap_or_default();
 
-                    let usage = parse_intel_gpu_freq(&act_str, &min_str, &max_str);
+                    // The clock ratio is NOT utilisation: it says how far the GPU
+                    // has raised its frequency, which on a high-refresh panel stays
+                    // near the top while the engine is ~5 % busy. Measured engine
+                    // time (fdinfo) wins whenever a DRM client could be read; the
+                    // ratio remains only as a fallback for drivers whose counters
+                    // we cannot see.
+                    let clock_ratio = parse_intel_gpu_freq(&act_str, &min_str, &max_str);
+                    let measured = crate::infrastructure::gpu_engine_probe::measured_usage_for_pci_slot(
+                        &engine_rates, &pci_slot,
+                    );
+                    let usage = resolve_usage(measured, clock_ratio);
                     let clock_ghz = act_str.trim().parse::<f64>().ok().map(|mhz| (mhz / 1000.0 * 100.0).round() / 100.0).unwrap_or(0.0);
 
                     // Intel Arc discrete memory or shared memory
@@ -267,6 +285,14 @@ impl MetricsPort for ProcMetricsAdapter {
                     amd_metric.gpu_type = if is_integrated { "integrated".to_string() } else { "discrete".to_string() };
                     amd_metric.driver = driver;
                     amd_metric.pci_slot = pci_slot;
+                    // `gpu_busy_percent` is a real utilisation counter, but the DRM
+                    // engine delta is taken over a known window and agrees with the
+                    // other vendors, so use it when it is available and keep the
+                    // sysfs percentage only as the fallback.
+                    let measured = crate::infrastructure::gpu_engine_probe::measured_usage_for_pci_slot(
+                        &engine_rates, &amd_metric.pci_slot,
+                    );
+                    amd_metric.usage = resolve_usage(measured, amd_metric.usage);
                     discovered_gpus.push(amd_metric);
                 }
             }
