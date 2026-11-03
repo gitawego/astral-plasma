@@ -73,7 +73,7 @@ The daemon builds into a **single self-contained binary** (`bin/astral-plasma`) 
 - **Live taskbar** (`DockTaskbar`): running KWin windows, click-to-focus, scroll-capped (`DockScrollCapsule`) so it never pushes dock controls off-screen.
 - **Active window tracker**: centered app name/icon with context menu.
 - **System tray**: native `StatusNotifierItem` DBus integration with context menus (`TrayContextMenu`) and click-to-activate.
-- **Stacked clock & status icons**: clock plus keyboard layout, network, Bluetooth, brightness, audio, and battery indicators (order/enabled via settings).
+- **Stacked clock & status icons**: clock plus keyboard layout, network, Bluetooth, and battery indicators (order/enabled via settings). Volume and display brightness live on the right-edge rail, not in the dock.
 - **Fused bottom popouts**: `FusedBottomPopout` morphs out of the dock for Audio, Battery, Bluetooth, Brightness, Keyboard layout, Wi-Fi, tray menus, and app previews.
 
 ### Surfaces & Overlays

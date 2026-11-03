@@ -15,7 +15,7 @@ import "../../services/PreviewAppState.js" as PreviewAppState
 Item {
     id: root
 
-    property string mode: "default" // "default", "bluetooth", "network", "audio", "power", "clock"
+    property string mode: "default" // "default", "bluetooth", "network", "power", "clock"
 
     readonly property bool isClockActive: (typeof Config !== "undefined" ? Config.bottomPopoutVisible : true) && (root.mode === "clock" || root.mode === "time")
     property var currentDate: new Date()
@@ -44,8 +44,6 @@ Item {
             case "ai": return 380;
             case "bluetooth": return 300;
             case "network": return 300;
-            case "audio": return 280;
-            case "brightness": return 280;
             case "kblayout": return 280;
             case "clipboard": return 340;
             case "notifications": return 360;
@@ -72,8 +70,6 @@ Item {
             case "ai": return aiSection.implicitHeight;
             case "bluetooth": return bluetoothSection.implicitHeight;
             case "network": return networkSection.implicitHeight;
-            case "audio": return audioSection.implicitHeight;
-            case "brightness": return brightnessSection.implicitHeight;
             case "kblayout": return kbLayoutSection.implicitHeight;
             case "clipboard": return clipboardSection.implicitHeight;
             case "notifications": return notificationsSection.implicitHeight;
@@ -504,257 +500,6 @@ Item {
                     icon: "settings"
                     label: "Network Settings..."
                     onClicked: Quickshell.execDetached(["kcmshell6", "kcm_networkmanagement"])
-                }
-            }
-
-            // ==========================================
-            // 4. AUDIO / VOLUME ACTIONS LIST
-            // ==========================================
-            ColumnLayout {
-                id: audioSection
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                spacing: Theme.spaceMedium
-                readonly property bool isCurrent: root.mode === "audio"
-                visible: isCurrent
-                opacity: isCurrent ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: 220
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spaceSmall
-
-                    MaterialIcon {
-                        text: PipewireAudio.getVolumeIcon()
-                        size: 20
-                        color: Colors.primary
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Volume: " + Math.round(PipewireAudio.volume * 100) + "%"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontMedium
-                        font.weight: Font.Bold
-                        color: Colors.textOnSurface
-                    }
-
-                    Rectangle {
-                        implicitWidth: 32
-                        implicitHeight: 26
-                        radius: Theme.radiusFull
-                        color: PipewireAudio.muted ? Colors.primary : Colors.surfaceContainerHigh
-
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            text: PipewireAudio.muted ? "volume_off" : "volume_up"
-                            size: 14
-                            color: PipewireAudio.muted ? Colors.textOnPrimary : Colors.textOnSurface
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: PipewireAudio.toggleMute()
-                        }
-                    }
-                }
-
-                // Volume Slider Track
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 8
-                    radius: 4
-                    color: Colors.surfaceContainerHigh
-
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.bottom: parent.bottom
-                        width: parent.width * Math.min(1.0, Math.max(0.0, PipewireAudio.volume))
-                        radius: 4
-                        color: Colors.primary
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: mouse => PipewireAudio.setVolume(mouse.x / width)
-                        onPositionChanged: mouse => {
-                            if (pressed) PipewireAudio.setVolume(mouse.x / width);
-                        }
-                    }
-                }
-
-                ActionDivider {}
-
-                ActionItem {
-                    icon: "speaker"
-                    label: PipewireAudio.sinkName
-                }
-
-                ActionItem {
-                    icon: "settings"
-                    label: "Audio Settings..."
-                    onClicked: Quickshell.execDetached(["kcmshell6", "kcm_pulseaudio"])
-                }
-            }
-
-            // ==========================================
-            // DISPLAY BRIGHTNESS SECTION
-            // ==========================================
-            ColumnLayout {
-                id: brightnessSection
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                spacing: 12
-                readonly property bool isCurrent: root.mode === "brightness"
-                visible: isCurrent
-                opacity: isCurrent ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: 220
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Theme.curveExpressiveDefaultEffects
-                    }
-                }
-
-                readonly property real norm: (typeof BrightnessService !== "undefined") ? BrightnessService.normalized : 1.0
-
-                // Header
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    MaterialIcon {
-                        text: brightnessSection.norm < 0.5 ? "brightness_low" : "brightness_medium"
-                        size: 20
-                        color: Colors.primary
-                    }
-
-                    Text {
-                        text: "Display Brightness"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontMedium
-                        font.weight: Font.DemiBold
-                        color: Colors.textOnSurface
-                        Layout.fillWidth: true
-                    }
-
-                    Text {
-                        text: Math.round(brightnessSection.norm * 100) + "%"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSmall
-                        font.weight: Font.DemiBold
-                        color: Colors.primary
-                    }
-                }
-
-                // Interactive Slider Groove
-                Rectangle {
-                    id: brightSliderTrack
-                    Layout.fillWidth: true
-                    implicitHeight: 28
-                    radius: Theme.radiusFull
-                    color: Colors.surfaceContainerHighest
-                    border.color: Theme.borderSubtle
-                    border.width: 1
-
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.bottom: parent.bottom
-                        width: Math.max(28, parent.width * Math.min(1.0, Math.max(0.05, brightnessSection.norm)))
-                        radius: Theme.radiusFull
-                        color: Colors.primary
-
-                        MaterialIcon {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "brightness_5"
-                            size: 16
-                            color: Colors.textOnPrimary
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-
-                        function applyBrightness(mx) {
-                            if (typeof BrightnessService !== "undefined") {
-                                const ratio = Math.max(0.05, Math.min(1.0, mx / brightSliderTrack.width));
-                                BrightnessService.setBrightness(ratio);
-                            }
-                        }
-
-                        onPressed: mouse => applyBrightness(mouse.x)
-                        onPositionChanged: mouse => { if (pressed) applyBrightness(mouse.x); }
-                        onWheel: wheel => {
-                            if (typeof BrightnessService !== "undefined") {
-                                const delta = wheel.angleDelta.y > 0 ? 0.05 : -0.05;
-                                const cur = BrightnessService.normalized;
-                                BrightnessService.setBrightness(Math.max(0.05, Math.min(1.0, cur + delta)));
-                            }
-                        }
-                    }
-                }
-
-                // Quick Preset Pills
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 6
-
-                    Repeater {
-                        model: [
-                            { label: "25%", val: 0.25 },
-                            { label: "50%", val: 0.50 },
-                            { label: "75%", val: 0.75 },
-                            { label: "100%", val: 1.00 }
-                        ]
-
-                        delegate: Rectangle {
-                            id: presetPill
-                            required property var modelData
-                            Layout.fillWidth: true
-                            implicitHeight: 26
-                            radius: Theme.radiusFull
-                            color: presetHover.hovered ? Colors.surfaceContainerHigh : Colors.surfaceContainer
-                            border.color: Theme.borderSubtle
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: presetPill.modelData.label
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11
-                                font.weight: Font.Medium
-                                color: Colors.textOnSurface
-                            }
-
-                            HoverHandler { id: presetHover }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (typeof BrightnessService !== "undefined") {
-                                        BrightnessService.setBrightness(presetPill.modelData.val);
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
 

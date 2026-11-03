@@ -14,11 +14,26 @@ SettingsPage {
 
     spacing: Theme.spaceMedium
 
+    /// Indicators the dock actually renders. A settings file written before
+    /// volume/brightness moved to the right-edge rail can still list them;
+    /// showing a switch for an indicator that no longer exists would be a lie,
+    /// so those stale ids are filtered out here (they stay in the file, inert,
+    /// until the user rewrites it).
+    readonly property var knownIconIds: ["kblayout", "network", "bluetooth",
+        "battery", "clipboard", "notifications"]
+
     /// The indicator list, read once so the header's count and the switches
     /// cannot disagree about what is configured.
-    readonly property var statusIcons: (typeof Config !== "undefined" && Config.settings
-            && Config.settings.dock && Config.settings.dock.statusIcons)
-        ? Config.settings.dock.statusIcons : []
+    readonly property var statusIcons: {
+        const all = (typeof Config !== "undefined" && Config.settings
+                && Config.settings.dock && Config.settings.dock.statusIcons)
+            ? Config.settings.dock.statusIcons : [];
+        const out = [];
+        for (let i = 0; i < all.length; ++i) {
+            if (all[i] && root.knownIconIds.indexOf(all[i].id) !== -1) out.push(all[i]);
+        }
+        return out;
+    }
 
     readonly property int enabledIconCount: {
         let n = 0;
@@ -46,8 +61,6 @@ SettingsPage {
                     case "kblayout": return "Keyboard Language Switcher (KDE DBus)";
                     case "network": return "Wi-Fi & Network Manager";
                     case "bluetooth": return "Bluetooth Controller (BlueZ)";
-                    case "brightness": return "Display Brightness (KDE Solid)";
-                    case "audio": return "Audio Volume (PipeWire)";
                     case "clipboard": return "Clipboard Manager (KDE Klipper)";
                     case "notifications": return "Notification Center Bell";
                     case "battery": return "Battery & Power Profiles (UPower)";

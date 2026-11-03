@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../dashboard/tabs/DashboardTabs.js" as DashboardTabs
+import "./PopoutModes.js" as PopoutModes
 
 Singleton {
     id: root
@@ -68,8 +69,6 @@ Singleton {
                 { "id": "kblayout", "enabled": true },
                 { "id": "network", "enabled": true },
                 { "id": "bluetooth", "enabled": true },
-                { "id": "brightness", "enabled": true },
-                { "id": "audio", "enabled": true },
                 { "id": "battery", "enabled": true },
                 { "id": "clipboard", "enabled": true },
                 { "id": "notifications", "enabled": true }
@@ -1228,7 +1227,7 @@ Singleton {
 
     // Fused bottom popout state
     property bool bottomPopoutVisible: false
-    property string bottomPopoutMode: "power" // "default", "bluetooth", "network", "audio", "power", "clock"
+    property string bottomPopoutMode: "power" // "default", "bluetooth", "network", "power", "clock"
     property real popoutTargetY: 0
 
     Timer {
@@ -1238,7 +1237,15 @@ Singleton {
         onTriggered: root.bottomPopoutVisible = false
     }
 
+    /// Drawer modes whose section was retired (volume and display brightness now
+    /// live on the right-edge rail). The rule lives in `PopoutModes.js` so it is
+    /// unit-testable; this only mirrors it for callers that want to ask.
+    readonly property var retiredPopoutModes: PopoutModes.RETIRED
+
     function openBottomPopout(mode, targetY) {
+        // A retired mode has no section: opening it would slide out an empty
+        // glass card, and re-targeting an open drawer would blank it.
+        if (PopoutModes.isRetired(mode)) return;
         popoutCloseTimer.stop();
         if (targetY !== undefined && targetY > 0) {
             popoutTargetY = targetY;

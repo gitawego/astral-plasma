@@ -131,9 +131,12 @@ Item {
         assert(facadeSrc.indexOf("function togglePopout(name)") !== -1, "DesktopSessionFacade must expose togglePopout(name)");
 
         const dockStatusSrc = readLocalFile("../dock/components/DockStatusIcons.qml");
-        assert(dockStatusSrc.indexOf("audioItem") !== -1, "DockStatusIcons must feature audioItem");
-        assert(dockStatusSrc.indexOf("PipewireAudio.toggleMute()") !== -1, "DockStatusIcons must support right-click mute toggle");
-        assert(dockStatusSrc.indexOf("PipewireAudio.setVolume(") !== -1, "DockStatusIcons must support wheel volume scrubbing");
+        // Volume moved to the right-edge rail; the dock's multi-gesture contract
+        // therefore covers mute and scrub *there*, not on a dock icon.
+        const railSrc = readLocalFile("../shell/RightEdgeControl.qml");
+        assert(railSrc.indexOf("toggleMute()") !== -1, "RightEdgeControl must support click-to-mute");
+        assert(railSrc.indexOf("setVolume(") !== -1, "RightEdgeControl must support wheel volume scrubbing");
+        assert(dockStatusSrc.indexOf("audioItem") === -1, "DockStatusIcons must not duplicate the volume icon");
         assert(dockStatusSrc.indexOf("BluetoothService.togglePower()") !== -1, "DockStatusIcons must support right-click Bluetooth toggle");
         assert(dockStatusSrc.indexOf("PowerService.cycleProfile()") !== -1, "DockStatusIcons must support middle-click Power Profile cycle");
         assert(dockStatusSrc.indexOf("AiTokenService.launchAgent()") !== -1, "DockStatusIcons must support right-click AI Agent launch");

@@ -630,6 +630,20 @@ When building sliding edge drawers on the right screen border (e.g. `RightEdgeCo
 
 ---
 
+### 8.11. One Surface Per Control: Volume & Brightness Belong To The Right Rail
+- **The Symptom**: Volume and display brightness could be changed from two places at once — the dock's status column and the vertical right-border rail — and the dock grew a "Display Brightness" drawer with preset pills. The user asked for the *dock* copy to go, because the right rail is the sidebar they actually use.
+- **Root Cause**: When the dock grew `audio` and `brightness` status icons, nobody removed the older right-edge rail (`RightEdgeControl`, commit `a7814d6`). Two writers for the same PipeWire/BrightnessService state, two visual languages for one control, and two hit-test regions competing for one physical need.
+- **The Rule**: a physical control has exactly one home surface. Here that is the right-edge rail: vertical sliders, wheel scrub, click-to-mute, live glyph. The dock's status column carries only what has no other home (keyboard layout, network, Bluetooth, battery, clipboard, notifications).
+- **What "remove it from the dock" actually touches**:
+  1. The indicator items in `DockStatusIcons.qml` (`audioItem`, `brightnessItem`) together with their hover/click/wheel wiring — leaving a hidden item that still binds `PipewireAudio` would keep a second writer alive.
+  2. The drawer sections in `FusedBottomPopout.qml` (`audioSection`, `brightnessSection`), their `targetPopWidth` / `targetContentHeight` switch arms, and the mode names in the `mode` / `bottomPopoutMode` comments. A mode with no section renders an empty card.
+  3. The shipped defaults (`config/settings.json` and the `Config.qml` fallback list). An id that no item renders is dead configuration.
+  4. **Stale user settings**: an existing `~/.config/astral-plasma/settings.json` still lists the removed ids. `StatusIconsPage` filters the list through `knownIconIds`, so the page cannot offer a switch for a control that no longer exists and the "N of M shown" header cannot lie. Do not silently rewrite the user's file.
+  5. Docs and tests that assert the icons exist (`README` status-icon line, `tst_clipboard_and_notifications`, `tst_omarchy_borrowed_features`), replaced with a contract that the *rail* still owns the gestures.
+- **Contract Test**: `tests/tst_dock_audio_brightness_removed.qml` fails if the dock grows the indicators or drawers back, or if the rail loses its volume/brightness wiring. `tests/tst_status_icons_stale_filter.qml` proves the settings page filters stale ids.
+- **Do not confuse the two drawers**: the *right-edge rail* is `RightEdgeControl` + `rightEdgeControlWrapper`; the *in-dock drawer* is `FusedBottomPopout`. They are separate components with separate lifecycles, and "the sidebar" in this repo means the dock in some docs and the right rail in others.
+- **A screenshot decides the subject.** When the user attaches a picture, the change is to what is *in* the picture; the caption names the surface to keep ("they are at right sidebar" = the rail survives). An earlier attempt read the caption as the subject, deleted the rail, passed a green suite written against that misreading, and had to be reverted in full — proof that tests validate the contract, never its fidelity to the request. Deletion of a user-facing surface stops for a one-line confirmation first. Full account: [`docs/POST-MORTEM-2026-11-03-control-home.md`](POST-MORTEM-2026-11-03-control-home.md).
+
 ## 9. The Definitive Engineering Guide to Building the Liquid Glass Theme Correctly
 
 ### 9.1. The Optical Anatomy of Authentic Liquid Glass

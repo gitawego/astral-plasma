@@ -78,6 +78,28 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 ---
 
 
+## 4b. Mandatory Rule: Resolve The Subject Before Deleting Anything
+
+> [!CAUTION]
+> **A screenshot is the subject of the request.** When a request attaches a picture, the
+> change is to what is **in** the picture; the caption usually names the surface that must
+> **survive** ("they are at right sidebar" = the right rail stays, the pictured dock copies go).
+>
+> - **Name both surfaces before editing.** For any delete / de-duplicate / "remove this"
+>   request, state in one line which surface is removed and which is kept, then start. If the
+>   two are near-synonyms in this repo — here "sidebar" means the **dock** in `README.md` but
+>   the **right rail** (`RightEdgeControl`) in ordinary speech, while the in-dock drawer is
+>   `FusedBottomPopout` — that sentence is mandatory.
+> - **Deletion is a confirmation point.** Removing a user-facing surface, or any destructive
+>   change over ~100 lines, gets a one-line confirmation even when confident. A revert costs
+>   a round trip plus the user's trust; asking costs one message.
+> - **Green tests never validate intent.** TDD proves the code matches the written contract;
+>   whether that contract matches the request is reviewed separately, against the request's
+>   own words and artefacts. A suite authored against a misreading passes perfectly.
+> - Worked example: [`docs/POST-MORTEM-2026-11-03-control-home.md`](docs/POST-MORTEM-2026-11-03-control-home.md).
+
+---
+
 ## 5. Repository Map
 
 ```

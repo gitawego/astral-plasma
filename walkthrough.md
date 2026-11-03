@@ -1,3 +1,33 @@
+# Astral Plasma — Volume & Brightness Leave The Dock; The Right Rail Owns Them
+
+> [!NOTE]
+> **Issue**: The dock's status column carried a volume indicator, a brightness indicator, and an in-dock "Display Brightness" drawer with preset pills — a second copy of controls the right-edge rail already provides. The user asked for the dock copies to be removed.
+>
+> **Root cause**: When the dock grew `audio` and `brightness` status icons, the older right-edge rail (`shell/RightEdgeControl.qml`, commit `a7814d6`) was never retired. Two writers for the same PipeWire/BrightnessService state, two visual languages for one control.
+>
+> **The rail stays** — it is the surface the user uses: vertical sliders, wheel scrub, click-to-mute, live glyph. What was removed is the dock duplicate:
+> 1. **Indicators** (`dock/components/DockStatusIcons.qml`): `audioItem` and `brightnessItem` deleted with their hover/click/wheel wiring, so no dock item binds `PipewireAudio` or `BrightnessService` any more.
+> 2. **In-dock drawers** (`dock/popouts/FusedBottomPopout.qml`): `audioSection` and `brightnessSection` (including the "Display Brightness" card with 25/50/75/100 % pills) removed, along with their `targetPopWidth` / `targetContentHeight` switch arms and stale mode names in the `mode` / `bottomPopoutMode` comments.
+> 3. **Configuration**: the two ids dropped from `config/settings.json` and from the `Config.qml` fallback list.
+> 4. **Stale user settings**: an existing `~/.config/astral-plasma/settings.json` still lists `brightness` and `audio`. `StatusIconsPage` now filters the list through `knownIconIds`, so the page cannot offer a switch for a control that no longer exists and its "N of M shown" header cannot lie. The user's file is left untouched.
+> 5. **Ghost drawer guard** (`config/PopoutModes.js` + `Config.openBottomPopout`): a retired mode has no section, and `UnifiedShell` sizes the sliding wrapper from the active section's height — so a leftover `quickshell ipc call popout open brightness` used to slide out an empty glass card. `PopoutModes.isRetired()` makes such a request a no-op, including not hijacking a drawer that is already open.
+>
+> **Tests** (TDD, red first):
+> - `tests/tst_dock_audio_brightness_removed.qml` — the dock declares no volume/brightness indicator and never touches the two services; the fused popout has no `audioSection` / `brightnessSection` / "Display Brightness"; `settings.json` and the `Config` defaults ship neither id; the surviving drawers (network, bluetooth, clock) are intact; and the rail still drives both services. It strips comments and string literals before scanning, so prose cannot satisfy a contract.
+> - `tests/tst_retired_popout_modes.qml` — drives the pure `PopoutModes.js` rule: retired ids are inert, matching ignores case, a retired request cannot hijack an open drawer, and live modes pass through untouched.
+> - `tests/tst_status_icons_stale_filter.qml` — instantiates the real `StatusIconsPage` and proves the rendered list contains only known ids.
+> - `tests/tst_clipboard_and_notifications.qml` / `tst_omarchy_borrowed_features.qml` updated: they asserted the removed dock icons, so they now assert that the *rail* keeps the mute/scrub gestures and that the dock does not duplicate the volume icon.
+>
+> **Verified live** (shell hot-reloaded, `spectacle`):
+> - The dock status column no longer shows the speaker or brightness glyphs; the remaining indicators (Bluetooth, clipboard, notifications, battery, power) still render and their drawers still open (network / bluetooth / clock each produce a full drawer diff).
+> - `quickshell ipc call rightedge open` still slides the rail out (right-edge pixel diff 62x320 px) — the rail is untouched.
+> - `quickshell ipc call popout open brightness` now leaves the screen at its steady frame instead of drawing a card; `popout open clock` still opens.
+> - `make test`: all Rust suites green, all 143 QML suites green.
+>
+> **Post-mortem**: the first attempt deleted the right rail (the surface the user asked to keep) and kept the dock copies; it was reverted in full. Cause, recovery and corrective actions: [`docs/POST-MORTEM-2026-11-03-control-home.md`](docs/POST-MORTEM-2026-11-03-control-home.md).
+
+---
+
 # Astral Plasma — Cyberpunk Radial Cover Visualizer & Multi-Archetype Presentation
 
 > [!NOTE]

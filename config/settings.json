@@ -93,14 +93,6 @@
         "enabled": true
       },
       {
-        "id": "brightness",
-        "enabled": true
-      },
-      {
-        "id": "audio",
-        "enabled": true
-      },
-      {
         "id": "battery",
         "enabled": true
       },
