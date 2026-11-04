@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Mpris
 import "../config"
+import "MediaElection.js" as MediaElection
 
 Singleton {
     id: root
@@ -259,80 +260,47 @@ Singleton {
         return false;
     }
 
+    /// The last player observed with positive evidence (claims Playing *and*
+    /// owns a stream). An ambiguous snapshot never overwrites it: Wine's bridge
+    /// drops `Playing` on its own, and losing the memory at that moment is what
+    /// stranded the widget on a paused browser tab.
+    property string stickyPlayerBus: ""
+
+    /// Ask the shared rule what to show.
+    ///
+    /// Deliberately NOT gated on `audioArbitrationAvailable`: that gate depends
+    /// on the audio visualiser, which only streams while a dashboard tab is
+    /// open, so the same players produced a different answer depending on
+    /// whether the dashboard happened to be visible.
+    function resolveElectedPlayer() {
+        if (!players || players.length === 0) return null;
+        if (typeof AudioStreams === "undefined" || !AudioStreams.matcher) return null;
+        const candidates = MediaElection.candidatesFrom(players, (identity, busName) =>
+            AudioStreams.matcher.isAudible(identity, busName));
+
+        // Remember positive evidence before deciding, so a player that is
+        // audible *right now* also wins the tie it is part of.
+        const sticky = MediaElection.stickyWinner(candidates);
+        if (sticky) stickyPlayerBus = sticky;
+
+        const index = MediaElection.resolveSelection(candidates, currentPlayer ? currentPlayer.dbusName : null, stickyPlayerBus);
+        return MediaElection.winnerFrom(players, index);
+    }
+
     function syncToPlayingPlayer(corrective) {
         if (!players || players.length === 0) return;
-        // A corrective sync fires when ground truth arrives or changes (stream
-        // list, arbitration availability, audio flow). It may only demote a
-        // stale selection toward an arbitration-proven winner: promoting on
-        // bare DBus claims here would re-elect the same stale browser session
-        // the correction is meant to dethrone, and clearing a manual pick
-        // would make the dropdown useless (it reverts within one poll).
-        const isCorrection = corrective === true;
-        if (isCorrection && manualPlayerBusName !== "") return;
-        // Prioritize any actively playing native player first (e.g. Edge, Chrome, Firefox)
-        let winner = null;
-        for (let i = 0; i < players.length; i++) {
-            let p = players[i];
-            if (!isWinePlayer(p) && isPlayerPlaying(p)) {
-                winner = p;
-                break;
-            }
-        }
-        if (!winner) {
-            for (let i = 0; i < players.length; i++) {
-                let p = players[i];
-                if (isPlayerPlaying(p)) {
-                    winner = p;
-                    break;
-                }
-            }
-        }
-        // Stream owners outrank bare claimants. Arbitration needs *flowing*
-        // audio, so a paused owner (uncorked stream, silent room) and a stale
-        // claimant (Playing state, no stream) tie at zero under it — yet the
-        // stream list still names the owner. Preferring an owner elects the
-        // paused Firefox over a stale Edge, and never elects anything that
-        // owns nothing. Paused displays are preserved: when no stream exists
-        // at all this finds nothing and selection keeps.
-        if (!winner && audioArbitrationAvailable && AudioStreams.streams && AudioStreams.streams.length > 0) {
-            for (let i = 0; i < players.length; i++) {
-                let p = players[i];
-                if (!isWinePlayer(p)
-                        && AudioStreams.matcher.isAudible(p.identity || "", p.dbusName || "")) {
-                    winner = p;
-                    break;
-                }
-            }
-            if (!winner) {
-                for (let j = 0; j < players.length; j++) {
-                    let q = players[j];
-                    if (AudioStreams.matcher.isAudible(q.identity || "", q.dbusName || "")) {
-                        winner = q;
-                        break;
-                    }
-                }
-            }
-        }
-        if (isCorrection && !audioArbitrationAvailable) return;
-        if (winner) {
-            manualPlayer = null;
-            manualPlayerBusName = "";
-            if (currentPlayer !== winner) {
-                currentPlayer = winner;
-            }
-            return;
-        }
-        if (isCorrection) return;
-        // If none playing, prefer Cloud Music if available
-        for (let i = 0; i < players.length; i++) {
-            let p = players[i];
-            if (p && ((p.dbusName && p.dbusName.indexOf("cloudmusic") !== -1) || (p.identity && p.identity.indexOf("Cloud Music") !== -1))) {
-                if (manualPlayerBusName === "") {
-                    if (currentPlayer !== p) currentPlayer = p;
-                    return;
-                }
-            }
-        }
+        // A manual pick is never overridden by a background sync. Choosing a
+        // player from the dropdown used to survive only until the next ground
+        // truth arrived (a corrective sync, or opening the dashboard), which
+        // made the dropdown feel broken. The pick is cleared explicitly when a
+        // player starts playing on its own (see the PlaybackStateChanged hook).
+        if (manualPlayerBusName !== "") return;
+
+        const winner = resolveElectedPlayer();
+        if (!winner) return;              // ambiguity: keep what is shown
+        manualPlayer = null;
+        manualPlayerBusName = "";
+        if (currentPlayer !== winner) currentPlayer = winner;
     }
 
     Connections {
@@ -412,28 +380,12 @@ Singleton {
             }
         }
 
-        // 2. Check if any player is actively Playing
-        // Prioritize native playing players first, then wine
-        let playingPlayer = null;
-        for (let i = 0; i < players.length; i++) {
-            let p = players[i];
-            if (!isWinePlayer(p) && isPlayerPlaying(p)) {
-                playingPlayer = p;
-                break;
-            }
-        }
-        if (!playingPlayer) {
-            for (let i = 0; i < players.length; i++) {
-                let p = players[i];
-                if (isPlayerPlaying(p)) {
-                    playingPlayer = p;
-                    break;
-                }
-            }
-        }
-
-        if (playingPlayer) {
-            if (currentPlayer !== playingPlayer) currentPlayer = playingPlayer;
+        // 2. The same rule the corrective sync uses. It either names a player
+        //    or stays silent (ambiguity), in which case the existing selection
+        //    below is kept - never "first owner wins".
+        const elected = resolveElectedPlayer();
+        if (elected) {
+            if (currentPlayer !== elected) currentPlayer = elected;
             return;
         }
 

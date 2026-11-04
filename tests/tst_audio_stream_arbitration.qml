@@ -97,6 +97,51 @@ Item {
         assert(!unknown.isAudible("NetEase Cloud Music (Wine)", "org.mpris.MediaPlayer2.cloudmusic"),
             "a generic stream name must not be guessed onto a player");
 
+        // ------------------------------------------------------------------
+        // Several applications can hold an uncorked, unmuted stream at once.
+        // A paused consumer keeps its node open (browsers never cork on pause),
+        // so "owns a stream" is not "produces sound". On this user's box Edge
+        // keeps two uncorked streams alive while paused, and the election
+        // promoted Edge over the NetEase music that was actually audible.
+        //
+        // The player's own playback claim is the only per-player signal that
+        // separates them, so it must arbitrate *between* claimants: a player
+        // that claims Paused cannot win an election while another player that
+        // owns a stream claims Playing.
+        // ------------------------------------------------------------------
+        // The claim-aware election itself lives in services/MediaElection.js
+        // (pinned by tests/tst_media_election.qml) so the service and the suite
+        // share one implementation rather than a copy. What this suite still
+        // owns is *ownership*: an uncorked stream is reported for every client
+        // that holds one, which is why ownership alone cannot elect.
+        const multi = Qt.createQmlObject(
+            'import QtQuick; import "../components"; AudioStreamMatcher { streams: ['
+            + '{ name: "Microsoft Edge", binary: "msedge" },'
+            + '{ name: "NetEase Cloud Music", binary: "wine-preloader" }] }',
+            testRoot);
+        assert(multi.isAudible("Microsoft Edge", "org.mpris.MediaPlayer2.plasma-browser-integration"),
+            "an open stream still counts for *ownership* (it is what the sound server reports)");
+        assert(multi.isAudible("NetEase Cloud Music (Wine)", "org.mpris.MediaPlayer2.cloudmusic"),
+            "both applications own a stream at once - the case that broke the election");
+
+        const mpris = readLocalFile("../services/MprisMedia.qml");
+        const election = readLocalFile("../services/MediaElection.js");
+        assert(/import "MediaElection.js" as MediaElection/.test(mpris),
+            "MprisMedia must import the shared election module");
+        assert(/MediaElection\.resolveSelection\(/.test(mpris),
+            "the election must delegate to MediaElection.resolveSelection");
+        const helpers = (mpris.match(/resolveElectedPlayer\(\)/g) || []).length;
+        assert(helpers >= 3,
+            "both election sites must go through resolveElectedPlayer, found " + helpers);
+        assert(!/if\s*\(\s*!isWinePlayer\(p\)\s*&&\s*isPlayerPlaying\(p\)\)\s*\{\s*winner/.test(mpris),
+            "the old 'first non-Wine owner' shortcut must be gone (it let a paused browser win)");
+        assert(/function resolveSelection\(/.test(election),
+            "the election rule must be defined once, in MediaElection.js");
+        assert(/function stickyWinner\(/.test(election),
+            "the sticky memory must live with the rule");
+        assert(!/audioArbitrationAvailable[\s\S]{0,80}electAudible/.test(mpris),
+            "the election must not be gated on the dashboard-only audio arbitration");
+
         // The flow gate must not wait for a long hold: a pause stops the samples,
         // which the capture reports as exact 0.0, while a quiet passage still
         // reports some energy.

@@ -100,6 +100,49 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 
 ---
 
+## 4c. Mandatory Rule: Never Claim A Fix Without Proof
+
+> [!CAUTION]
+> **"Fixed" is a claim about the running system, not about the diff.** A passing suite, a
+> compiled binary, a clean `git status` or a plausible root-cause story are **not** proof that
+> the user's problem is gone. State a fix only after observing the new behaviour on the live
+> desktop, and say plainly what was *not* verified.
+>
+> ### What counts as proof
+> 1. **Live observation of the reported symptom, before and after.** Reproduce the failure
+>    first (the wrong title on screen, the number that reads 60 %), then observe the corrected
+>    behaviour in the same conditions.
+> 2. **The evidence must show the thing the user complained about**, not a proxy for it. A
+>    screenshot that happens to miss the widget proves nothing; a pixel diff against a region
+>    that contains a browser window proves nothing either.
+> 3. **Say which surface you actually saw.** "Captured X and it showed Y" — with the name of
+>    the view, not just "verified live".
+>
+> ### Anti-patterns that have already burned this project
+> - **Calling a screenshot "proof" when it never contained the UI.** Captures taken while a
+>   hover-driven drawer had already auto-closed (dashboard closes 350 ms after the pointer
+>   leaves) were presented as verification. They showed a browser window.
+> - **Proving the code path instead of the outcome.** A live A/B of a decision function on
+>   real session data shows what the function *would* choose; it does not show that the
+>   running shell imported it, that the surface re-evaluated, or that the user's screen
+>   changed.
+> - **Asserting success after a self-authored test passes.** Tests encode the contract you
+>   inferred; when the inference is wrong they pass perfectly (see §4b).
+> - **Reporting "all green" as the headline** when the user's screenshot still shows the bug.
+>
+> ### Required phrasing
+> - Verified: *"Captured the media tab with music playing; it shows `恭喜发财`, NetEase — not
+>   x.com."*
+> - Verified, partially: *"The election returns NetEase for these live inputs (command
+>   output below). I did not capture the widget itself; the surface was closed during capture."*
+> - Not verified: *"Logic and tests are in place; the live UI still showed Edge, so this is
+>   not fixed."*
+>
+> **If the live evidence contradicts the change, the change is not finished** — keep
+> investigating, and report the contradiction instead of the intention.
+
+---
+
 ## 5. Repository Map
 
 ```
