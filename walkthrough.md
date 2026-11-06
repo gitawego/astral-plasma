@@ -1,3 +1,18 @@
+# Astral Plasma — The Dock's Second Battery Icon (Power Profile) Is Gone
+
+> [!NOTE]
+> **Issue**: The dock's status column showed a battery icon and, directly below it, a second icon that opened the same "Battery / Power profile" card and appeared to do nothing. The user circled it and asked *"why there is a duplicated icon which does nothing?"*
+>
+> **Root cause**: `DockStatusIcons` declared a standalone `profileItem` beside `batteryItem`. Both requested the fused drawer, and `FusedBottomPopout` renders one section for both modes (`"battery"` and `"default"`), so the second icon's left click re-opened a panel that was already showing. Its only distinct action was middle-click `PowerService.cycleProfile()`. It was also absent from the Settings status-icon list and had no visibility guard, so it survived turning the battery indicator off.
+>
+> **Fix**: removed `profileItem`. The battery indicator now owns the drawer and the quick-switch gesture: left click opens the battery/profile card, middle click cycles the profile. Drawer content is unchanged - the three profile pills still live in `FusedBottomPopout`. Because the removed icon was always visible, `PowerService.hasPowerProfiles` now keeps the battery slot reachable on desktops with no battery but with `powerprofilesctl`.
+>
+> **Tests** (TDD, red first): `tests/tst_dock_power_profile_single_entry.qml` - no `profileItem`, exactly one `batteryItem`, that block keeps `openBottomPopout("battery")`, `PowerService.cycleProfile()`, `LeftButton | MiddleButton` and the `hasPowerProfiles` guard, and the drawer still offers power-saver/balanced/performance via `setProfile`.
+>
+> **Verified live** (shell hot-reloaded, `spectacle`): the rail now shows one battery entry (Bluetooth, clipboard, notifications, battery, AI, settings, power). `popout open battery` still slides out "Battery: 96% (fully-charged)", "Power profile: Balanced" and the three profile pills. `make test-rust` and `make test-qml` green.
+
+---
+
 # Astral Plasma — GPU "Usage" Is Measured Engine Time, Not A Clock Ratio
 
 > [!NOTE]

@@ -307,7 +307,12 @@ LiquidGlassCard {
         // Battery Indicator
         Item {
             id: batteryItem
-            visible: root.isIconEnabled("battery") && ((typeof PowerService !== "undefined" && PowerService.hasBattery) || (typeof PowerService !== "undefined" && PowerService.batteryPercentage < 100))
+            // A laptop shows the battery; a desktop with power-profiles-daemon
+            // still gets this slot (it renders the profile glyph via getIcon) so
+            // removing the separate profile icon does not strand the switcher.
+            visible: root.isIconEnabled("battery")
+                && (typeof PowerService !== "undefined")
+                && (PowerService.hasBattery || PowerService.hasPowerProfiles || PowerService.batteryPercentage < 100)
             implicitWidth: visible ? root.btnSize : 0
             implicitHeight: visible ? root.btnSize : 0
             width: implicitWidth
@@ -336,62 +341,18 @@ LiquidGlassCard {
                     }
                 }
 
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        Config.openBottomPopout("battery", batteryItem.mapToItem(null, 0, batteryItem.height / 2).y);
-                    }
-                }
-            }
-        }
-
-        // 4. Power Profile / Rocket
-        Item {
-            id: profileItem
-            implicitWidth: root.btnSize
-            implicitHeight: root.btnSize
-            width: root.btnSize
-            height: root.btnSize
-
-            Rectangle {
-                anchors.fill: parent
-                radius: Theme.radiusFull
-                color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "default") 
-                    ? Colors.primary 
-                    : (profileHover.hovered ? Colors.surfaceContainerHigh : "transparent")
-
-                MaterialIcon {
-                    anchors.centerIn: parent
-                    text: {
-                        switch (PowerService.currentProfile) {
-                            case "power-saver": return "energy_savings_leaf";
-                            case "balanced": return "balance";
-                            default: return "rocket_launch";
-                        }
-                    }
-                    size: root.iconSize
-                    color: (Config.bottomPopoutVisible && Config.bottomPopoutMode === "default") 
-                        ? Colors.textOnPrimary 
-                        : Colors.textOnSurfaceVariant
-                }
-
-                HoverHandler {
-                    id: profileHover
-                    onHoveredChanged: {
-                        if (hovered) Config.openBottomPopout("default", profileItem.mapToItem(null, 0, profileItem.height / 2).y);
-                    }
-                }
-
+                // One entry owns the battery + power-profile drawer. The drawer
+                // itself carries the three profile pills; middle click keeps the
+                // quick-switch gesture without a second, duplicate icon.
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                     onClicked: mouse => {
                         if (mouse.button === Qt.MiddleButton) {
-                            PowerService.cycleProfile();
+                            if (typeof PowerService !== "undefined") PowerService.cycleProfile();
                         } else {
-                            Config.openBottomPopout("default", profileItem.mapToItem(null, 0, profileItem.height / 2).y);
+                            Config.openBottomPopout("battery", batteryItem.mapToItem(null, 0, batteryItem.height / 2).y);
                         }
                     }
                 }

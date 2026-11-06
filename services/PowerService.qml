@@ -13,6 +13,10 @@ Singleton {
     readonly property real percentage: batteryPercentage / 100.0
     property bool hasBattery: false
     property bool isCharging: false
+    // True once `powerprofilesctl get` answers with a real profile. Desktops have
+    // no battery, but they can still switch profiles; the dock's battery slot is
+    // the single entry for both, so it must stay reachable there too.
+    property bool hasPowerProfiles: false
 
     // Confirmation dialog state
     property bool confirmDialogVisible: false
@@ -173,6 +177,7 @@ Singleton {
                 const p = this.text.trim();
                 if (p === "performance" || p === "balanced" || p === "power-saver") {
                     root.currentProfile = p;
+                    root.hasPowerProfiles = true;
                 }
             }
         }
