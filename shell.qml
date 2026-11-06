@@ -88,6 +88,7 @@ ShellRoot {
             Config.openDownloadsWindow();
             downloadsWindow.openSettings();
         }
+        function raise(): void { downloadsWindow.raiseWindow(); }
         function close(): void { Config.closeDownloadsWindow(); }
         function toggle(): void { Config.toggleDownloadsWindow(); }
     }

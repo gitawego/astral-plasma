@@ -57,6 +57,19 @@ Item {
         assert(/onCloseRequested:\s*Config\.closeDownloadsWindow\(\)/.test(winSrc),
             "the window close control must close the manager");
 
+        // Re-clicking the drawer action while the window is already open must
+        // bring it back to the foreground, not silently do nothing.
+        assert(/function raiseWindow\(\)/.test(winSrc),
+            "DownloadsWindow must expose raiseWindow()");
+        assert(winSrc.indexOf("WindowService.activateWindowByTitle") >= 0,
+            "raiseWindow must activate the toplevel by caption (shell windows have no UUID in the watcher list)");
+        const windowSvcSrc = readLocalFile("../services/WindowService.qml");
+        assert(/function activateWindowByTitle\(title\)/.test(windowSvcSrc)
+               && windowSvcSrc.indexOf("\"activate-title\"") >= 0,
+            "WindowService must route caption activation to the daemon's activate-title verb");
+        assert(/onDownloadsWindowRequested/.test(winSrc),
+            "the window must listen for the open/raise request");
+
         // 2. State + transitions in Config.
         const cfgSrc = readLocalFile("../config/Config.qml");
         assert(/property bool downloadsWindowVisible/.test(cfgSrc),
@@ -71,6 +84,8 @@ Item {
             "openDownloadsWindow must show the window");
         assert(/dashboardVisible\s*=\s*false/.test(openBlock[1]),
             "openDownloadsWindow must close the layer-shell drawer first");
+        assert(/downloadsWindowRequested\(\)/.test(openBlock[1]),
+            "every open request must signal the window to raise itself");
 
         // 3. The drawer exposes the action and adapts to its host.
         const tabSrc = readLocalFile("../dashboard/tabs/DownloadsTab.qml");

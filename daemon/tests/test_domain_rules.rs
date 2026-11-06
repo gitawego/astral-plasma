@@ -277,6 +277,22 @@ fn shell_driven_activation_reports_itself_to_the_watcher() {
 }
 
 #[test]
+fn shell_toplevels_can_be_activated_by_caption() {
+    use astral_plasma::infrastructure::kwin_adapter::activate_title_script;
+
+    let script = activate_title_script("Astral Downloads");
+    assert!(script.contains(r#"var target = "Astral Downloads";"#));
+    assert!(script.contains("w.caption"));
+    assert!(script.contains("workspace.activeWindow = w"));
+    assert!(script.contains(r#""WindowActivated""#),
+        "caption activation must report itself to the watcher like the UUID path");
+
+    // A title with a quote must not break out of the script string.
+    let quoted = activate_title_script("Say \"hi\"");
+    assert!(quoted.contains(r#"Say \"hi\""#), "the title must be JSON-escaped");
+}
+
+#[test]
 fn test_workspace_control_use_case() {
     use std::sync::Mutex;
     use astral_plasma::domain::ports::{DynResult, WorkspacePort};

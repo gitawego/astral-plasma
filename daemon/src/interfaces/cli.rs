@@ -620,6 +620,24 @@ pub async fn run_cli() -> DynResult<()> {
                 win_ctrl.activate(&args[2])?;
             }
         }
+        // Activate the shell's own toplevels by caption. The watcher filters
+        // `skipTaskbar` shell surfaces out of its window list, so the download
+        // manager cannot look up its own UUID there; KWin still has the window.
+        "activate-title" => {
+            if args.len() >= 3 {
+                let title = args[2..].join(" ");
+                match crate::infrastructure::desktop_factory::detect_compositor() {
+                    crate::infrastructure::desktop_factory::CompositorKind::KWin => {
+                        crate::infrastructure::kwin_adapter::activate_window_by_title(&title)?;
+                    }
+                    crate::infrastructure::desktop_factory::CompositorKind::Hyprland => {
+                        let _ = std::process::Command::new("hyprctl")
+                            .args(["dispatch", "focuswindow", &format!("title:^{}$", title)])
+                            .output();
+                    }
+                }
+            }
+        }
         "close" => {
             if args.len() >= 3 {
                 let win_ctrl = WindowControlUseCase::new(crate::infrastructure::desktop_factory::create_window_manager_port());

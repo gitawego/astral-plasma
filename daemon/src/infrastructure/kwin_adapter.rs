@@ -81,6 +81,65 @@ for (var i = 0; i < wins.length; i++) {{
     )
 }
 
+/// Build the KWin script that activates a window by caption.
+///
+/// The shell's own toplevels are deliberately absent from the watcher's window
+/// list (they are `skipTaskbar` shell surfaces), so the download manager cannot
+/// look up its own UUID there. KWin still has the window, so match its caption.
+pub fn activate_title_script(title: &str) -> String {
+    let target = serde_json::to_string(title).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        r#"
+var target = {target};
+var wins = workspace.windowList();
+for (var i = 0; i < wins.length; i++) {{
+    var w = wins[i];
+    if (("" + (w.caption || "")) === target) {{
+        console.warn("ASTRAL_PLASMA ACTIVATING BY TITLE: " + w.caption);
+        workspace.activeWindow = w;
+        callDBus("{dbus_name}", "{dbus_path}", "{dbus_name}", "WindowActivated",
+                 "" + (w.caption || ""),
+                 "" + (w.resourceClass || ""),
+                 "" + (w.desktopFileName || ""),
+                 ("" + w.internalId).replace("{{","").replace("}}",""));
+        break;
+    }}
+}}
+"#,
+        dbus_name = branding::DBUS_WATCHER_NAME,
+        dbus_path = branding::DBUS_WATCHER_PATH,
+    )
+}
+
+/// Runs a one-shot KWin script through the scripting DBus interface.
+fn run_script(script: String) -> DynResult<()> {
+    let script_file = branding::tmp_file("kwin_activate.js");
+    fs::write(&script_file, script)?;
+
+    let num_out = Command::new("qdbus6")
+        .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy()])
+        .output()?;
+    let num = String::from_utf8_lossy(&num_out.stdout).trim().to_string();
+
+    let _ = Command::new("qdbus6")
+        .args(["org.kde.KWin", &format!("/Scripting/Script{}", num), "org.kde.kwin.Script.run"])
+        .output();
+    let _ = Command::new("qdbus6")
+        .args(["org.kde.KWin", &format!("/Scripting/Script{}", num), "org.kde.kwin.Script.stop"])
+        .output();
+
+    Ok(())
+}
+
+/// Activates a window by exact caption (used for the shell's own toplevels,
+/// which the watcher filters out of its window list).
+pub fn activate_window_by_title(title: &str) -> DynResult<()> {
+    if title.trim().is_empty() {
+        return Err("window title is required".into());
+    }
+    run_script(activate_title_script(title))
+}
+
 impl KWinAdapter {
     pub fn new() -> Self {
         Self
@@ -265,24 +324,7 @@ impl WindowManagerPort for KWinAdapter {
             .trim()
             .to_string();
 
-        let script = activate_script(&target_uuid);
-
-        let script_file = branding::tmp_file("kwin_activate.js");
-        fs::write(&script_file, script)?;
-
-        let num_out = Command::new("qdbus6")
-            .args(["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &script_file.to_string_lossy()])
-            .output()?;
-        let num = String::from_utf8_lossy(&num_out.stdout).trim().to_string();
-
-        let _ = Command::new("qdbus6")
-            .args(["org.kde.KWin", &format!("/Scripting/Script{}", num), "org.kde.kwin.Script.run"])
-            .output();
-        let _ = Command::new("qdbus6")
-            .args(["org.kde.KWin", &format!("/Scripting/Script{}", num), "org.kde.kwin.Script.stop"])
-            .output();
-
-        Ok(())
+        run_script(activate_script(&target_uuid))
     }
 
     fn close_window(&self, window_id: &str) -> DynResult<()> {

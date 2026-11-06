@@ -81,6 +81,9 @@ Item {
     readonly property int padLarge: (typeof Theme !== "undefined" && Theme.padLarge !== undefined) ? Theme.padLarge : 16
     readonly property int spaceSmall: (typeof Theme !== "undefined" && Theme.spaceSmall !== undefined) ? Theme.spaceSmall : 8
     readonly property int spaceMedium: (typeof Theme !== "undefined" && Theme.spaceMedium !== undefined) ? Theme.spaceMedium : 12
+    readonly property int spaceLarge: (typeof Theme !== "undefined" && Theme.spaceLarge !== undefined) ? Theme.spaceLarge : 16
+    readonly property int spaceExtraLarge: (typeof Theme !== "undefined" && Theme.spaceExtraLarge !== undefined) ? Theme.spaceExtraLarge : 24
+    readonly property int spaceExtraSmall: (typeof Theme !== "undefined" && Theme.spaceExtraSmall !== undefined) ? Theme.spaceExtraSmall : 4
     readonly property int radiusFull: (typeof Theme !== "undefined" && Theme.radiusFull !== undefined) ? Theme.radiusFull : 9999
     readonly property int radiusCard: (typeof Theme !== "undefined" && Theme.radiusGlassCard !== undefined) ? Theme.radiusGlassCard : 18
     readonly property int radiusItem: (typeof Theme !== "undefined" && Theme.radiusGlassItem !== undefined) ? Theme.radiusGlassItem : 12
@@ -121,6 +124,7 @@ Item {
     readonly property alias taskListFlickableItem: taskList
     readonly property alias taskListColumnItem: listColumn
     readonly property alias taskRowRepeaterItem: taskRowRepeater
+    readonly property alias ledgerItem: ledger
     readonly property alias addDialogItem: addDialog
     readonly property alias urlInputItem: urlInput
     readonly property alias splitValueTextItem: splitValueText
@@ -136,8 +140,8 @@ Item {
     readonly property alias ariaInstallBannerItem: ariaInstallBanner
 
     // Bounded list: 4 rows visible, the rest scrolls (AGENTS.md §7.2).
-    readonly property int rowHeight: 58
-    readonly property int maxListHeight: 4 * rowHeight + 3 * root.spaceSmall
+    readonly property int rowHeight: 66
+    readonly property int maxListHeight: 4 * rowHeight + 3 * root.spaceMedium
     readonly property int emptyStateHeight: 150
 
     readonly property bool isTargetVisible: testMode || (
@@ -218,8 +222,12 @@ Item {
     // Status tint: one place, no per-row hardcoding.
     function statusColor(status) {
         const st = (status || "").toLowerCase();
-        if (st === "complete") return "#34d399";
-        if (st === "error") return "#f87171";
+        if (st === "complete") {
+            return (typeof Colors !== "undefined" && Colors.success) ? Colors.success : "#34d399";
+        }
+        if (st === "error") {
+            return (typeof Colors !== "undefined" && Colors.error) ? Colors.error : "#f87171";
+        }
         if (st === "paused") return root.textMuted;
         return root.accent;
     }
@@ -351,6 +359,32 @@ Item {
     readonly property bool showAggregateProgress: root.activeCount > 0 && !root.addDialogOpen && !root.settingsOpen
     readonly property bool showClearButton: root.segment === "finished" && root.finishedCount > 0 && !root.addDialogOpen && !root.settingsOpen
 
+    /// Bytes represented by the current segment (finished rows show their size).
+    readonly property real segmentBytes: {
+        let sum = 0;
+        const list = root.segmentTasks || [];
+        for (let i = 0; i < list.length; ++i) {
+            const t = list[i];
+            if (t) sum += Number(t.completed_length) || 0;
+        }
+        return sum;
+    }
+
+    /// The window's bottom ledger: one monospace line of live state. Empty
+    /// segments still say something true ("IDLE"), never a decorative dash.
+    readonly property string ledgerText: {
+        if (!root.isAriaAvailable) return "ENGINE OFFLINE";
+        if (root.segment === "active") {
+            if (root.activeCount === 0) return "IDLE";
+            return root.activeCount + " ACTIVE · "
+                + Math.round(root.aggregateProgress * 100) + "% · "
+                + root.formatSpeed(root.aggregateSpeed);
+        }
+        if (root.segment === "queued") return root.queuedCount + " QUEUED";
+        return root.finishedCount + " FINISHED"
+            + (root.segmentBytes > 0 ? " · " + root.formatBytes(root.segmentBytes) : "");
+    }
+
     readonly property string destinationLabel: {
         if (typeof Config !== "undefined" && Config && Config.downloadsDir && Config.downloadsDir.length > 0)
             return Config.downloadsDir;
@@ -408,10 +442,13 @@ Item {
     ColumnLayout {
         id: contentColumn
         anchors.fill: parent
-        anchors.leftMargin: root.padLarge
-        anchors.rightMargin: root.padLarge
-        anchors.topMargin: root.padMedium
-        anchors.bottomMargin: root.padMedium
+        // Token-derived inset: the theme's XL step collapses to 16 in some
+        // archetypes, which read as no padding beside the glass rim. 28px is
+        // padLarge + spaceMedium; 20px vertical is padLarge + spaceExtraSmall.
+        anchors.leftMargin: root.padLarge + root.spaceMedium
+        anchors.rightMargin: root.padLarge + root.spaceMedium
+        anchors.topMargin: root.padLarge + root.spaceExtraSmall
+        anchors.bottomMargin: root.padLarge + root.spaceExtraSmall
         spacing: root.spaceMedium
 
         // ---- Header: state at a glance + the primary add action ----
@@ -577,24 +614,6 @@ Item {
                                 onClicked: root.segment = segmentChip.modelData.id
                             }
                         }
-                    }
-                }
-            }
-
-            LiquidGlassButton {
-                id: clearButton
-                implicitWidth: 92
-                implicitHeight: 34
-                paddingHorizontal: 12
-                paddingVertical: 6
-                visible: root.showClearButton
-                text: "Clear"
-                iconText: "delete_sweep"
-                iconSize: 16
-                elevation: 3
-                onClicked: {
-                    if (typeof DownloadService !== "undefined" && DownloadService && typeof DownloadService.purge === "function") {
-                        DownloadService.purge();
                     }
                 }
             }
@@ -1194,6 +1213,10 @@ Item {
         Item {
             id: emptyState
             Layout.fillWidth: true
+            // In the window the empty state and the list share one stable stage,
+            // so switching segments never shifts the header or the footer. The
+            // drawer keeps its compact 150px block.
+            Layout.fillHeight: root.windowMode
             Layout.preferredHeight: root.emptyStateHeight
             visible: root.showEmptyState
 
@@ -1256,6 +1279,25 @@ Item {
                     style: Text.Outline
                     styleColor: root.haloColor
                 }
+
+                Item { width: 1; height: 2 }
+
+                PillButton {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: root.isAriaAvailable
+                    label: root.segment === "finished" ? "Open downloads folder" : "Add a download"
+                    variant: "filled"
+                    active: true
+                    onClicked: {
+                        if (root.segment === "finished") {
+                            if (typeof DownloadService !== "undefined" && DownloadService) {
+                                DownloadService.openFolder("");
+                            }
+                        } else {
+                            root.addDialogOpen = true;
+                        }
+                    }
+                }
             }
         }
 
@@ -1267,6 +1309,9 @@ Item {
             // has spare height, so the list takes it instead of leaving a gap.
             Layout.fillHeight: true
             Layout.preferredHeight: Math.min(contentHeight, root.maxListHeight)
+            // Drawer: a bounded four-row window that scrolls. Window: the
+            // stage owns the height, so the list may use all of it.
+            Layout.maximumHeight: root.windowMode ? 100000 : root.maxListHeight
             visible: root.showTaskList
             clip: true
             contentHeight: listColumn.implicitHeight
@@ -1275,7 +1320,7 @@ Item {
             Column {
                 id: listColumn
                 width: parent.width
-                spacing: root.spaceSmall
+                spacing: root.spaceMedium
 
                 Repeater {
                     id: taskRowRepeater
@@ -1290,7 +1335,7 @@ Item {
                         readonly property string status: root.taskStatus(task)
 
                         width: listColumn.width
-                        implicitHeight: rowColumn.implicitHeight + root.padSmall * 2
+                        implicitHeight: rowColumn.implicitHeight + root.padMedium * 2
                         radius: root.radiusCard
 
                         MouseArea {
@@ -1310,7 +1355,7 @@ Item {
                         ColumnLayout {
                             id: rowColumn
                             anchors.fill: parent
-                            anchors.margins: root.padSmall
+                            anchors.margins: root.padMedium
                             spacing: 6
 
                             RowLayout {
@@ -1506,7 +1551,7 @@ Item {
                             // Per-row progress track.
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 4
+                                Layout.preferredHeight: 3
                                 radius: root.radiusFull
                                 color: root.trackColor ? root.trackColor : "#333333"
 
@@ -1527,6 +1572,122 @@ Item {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Ledger: the window's bottom edge ---------------------------
+        //
+        // A tall window with one row otherwise ends in a void. The ledger is
+        // the base line: live segment state on the left, destination and the
+        // folder action on the right, in the same monospace voice as the
+        // settings console. The drawer stays compact (window host only).
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            visible: !root.addDialogOpen && !root.settingsOpen
+            color: root.borderSubtle
+        }
+
+        RowLayout {
+            id: ledger
+            Layout.fillWidth: true
+            Layout.preferredHeight: 36
+            visible: !root.addDialogOpen && !root.settingsOpen
+            spacing: 10
+
+            Rectangle {
+                implicitWidth: 6
+                implicitHeight: 6
+                radius: 3
+                color: (root.segment === "active" && root.activeCount > 0)
+                    ? root.accent
+                    : (root.segment === "finished" && root.finishedCount > 0
+                        ? ((typeof Colors !== "undefined" && Colors.success) ? Colors.success : "#34d399")
+                        : root.textMuted)
+            }
+
+            Text {
+                text: root.ledgerText
+                font.family: root.fontMonospace
+                font.pixelSize: 10
+                font.letterSpacing: 0.8
+                color: root.textMain
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Text {
+                text: root.destinationLabel
+                font.family: root.fontMonospace
+                font.pixelSize: 10
+                color: root.textMuted
+                elide: Text.ElideMiddle
+                Layout.maximumWidth: 260
+            }
+
+            Rectangle {
+                implicitWidth: openFolderRow.implicitWidth + 18
+                implicitHeight: 26
+                radius: root.radiusFull
+                color: folderHover.hovered ? Qt.alpha(root.accent, 0.18) : "transparent"
+                border.width: 1
+                border.color: folderHover.hovered ? Qt.alpha(root.accent, 0.45) : root.borderSubtle
+
+                RowLayout {
+                    id: openFolderRow
+                    anchors.centerIn: parent
+                    spacing: 5
+
+                    MaterialIcon {
+                        text: "folder_open"
+                        size: 13
+                        color: root.textMain
+                    }
+
+                    Text {
+                        text: "Open folder"
+                        font.family: root.fontFamily
+                        font.pixelSize: 10
+                        color: root.textMain
+                    }
+                }
+
+                HoverHandler { id: folderHover }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof DownloadService !== "undefined" && DownloadService) {
+                            DownloadService.openFolder("");
+                        }
+                    }
+                }
+            }
+
+            // Reserved slot: Clear appears only on Finished, but its width is
+            // always allocated, so the ledger's actions never jump either.
+            Item {
+                implicitWidth: 76
+                implicitHeight: 26
+
+                LiquidGlassButton {
+                    id: clearButton
+                    anchors.fill: parent
+                    visible: root.showClearButton
+                    text: "Clear"
+                    iconText: "delete_sweep"
+                    iconSize: 13
+                    paddingHorizontal: 8
+                    paddingVertical: 3
+                    elevation: 2
+                    onClicked: {
+                        if (typeof DownloadService !== "undefined" && DownloadService
+                                && typeof DownloadService.purge === "function") {
+                            DownloadService.purge();
                         }
                     }
                 }

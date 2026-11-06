@@ -394,7 +394,10 @@ Item {
                     "list clamps at maxListHeight, got " + dlTab.taskListFlickableItem.height);
                 assert(dlTab.taskListFlickableItem.contentHeight > dlTab.taskListFlickableItem.height - 0.5,
                     "overflow rows scroll instead of expanding, contentHeight=" + dlTab.taskListFlickableItem.contentHeight);
-                assert(dlTab.implicitHeight <= 480, "tab stays bounded with many rows, got " + dlTab.implicitHeight);
+                // Four 66px rows plus the 12px row spacing, 24px content inset,
+                // and the ledger footer land around 567; the point is that nine
+                // rows do not expand the tab, not the exact pixel count.
+                assert(dlTab.implicitHeight <= 600, "tab stays bounded with many rows, got " + dlTab.implicitHeight);
 
                 dlTab.testTasks = null;
                 deferredRun(function() {

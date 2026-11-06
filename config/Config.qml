@@ -1527,12 +1527,16 @@ Singleton {
     // closes the layer-shell drawer first, because a layer surface would stay
     // above the new toplevel.
     property bool downloadsWindowVisible: false
+    /// Emitted on every open request, including when the window is already
+    /// visible: the window raises itself so a background window comes forward.
+    signal downloadsWindowRequested()
 
     function openDownloadsWindow() {
         root.downloadsWindowVisible = true;
         root.dashboardVisible = false;
         root.commandLauncherVisible = false;
         root.closeBottomPopout();
+        root.downloadsWindowRequested();
     }
 
     function closeDownloadsWindow() {

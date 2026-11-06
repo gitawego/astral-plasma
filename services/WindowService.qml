@@ -59,6 +59,15 @@ Singleton {
         activateProc.running = true;
     }
 
+    /// Activate a shell toplevel by caption. The watcher filters `skipTaskbar`
+    /// shell surfaces out of `windows`, so they have no UUID to look up; the
+    /// daemon's KWin script matches the caption instead.
+    function activateWindowByTitle(title) {
+        if (!title) return;
+        activateProc.command = [root.daemonBin, "activate-title", title];
+        activateProc.running = true;
+    }
+
     function closeWindow(winId) {
         if (!winId) return;
         activateProc.command = [root.daemonBin, "close", winId];

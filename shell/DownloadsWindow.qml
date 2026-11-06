@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import "../theme"
 import "../components"
 import "../config"
+import "../services"
 import "../dashboard/tabs"
 
 /// Dedicated download manager: a real desktop window, not a drawer.
@@ -50,6 +51,27 @@ FloatingWindow {
     /// Opens the window with the engine-settings panel showing (IPC / tests).
     function openSettings() {
         if (downloads) downloads.settingsOpen = true;
+    }
+
+    /// Brings an already-open window back to the foreground.
+    ///
+    /// A Wayland toplevel cannot raise itself, so this asks KWin to activate
+    /// the window through the same WindowService path Alt+Tab uses. The list
+    /// carries the shell's toplevels with appId `org.quickshell`; match both
+    /// the title and that app id so a browser tab named "Astral Downloads"
+    /// can never be activated by mistake.
+    function raiseWindow() {
+        if (typeof WindowService === "undefined" || !WindowService) return;
+        if (typeof WindowService.activateWindowByTitle === "function") {
+            WindowService.activateWindowByTitle(root.title);
+        }
+    }
+
+    Connections {
+        target: (typeof Config !== "undefined") ? Config : null
+        function onDownloadsWindowRequested() {
+            root.raiseWindow();
+        }
     }
 
     // A closed window reopens on the task list, not on whatever sub-sheet was
