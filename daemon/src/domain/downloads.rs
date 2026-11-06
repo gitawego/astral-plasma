@@ -84,6 +84,11 @@ pub struct DownloadTask {
     pub total_length: u64,
     pub completed_length: u64,
     pub download_speed: u64,
+    /// Connections aria2 is configured to open for this file (`split`). Read
+    /// from `getOption`; `None` when the engine did not answer, so the UI can
+    /// fall back to the configured default instead of inventing a number.
+    #[serde(default)]
+    pub split: Option<u32>,
     #[serde(default)]
     pub dir: String,
     #[serde(default)]
@@ -233,6 +238,11 @@ pub fn parse_task(v: &serde_json::Value) -> Option<DownloadTask> {
     let total_length = v.get("totalLength").map(num_from_value).unwrap_or(0);
     let completed_length = v.get("completedLength").map(num_from_value).unwrap_or(0);
     let download_speed = v.get("downloadSpeed").map(num_from_value).unwrap_or(0);
+    let split = v
+        .get("split")
+        .and_then(|s| s.as_str().map(str::to_string).or_else(|| s.as_u64().map(|n| n.to_string())))
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .filter(|n| *n > 0);
     let dir = v
         .get("dir")
         .and_then(|s| s.as_str())
@@ -276,6 +286,7 @@ pub fn parse_task(v: &serde_json::Value) -> Option<DownloadTask> {
         total_length,
         completed_length,
         download_speed,
+        split,
         dir,
         error_code,
         completed_at: None,

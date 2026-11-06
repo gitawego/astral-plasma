@@ -93,7 +93,10 @@ run: build
 
 stop:
 	@pkill -9 -x quickshell 2>/dev/null || true
-	@pkill -9 -f "astral-plasma" 2>/dev/null || true
+	# Exact process name only. `pkill -f "astral-plasma"` also matches aria2c,
+	# whose --input-file path lives under .../astral-plasma/downloads/, and would
+	# kill every running download with it.
+	@pkill -9 -x astral-plasma 2>/dev/null || true
 	@./bin/astral-plasma desktop cleanup 2>/dev/null || true
 	@./bin/astral-plasma plasma restore
 

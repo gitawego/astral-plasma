@@ -1,3 +1,20 @@
+# Astral Plasma — Downloads: A Real Window, Per-Task Parts, And A Safe Stop
+
+> [!NOTE]
+> **Issue**: Downloads existed only inside the top drawer, so they could not be parked on screen like the Copilot; a running task's connection count could only be changed by hand over aria2 RPC; and `make stop` killed the engine (its `--input-file` path contains `astral-plasma`, so `pkill -f "astral-plasma"` matched aria2c).
+>
+> **Fix**:
+> 1. **`shell/DownloadsWindow.qml`** - a `FloatingWindow` like the Copilot/Settings windows, hosting the same `DownloadsTab` in `windowMode`. The drawer header gains an "open in window" action, the window header a close action and a compositor-native drag; the task list fills the taller surface instead of staying at four rows. `Config.openDownloadsWindow()` closes the layer-shell drawer first, and `downloads open|close|toggle` IPC mirrors it.
+> 2. **Per-task parts** - `fetch_all` enriches live tasks with the engine's own `split` (`aria2.getOption`), the row shows `- N parts +` for active/waiting/paused tasks, and `downloads set-parts <gid> <n>` calls `aria2.changeOption` with `split` + `max-connection-per-server` (clamped 1..16). aria2 restarts the task internally and resumes from the `.aria2` control file; a server that supports HTTP Range is required (real CDNs do), which the verification confirmed.
+> 3. **In-window settings** - the tune button opens a modal transfer console (`DownloadSettingsPanel`): a live capacity equation (parallel × connections = total), destination field, stepper knobs, speed cap, and the border HUD. It uses the same Config setters and engine push as Settings > Downloads; `downloads settings` IPC opens it directly. The sheet floats over the task list instead of replacing it, so the manager keeps its context and there is no dead half-screen.
+> 4. **Restart safety** - `make stop` targets processes by exact name (`pkill -x`), so aria2c survives; the engine also flushes its piece map every 30 s (`--auto-save-interval=30`) instead of the 60 s default.
+>
+> **Tests** (TDD, red first): `tests/tst_downloads_window.qml` (toplevel contract, drawer action, IPC, window-mode tab), `tests/tst_downloads_parts.qml` (split fallback/clamp, service/CLI/RPC wiring), `tests/tst_downloads_settings_panel.qml` (clamp rules, Config setters, controls reuse, window-only hosting), `daemon/tests/test_downloads_restart_safety.rs` (persistence flags, `make stop` recipe), plus `parse_task`/`set_parts` cases in the existing Rust suites.
+>
+> **Verified live** (shell hot-reloaded, `spectacle`): the window opened from IPC, an active throttled download showed `4 parts`; `downloads set-parts <gid> 8` changed the row to `8 parts` and the transfer continued from 5.4/30 MiB at 18 %. `downloads settings` opened the modal console over the task list: the 5 × 4 = 20 capacity equation, destination field, two stepper knobs, speed cap, and border HUD, with one primary Done action. Test tasks, servers and partial files were removed afterwards; the user's finished download is untouched.
+
+---
+
 # Astral Plasma — The Settings Gear Ends A Drawer It Has No Context For
 
 > [!NOTE]

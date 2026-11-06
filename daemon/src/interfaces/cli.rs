@@ -1029,6 +1029,22 @@ pub async fn run_cli() -> DynResult<()> {
                     }
                     println!(r#"{{"success":true}}"#);
                 }
+                // Per-task connection count. aria2 restarts an active task
+                // internally when `split` changes and resumes from the control
+                // file, so progress is kept.
+                "set-parts" => {
+                    let gid = positional.first().map(|s| s.as_str()).unwrap_or("");
+                    let parts = positional
+                        .get(1)
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .unwrap_or(crate::domain::downloads::DEFAULT_SPLIT as i64);
+                    if gid.is_empty() {
+                        eprintln!("Usage: astral-plasma downloads set-parts <gid> <parts>");
+                        std::process::exit(2);
+                    }
+                    use_case.set_parts(gid, clamp_split(parts))?;
+                    println!(r#"{{"success":true,"gid":"{}","parts":{}}}"#, gid, clamp_split(parts));
+                }
                 "cancel-delete" => {
                     let gid = positional.first().map(|s| s.as_str()).unwrap_or("");
                     if gid.is_empty() {
@@ -1052,7 +1068,7 @@ pub async fn run_cli() -> DynResult<()> {
                     crate::application::download_service::run_downloads_watch(use_case).await?;
                 }
                 _ => {
-                    eprintln!("Usage: astral-plasma downloads <snapshot|ensure|engine-status|install-engine|apply-settings|add|pause|resume|cancel|cancel-delete|remove|retry|purge|watch> [args...]");
+                    eprintln!("Usage: astral-plasma downloads <snapshot|ensure|engine-status|install-engine|apply-settings|add|pause|resume|set-parts|cancel|cancel-delete|remove|retry|purge|watch> [args...]");
                     std::process::exit(2);
                 }
             }

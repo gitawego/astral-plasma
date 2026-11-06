@@ -17,6 +17,7 @@ fn task(gid: &str, done: u64, total: u64, speed: u64) -> DownloadTask {
         total_length: total,
         completed_length: done,
         download_speed: speed,
+        split: None,
         dir: String::new(),
         error_code: None,
         completed_at: None,

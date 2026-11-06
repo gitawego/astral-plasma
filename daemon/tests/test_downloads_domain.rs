@@ -157,6 +157,26 @@ fn test_parse_task_falls_back_to_uri_then_gid() {
 }
 
 #[test]
+fn test_parse_task_reads_the_configured_split() {
+    // `fetch_all` enriches live tasks with the engine's own `split`; the
+    // drawer's per-task parts control reads it back from here.
+    let from_string = parse_task(&serde_json::json!({
+        "gid": "g-split", "status": "active", "split": "8"
+    })).expect("must parse");
+    assert_eq!(from_string.split, Some(8));
+
+    let from_number = parse_task(&serde_json::json!({
+        "gid": "g-num", "status": "paused", "split": 12
+    })).expect("must parse");
+    assert_eq!(from_number.split, Some(12));
+
+    // Missing / zero / garbage is "unknown", never a fabricated default.
+    assert_eq!(parse_task(&serde_json::json!({"gid": "g0", "status": "active"})).unwrap().split, None);
+    assert_eq!(parse_task(&serde_json::json!({"gid": "g1", "status": "active", "split": "0"})).unwrap().split, None);
+    assert_eq!(parse_task(&serde_json::json!({"gid": "g2", "status": "active", "split": "nope"})).unwrap().split, None);
+}
+
+#[test]
 fn test_parse_task_rejects_missing_gid() {
     assert!(parse_task(&serde_json::json!({"status": "active"})).is_none());
     assert!(parse_task(&serde_json::json!({"gid": ""})).is_none());
@@ -197,6 +217,7 @@ fn task(gid: &str, status: DownloadStatus, total: u64, done: u64, speed: u64) ->
         total_length: total,
         completed_length: done,
         download_speed: speed,
+        split: None,
         dir: String::new(),
         error_code: None,
         completed_at: None,

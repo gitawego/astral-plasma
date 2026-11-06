@@ -88,6 +88,11 @@ pub trait DownloadsPort: Send + Sync {
     fn fetch_raw(&self) -> DynResult<Vec<serde_json::Value>>;
     fn add_uri(&self, url: &str, opts: &NewDownloadOptions) -> DynResult<String>;
     fn control(&self, verb: &str, gid: &str) -> DynResult<()>;
+    fn change_options(
+        &self,
+        gid: &str,
+        options: &serde_json::Map<String, serde_json::Value>,
+    ) -> DynResult<()>;
     fn retry(&self, gid: &str, opts: &NewDownloadOptions) -> DynResult<String>;
     fn purge(&self) -> DynResult<()>;
     fn secret(&self) -> DynResult<String>;
@@ -147,6 +152,14 @@ impl DownloadsPort for Aria2DownloadsPort {
         let secret = aria2_adapter::load_or_create_secret()?;
         aria2_adapter::control(&secret, verb, gid)?;
         Ok(())
+    }
+    fn change_options(
+        &self,
+        gid: &str,
+        options: &serde_json::Map<String, serde_json::Value>,
+    ) -> DynResult<()> {
+        let secret = aria2_adapter::load_or_create_secret()?;
+        aria2_adapter::change_options(&secret, gid, options)
     }
     fn retry(&self, gid: &str, opts: &NewDownloadOptions) -> DynResult<String> {
         let secret = aria2_adapter::load_or_create_secret()?;
@@ -460,6 +473,27 @@ impl DownloadsUseCase {
 
     pub fn resume(&self, gid: &str) -> DynResult<()> {
         self.port.control("unpause", gid)
+    }
+
+    /// Changes the connection count for one download.
+    ///
+    /// aria2 documents that changing `split` on an active task makes aria2
+    /// restart that task internally; `--continue` resumes from the control
+    /// file, so the user keeps the downloaded bytes. `max-connection-per-server`
+    /// is raised with it, otherwise the server cap would keep the extra parts
+    /// from opening. The value is clamped to the same 1..=16 the add sheet uses.
+    pub fn set_parts(&self, gid: &str, parts: u32) -> DynResult<()> {
+        if gid.trim().is_empty() {
+            return Err("gid is required".into());
+        }
+        let n = clamp_split(parts as i64).to_string();
+        let mut options = serde_json::Map::new();
+        options.insert("split".into(), serde_json::Value::String(n.clone()));
+        options.insert(
+            "max-connection-per-server".into(),
+            serde_json::Value::String(n),
+        );
+        self.port.change_options(gid, &options)
     }
 
     /// Cancel: `remove` keeps the partial file, `forceRemove` drops it.

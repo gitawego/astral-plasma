@@ -30,6 +30,7 @@ struct FakePort {
     privileged: Mutex<Vec<Vec<String>>>,
     applied: Mutex<Vec<EngineSettings>>,
     spawn_settings: Mutex<Vec<EngineSettings>>,
+    changed_options: Mutex<Vec<(String, serde_json::Map<String, serde_json::Value>)>>,
 }
 
 impl FakePort {
@@ -73,6 +74,10 @@ impl FakePort {
     fn spawn_settings(&self) -> Vec<EngineSettings> {
         self.spawn_settings.lock().unwrap().clone()
     }
+
+    fn changed_options(&self) -> Vec<(String, serde_json::Map<String, serde_json::Value>)> {
+        self.changed_options.lock().unwrap().clone()
+    }
 }
 
 impl DownloadsPort for FakePort {
@@ -91,6 +96,17 @@ impl DownloadsPort for FakePort {
     }
     fn control(&self, verb: &str, gid: &str) -> DynResult<()> {
         self.calls.lock().unwrap().push((verb.to_string(), gid.to_string()));
+        Ok(())
+    }
+    fn change_options(
+        &self,
+        gid: &str,
+        options: &serde_json::Map<String, serde_json::Value>,
+    ) -> DynResult<()> {
+        self.changed_options
+            .lock()
+            .unwrap()
+            .push((gid.to_string(), options.clone()));
         Ok(())
     }
     fn retry(&self, gid: &str, _opts: &NewDownloadOptions) -> DynResult<String> {
@@ -241,6 +257,30 @@ fn test_build_snapshot_skips_unparseable_rows() {
 }
 
 #[test]
+fn test_set_parts_clamps_and_raises_the_server_cap() {
+    let (uc, port) = use_case(vec![]);
+
+    uc.set_parts("g1", 8).expect("set parts");
+    let calls = port.changed_options();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0, "g1");
+    assert_eq!(calls[0].1.get("split").and_then(|v| v.as_str()), Some("8"),
+        "split is what aria2 opens");
+    assert_eq!(calls[0].1.get("max-connection-per-server").and_then(|v| v.as_str()), Some("8"),
+        "the per-server cap must not throttle the requested parts");
+
+    // Same 1..=16 clamp as the add sheet: a hand-typed value cannot escape it.
+    uc.set_parts("g1", 0).expect("clamp low");
+    uc.set_parts("g1", 99).expect("clamp high");
+    let calls = port.changed_options();
+    assert_eq!(calls[1].1.get("split").and_then(|v| v.as_str()), Some("1"));
+    assert_eq!(calls[2].1.get("split").and_then(|v| v.as_str()), Some("16"));
+
+    // No gid: refuse instead of sending an empty id to aria2.
+    assert!(uc.set_parts("  ", 4).is_err());
+}
+
+#[test]
 fn test_task_progress_and_remaining_helpers() {
     let t = DownloadTask {
         gid: "g".into(),
@@ -249,6 +289,7 @@ fn test_task_progress_and_remaining_helpers() {
         total_length: 100,
         completed_length: 150,
         download_speed: 0,
+        split: None,
         dir: String::new(),
         error_code: None,
         completed_at: None,
@@ -274,6 +315,11 @@ fn test_reconcile_history_persists_stopped_and_purges() {
         }
         fn add_uri(&self, _url: &str, _opts: &NewDownloadOptions) -> DynResult<String> { Ok("g".into()) }
         fn control(&self, _verb: &str, _gid: &str) -> DynResult<()> { Ok(()) }
+        fn change_options(
+            &self,
+            _gid: &str,
+            _options: &serde_json::Map<String, serde_json::Value>,
+        ) -> DynResult<()> { Ok(()) }
         fn retry(&self, _gid: &str, _opts: &NewDownloadOptions) -> DynResult<String> { Ok("g".into()) }
         fn purge(&self) -> DynResult<()> { Ok(()) }
         fn secret(&self) -> DynResult<String> { Ok("s".into()) }
@@ -369,6 +415,7 @@ fn test_snapshot_without_the_engine_is_history_only_and_names_the_install() {
             total_length: 100,
             completed_length: 100,
             download_speed: 0,
+            split: None,
             dir: "/dl".into(),
             error_code: None,
             completed_at: Some(1700000000),

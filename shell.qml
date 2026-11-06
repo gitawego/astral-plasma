@@ -82,6 +82,17 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "downloads"
+        function open(): void { Config.openDownloadsWindow(); }
+        function settings(): void {
+            Config.openDownloadsWindow();
+            downloadsWindow.openSettings();
+        }
+        function close(): void { Config.closeDownloadsWindow(); }
+        function toggle(): void { Config.toggleDownloadsWindow(); }
+    }
+
+    IpcHandler {
         target: "ai"
         function refresh(): void { AiTokenService.refresh(true); }
         function switchGemini(account: string): void { AiTokenService.switchGeminiAccount(account); }
@@ -470,6 +481,12 @@ ShellRoot {
     // AI Assistant Copilot Window
     AssistantWindow {
         id: assistantWindow
+        targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+    }
+
+    // Dedicated download manager Window (real toplevel, opened from the drawer)
+    DownloadsWindow {
+        id: downloadsWindow
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
 

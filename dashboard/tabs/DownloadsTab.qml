@@ -35,8 +35,22 @@ Item {
     }
     property bool addDialogOpen: false
 
+    /// Hosted in the dedicated window (shell/DownloadsWindow.qml) instead of the
+    /// dropdown drawer. The header then shows a close control and starts a
+    /// compositor-native move; the task list fills the taller surface.
+    property bool windowMode: false
+    property var windowHandle: null
+    signal closeRequested()
+
+    /// Engine-wide settings panel, hosted in the dedicated window only. The
+    /// drawer stays a quick view; the window is where the manager lives.
+    property bool settingsOpen: false
+
     // Connections per file for the next add (1..16, clamped by setSplitValue).
     property int splitValue: 4
+    // Global default, used only when the engine did not report a task's split.
+    readonly property int defaultSplit: (typeof Config !== "undefined" && Config && Config.downloadsSplit)
+        ? Config.downloadsSplit : 4
 
     // Keyboard contract: the shell's layer surface runs with
     // WlrKeyboardFocus.None by default (pointer-only drawers). Any surface
@@ -217,6 +231,30 @@ Item {
         root.splitValue = Math.max(1, Math.min(16, Math.round(safe)));
     }
 
+    /// The connection count a row should show: the engine's own `split` when it
+    /// answered, otherwise the configured default - never a fabricated number.
+    function taskParts(t) {
+        const n = Number(t && t.split);
+        if (isFinite(n) && n > 0) return Math.max(1, Math.min(16, Math.round(n)));
+        return Math.max(1, Math.min(16, Math.round(Number(root.defaultSplit) || 4)));
+    }
+
+    function nextParts(t, delta) {
+        return Math.max(1, Math.min(16, root.taskParts(t) + (Number(delta) || 0)));
+    }
+
+    /// One click on a row's parts stepper. aria2 restarts the active task and
+    /// resumes from the control file, so this is safe while downloading.
+    function stepParts(t, delta) {
+        if (!t || !t.gid) return;
+        const next = root.nextParts(t, delta);
+        if (next === root.taskParts(t)) return;
+        if (typeof DownloadService !== "undefined" && DownloadService
+                && typeof DownloadService.setParts === "function") {
+            DownloadService.setParts(t.gid, next);
+        }
+    }
+
     function pasteFromClipboard() {
         if (root.testMode && root.testClipboardText !== null) {
             root.appendPastedText(root.testClipboardText);
@@ -307,11 +345,11 @@ Item {
     // Explicit composition state: what the tab is showing, independent of the
     // parent's effective visibility (Qt forces child `visible` off under an
     // invisible parent, so tests and logic read these, not `.visible`).
-    readonly property bool showEmptyState: root.segmentTasks.length === 0 && !root.addDialogOpen
-    readonly property bool showTaskList: root.segmentTasks.length > 0 && !root.addDialogOpen
-    readonly property bool showSegments: !root.addDialogOpen
-    readonly property bool showAggregateProgress: root.activeCount > 0 && !root.addDialogOpen
-    readonly property bool showClearButton: root.segment === "finished" && root.finishedCount > 0 && !root.addDialogOpen
+    readonly property bool showEmptyState: root.segmentTasks.length === 0 && !root.addDialogOpen && !root.settingsOpen
+    readonly property bool showTaskList: root.segmentTasks.length > 0 && !root.addDialogOpen && !root.settingsOpen
+    readonly property bool showSegments: !root.addDialogOpen && !root.settingsOpen
+    readonly property bool showAggregateProgress: root.activeCount > 0 && !root.addDialogOpen && !root.settingsOpen
+    readonly property bool showClearButton: root.segment === "finished" && root.finishedCount > 0 && !root.addDialogOpen && !root.settingsOpen
 
     readonly property string destinationLabel: {
         if (typeof Config !== "undefined" && Config && Config.downloadsDir && Config.downloadsDir.length > 0)
@@ -347,6 +385,26 @@ Item {
     // =====================================================================
     // Layout
     // =====================================================================
+    // Header drag: the window is frameless (KWin rule), so empty header space
+    // starts a compositor-native move exactly like a titlebar. z:-1 keeps every
+    // control (segments, Clear, Add, window button) above it.
+    MouseArea {
+        id: windowDragArea
+        visible: root.windowMode
+        enabled: root.windowMode
+        anchors.left: contentColumn.left
+        anchors.right: contentColumn.right
+        anchors.top: contentColumn.top
+        height: headerRow.height
+        z: -1
+        cursorShape: Qt.OpenHandCursor
+        onPressed: {
+            if (root.windowHandle && typeof root.windowHandle.startSystemMove === "function") {
+                root.windowHandle.startSystemMove();
+            }
+        }
+    }
+
     ColumnLayout {
         id: contentColumn
         anchors.fill: parent
@@ -552,7 +610,79 @@ Item {
                 iconSize: 16
                 isPrimary: !root.addDialogOpen
                 elevation: 4
-                onClicked: root.addDialogOpen = !root.addDialogOpen
+                onClicked: {
+                    root.settingsOpen = false;
+                    root.addDialogOpen = !root.addDialogOpen;
+                }
+            }
+
+            // Settings live in the window, next to the close control. The
+            // drawer stays a quick view; the window is the manager.
+            Rectangle {
+                id: settingsButton
+                visible: root.windowMode
+                implicitWidth: 34
+                implicitHeight: 34
+                radius: root.radiusItem
+                color: root.settingsOpen
+                    ? Qt.alpha(root.accent, 0.22)
+                    : (settingsHover.hovered ? Qt.alpha(root.accent, 0.14) : "transparent")
+                border.width: 1
+                border.color: root.settingsOpen
+                    ? Qt.alpha(root.accent, 0.55)
+                    : (settingsHover.hovered ? Qt.alpha(root.accent, 0.35) : root.borderSubtle)
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: "tune"
+                    size: 17
+                    color: root.settingsOpen ? root.accent : root.textMain
+                }
+
+                HoverHandler { id: settingsHover }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.addDialogOpen = false;
+                        root.settingsOpen = !root.settingsOpen;
+                    }
+                }
+            }
+
+            // One download UI, two hosts: the drawer opens the dedicated window,
+            // the window closes itself. Same control, opposite verbs.
+            Rectangle {
+                id: windowButton
+                implicitWidth: 34
+                implicitHeight: 34
+                radius: root.radiusItem
+                color: windowHover.hovered ? Qt.alpha(root.accent, 0.20) : "transparent"
+                border.width: 1
+                border.color: windowHover.hovered ? Qt.alpha(root.accent, 0.45) : root.borderSubtle
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: root.windowMode ? "close" : "open_in_new"
+                    size: 17
+                    color: root.windowMode ? root.textMain : root.accent
+                }
+
+                HoverHandler { id: windowHover }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (root.windowMode) {
+                            root.closeRequested();
+                        } else if (typeof Config !== "undefined" && Config
+                                && typeof Config.openDownloadsWindow === "function") {
+                            Config.openDownloadsWindow();
+                        }
+                    }
+                }
             }
         }
 
@@ -1010,6 +1140,56 @@ Item {
             }
         }
 
+        // ---- Engine-wide settings (window host only) ----
+        //
+        // A modal sheet over the task list, not a second page inside the page:
+        // the manager stays visible behind it, the window header keeps its one
+        // identity, and the sheet is the same width at any window size.
+        Item {
+            id: settingsOverlay
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.windowMode && root.settingsOpen
+            z: 50
+            opacity: visible ? 1.0 : 0.0
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: Theme.animExpressiveDefaultEffects
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.curveExpressiveDefaultEffects
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: Qt.rgba(0, 0, 0, 0.45)
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.settingsOpen = false
+                }
+            }
+
+            DownloadSettingsPanel {
+                id: settingsPanel
+                anchors.centerIn: parent
+                width: Math.min(680, parent.width - 48)
+                height: Math.min(implicitHeight, parent.height - 32)
+                scale: settingsOverlay.visible ? 1.0 : 0.97
+
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: Theme.animExpressiveFastSpatial
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.curveExpressiveFastSpatial
+                    }
+                }
+
+                onCloseRequested: root.settingsOpen = false
+            }
+        }
+
         // ---- Empty state: a composed moment, not a void ----
         Item {
             id: emptyState
@@ -1083,6 +1263,9 @@ Item {
         Flickable {
             id: taskList
             Layout.fillWidth: true
+            // Drawer: content-driven (capped at four rows). Window: the layout
+            // has spare height, so the list takes it instead of leaving a gap.
+            Layout.fillHeight: true
             Layout.preferredHeight: Math.min(contentHeight, root.maxListHeight)
             visible: root.showTaskList
             clip: true
@@ -1166,27 +1349,104 @@ Item {
                                         elide: Text.ElideRight
                                     }
 
-                                    Text {
+                                    RowLayout {
                                         Layout.fillWidth: true
-                                        text: {
-                                            const t = taskCard.task;
-                                            if (!t) return "";
-                                            const done = root.formatBytes(t.completed_length || 0);
-                                            const total = root.formatBytes(t.total_length || 0);
-                                            if (taskCard.status === "active")
-                                                return done + " / " + total + " · " + root.formatSpeed(t.download_speed || 0) + " · ETA " + root.taskEta(t);
-                                            if (taskCard.status === "complete")
-                                                return done + " · completed";
-                                            if (taskCard.status === "error")
-                                                return done + " / " + total + " · failed" + ((t.error_code) ? " (" + t.error_code + ")" : "");
-                                            if (taskCard.status === "paused")
-                                                return done + " / " + total + " · paused";
-                                            return done + " / " + total;
+                                        spacing: 6
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: {
+                                                const t = taskCard.task;
+                                                if (!t) return "";
+                                                const done = root.formatBytes(t.completed_length || 0);
+                                                const total = root.formatBytes(t.total_length || 0);
+                                                if (taskCard.status === "active")
+                                                    return done + " / " + total + " · " + root.formatSpeed(t.download_speed || 0) + " · ETA " + root.taskEta(t);
+                                                if (taskCard.status === "complete")
+                                                    return done + " · completed";
+                                                if (taskCard.status === "error")
+                                                    return done + " / " + total + " · failed" + ((t.error_code) ? " (" + t.error_code + ")" : "");
+                                                if (taskCard.status === "paused")
+                                                    return done + " / " + total + " · paused";
+                                                return done + " / " + total;
+                                            }
+                                            font.family: root.fontMonospace
+                                            font.pixelSize: 11
+                                            color: root.textMuted
+                                            elide: Text.ElideRight
                                         }
-                                        font.family: root.fontMonospace
-                                        font.pixelSize: 11
-                                        color: root.textMuted
-                                        elide: Text.ElideRight
+
+                                        // Per-task connections. aria2 restarts the task
+                                        // internally when this changes and resumes from
+                                        // its control file, so progress is kept.
+                                        RowLayout {
+                                            id: partsStepper
+                                            spacing: 1
+                                            Layout.alignment: Qt.AlignVCenter
+                                            visible: taskCard.status === "active"
+                                                || taskCard.status === "waiting"
+                                                || taskCard.status === "paused"
+
+                                            readonly property int parts: root.taskParts(taskCard.task)
+
+                                            Rectangle {
+                                                implicitWidth: 18
+                                                implicitHeight: 18
+                                                radius: root.radiusFull
+                                                color: partsMinus.containsMouse && partsStepper.parts > 1
+                                                    ? Qt.alpha(root.accent, 0.22) : "transparent"
+
+                                                MaterialIcon {
+                                                    anchors.centerIn: parent
+                                                    text: "remove"
+                                                    size: 13
+                                                    color: root.textMuted
+                                                    opacity: partsStepper.parts > 1 ? 1.0 : 0.35
+                                                }
+
+                                                MouseArea {
+                                                    id: partsMinus
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    enabled: partsStepper.parts > 1
+                                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                                    onClicked: root.stepParts(taskCard.task, -1)
+                                                }
+                                            }
+
+                                            Text {
+                                                text: partsStepper.parts + " parts"
+                                                font.family: root.fontMonospace
+                                                font.pixelSize: 10
+                                                color: root.textMuted
+                                                horizontalAlignment: Text.AlignHCenter
+                                            }
+
+                                            Rectangle {
+                                                implicitWidth: 18
+                                                implicitHeight: 18
+                                                radius: root.radiusFull
+                                                color: partsPlus.containsMouse && partsStepper.parts < 16
+                                                    ? Qt.alpha(root.accent, 0.22) : "transparent"
+
+                                                MaterialIcon {
+                                                    anchors.centerIn: parent
+                                                    text: "add"
+                                                    size: 13
+                                                    color: root.textMuted
+                                                    opacity: partsStepper.parts < 16 ? 1.0 : 0.35
+                                                }
+
+                                                MouseArea {
+                                                    id: partsPlus
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    enabled: partsStepper.parts < 16
+                                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                                    onClicked: root.stepParts(taskCard.task, 1)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 

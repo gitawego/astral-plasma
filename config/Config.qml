@@ -1522,6 +1522,31 @@ Singleton {
         settingsVisible = false;
     }
 
+    // Dedicated download manager window (a real toplevel, like the Copilot and
+    // Settings windows). The drawer stays the quick view; opening the window
+    // closes the layer-shell drawer first, because a layer surface would stay
+    // above the new toplevel.
+    property bool downloadsWindowVisible: false
+
+    function openDownloadsWindow() {
+        root.downloadsWindowVisible = true;
+        root.dashboardVisible = false;
+        root.commandLauncherVisible = false;
+        root.closeBottomPopout();
+    }
+
+    function closeDownloadsWindow() {
+        root.downloadsWindowVisible = false;
+    }
+
+    function toggleDownloadsWindow() {
+        if (root.downloadsWindowVisible) {
+            root.closeDownloadsWindow();
+        } else {
+            root.openDownloadsWindow();
+        }
+    }
+
     function togglePopout(id) {
         if (activePopout === id) {
             activePopout = "";

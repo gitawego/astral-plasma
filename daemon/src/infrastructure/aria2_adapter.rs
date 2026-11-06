@@ -123,6 +123,10 @@ pub fn aria2_args(
         format!("--input-file={}", session.display()),
         format!("--save-session={}", session.display()),
         "--save-session-interval=30".into(),
+        // The piece map lives in the `.aria2` control file; saving it every
+        // 30s (instead of the 60s default) bounds how much a hard stop can make
+        // aria2 re-verify/re-download.
+        "--auto-save-interval=30".into(),
         format!("--log={}", log.display()),
         "--log-level=warn".into(),
     ];
@@ -248,6 +252,27 @@ pub fn fetch_all(secret: &str) -> DynResult<Vec<serde_json::Value>> {
             out.extend(arr.iter().cloned());
         }
     }
+    // `tellStatus` has no split field, but the drawer's per-task parts control
+    // must show the value the engine actually runs with. Enrich only live tasks
+    // (active/waiting/paused); stopped results do not need an option round-trip.
+    for task in out.iter_mut() {
+        let status = task.get("status").and_then(|s| s.as_str()).unwrap_or("");
+        if !matches!(status, "active" | "waiting" | "paused") {
+            continue;
+        }
+        let Some(gid) = task.get("gid").and_then(|g| g.as_str()) else {
+            continue;
+        };
+        if let Ok(options) = rpc_call(secret, "getOption", serde_json::json!([gid])) {
+            if let Some(split) = options.get("split").and_then(|v| v.as_str()) {
+                if let Ok(n) = split.trim().parse::<u32>() {
+                    if let Some(obj) = task.as_object_mut() {
+                        obj.insert("split".into(), serde_json::json!(n));
+                    }
+                }
+            }
+        }
+    }
     Ok(out)
 }
 
@@ -264,6 +289,24 @@ pub fn add_uri(secret: &str, url: &str, opts: &NewDownloadOptions, position: Opt
     res.as_str()
         .map(ToString::to_string)
         .ok_or_else(|| "aria2 addUri returned no gid".into())
+}
+
+/// Changes per-download options on a live task.
+///
+/// aria2 restarts an active download when an option other than its small
+/// hot-reload set changes, and resumes from the control file; that is why the
+/// UI can raise `split` without losing progress.
+pub fn change_options(
+    secret: &str,
+    gid: &str,
+    options: &serde_json::Map<String, serde_json::Value>,
+) -> DynResult<()> {
+    rpc_call(
+        secret,
+        "changeOption",
+        serde_json::json!([gid, serde_json::Value::Object(options.clone())]),
+    )?;
+    Ok(())
 }
 
 /// Single-gid control verbs.
@@ -397,6 +440,7 @@ pub fn scan_download_directory(dir: &std::path::Path) -> Vec<DownloadTask> {
             total_length: file_len,
             completed_length: file_len,
             download_speed: 0,
+            split: None,
             dir: dir_str.clone(),
             error_code: None,
             completed_at: mtime,

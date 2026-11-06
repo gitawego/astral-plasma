@@ -338,6 +338,18 @@ Singleton {
     }
 
     // --- D5 actions (AriaNg verb mapping) ---
+    /// Changes the connection count for one task.
+    ///
+    /// aria2 documents that changing `split` on an active download makes aria2
+    /// restart that task internally; `--continue` resumes from the control file,
+    /// so the already-downloaded bytes are kept. The daemon clamps the value to
+    /// the same 1..16 the add sheet offers.
+    function setParts(gid, parts) {
+        if (!gid) return;
+        const n = Math.max(1, Math.min(16, Math.round(Number(parts) || 1)));
+        runCmd(["set-parts", String(gid), String(n)]);
+    }
+
     function addUrls(urlText, opts) {
         if (!urlText || !urlText.trim()) {
             root.lastError = "no URLs provided";
