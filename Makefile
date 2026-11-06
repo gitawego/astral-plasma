@@ -3,7 +3,7 @@ BIN_DIR = bin
 TARGET = $(BIN_DIR)/astral-plasma
 DAEMON_DIR = daemon
 
-.PHONY: all build release debug test test-rust test-qml doctor run stop restore clean install changelog release-tag help
+.PHONY: all build release debug test test-rust test-qml doctor run stop restore clean install changelog release-tag gpu-pmu-perms help
 
 all: build
 
@@ -18,6 +18,7 @@ help:
 	@echo "  make changelog   - Generate changelog preview from git history"
 	@echo "  make release-tag - Trigger automated release (e.g. make release-tag VERSION=0.2.0)"
 	@echo "  make run         - Run theme (auto-restores original top panel on exit)"
+	@echo "  make gpu-pmu-perms - Let GPU usage count every client (one sudo, needs CAP_PERFMON)"
 	@echo "  make stop        - Stop theme and restore original top panel"
 	@echo "  make restore     - Restore original KDE Plasma top panel"
 	@echo "  make clean       - Clean build artifacts"
@@ -27,7 +28,15 @@ build: release
 release:
 	@mkdir -p $(BIN_DIR)
 	$(CARGO) build --release --manifest-path $(DAEMON_DIR)/Cargo.toml
-	install -m 755 $(DAEMON_DIR)/target/release/astral-plasma $(TARGET)
+	@caps=$$(getcap $(TARGET) 2>/dev/null | sed 's/.*=//'); \
+	install -m 755 $(DAEMON_DIR)/target/release/astral-plasma $(TARGET); \
+	if [ -n "$$caps" ]; then \
+	    if setcap $$caps $(TARGET) 2>/dev/null; then \
+	        echo "Re-applied $$caps to $(TARGET)"; \
+	    else \
+	        echo "note: re-apply GPU counter permissions: make gpu-pmu-perms"; \
+	    fi; \
+	fi
 	@echo "Built single self-contained binary: $(TARGET)"
 
 debug:
@@ -68,6 +77,15 @@ release-tag:
 
 doctor: build
 	./$(TARGET) doctor
+
+# The dashboard's GPU % is measured from DRM engine counters. The unprivileged
+# source (/proc/<pid>/fdinfo) cannot read the compositor - KWin is non-dumpable
+# because of its cap_sys_nice file capabilities - so on a busy Intel iGPU it
+# reported roughly half the truth (46 % while rc6 residency stayed at zero).
+# The i915 perf PMU counts the whole GT and needs only CAP_PERFMON; this target
+# hands it over (and re-runs harmlessly when already granted).
+gpu-pmu-perms: build
+	bash scripts/enable_gpu_pmu.sh
 
 run: build
 	@trap './bin/astral-plasma desktop cleanup 2>/dev/null || true; ./bin/astral-plasma plasma restore' EXIT INT TERM; \

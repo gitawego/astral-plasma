@@ -1,5 +1,5 @@
 use crate::domain::model::{BatteryMetrics, CpuMetrics, DiskMetrics, GpuMetrics, SystemMetrics};
-use crate::domain::gpu_engine::resolve_usage;
+use crate::domain::gpu_engine::{resolve_usage_staged, PdevKey};
 use crate::domain::ports::{DynResult, MetricsPort};
 use crate::domain::sys_parser::{
     calculate_cpu_usage_with_state, calculate_disk_metrics, parse_all_nvidia_gpus, parse_amdgpu_metrics, parse_battery_uevent,
@@ -9,6 +9,7 @@ use crate::domain::sys_parser::{
 use std::fs;
 use std::process::Command;
 use std::sync::Mutex;
+use std::collections::HashMap;
 
 pub struct ProcMetricsAdapter {
     prev_cpu: Mutex<Option<(u64, u64)>>,
@@ -124,12 +125,17 @@ impl MetricsPort for ProcMetricsAdapter {
             fetch_and_cache_lspci(&pci_cache_path)
         };
 
-        // Measured GPU engine time for this call. Scanned once and reused for
-        // every card: each device's rate is a delta against the previous
-        // invocation, so the scan must not be interleaved with the reads below.
-        let engine_rates = crate::infrastructure::gpu_engine_probe::measure_engine_usage(
-            &crate::infrastructure::gpu_engine_probe::engine_state_path(),
+        // Utilisation is a rate, so both sources need their previous sample.
+        // The GT-wide perf counters are read first: they count every client,
+        // including the compositor, whose `/proc/<pid>/fdinfo` no unprivileged
+        // reader may open (KWin runs with `cap_sys_nice=ep` and is therefore
+        // non-dumpable). fdinfo is the fallback, not the primary source.
+        let pmu_rates = crate::infrastructure::gpu_pmu_probe::measure_pmu_usage(
+            &crate::infrastructure::gpu_pmu_probe::pmu_state_path(),
         );
+        // Walking every `/proc/<pid>/fdinfo` costs about a second on a busy
+        // desktop. Only pay for it when the PMU could not answer for a card.
+        let mut per_client_rates: Option<HashMap<PdevKey, f64>> = None;
 
         let mut discovered_gpus = Vec::new();
 
@@ -214,15 +220,13 @@ impl MetricsPort for ProcMetricsAdapter {
 
                     // The clock ratio is NOT utilisation: it says how far the GPU
                     // has raised its frequency, which on a high-refresh panel stays
-                    // near the top while the engine is ~5 % busy. Measured engine
-                    // time (fdinfo) wins whenever a DRM client could be read; the
-                    // ratio remains only as a fallback for drivers whose counters
-                    // we cannot see.
+                    // near the top while the engine is ~5 % busy. A measured engine
+                    // time wins whenever one could be read; the ratio remains only
+                    // as a fallback for drivers whose counters we cannot see.
                     let clock_ratio = parse_intel_gpu_freq(&act_str, &min_str, &max_str);
-                    let measured = crate::infrastructure::gpu_engine_probe::measured_usage_for_pci_slot(
-                        &engine_rates, &pci_slot,
-                    );
-                    let usage = resolve_usage(measured, clock_ratio);
+                    let (gt, per_client) =
+                        engine_usage_sources(&pmu_rates, &mut per_client_rates, &pci_slot);
+                    let usage = resolve_usage_staged(gt, per_client, clock_ratio);
                     let clock_ghz = act_str.trim().parse::<f64>().ok().map(|mhz| (mhz / 1000.0 * 100.0).round() / 100.0).unwrap_or(0.0);
 
                     // Intel Arc discrete memory or shared memory
@@ -289,10 +293,12 @@ impl MetricsPort for ProcMetricsAdapter {
                     // engine delta is taken over a known window and agrees with the
                     // other vendors, so use it when it is available and keep the
                     // sysfs percentage only as the fallback.
-                    let measured = crate::infrastructure::gpu_engine_probe::measured_usage_for_pci_slot(
-                        &engine_rates, &amd_metric.pci_slot,
+                    let (gt, per_client) = engine_usage_sources(
+                        &pmu_rates,
+                        &mut per_client_rates,
+                        &amd_metric.pci_slot,
                     );
-                    amd_metric.usage = resolve_usage(measured, amd_metric.usage);
+                    amd_metric.usage = resolve_usage_staged(gt, per_client, amd_metric.usage);
                     discovered_gpus.push(amd_metric);
                 }
             }
@@ -368,5 +374,27 @@ fn fetch_and_cache_lspci(cache_path: &std::path::Path) -> std::collections::Hash
         }
     }
     std::collections::HashMap::new()
+}
+
+/// The two measured utilisation sources for one card, complete one first.
+///
+/// `gt` is the driver's GT-wide perf counter - every client, including the
+/// compositor that fdinfo cannot read. `per_client` is the `/proc` walk, filled
+/// on first use and reused for the remaining cards in this tick, because it is
+/// expensive and its delta window is the invocation, not the card.
+fn engine_usage_sources(
+    pmu_rates: &HashMap<PdevKey, f64>,
+    per_client: &mut Option<HashMap<PdevKey, f64>>,
+    pci_slot: &str,
+) -> (Option<f64>, Option<f64>) {
+    use crate::infrastructure::gpu_engine_probe::{
+        engine_state_path, measure_engine_usage, measured_usage_for_pci_slot,
+    };
+    let gt = measured_usage_for_pci_slot(pmu_rates, pci_slot);
+    if gt.is_some() {
+        return (gt, None);
+    }
+    let rates = per_client.get_or_insert_with(|| measure_engine_usage(&engine_state_path()));
+    (None, measured_usage_for_pci_slot(rates, pci_slot))
 }
 

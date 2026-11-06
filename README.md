@@ -233,8 +233,34 @@ make stop       # Stop the shell and restore Plasma panels
 make restore    # Restore the original KDE Plasma panels
 make doctor     # Dependency / compatibility report
 make test       # Full test suite: Rust unit tests + all QML suites
+make gpu-pmu-perms  # Let GPU usage count every client (one sudo, CAP_PERFMON)
 make clean      # Remove build artifacts
 ```
+
+#### GPU usage accuracy (Intel iGPU)
+
+The dashboard's GPU percentage is measured from kernel engine counters, never
+from the GPU clock. Two sources exist, and the shell uses the first it can:
+
+| Source | Sees | Needs |
+| :--- | :--- | :--- |
+| i915 perf PMU (`rcs0-busy`, …) | every client, **including the compositor** | `CAP_PERFMON` |
+| `/proc/<pid>/fdinfo` | only DRM clients a normal user may open | nothing |
+
+KWin runs with `cap_sys_nice=ep` file capabilities, so the kernel marks it
+non-dumpable and its `fdinfo` is unreadable to unprivileged readers. The fdinfo
+fallback therefore under-reports on a busy iGPU (on a 2560x1600@240Hz panel it
+showed 46 % while `rc6_residency_ms` never advanced and KDE System Monitor
+showed 100 %). Run once to make the dashboard match `intel_gpu_top`:
+
+```bash
+make gpu-pmu-perms   # sudo setcap cap_perfmon=ep on the binary,
+                     # or on a copy under /usr/local/libexec when the
+                     # checkout lives on a nosuid mount
+```
+
+`bin/astral-plasma doctor` reports which source is live and warns when only the
+fdinfo fallback is available. Nothing breaks without it.
 
 ### 3. System installation
 To install as your primary Quickshell configuration:
@@ -328,6 +354,7 @@ quickshell ipc -p "$PWD" call launcher open apps
 | Open wallpaper picker | `scripts/open_wallpaper.sh` |
 | Generate wallpaper palette | `scripts/generate_palette.sh` |
 | Bind / restore global shortcuts | `scripts/bind_shortcuts.sh` / `scripts/restore_shortcuts.sh` |
+| Grant GPU engine counters (`CAP_PERFMON`) | `scripts/enable_gpu_pmu.sh` (`make gpu-pmu-perms`) |
 
 ### Daemon CLI (`bin/astral-plasma`)
 
@@ -344,6 +371,7 @@ config write <path> <json>   Atomic configuration persistence
 watch                        Event-driven background watcher
 visualizer                   Stream real-time audio spectrum/energy JSON
 metrics                      Print system metrics JSON
+gpu-pmu-counters             Print raw GPU engine busy counters (needs CAP_PERFMON)
 calendar <resolve|open>      Open the default calendar application
 workspaces <cmd>             Virtual desktops: query / switch / ensure
 preview <window_id>          Capture a live window thumbnail

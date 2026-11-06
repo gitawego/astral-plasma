@@ -8,7 +8,7 @@
 
 use crate::domain::gpu_engine::{
     aggregate_engine_busy, encode_engine_state, parse_engine_state, parse_fdinfo_engine_busy,
-    rates_from_state, EngineSample, PdevKey,
+    rates_from_state, state_is_fresh, EngineSample, PdevKey,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -101,6 +101,7 @@ pub fn measure_engine_usage(state_path: &Path) -> HashMap<PdevKey, f64> {
     let rates = std::fs::read_to_string(state_path)
         .ok()
         .and_then(|content| parse_engine_state(&content))
+        .filter(|(prev_ms, _)| state_is_fresh(*prev_ms, now_ms, MAX_SAMPLE_AGE_MS))
         .map(|(prev_ms, prev)| rates_from_state(prev_ms, &prev, now_ms, &snapshot.busy_ns))
         .unwrap_or_default();
 

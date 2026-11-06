@@ -15,6 +15,16 @@
 //! `gt_max_freq_mhz` - is a *clock* ratio, not utilisation. On a 240 Hz panel
 //! the RPS governor parks near the maximum clock while the engine is nearly
 //! idle, so the clock ratio reported 60-100 % on a 5 %-busy GPU.
+//!
+//! It is however an **incomplete** source, and no longer the first one: it can
+//! only read DRM clients this process may open, and `kwin_wayland` carries
+//! `cap_sys_nice=ep` file capabilities, which makes the kernel mark it
+//! non-dumpable. The compositor's `fdinfo` answers `EACCES` to every reader below
+//! `CAP_SYS_PTRACE`, and on a 240 Hz panel it is the largest client of all - the
+//! sum reported 46 % on a GPU whose `rc6_residency_ms` never advanced.
+//! [`crate::infrastructure::gpu_pmu_probe`] reads the GT-wide i915 perf counters
+//! instead (`CAP_PERFMON`, every client); this module remains the fallback for
+//! every host that cannot grant it, and the only source on AMD/NVIDIA.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -165,6 +175,139 @@ pub fn pdev_matches_pci_slot(pdev: &str, pci_slot: &str) -> bool {
 /// counters to us - never a silent substitute for a real measurement.
 pub fn resolve_usage(measured: Option<f64>, fallback: f64) -> f64 {
     measured.unwrap_or(fallback).clamp(0.0, 1.0)
+}
+
+/// Utilisation for one card, in order of how much of the GPU each source sees.
+///
+/// `gt` is the driver's GT-wide counter (i915 perf PMU): every client counts,
+/// including the compositor, which fdinfo cannot see because KWin runs with
+/// `cap_sys_nice=ep` file capabilities and is therefore non-dumpable. `per_client`
+/// is the sum of the `/proc/<pid>/fdinfo` engine counters: real, but a lower
+/// bound that silently omits such clients. `fallback` is the driver's own
+/// percentage, or the Intel clock ratio as a last resort.
+pub fn resolve_usage_staged(gt: Option<f64>, per_client: Option<f64>, fallback: f64) -> f64 {
+    resolve_usage(gt.or(per_client), fallback)
+}
+
+// ---------------------------------------------------------------------------
+// GT-wide perf counters
+// ---------------------------------------------------------------------------
+//
+// The i915 driver publishes one perf event per engine class
+// (`rcs0-busy`, `bcs0-busy`, ...), each counting the nanoseconds that engine
+// spent executing *any* client's work. Reading them needs `CAP_PERFMON` and
+// nothing else, which is why `intel_gpu_top` and KDE's ksystemstats use them.
+//
+// The sysfs descriptors, not a hardcoded table, define what is available:
+// `/sys/bus/event_source/devices/<pmu>/events/<engine>-busy` holds the perf
+// `config` value and its sibling `.unit` file says `ns`. An event whose unit is
+// not nanoseconds (a residency counter, an MHz clock, an interrupt count) is
+// not engine time and must never be summed into utilisation.
+
+/// Parse a perf event descriptor such as `config=0x1000`.
+///
+/// Only the documented i915 shape is accepted. An unknown ABI (a different
+/// driver, a future format) yields `None` so the caller keeps the fdinfo
+/// reading instead of inventing a counter value.
+pub fn parse_pmu_event_config(content: &str) -> Option<u64> {
+    let (key, value) = content.trim().split_once('=')?;
+    if key.trim() != "config" {
+        return None;
+    }
+    let value = value.trim();
+    let hex = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X"))?;
+    if hex.is_empty() || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    u64::from_str_radix(hex, 16).ok()
+}
+
+/// Cache key for one engine of one card: `<pci-slot>#<engine>`.
+///
+/// The slot comes first so the key stays readable in the cache file and the
+/// `#` cannot appear in either half.
+pub fn pmu_state_key(pci_slot: &str, engine: &str) -> PdevKey {
+    PdevKey(format!("{}#{}", pci_slot.trim().to_ascii_lowercase(), engine.trim()))
+}
+
+/// Fold per-engine rates into one rate per card: the busiest engine.
+///
+/// Render and copy execute in parallel, so their busy times can overlap and
+/// must not be added (that would report 160 % on a fully loaded GPU). The
+/// busiest engine is what actually saturates first.
+pub fn fold_engine_rates_by_slot(rates: &HashMap<PdevKey, f64>) -> HashMap<PdevKey, f64> {
+    let mut folded: HashMap<PdevKey, f64> = HashMap::new();
+    for (key, usage) in rates {
+        let slot = key.as_str().split('#').next().unwrap_or(key.as_str());
+        let entry = folded.entry(PdevKey::from(slot)).or_insert(0.0);
+        if *usage > *entry {
+            *entry = *usage;
+        }
+    }
+    folded
+}
+
+/// Extract the PCI slot (`dddd:bb:dd.f`) named by a sysfs path.
+///
+/// The i915 PMU usually sits on a slotless platform device, in which case there
+/// is nothing to derive. Drivers that name their PMU after the device either
+/// keep the colon form or replace them with underscores (`xe_0000_00_02.0`), so
+/// both are accepted and normalised.
+pub fn pci_slot_from_device_path(path: &str) -> Option<String> {
+    path.split('/').find_map(pci_slot_in_segment)
+}
+
+fn pci_slot_in_segment(segment: &str) -> Option<String> {
+    let bytes = segment.as_bytes();
+    if bytes.len() < 12 {
+        return None;
+    }
+    for start in 0..=(bytes.len() - 12) {
+        let window = &segment[start..start + 12];
+        let w = window.as_bytes();
+        let separators_match =
+            (w[4] == b':' || w[4] == b'_') && w[7] == w[4] && w[10] == b'.';
+        if !separators_match {
+            continue;
+        }
+        let digits_match = (0..12)
+            .filter(|i| *i != 4 && *i != 7 && *i != 10)
+            .all(|i| w[i].is_ascii_hexdigit());
+        if !digits_match {
+            continue;
+        }
+        let mut out = String::with_capacity(12);
+        for (i, c) in window.bytes().enumerate() {
+            out.push(match i {
+                4 | 7 => ':',
+                10 => '.',
+                _ => (c as char).to_ascii_lowercase(),
+            });
+        }
+        return Some(out);
+    }
+    None
+}
+
+/// Bind a single-instance PMU to a card, but only when that is unambiguous.
+///
+/// Picking one of several Intel GPUs arbitrarily would attribute one card's
+/// busy time to another. With no usable identity sysfs the reading is dropped,
+/// and the caller keeps the fdinfo one.
+pub fn bind_single_card(cards: &[String]) -> Option<String> {
+    match cards {
+        [only] => Some(only.clone()),
+        _ => None,
+    }
+}
+
+/// Whether a cached counter sample is recent enough to turn into a rate.
+///
+/// `usage = busy_delta / wall_delta` assumes the caller polls at a steady
+/// cadence. A cache an hour old would divide a busy GPU by an hour of wall time
+/// and report ~0 %, so a stale sample is “no measurement”, not a rate.
+pub fn state_is_fresh(prev_epoch_ms: u64, now_epoch_ms: u64, max_age_ms: u64) -> bool {
+    now_epoch_ms >= prev_epoch_ms && now_epoch_ms - prev_epoch_ms <= max_age_ms
 }
 
 // ---------------------------------------------------------------------------

@@ -656,6 +656,14 @@ When building sliding edge drawers on the right screen border (e.g. `RightEdgeCo
   5. **PCI slot matching tolerates the domain prefix** (`0000:00:02.0` ≡ `00:02.0`) and must never treat an empty slot as a wildcard.
 - **Contract Tests**: `daemon/tests/test_gpu_engine_usage.rs`, `tests/tst_gpu_usage_is_measured.qml`.
 
+### 8.13. A Per-Client Counter Cannot See The Compositor
+- **The Symptom**: two resource monitors disagreed on the same iGPU in the same second — Astral read 46 % and KDE System Monitor read 100 %. Mission Center agreed with Astral, which made the wrong number look corroborated.
+- **Root Cause**: both 46 %-readers sum `/proc/*/fdinfo` `drm-engine-*` counters, which only cover DRM clients the reader may open. `kwin_wayland` is installed with `cap_sys_nice=ep` file capabilities; gaining privileges at exec makes the kernel mark it **non-dumpable**, so `/proc/<kwin_pid>/fdinfo` answers `EACCES` even to the same user. The compositor is the single largest client on a 240 Hz panel and was simply absent from the sum. Evidence that the 46 % was the wrong one: `rc6_residency_ms` advanced by **0 ms** over a 2.8 s window while the i915 PMU reported 99.1 % render busy.
+- **The Rule**: prefer the driver's **GT-wide** busy counter. `CAP_PERFMON` is a narrower grant than `CAP_SYS_PTRACE`, needs no debugfs, and is exactly what `intel_gpu_top` and KDE's `ksystemstats_intel_helper` use; keep per-client fdinfo as the unprivileged fallback and say in `doctor` which one is live.
+- **Corroboration is not verification**: two tools agreeing in Rust and GTK proves they parse the same fields, not that the fields are complete. Read the source of the *second* tool before treating agreement as truth.
+- **Accounting details that carry over**: engine busy time is per engine — fold to the busiest engine per card (`rcs0` + `bcs0` run in parallel, so summing can report 160 %); the PMU sample and the fdinfo sample must live in **separate** state files, because their counters cannot be mixed into one delta.
+- **Contract Tests**: `daemon/tests/test_gpu_pmu_usage.rs`.
+
 ## 9. The Definitive Engineering Guide to Building the Liquid Glass Theme Correctly
 
 ### 9.1. The Optical Anatomy of Authentic Liquid Glass

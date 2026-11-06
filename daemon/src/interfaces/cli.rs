@@ -900,6 +900,24 @@ pub async fn run_cli() -> DynResult<()> {
             let json = metrics_ctrl.execute_json()?;
             println!("{}", json);
         }
+        // Raw GT busy counters, printed in the state-cache format. This is what
+        // the privileged helper runs: file capabilities are ignored on a nosuid
+        // mount (where checkouts usually live), so a copy installed outside one
+        // with `cap_perfmon=ep` answers this command for the unprivileged
+        // daemon. It prints counters, never a percentage: the caller owns the
+        // previous sample, so the delta window stays the caller's tick.
+        "gpu-pmu-counters" => {
+            match crate::infrastructure::gpu_pmu_probe::counters_state_line() {
+                Some(state) => print!("{}", state),
+                None => {
+                    eprintln!(
+                        "No GPU perf counter available: this binary needs CAP_PERFMON \
+                         (sudo setcap cap_perfmon=ep <path>, or `make gpu-pmu-perms`)"
+                    );
+                    std::process::exit(2);
+                }
+            }
+        }
         "downloads" => {
             use crate::application::download_service::{Aria2DownloadsPort, DownloadsUseCase};
             use crate::domain::downloads::{clamp_split, EngineSettings, NewDownloadOptions};
@@ -2030,6 +2048,7 @@ fn print_usage() {
     eprintln!("  watch                   - Run event-driven background watcher");
     eprintln!("  visualizer              - Stream real-time audio spectrum & energy JSON");
     eprintln!("  metrics                 - Print system metrics JSON (uptime, ram)");
+    eprintln!("  gpu-pmu-counters        - Print raw GPU engine busy counters (needs CAP_PERFMON)");
     eprintln!("  calendar <resolve|open [YYYY-MM-DD]> - Open the default calendar application");
     eprintln!("  clipboard <read|set|clear> [content] [--image] - Rich clipboard operations");
     eprintln!("  workspaces <cmd>        - Virtual desktops: query, switch, ensure");

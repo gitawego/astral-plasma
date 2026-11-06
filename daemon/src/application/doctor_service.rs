@@ -50,6 +50,9 @@ impl DoctorService {
             crate::infrastructure::assistant_harness::runtime_provisioner::RuntimeProvisioner::locate_pi(),
         ));
 
+        // 13. GPU engine counters (which source the dashboard's GPU % comes from)
+        checks.push(check_gpu_counters());
+
         DoctorReport::new(checks)
     }
 }
@@ -661,6 +664,56 @@ fn which(bin: &str) -> Option<String> {
 fn extract_version(text: &str) -> Option<String> {
     let re = regex::Regex::new(r"([0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[0-9a-zA-Z\.]+)*)").ok()?;
     re.captures(text).and_then(|c| c.get(1)).map(|m| m.as_str().to_string())
+}
+
+/// Reports which source the dashboard's GPU percentage comes from.
+///
+/// This exists because the two sources legitimately disagree: `/proc/<pid>/fdinfo`
+/// sums the DRM clients an unprivileged reader may open, and KWin - started with
+/// `cap_sys_nice=ep` file capabilities - is non-dumpable, so the compositor is
+/// invisible to it. On a 240Hz panel that made a saturated iGPU read as 46 %.
+/// The GT-wide perf counter sees every client and needs only `CAP_PERFMON`.
+fn check_gpu_counters() -> DependencyCheck {
+    use crate::infrastructure::gpu_pmu_probe::{active_counter_source, CounterSource, PMU_ROOT};
+
+    let pmu_present = std::path::Path::new(PMU_ROOT).join("i915").exists();
+    let source = active_counter_source();
+    let (status, message, recommendation) = match (&source, pmu_present) {
+        (CounterSource::Unavailable, true) => (
+            CheckStatus::Warning,
+            "GPU utilisation falls back to /proc/*/fdinfo, which cannot read the compositor \
+             (KWin is non-dumpable): the number under-reports while the GPU is busy"
+                .to_string(),
+            Some(
+                "Grant the perf counter (one sudo): make gpu-pmu-perms - then the dashboard \
+                 reports the same GT-wide figure as intel_gpu_top and KDE System Monitor"
+                    .to_string(),
+            ),
+        ),
+        (CounterSource::Unavailable, false) => (
+            CheckStatus::Pass,
+            "GPU utilisation measured from /proc/*/fdinfo (no nanosecond perf PMU here)"
+                .to_string(),
+            None,
+        ),
+        _ => (CheckStatus::Pass, format!("GPU utilisation from {}", source.label()), None),
+    };
+
+    DependencyCheck {
+        name: "GPU Engine Counters".to_string(),
+        category: "Optional Enhancements".to_string(),
+        required: false,
+        status,
+        installed: !matches!(source, CounterSource::Unavailable),
+        detected_version: None,
+        required_version: None,
+        binary_path: match source {
+            CounterSource::Helper(path) => Some(path.display().to_string()),
+            _ => None,
+        },
+        message,
+        recommendation,
+    }
 }
 
 fn check_aria2() -> DependencyCheck {
