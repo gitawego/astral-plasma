@@ -52,10 +52,13 @@ LiquidGlassCard {
         anchors.centerIn: parent
         spacing: 4
 
-        // 0. Keyboard Language Switcher
+        // 0. Input Method / Keyboard Layout Switcher
         Item {
             id: kbItem
+            // The list is the session's real input methods; when neither fcitx5
+            // nor KDE answers there is nothing to switch, so no dead icon.
             visible: root.isIconEnabled("kblayout")
+                && (typeof InputMethodService !== "undefined" && InputMethodService.available)
             implicitWidth: visible ? root.btnSize : 0
             implicitHeight: visible ? root.btnSize : 0
             width: implicitWidth
@@ -70,9 +73,7 @@ LiquidGlassCard {
 
                 Text {
                     anchors.centerIn: parent
-                    text: (typeof KbLayoutService !== "undefined" && KbLayoutService.currentLayout)
-                        ? KbLayoutService.currentLayout.substring(0, 2).toUpperCase()
-                        : "US"
+                    text: (typeof InputMethodService !== "undefined") ? InputMethodService.badge : ""
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
                     font.weight: Font.Bold
@@ -94,7 +95,7 @@ LiquidGlassCard {
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onClicked: mouse => {
                         if (mouse.button === Qt.RightButton) {
-                            if (typeof KbLayoutService !== "undefined") KbLayoutService.nextLayout();
+                            if (typeof InputMethodService !== "undefined") InputMethodService.nextLayout();
                         } else {
                             Config.openBottomPopout("kblayout", kbItem.mapToItem(null, 0, kbItem.height / 2).y);
                         }

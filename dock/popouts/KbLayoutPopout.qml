@@ -7,27 +7,29 @@ import "../../services"
 Card {
     id: root
 
-    width: 240
-    height: 160
+    width: 280
+    implicitHeight: layout.implicitHeight + Theme.padLarge * 2
+    height: implicitHeight
     radius: Theme.radiusLarge
 
     ColumnLayout {
+        id: layout
         anchors.fill: parent
         anchors.margins: Theme.padLarge
-        spacing: Theme.spaceMedium
+        spacing: 10
 
-        // Header
         RowLayout {
             Layout.fillWidth: true
+            spacing: 8
 
             MaterialIcon {
-                text: "language"
+                text: "keyboard"
                 size: 20
                 color: Colors.primary
             }
 
             Text {
-                text: "Keyboard Layout"
+                text: (typeof InputMethodService !== "undefined") ? InputMethodService.title : "Input Methods"
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontTitleSmall
                 font.weight: Font.DemiBold
@@ -36,31 +38,8 @@ Card {
             }
         }
 
-        // Active layout card
-        Rectangle {
+        InputMethodList {
             Layout.fillWidth: true
-            height: 48
-            radius: Theme.radiusMedium
-            color: Colors.primaryContainer
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: Theme.padSmall
-
-                Text {
-                    text: KbLayoutService.currentLayout
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontTitleSmall
-                    font.weight: Font.Bold
-                    color: Colors.m3onPrimaryContainer
-                    Layout.fillWidth: true
-                }
-
-                PillButton {
-                    label: "Cycle"
-                    onClicked: KbLayoutService.nextLayout()
-                }
-            }
         }
     }
 }

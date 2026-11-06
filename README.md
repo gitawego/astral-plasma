@@ -188,6 +188,7 @@ A dedicated, fluid download manager embedded directly inside the Central Dashboa
   - [`quickshell`](https://quickshell.outfoxxed.me/) (v0.3.0+)
   - `qt6-base`, `qt6-declarative`, `qt6-svg` (Qt 6.6+)
   - `qdbus6` / `kwriteconfig6` (when running under KDE Plasma 6)
+  - `busctl` (systemd; reads fcitx5 input methods and KDE layouts as JSON)
   - `pipewire` (audio & visualizer)
 - **Build dependencies**:
   - Rust toolchain (`cargo`, stable) — builds the daemon

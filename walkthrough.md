@@ -1,3 +1,21 @@
+# Astral Plasma — The Input Method Drawer Reads fcitx5, Not A Hardcoded "US"
+
+> [!NOTE]
+> **Issue**: The dock's input-method icon showed "US", and its drawer offered only "US" plus a "Switch" button. The methods the user had added (Rime) were missing, there was no settings entry, and clicking the icon appeared to do nothing. The user asked for the drawer to be configuration-driven rather than hardcoded.
+>
+> **Root cause**: `KbLayoutService` hardcoded `layouts: ["US"]` and only asked KDE for the current index. The added input methods live in **fcitx5**, not in KDE's layout list, and `switchToNextLayout` on KDE with a single layout is a no-op - so the icon and drawer could never change.
+>
+> **Fix**:
+> 1. **`services/InputMethods.js`** parses the real `busctl --json=short` payloads: fcitx5's `FullInputMethodGroupInfo` (configured methods), `CurrentInputMethod`, and KDE's `getLayoutsList` / `getLayout`. The dock badge comes from each method's own label (`en` -> `EN`, Rime's `ㄓ`); malformed output yields no items rather than a fabricated list.
+> 2. **`services/InputMethodService.qml`** reads fcitx5 first (group -> methods -> current), falls back to KDE layouts, switches with `SetCurrentIM` / `setLayout`, opens the owner's settings (`Configure`, or `kcmshell6 kcm_keyboard`), and coalesces refreshes so a drawer opened mid-poll never shows a stale active row.
+> 3. **`components/InputMethodList.qml`** renders one row per configured method (active row = framework's answer, click = switch) plus the settings entry, capped and scrollable; the fused drawer and the legacy dock popout both use it. The dock icon shows the active badge and is hidden when neither framework answers.
+>
+> **Tests** (TDD, red first): `tests/tst_input_method_config.qml` - parses the exact live fcitx5/KDE payloads, pins badge derivation, active-index lookup, malformed-input degradation, and source contracts for the service, list, drawer and dock icon.
+>
+> **Verified live** (shell hot-reloaded, `spectacle`): the drawer lists "Keyboard - English (US)" (EN, active) and "Rime" (ㄓ) with a "fcitx5 Settings" entry; switching fcitx5 to Rime with `SetCurrentIM` changed the highlighted row and the dock badge to ㄓ, and switching back restored EN.
+
+---
+
 # Astral Plasma — The Dock's Second Battery Icon (Power Profile) Is Gone
 
 > [!NOTE]

@@ -44,7 +44,7 @@ Item {
             case "ai": return 380;
             case "bluetooth": return 300;
             case "network": return 300;
-            case "kblayout": return 280;
+            case "kblayout": return 320;
             case "clipboard": return 340;
             case "notifications": return 360;
             case "power": return 280;
@@ -504,17 +504,22 @@ Item {
             }
 
             // ==========================================
-            // KEYBOARD LANGUAGE LAYOUT SECTION
+            // INPUT METHOD / KEYBOARD LAYOUT SECTION
             // ==========================================
             ColumnLayout {
                 id: kbLayoutSection
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                spacing: 12
+                spacing: 10
                 readonly property bool isCurrent: root.mode === "kblayout"
                 visible: isCurrent
                 opacity: isCurrent ? 1.0 : 0.0
+                onIsCurrentChanged: {
+                    if (isCurrent && typeof InputMethodService !== "undefined") {
+                        InputMethodService.refresh();
+                    }
+                }
                 Behavior on opacity {
                     NumberAnimation {
                         duration: 220
@@ -523,21 +528,19 @@ Item {
                     }
                 }
 
-                readonly property string curLayout: (typeof KbLayoutService !== "undefined" && KbLayoutService.currentLayout) ? KbLayoutService.currentLayout : "US"
-
                 // Header
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
 
                     MaterialIcon {
-                        text: "language"
+                        text: "keyboard"
                         size: 20
                         color: Colors.primary
                     }
 
                     Text {
-                        text: "Keyboard Layout"
+                        text: (typeof InputMethodService !== "undefined") ? InputMethodService.title : "Input Methods"
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontMedium
                         font.weight: Font.DemiBold
@@ -546,72 +549,11 @@ Item {
                     }
                 }
 
-                // Active Layout Card
-                Rectangle {
+                // Every method configured in the owning framework, plus its
+                // settings entry. The list is the drawer - no single "active
+                // layout" card with a blind cycle button.
+                InputMethodList {
                     Layout.fillWidth: true
-                    implicitHeight: 48
-                    radius: Theme.radiusMedium
-                    color: Colors.surfaceContainer
-                    border.color: Colors.primary
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 12
-                        spacing: 8
-
-                        Text {
-                            text: kbLayoutSection.curLayout
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMedium
-                            font.weight: Font.Bold
-                            color: Colors.textOnSurface
-                            Layout.fillWidth: true
-                        }
-
-                        // Cycle Pill Button
-                        Rectangle {
-                            implicitWidth: cycleText.implicitWidth + 18
-                            implicitHeight: 28
-                            radius: Theme.radiusFull
-                            color: cycleHover.hovered ? Colors.primary : Colors.surfaceContainerHighest
-                            border.color: cycleHover.hovered ? "transparent" : Theme.borderSubtle
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 4
-
-                                MaterialIcon {
-                                    text: "sync"
-                                    size: 14
-                                    color: cycleHover.hovered ? Colors.textOnPrimary : Colors.textOnSurface
-                                }
-
-                                Text {
-                                    id: cycleText
-                                    text: "Switch"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    font.weight: Font.DemiBold
-                                    color: cycleHover.hovered ? Colors.textOnPrimary : Colors.textOnSurface
-                                }
-                            }
-
-                            HoverHandler { id: cycleHover }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (typeof KbLayoutService !== "undefined") {
-                                        KbLayoutService.nextLayout();
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
 

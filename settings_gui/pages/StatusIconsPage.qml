@@ -58,7 +58,7 @@ SettingsPage {
             Layout.fillWidth: true
             title: {
                 switch (modelData.id) {
-                    case "kblayout": return "Keyboard Language Switcher (KDE DBus)";
+                    case "kblayout": return "Input Methods (fcitx5 / keyboard layouts)";
                     case "network": return "Wi-Fi & Network Manager";
                     case "bluetooth": return "Bluetooth Controller (BlueZ)";
                     case "clipboard": return "Clipboard Manager (KDE Klipper)";
