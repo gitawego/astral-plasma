@@ -1,3 +1,18 @@
+# Astral Plasma — The Settings Gear Ends A Drawer It Has No Context For
+
+> [!NOTE]
+> **Issue**: With the AI Token Quotas drawer open, moving the pointer onto the settings gear left the drawer on screen. The gear opens a window, not a drawer, so the stale card had no context.
+>
+> **Root cause**: The status pill's group `HoverHandler` opened the status card whenever the pointer was over the pill, but no per-icon handler ended an open drawer. The AI icon's hover only opened its card; the gear only closed on click. Moving from the AI icon to the gear therefore changed nothing.
+>
+> **Fix**: The gear's `MouseArea` now closes the open drawer on `entered` (as well as on click), and the group handler checks whether the pointer entered the pill over the gear before opening the status card - entering directly onto the gear closes instead of opening. Every other status icon still opens its own drawer, and the status card still opens when the pointer is elsewhere on the pill.
+>
+> **Tests** (TDD, red first): `tests/tst_status_group_hover_context.qml` - the gear closes on hover and click and never opens a drawer; the group still opens its card away from the gear, and leaving the pill still schedules the drawer closed.
+>
+> **Verified live**: opened the AI drawer via IPC and captured it. This session's virtual pointer devices were not picked up by KWin, so the hover transition itself could not be re-observed visually; the handler wiring is pinned by the contract test.
+
+---
+
 # Astral Plasma — The Input Method Drawer Reads fcitx5, Not A Hardcoded "US"
 
 > [!NOTE]

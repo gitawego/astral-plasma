@@ -36,13 +36,24 @@ LiquidGlassCard {
         return true;
     }
 
+    // The status card belongs to the status pill, but the settings gear owns no
+    // drawer: entering the pill directly over the gear must close the card, not
+    // open it under an icon that cannot explain it.
     HoverHandler {
         id: groupHover
         onHoveredChanged: {
-            if (hovered) {
-                Config.openBottomPopout("default", root.mapToItem(null, 0, root.height / 2).y);
-            } else {
+            if (!hovered) {
                 Config.scheduleCloseBottomPopout();
+                return;
+            }
+            const p = point.position;
+            const s = settingsItem.mapToItem(root, 0, 0);
+            const overSettings = p.x >= s.x && p.x <= s.x + settingsItem.width
+                && p.y >= s.y && p.y <= s.y + settingsItem.height;
+            if (overSettings) {
+                Config.closeBottomPopout();
+            } else {
+                Config.openBottomPopout("default", root.mapToItem(null, 0, root.height / 2).y);
             }
         }
     }
@@ -479,6 +490,10 @@ LiquidGlassCard {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    // Settings opens a window, not a drawer. Entering the gear is
+                    // therefore the end of whichever drawer was open - otherwise
+                    // an unrelated card (e.g. AI quotas) hangs on with no context.
+                    onEntered: Config.closeBottomPopout()
                     onClicked: {
                         Config.closeBottomPopout();
                         Config.toggleSettings();
