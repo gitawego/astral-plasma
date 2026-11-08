@@ -126,8 +126,12 @@ ShellRoot {
         id: intents
     }
 
-    // Bundled apps are data, so `shell.qml` names no feature. The overview stays
-    // alive because the shell shows and hides it.
+    // The overview is a shell surface, not a migrated app: the theme cannot cross the
+    // app boundary yet (spec C.17), and an untitled surface is worse than an unmigrated one.
+    ActiveAppsOverview {
+        id: overviewSurface
+    }
+
     AppRegistry {
         id: bundledApps
         bundledRoot: Qt.resolvedUrl("modules/Astral/Apps/").toString().replace(/^file:\/\//, "")
@@ -143,7 +147,6 @@ ShellRoot {
         workspaces: workspacesPort
         metrics: SystemService
         host: ({ level: 1, floor: 1 })
-        eager: ["org.astralplasma.overview"]
         onAppFailed: function (id, reason) { console.error("app failed: " + id + " - " + reason) }
     }
 
@@ -407,8 +410,7 @@ ShellRoot {
         function close(): void { Config.closeOverview(); }
         function search(query: string): void {
             Config.openOverview();
-            const overview = featureHost.itemFor("org.astralplasma.overview");
-            if (overview) overview.queryText = query;
+            if (overviewSurface) overviewSurface.queryText = query;
         }
     }
 

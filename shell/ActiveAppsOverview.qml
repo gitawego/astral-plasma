@@ -3,45 +3,25 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import "../../Kernel/theme"
-import "../../Kernel/components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/services"
 
-// Overview app entry point (`manifest.entry.root`).
-//
-// The shell injects `shellState` (settings-derived state), `session` (windows) and
-// `intents` (actions). It imports neither `Kernel/config` nor `Kernel/services`:
-// a Loader-loaded component gets its own singleton instances, so those imports are
-// stale copies (spec C.9, C.10).
-//
 // Active-apps overview: a fullscreen liquid-glass surface listing every
 // running window with a live thumbnail and integrated type-to-search across
 // both open windows and installed applications.
 // Toggled by the bare Meta key:
 //   KWin registerShortcut -> daemon ShellIpc whitelist -> `overview` IPC ->
-//   shellState.overviewVisible -> this surface drives the shell's capture
+//   Config.overviewVisible -> this surface drives WindowService's capture
 //   cycle while open.
 PanelWindow {
     id: root
 
-    /// Injected by AppHost: shell-owned read model.
-    property var shellState: null
-    /// Injected by AppHost: the window model.
-    property var session: null
-    /// Injected by AppHost: the intent bus.
-    property var intents: null
-
-    readonly property var windows: session !== null ? session.windows : []
-    readonly property var installedApps: session !== null ? session.installedApps : []
-    readonly property var overviewThumbnails: session !== null ? session.overviewThumbnails : ({})
-
-    function iconFor(name) {
-        return shellState !== null ? shellState.iconUrl(name) : "";
-    }
-
     property ShellScreen targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     screen: targetScreen
 
-    readonly property bool openRequested: shellState !== null && shellState.overviewVisible
+    readonly property bool openRequested: Config.overviewVisible
 
     // A pick already handed activation to its window; dismissing WITHOUT a
     // pick must hand compositor activation back (`focus restore`), because
@@ -90,6 +70,9 @@ PanelWindow {
         width: root.blurWanted ? root.width : 0
         height: root.blurWanted ? root.height : 0
     }
+
+    // Installed applications source (shared with WindowService)
+    property var installedApps: (typeof WindowService !== "undefined" && WindowService.installedApps) ? WindowService.installedApps : []
 
     // Search query state
     property string queryText: ""
@@ -213,7 +196,7 @@ PanelWindow {
     readonly property var matchingWindows: {
         if (!searchQuery || isCommandMode) return [];
         const q = searchQuery;
-        const wins = root.windows || [];
+        const wins = WindowService.windows || [];
         const scored = [];
         for (let i = 0; i < wins.length; i++) {
             const w = wins[i];
@@ -303,18 +286,18 @@ PanelWindow {
     function executeCommand(cmd) {
         if (!cmd) return;
         const id = cmd.id;
-        root.intents && root.intents.request("overview.close");
+        Config.closeOverview();
         if (id === "wallpaper") {
-            root.intents && root.intents.request("launcher.open", { panel: "wallpaper", arg: root.commandArg });
+            Config.openCommandLauncher("wallpaper", root.commandArg);
         } else if (id === "scheme") {
-            root.intents && root.intents.request("launcher.open", { panel: "scheme", arg: root.commandArg });
+            Config.openCommandLauncher("scheme", root.commandArg);
         } else if (id === "mode") {
-            root.intents && root.intents.request("launcher.open", { panel: "mode", arg: root.commandArg });
+            Config.openCommandLauncher("mode", root.commandArg);
         } else if (id === "settings") {
-            root.intents && root.intents.request("launcher.open", { panel: "settings", arg: root.commandArg });
+            Config.openCommandLauncher("settings", root.commandArg);
         } else if (id === "exit") {
-            if (root.intents) {
-                root.intents.request("shell.exit");
+            if (typeof Config !== "undefined" && Config.exitShell) {
+                Config.exitShell();
             }
         }
     }
@@ -324,24 +307,24 @@ PanelWindow {
             if (root.isCommandMode) {
                 const cmdName = root.commandName;
                 if (cmdName === "wallpaper" || cmdName === "wp" || cmdName === "wallpapers" || cmdName === "background") {
-                    root.intents && root.intents.request("overview.close");
-                    root.intents && root.intents.request("launcher.open", { panel: "wallpaper", arg: root.commandArg });
+                    Config.closeOverview();
+                    Config.openCommandLauncher("wallpaper", root.commandArg);
                     return;
                 } else if (cmdName === "scheme" || cmdName === "color" || cmdName === "colors" || cmdName === "theme") {
-                    root.intents && root.intents.request("overview.close");
-                    root.intents && root.intents.request("launcher.open", { panel: "scheme", arg: root.commandArg });
+                    Config.closeOverview();
+                    Config.openCommandLauncher("scheme", root.commandArg);
                     return;
                 } else if (cmdName === "mode" || cmdName === "dark" || cmdName === "light" || cmdName === "appearance") {
-                    root.intents && root.intents.request("overview.close");
-                    root.intents && root.intents.request("launcher.open", { panel: "mode", arg: root.commandArg });
+                    Config.closeOverview();
+                    Config.openCommandLauncher("mode", root.commandArg);
                     return;
                 } else if (cmdName === "settings" || cmdName === "set" || cmdName === "config" || cmdName === "preferences") {
-                    root.intents && root.intents.request("overview.close");
-                    root.intents && root.intents.request("launcher.open", { panel: "settings", arg: root.commandArg });
+                    Config.closeOverview();
+                    Config.openCommandLauncher("settings", root.commandArg);
                     return;
                 } else if (cmdName === "exit" || cmdName === "quit" || cmdName === "leave") {
-                    root.intents && root.intents.request("overview.close");
-                    if (root.intents) root.intents.request("shell.exit");
+                    Config.closeOverview();
+                    if (typeof Config !== "undefined" && Config.exitShell) Config.exitShell();
                     return;
                 }
             }
@@ -351,32 +334,32 @@ PanelWindow {
         if (!item) return;
         if (item.type === "window") {
             root.pickedWindowId = String(item.data.id);
-            root.session && root.session.activateWindow(item.data.id);
-            root.intents && root.intents.request("overview.close");
+            WindowService.activateWindow(item.data.id);
+            Config.closeOverview();
         } else if (item.type === "app") {
-            root.session && root.session.launchApp(item.data.desktop_file || item.data.exec || item.data.name, item.data);
-            root.intents && root.intents.request("overview.close");
+            WindowService.launchApp(item.data.desktop_file || item.data.exec || item.data.name, item.data);
+            Config.closeOverview();
         } else if (item.type === "command") {
             root.executeCommand(item.data);
         }
     }
 
     function selectGridLeft() {
-        const count = root.windows ? root.windows.length : 0;
+        const count = WindowService.windows ? WindowService.windows.length : 0;
         if (count > 0) {
             selectedGridIndex = Math.max(0, selectedGridIndex - 1);
         }
     }
 
     function selectGridRight() {
-        const count = root.windows ? root.windows.length : 0;
+        const count = WindowService.windows ? WindowService.windows.length : 0;
         if (count > 0) {
             selectedGridIndex = Math.min(count - 1, selectedGridIndex + 1);
         }
     }
 
     function selectGridUp() {
-        const count = root.windows ? root.windows.length : 0;
+        const count = WindowService.windows ? WindowService.windows.length : 0;
         const cols = root.grid.cols || 1;
         if (count > 0) {
             selectedGridIndex = Math.max(0, selectedGridIndex - cols);
@@ -384,7 +367,7 @@ PanelWindow {
     }
 
     function selectGridDown() {
-        const count = root.windows ? root.windows.length : 0;
+        const count = WindowService.windows ? WindowService.windows.length : 0;
         const cols = root.grid.cols || 1;
         if (count > 0) {
             selectedGridIndex = Math.min(count - 1, selectedGridIndex + cols);
@@ -392,12 +375,12 @@ PanelWindow {
     }
 
     function executeGridItem() {
-        const wins = root.windows || [];
+        const wins = WindowService.windows || [];
         if (selectedGridIndex >= 0 && selectedGridIndex < wins.length) {
             const win = wins[selectedGridIndex];
             root.pickedWindowId = String(win.id);
-            root.session && root.session.activateWindow(win.id);
-            root.intents && root.intents.request("overview.close");
+            WindowService.activateWindow(win.id);
+            Config.closeOverview();
         }
     }
 
@@ -407,12 +390,12 @@ PanelWindow {
         id: keySink
         anchors.fill: parent
         focus: root.openRequested && !searchInput.activeFocus
-        Keys.onEscapePressed: root.intents && root.intents.request("overview.close")
+        Keys.onEscapePressed: Config.closeOverview()
     }
 
     MouseArea {
         anchors.fill: parent
-        onClicked: root.intents && root.intents.request("overview.close")
+        onClicked: Config.closeOverview()
     }
 
     Process {
@@ -420,29 +403,27 @@ PanelWindow {
     }
 
     Connections {
-        target: root.shellState
-        enabled: root.shellState !== null
-        ignoreUnknownSignals: true
+        target: Config
         function onOverviewVisibleChanged() {
-            if (root.shellState.overviewVisible) {
+            if (Config.overviewVisible) {
                 root.pickedWindowId = "";
                 root.queryText = "";
                 root.selectedSearchIndex = 0;
                 root.selectedGridIndex = 0;
                 searchInput.text = "";
                 searchInput.forceActiveFocus();
-                root.session && root.session.startThumbnails();
+                WindowService.startOverviewThumbnails();
                 // The shared app index caches live desktop entries, so it is
                 // re-read on every open: an application installed while the shell
                 // runs must be searchable here too (a cached list of live things
                 // is a stale list).
-                if (root.session !== null) {
-                    root.session.reloadInstalledApps();
+                if (typeof WindowService !== "undefined" && WindowService.reloadInstalledApps) {
+                    WindowService.reloadInstalledApps();
                 }
             } else {
-                root.session && root.session.stopThumbnails();
-                if (root.pickedWindowId === "" && !(root.shellState !== null && root.shellState.commandLauncherVisible)) {
-                    focusRestoreProc.command = [(root.shellState ? root.shellState.daemonBin : ""), "focus", "restore"];
+                WindowService.stopOverviewThumbnails();
+                if (root.pickedWindowId === "" && !Config.commandLauncherVisible) {
+                    focusRestoreProc.command = [Config.daemonBin, "focus", "restore"];
                     focusRestoreProc.running = true;
                 }
                 root.pickedWindowId = "";
@@ -454,12 +435,10 @@ PanelWindow {
     // Windows opening/closing while the overview is visible re-target the
     // rotation without restarting it (PreviewCycle re-reads items at wrap).
     Connections {
-        target: root.session
-        enabled: root.session !== null
-        ignoreUnknownSignals: true
+        target: WindowService
         function onWindowsChanged() {
-            if (root.shellState !== null && root.shellState.overviewVisible) {
-                root.session && root.session.refreshThumbnails();
+            if (Config.overviewVisible) {
+                WindowService.refreshOverviewThumbnails();
             }
         }
     }
@@ -549,7 +528,7 @@ PanelWindow {
                     if (root.queryText.length > 0) {
                         root.queryText = "";
                     } else {
-                        root.intents && root.intents.request("overview.close");
+                        Config.closeOverview();
                     }
                 }
 
@@ -559,7 +538,7 @@ PanelWindow {
                             root.queryText = "";
                             event.accepted = true;
                         } else {
-                            root.intents && root.intents.request("overview.close");
+                            Config.closeOverview();
                             event.accepted = true;
                         }
                     } else if (event.key === Qt.Key_Down) {
@@ -676,7 +655,7 @@ PanelWindow {
                         Text {
                             id: badgeText
                             anchors.verticalCenter: parent.verticalCenter
-                            text: String(root.windows ? root.windows.length : 0) + " Active"
+                            text: String(WindowService.windows ? WindowService.windows.length : 0) + " Active"
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontLabelSmall
                             font.weight: Font.Bold
@@ -718,7 +697,7 @@ PanelWindow {
     readonly property var grid: layout.compute(
         root.availW,
         root.availH,
-        root.windows ? root.windows.length : 0,
+        WindowService.windows ? WindowService.windows.length : 0,
         { gap: root.gridGap })
     readonly property bool gridOverflow: root.grid.gridH > root.availH
 
@@ -753,7 +732,7 @@ PanelWindow {
             cellWidth: root.grid.cellW + root.gridGap
             cellHeight: root.grid.cellH + root.gridGap
             interactive: contentHeight > height
-            model: root.windows
+            model: WindowService.windows
 
             delegate: Item {
                 id: cardWrapper
@@ -840,7 +819,7 @@ PanelWindow {
                                     id: thumb
                                     anchors.fill: parent
                                     anchors.margins: 1
-                                    source: (root.overviewThumbnails || {})[String(modelData.id)] || ""
+                                    source: (WindowService.overviewThumbnails || {})[String(modelData.id)] || ""
                                     identity: modelData.id
                                     fillMode: Image.PreserveAspectFit
                                 }
@@ -876,7 +855,7 @@ PanelWindow {
 
                                 Image {
                                     anchors.fill: parent
-                                    source: root.iconFor(modelData.iconName)
+                                    source: Config.iconUrl(modelData.iconName)
                                     fillMode: Image.PreserveAspectFit
                                     visible: status === Image.Ready
                                 }
@@ -959,7 +938,7 @@ PanelWindow {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: (mouse) => {
                                 mouse.accepted = true;
-                                root.session && root.session.closeWindow(modelData.id);
+                                WindowService.closeWindow(modelData.id);
                             }
                         }
                     }
@@ -972,8 +951,8 @@ PanelWindow {
                         onPositionChanged: root.selectedGridIndex = index
                         onClicked: {
                             root.pickedWindowId = String(modelData.id);
-                            root.session && root.session.activateWindow(modelData.id);
-                            root.intents && root.intents.request("overview.close");
+                            WindowService.activateWindow(modelData.id);
+                            Config.closeOverview();
                         }
                     }
                 }
@@ -984,7 +963,7 @@ PanelWindow {
         Column {
             anchors.centerIn: parent
             spacing: Theme.spaceMedium
-            visible: root.windows.length === 0
+            visible: WindowService.windows.length === 0
 
             MaterialIcon {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -1189,7 +1168,7 @@ PanelWindow {
                                     id: rowThumb
                                     anchors.fill: parent
                                     anchors.margins: 1
-                                    source: (root.overviewThumbnails || {})[String(modelData.data.id)] || ""
+                                    source: (WindowService.overviewThumbnails || {})[String(modelData.data.id)] || ""
                                     identity: modelData.data.id
                                     fillMode: Image.PreserveAspectFit
                                 }
@@ -1219,7 +1198,7 @@ PanelWindow {
                                 Image {
                                     anchors.fill: parent
                                     anchors.margins: 2
-                                    source: root.iconFor(modelData.data.iconName)
+                                    source: Config.iconUrl(modelData.data.iconName)
                                     fillMode: Image.PreserveAspectFit
                                     visible: status === Image.Ready
                                 }
@@ -1243,7 +1222,7 @@ PanelWindow {
 
                             Image {
                                 anchors.fill: parent
-                                source: root.iconFor(modelData.data.icon)
+                                source: Config.iconUrl(modelData.data.icon)
                                 fillMode: Image.PreserveAspectFit
                                 smooth: true
                                 mipmap: true

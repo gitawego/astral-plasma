@@ -1757,3 +1757,37 @@ implemented against AppKit's own tokens, which remains future work, not a prereq
 What this leaves: the tab migrations themselves were green and themed on kernel imports;
 they will be re-applied that way. C.13's duplicate-registration problem applies to
 **services inside suites**, not to colours in production — narrowed accordingly.
+
+### C.17 The blocker P4 actually has: the theme does not cross the app boundary
+
+Three app migrations were built, verified green, and each rendered **wrong on screen**:
+light grey cards on a dark shell. The pattern is consistent and now fully characterised:
+
+| Where the app's primitives come from | Result |
+| :--- | :--- |
+| kernel `Kernel/theme` + `Kernel/components`, imported by the app's own path | duplicate `Colors`; its `Config` does not have the shell's runtime theme state → light fallbacks |
+| `Astral.AppKit`, subclassing kernel components | the subclass drags the kernel registration into the module → same duplicate, same result |
+| the shell's own surfaces (unmigrated) | correct: dark glass, accent, archetype radii |
+
+So this is not an import-path preference: **theme state lives in the shell's `Config`
+singleton instance**, and no import can share it. Until the theme is *delivered to* the
+app, every migration is a visual regression — and a green suite proves nothing about it
+(which is exactly what happened three times).
+
+Two designs that would work, in order of preference:
+
+1. **Palette file as the single source of truth for apps.** `ThemeExportService` already
+   writes `current-palette.json` (primary, surface, on_surface, outline, radii, font,
+   mode). An app's primitives read that file, so a duplicate `Colors` resolves the *same*
+   values the shell publishes. This needs no kernel change, works for hosted apps too
+   (already the AppKit plan), and is testable by writing a palette and asserting pixels.
+2. **Inject the theme**: the shell hands an app a `theme` object (colours, radii, motion)
+   and the app renders primitives parameterised by it. More invasive — the primitives must
+   accept tokens rather than read singletons — but it removes the file dependency.
+
+Nothing is migrated today: `modules/Astral/Apps/` is empty apart from a generated
+`index.json`, the overview is a shell surface again, and `make test` is green (1109 Rust
+tests, 164 QML suites). What remains tested and usable for the migration phase: the
+manifest contract, compatibility window, registry + writer, `AppHost` (plan, mount,
+injection, tab providers), `IntentBus`, `ShellState`, and the
+`Session`/`Media`/`Workspaces`/`Metrics` ports.

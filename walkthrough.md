@@ -2691,3 +2691,29 @@ Settled rule, matching §6.4: **embedded apps render with the kernel** (one regi
 shell's palette); **hosted apps render with AppKit** (its own tokens from the palette file,
 because no kernel is mounted). AppKit usable *by embedded apps* would need primitives built
 on AppKit's tokens — future work, not a prerequisite for migration.
+
+---
+
+## P4 — reverted to zero apps; the blocker is theme delivery (2026-11-08)
+
+Three migrations reached green suites and each rendered light grey cards on a dark shell.
+The pattern, now fully characterised (spec C.17):
+
+| App primitives from | Result |
+| :--- | :--- |
+| kernel components by the app's path | duplicate `Colors` without the shell's runtime theme state → light fallbacks |
+| `Astral.AppKit` (subclassing kernel components) | the subclass drags the kernel registration along → same result |
+| the shell's own surfaces | correct: dark glass, accent, archetype radii |
+
+Theme state lives in the shell's `Config` instance; no import can share it, so every
+migration was a visual regression that **the suites could not see**. Reverted to zero
+migrated apps: the overview is a shell surface again, `apps/index.json` is empty.
+
+> **Verified**: desktop correct again (overview and dashboard captures), `make test` exit 0
+> — 1109 Rust tests, 164 QML suites.
+
+The fix is a prerequisite, not a migration: make the palette file the source of truth for
+an app's colours (it already carries primary/surface/on_surface/outline/radii/font/mode, and
+hosted apps use it by design), or inject a theme object the primitives take as input.
+Recorded as the next unit, with the recommendation being the palette-file route because it
+needs no kernel change and is testable by writing a palette and asserting pixels.

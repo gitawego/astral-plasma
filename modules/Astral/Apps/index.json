@@ -1,9 +1,4 @@
 {
   "schema": 1,
-  "apps": [
-    {
-      "dir": "Overview",
-      "id": "org.astralplasma.overview"
-    }
-  ]
+  "apps": []
 }

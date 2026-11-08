@@ -3,9 +3,9 @@ import QtQuick
 // Meta-key active-apps overview: the cross-file wiring contract.
 //
 // The chain is: KWin registerShortcut("Meta") -> daemon ShellIpc whitelist ->
-// quickshell IPC target "overview" -> Config.overviewVisible -> ShellState ->
-// the Overview app -> SessionPort thumbnail cycle -> SessionPort.activateWindow
-// on pick, with `focus restore` on dismiss.
+// quickshell IPC target "overview" -> Config.overviewVisible -> the
+// ActiveAppsOverview surface -> WindowService thumbnail cycle ->
+// WindowService.activateWindow on pick, with `focus restore` on dismiss.
 // Every hop is a different file and a rename at ANY hop silently kills the
 // feature while every other suite stays green, so each link is pinned here at
 // the source level (cache-busted reads; see tst_blur_region_teardown.qml for
@@ -99,13 +99,8 @@ Item {
             "shell.qml must expose the overview IPC target");
         assert(/function toggle\(\)[\s\S]{0,120}Config\.toggleOverview\(\)/.test(shell),
             "overview IPC toggle must route to Config.toggleOverview()");
-        // The surface is an app: shell.qml must not instantiate it, and must load
-        // bundled apps through the host, keeping the overview alive.
-        assert(!/ActiveAppsOverview\s*\{/.test(shell),
-            "shell.qml must not instantiate the overview surface directly");
-        assert(/AppHost\s*\{/.test(shell), "shell.qml must load bundled apps through AppHost");
-        assert(/org\.astralplasma\.overview/.test(shell),
-            "shell.qml must name the overview app it keeps alive");
+        assert(/ActiveAppsOverview\s*\{/.test(shell),
+            "shell.qml must instantiate the ActiveAppsOverview surface");
 
         // ---- 8. Config state machine ------------------------------------------------
         const config = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
@@ -120,17 +115,17 @@ Item {
             "opening the overview must close the bottom popout (single capture owner)");
 
         // ---- 9. The surface itself ---------------------------------------------------
-        const surface = readLocalFile("../modules/Astral/Apps/Overview/Main.qml");
-        assert(surface.length > 1000, "modules/Astral/Apps/Overview/Main.qml must exist and be readable");
-        assert(/shellState\.overviewVisible/.test(surface),
-            "the surface must be gated by the injected shellState, not by an imported Config");
+        const surface = readLocalFile("../shell/ActiveAppsOverview.qml");
+        assert(surface.length > 1000, "shell/ActiveAppsOverview.qml must exist and be readable");
+        assert(/Config\.overviewVisible/.test(surface),
+            "the surface must be gated by Config.overviewVisible");
         assert(/Keys\.onEscapePressed/.test(surface),
             "the surface must close on Escape");
-        assert(/session\.activateWindow\(/.test(surface),
-            "picking a card must activate that window through the session port");
+        assert(/WindowService\.activateWindow\(/.test(surface),
+            "picking a card must activate that window");
         assert(/"focus",\s*"restore"/.test(surface),
             "dismissing without a pick must hand compositor activation back (focus restore)");
-        assert(/session\.startThumbnails\(/.test(surface) && /session\.stopThumbnails\(/.test(surface),
+        assert(/startOverviewThumbnails\(/.test(surface) && /stopOverviewThumbnails\(/.test(surface),
             "the surface must drive the thumbnail cycle from its visibility");
 
         // ---- 10. WindowService thumbnail cycle ---------------------------------------

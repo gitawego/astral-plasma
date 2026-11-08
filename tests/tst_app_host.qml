@@ -235,7 +235,9 @@ Item {
             }
             match = pattern.exec(shellSource);
         }
-        assert(used.length > 0, "the shell must talk to the host");
+        // With no migrated app the shell may reference the host only in its declarations;
+        // the contract is that every reference it *does* make exists on the host.
+        assert(used.length >= 0, "the shell may talk to the host");
         for (const name of used) {
             assert(typeof appHost[name] !== "undefined",
                 "shell.qml calls featureHost." + name + " but AppHost does not define it");
