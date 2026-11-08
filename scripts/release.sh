@@ -181,7 +181,38 @@ fi
 TAG="v${TARGET_VERSION}"
 echo "[*] Target Version: ${TARGET_VERSION} (Tag: ${TAG})"
 
-# 3. Check git status
+# 3. Release notes are authored, not scraped.
+#
+#    The update manifest publishes these lines to every installed shell, so a
+#    tag without them would announce nothing (or announce a commit dump). Fail
+#    here, before the tag is pushed, rather than in CI after it is.
+NOTES_FILE="${ROOT_DIR}/docs/releases/${TARGET_VERSION}.json"
+if [ ! -f "$NOTES_FILE" ]; then
+    echo "[!] Missing ${NOTES_FILE#"$ROOT_DIR"/}."
+    echo "    Write the release summary first (version, highlights, optional sections),"
+    echo "    so the updater can tell users what changed."
+    exit 1
+fi
+
+python3 - "$NOTES_FILE" "$TARGET_VERSION" <<'PY'
+import json, sys
+path, version = sys.argv[1], sys.argv[2]
+try:
+    data = json.load(open(path))
+except Exception as exc:
+    print(f"[!] {path} is not valid JSON: {exc}")
+    sys.exit(1)
+if data.get("version") != version:
+    print(f"[!] {path} says version {data.get('version')!r}, expected {version!r}")
+    sys.exit(1)
+highlights = data.get("highlights")
+if not isinstance(highlights, list) or not highlights:
+    print(f"[!] {path} needs at least one entry in 'highlights'.")
+    sys.exit(1)
+print(f"[✓] Release notes: {len(highlights)} highlight(s)")
+PY
+
+# 4. Check git status
 echo "[*] Verifying git repository state..."
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 if [ "$CURRENT_BRANCH" != "main" ] && [ "$CURRENT_BRANCH" != "master" ]; then
@@ -204,7 +235,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     fi
 fi
 
-# 4. Mandatory Test Gate
+# 5. Mandatory Test Gate
 if [ "$SKIP_TESTS" -eq 0 ]; then
     echo "[*] Running verification test suite (make test)..."
     if [ "$DRY_RUN" -eq 0 ]; then
@@ -217,7 +248,7 @@ else
     echo "[!] WARNING: Test gate skipped via --skip-tests."
 fi
 
-# 5. Check if tag already exists
+# 6. Check if tag already exists
 if git rev-parse "$TAG" >/dev/null 2>&1; then
     echo "[!] Error: Git tag '${TAG}' already exists locally."
     exit 1
@@ -228,7 +259,7 @@ if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
     exit 1
 fi
 
-# 6. Update Cargo.toml if version changed
+# 7. Update Cargo.toml if version changed
 if [ "$CURRENT_RAW_VERSION" != "$TARGET_VERSION" ]; then
     echo "[*] Updating version in ${CARGO_TOML} -> ${TARGET_VERSION}..."
     if [ "$DRY_RUN" -eq 0 ]; then
@@ -242,7 +273,7 @@ if [ "$CURRENT_RAW_VERSION" != "$TARGET_VERSION" ]; then
     fi
 fi
 
-# 7. Generate Preview Changelog
+# 8. Generate Preview Changelog
 echo ""
 echo "=== Preview of Changelog (${TAG}) ==="
 bash "${ROOT_DIR}/scripts/generate_changelog.sh" "" "HEAD" | sed -n '1,35p' || true
@@ -255,7 +286,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-# 8. Create annotated git tag and push
+# 9. Create annotated git tag and push
 echo "[*] Creating annotated git tag '${TAG}'..."
 git -C "$ROOT_DIR" tag -a "$TAG" -m "Release ${TAG}"
 
@@ -264,7 +295,7 @@ git -C "$ROOT_DIR" push origin "$CURRENT_BRANCH"
 git -C "$ROOT_DIR" push origin "$TAG"
 echo "[✓] Pushed ${TAG} to origin!"
 
-# 9. Optional GitHub CLI workflow monitoring
+# 10. Optional GitHub CLI workflow monitoring
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     echo ""
     echo "[*] GitHub CLI detected. Release workflow will automatically execute on GitHub Actions."

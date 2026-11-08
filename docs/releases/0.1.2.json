@@ -1,0 +1,32 @@
+{
+  "version": "0.1.2",
+  "date": "2026-10-01",
+  "highlights": [
+    "Downloads manager in the shell, with a live taskbar and system tray.",
+    "The 60 Hz refresh-rate cap is now a setting you can change.",
+    "The audio visualiser draws its spectrum in one Canvas and no longer re-evaluates bindings per audio frame."
+  ],
+  "sections": [
+    {
+      "title": "Shell",
+      "items": [
+        "Downloads surface, a decorative-motion budget, and a live taskbar/tray.",
+        "Popout drawers no longer shift colour while closing, and the 21 px blur overflow is gone."
+      ]
+    },
+    {
+      "title": "Performance",
+      "items": [
+        "Audio data no longer re-evaluates bindings on every stream frame.",
+        "Metric-driven motion moved to the decorative clock."
+      ]
+    },
+    {
+      "title": "Fixes",
+      "items": [
+        "Window identity resolves in one place, so every source carries icons.",
+        "Media deduplication no longer deletes the Firefox player."
+      ]
+    }
+  ]
+}

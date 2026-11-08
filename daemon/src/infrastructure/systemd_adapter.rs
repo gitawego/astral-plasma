@@ -51,6 +51,24 @@ impl SystemdAdapter {
         }
         PathBuf::from(".")
     }
+
+    /// Binary the unit starts: the installed one when this is an installed
+    /// build, otherwise this executable (a checkout or `cargo run`).
+    ///
+    /// The unit must exec `run`, not `quickshell`: the supervisor owns the
+    /// Plasma claim, the shortcut journal and restore-on-exit, and a unit that
+    /// bypassed it was the reason a service-installed shell never restored the
+    /// desktop it displaced.
+    pub fn resolve_bin_path(&self) -> PathBuf {
+        if let Some(path) = branding::dir_override(branding::ENV_BIN_PATH) {
+            return path;
+        }
+        let installed = branding::bin_path();
+        if installed.is_file() {
+            return installed;
+        }
+        env::current_exe().unwrap_or(installed)
+    }
 }
 
 impl SystemdControlPort for SystemdAdapter {
@@ -89,10 +107,13 @@ impl SystemdControlPort for SystemdAdapter {
         fs::create_dir_all(&dir)?;
 
         let service_file = self.unit_path();
-        let quickshell_bin = which_quickshell();
-        let theme_dir = self.resolve_theme_dir();
+        let bin_path = self.resolve_bin_path();
+        let package_dir = self.resolve_theme_dir();
 
-        let content = generate_unit_file_content(&quickshell_bin, &theme_dir.to_string_lossy());
+        let content = generate_unit_file_content(
+            &bin_path.to_string_lossy(),
+            &package_dir.to_string_lossy(),
+        );
         fs::write(&service_file, content)?;
 
         #[cfg(unix)]
@@ -132,14 +153,3 @@ impl SystemdControlPort for SystemdAdapter {
     }
 }
 
-fn which_quickshell() -> String {
-    if let Ok(path) = Command::new("which").arg("quickshell").output() {
-        if path.status.success() {
-            let s = String::from_utf8_lossy(&path.stdout).trim().to_string();
-            if !s.is_empty() {
-                return s;
-            }
-        }
-    }
-    "/usr/bin/quickshell".to_string()
-}

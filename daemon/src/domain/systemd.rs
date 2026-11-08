@@ -9,7 +9,7 @@ pub struct ServiceStatus {
     pub file: String,
 }
 
-pub fn generate_unit_file_content(quickshell_bin: &str, theme_dir: &str) -> String {
+pub fn generate_unit_file_content(shell_bin: &str, package_dir: &str) -> String {
     format!(
 r#"[Unit]
 Description={}
@@ -18,7 +18,8 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart={} -p {}
+ExecStart={} run
+Environment=ASTRAL_PLASMA_PACKAGE_DIR={}
 Restart=on-failure
 RestartSec=2s
 Environment=QT_QUICK_CONTROLS_STYLE=Basic
@@ -26,6 +27,6 @@ Environment=QT_QUICK_CONTROLS_STYLE=Basic
 [Install]
 WantedBy=graphical-session.target
 "#,
-        branding::SYSTEMD_DESCRIPTION, quickshell_bin, theme_dir
+        branding::SYSTEMD_DESCRIPTION, shell_bin, package_dir
     )
 }

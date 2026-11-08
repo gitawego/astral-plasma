@@ -1,6 +1,7 @@
 pub mod app_identity;
 pub mod avatar_import;
 pub mod branding;
+pub mod install_record;
 pub mod calendar;
 pub mod gpu_engine;
 pub mod model;

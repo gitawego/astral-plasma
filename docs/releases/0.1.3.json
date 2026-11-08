@@ -1,0 +1,32 @@
+{
+  "version": "0.1.3",
+  "date": "2026-10-01",
+  "highlights": [
+    "Volume and brightness controls redesigned, with the theme archetype architecture behind them.",
+    "A semantic button design system, plus opt-in desktop session integration from Settings.",
+    "The audio visualiser is driven by the real sink monitor with adaptive AGC and transient beat detection."
+  ],
+  "sections": [
+    {
+      "title": "Controls",
+      "items": [
+        "Volume and brightness controls share one layout instead of two divergent sliders.",
+        "The visualizer switcher uses a dedicated equalizer icon and the speaker glyph was corrected."
+      ]
+    },
+    {
+      "title": "Integration",
+      "items": [
+        "Desktop session entries are offered from Settings rather than installed silently.",
+        "Hyprland sessions no longer get KWin's screenshot authorization entry."
+      ]
+    },
+    {
+      "title": "Fixes",
+      "items": [
+        "Buttons no longer clip on hover in the settings navigation and lists.",
+        "Preview capture restores its KWin ScreenShot2 authorization entry by itself."
+      ]
+    }
+  ]
+}

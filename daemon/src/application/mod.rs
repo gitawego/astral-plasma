@@ -1,4 +1,7 @@
 pub mod retry;
+pub mod migrations;
+pub mod install_service;
+pub mod uninstall_service;
 pub mod shell_lifecycle;
 pub mod watch_events;
 pub mod window_identity;

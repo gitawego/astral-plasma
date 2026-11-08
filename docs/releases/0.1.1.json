@@ -1,0 +1,31 @@
+{
+  "version": "0.1.1",
+  "date": "2026-09-25",
+  "highlights": [
+    "Active-apps overview with parallel preview capture, integrated search and command shortcuts.",
+    "Multi-GPU metrics, disk telemetry and richer dashboard visualisations.",
+    "AI Copilot discovers provider credentials and reports live activity."
+  ],
+  "sections": [
+    {
+      "title": "Overview",
+      "items": [
+        "Batch window previews are captured in parallel, keeping the overview responsive at 240 Hz.",
+        "The overview accepts '>wallpaper' and command shortcuts with a smooth focus transition."
+      ]
+    },
+    {
+      "title": "Dashboard",
+      "items": [
+        "GPU and disk telemetry joined the performance tab."
+      ]
+    },
+    {
+      "title": "Fixes",
+      "items": [
+        "Active/running app regressions in the dock and taskbar.",
+        "Idle decay after an AI turn completes."
+      ]
+    }
+  ]
+}

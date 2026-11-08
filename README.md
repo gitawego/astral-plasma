@@ -264,31 +264,65 @@ make gpu-pmu-perms   # sudo setcap cap_perfmon=ep on the binary,
 fdinfo fallback is available. Nothing breaks without it.
 
 ### 3. System installation
-To install as your primary Quickshell configuration:
+The installer creates a self-contained install under `~/.local/share/astral-plasma`
+and puts one command on your `PATH`. It uses no root access, never rewrites your
+settings, and never replaces `~/.config/quickshell`.
 
 ```bash
+# From this checkout (builds the daemon first):
 ./install.sh
+
+# From a release tarball (no build, no toolchain):
+./install.sh
+
+# Without cloning anything:
+curl -fsSL https://raw.githubusercontent.com/gitawego/astral-plasma/main/install.sh | bash
 ```
 
-This will:
-- Check dependencies and build the daemon.
-- Back up any existing `~/.config/quickshell` and symlink this repository to it.
-- Install desktop entries in `~/.local/share/applications`.
-- Install the Wayland session in `~/.local/share/wayland-sessions/astral-plasma.desktop`.
-- Bind global shortcuts (with a snapshot of the previous state).
-- Generate the initial color palette.
+What it does:
+- Verifies Quickshell is present (0.3.0+), then installs the binary to
+  `~/.local/share/astral-plasma/bin/astral-plasma`.
+- Extracts the QML bundle the binary carries into
+  `~/.local/share/astral-plasma/package`.
+- Records who owns the install in `install.json`, so updates never fight your
+  package manager.
+- Symlinks `~/.local/bin/astral-plasma`.
 
-Launch anytime via `./run.sh` (or `quickshell`), or select **"Astral Plasma (KWin)"** directly from your display manager (SDDM/GDM).
+Start it with `astral-plasma run`. Desktop entries, the Wayland session and the
+user service are **not** installed silently; enable them from
+**Settings → System & Services** when you want them.
 
 > 💡 **KDE Plasma & Quickshell Architecture**: For an in-depth breakdown of how Astral Plasma coordinates non-destructively with KDE Plasma 6 (`plasma-plasmashell.service`), see [docs/KDE-INTEGRATION.md](docs/KDE-INTEGRATION.md).
 
-### 4. Uninstall
-```bash
-./uninstall.sh
-```
-Zero-residue cleanup: stops the shell, removes the user service, restores the config backup, removes the KWin script package, unbinds shortcuts, and clears data/cache/state.
+### 4. Updates
+Installed shells update themselves from **Settings → Updates & About**: the
+daemon checks for a new release shortly after login and every six hours, shows
+what changed, and applies the update with one click. The shell restarts itself
+without releasing your desktop — KDE's panels stay hidden and your shortcuts stay
+bound, so you never see Plasma flash back.
 
-### 5. Automated Releases & Pre-built Binaries (x64 / ARM64)
+A build that fails to start is rolled back automatically to the previous version,
+and the reason is shown in Settings. The full design, including the release
+manifest and rollback rules, is in [docs/UPDATES.md](docs/UPDATES.md).
+
+Git checkouts are never updated by the shell; it tells you a newer release exists
+and leaves `git pull` to you. Package-manager installs are owned by your package
+manager and offer no apply button.
+
+### 5. Uninstall
+```bash
+./uninstall.sh          # asks once, keeps your settings
+./uninstall.sh --purge  # also removes settings, palette and imported avatars
+```
+
+Or from the shell: **Settings → Updates & About → Uninstall**. The binary's own
+`astral-plasma uninstall` removes the layout it created (binary, bundle,
+rollback copy, state, cache, unit, desktop entries); the script adds the parts a
+binary must not change unasked — KDE shortcut keys, the KWin script package and
+the Omarchy plugin. `~/.config/quickshell` is reported, never deleted: it is your
+config path, not an Astral artifact.
+
+### 6. Automated Releases & Pre-built Binaries (x64 / ARM64)
 Astral Plasma includes an automated multi-architecture release pipeline built on GitHub Actions:
 - **Supported Architectures**: `x86_64` (Intel/AMD) and `aarch64` (ARM64 / Raspberry Pi / Asahi Linux).
 - **Trigger via Local Project CLI**:
@@ -310,7 +344,8 @@ Astral Plasma includes an automated multi-architecture release pipeline built on
   - **Release type**: Select `patch` (default), `minor`, `major`, or `custom`.
   - **Custom version**: Enter version only if `custom` is selected.
   - The workflow automatically increments the version, updates `daemon/Cargo.toml`, commits with `[skip ci]`, creates the annotated git tag, compiles x64 & arm64 binaries, and publishes the GitHub Release.
-- Releases automatically generate a formatted Conventional Commits changelog, compile stripped binaries for both architectures, calculate cryptographic checksums (`SHA256SUMS.txt`), and publish GitHub Releases with downloadable archives and standalone binaries.
+- Releases automatically generate a formatted Conventional Commits changelog, compile stripped binaries for both architectures, calculate cryptographic checksums (`SHA256SUMS.txt`), publish an update manifest (`latest.json`), and publish GitHub Releases with downloadable archives and standalone binaries.
+- Every release requires an authored summary in `docs/releases/<version>.json`; the release script and CI both refuse a tag without one, because the updater ships those lines to installed shells as "what's new".
 
 ---
 
@@ -363,6 +398,9 @@ quickshell ipc -p "$PWD" call launcher open apps
 run                          Run the full self-contained shell
 serve [--port <port>]        REST & Unix-socket API server
 extract [target_dir]         Extract the embedded QML theme bundle
+install [--method ...]       Install this binary + bundle into the managed layout
+uninstall [--yes] [--purge]  Remove this install (settings kept unless --purge)
+migrate [--pending]          Run one-time repairs for existing installs
 session snapshot             Query canonical DesktopSessionSnapshot JSON
 omarchy <install|remove|status> Manage hosted Omarchy plugin package
 plasma <disable|restore|status|watchdog>

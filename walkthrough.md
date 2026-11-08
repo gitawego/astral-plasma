@@ -1978,3 +1978,65 @@ cannot report a failing suite as passing.
 > **Verified live**: a two-window drawer now opens with one row expanded and its
 > live thumbnail, and two back-to-back preview requests (the fast-hover race) still
 > leave the second application with a working preview.
+
+---
+
+## 27. No Release Could Be Installed, And The Service Unit Skipped Its Own Supervisor
+
+> [!NOTE]
+> **Issue**: the theme shipped tagged releases, checksums and a tarball, but the
+> tarball could not produce a working install. Separately, a shell installed as a
+> systemd unit ran `quickshell -p <dir>` directly, so it never took the Plasma
+> claim, never journalled the shortcuts it replaced, and never restored them.
+>
+> **Root causes**:
+> 1. The QML tree lives *inside* the binary (`include_dir!`), and the tarball
+>    shipped only `bin/astral-plasma` plus docs. `install.sh` then symlinked the
+>    directory it ran from into `~/.config/quickshell` - a directory with no
+>    `shell.qml`. Only a checkout that built itself worked.
+> 2. The unit generator wrote `ExecStart=<quickshell> -p <dir>`, bypassing
+>    `astral-plasma run`: a service install displaced the desktop with nothing
+>    that knew how to put it back.
+> 3. There was no install record, so nothing could tell a self-updating install
+>    from a package manager's or a developer's checkout.
+>
+> **Solution**:
+> 1. **One layout, one implementation** (`application/install_service.rs`): the
+>    binary, its extracted bundle and `install.json` are written by
+>    `astral-plasma install`; `install.sh` only fetches, verifies and delegates.
+>    The installer works from a checkout, a tarball, a given binary (`--from`) or
+>    a bare `curl | bash` (manifest + SHA-256 verified download).
+> 2. **The unit runs the supervisor** (`domain/systemd.rs`,
+>    `systemd_adapter.rs`): `ExecStart=<bin> astral-plasma run` plus
+>    `ASTRAL_PLASMA_PACKAGE_DIR`, so service installs get the claim, the shortcut
+>    journal and restore-on-exit.
+> 3. **Migrations reach existing installs** (`application/migrations/`):
+>    timestamped, idempotent, per-user markers under the state dir; a failure
+>    stops the start instead of half-migrating. `001_adopt_legacy_install` copies
+>    the running binary, extracts the matching bundle, records the owner and
+>    rewrites a Quickshell-only unit - without moving the checkout, deleting
+>    `~/.config/quickshell`, or adopting a `target/debug` build.
+> 4. **Removal knows what it owns** (`application/uninstall_service.rs`): the
+>    binary, bundle, rollback copy, update state and the unit/entries it wrote
+>    are removed; the AI harness's sessions, the Plasma and shortcut backups,
+>    download history, caches and settings are kept, with `--purge` as the
+>    explicit opt-out for caches and settings.
+> 5. **Every release must say what changed**: `docs/releases/<version>.json` is
+>    required by `scripts/release.sh` and CI, and the publish job emits
+>    `latest.json` (per-arch URL, size, SHA-256, highlights) for the updater.
+> 6. **Tests**: `test_install_record`, `test_install_service`,
+>    `test_uninstall_service`, `test_migrations`, `test_migration_runner`,
+>    `test_release_install` (drives the real scripts against a throwaway
+>    `$HOME`), `test_release_manifest`, plus the unit-contract assertions in
+>    `test_systemd_rust`.
+>
+> **Verified live** (this machine, a symlinked checkout install):
+> `./bin/astral-plasma migrate` adopted the install - `install.json` recorded
+> `managed` 0.1.3, `~/.local/share/astral-plasma/package/shell.qml` and its 13
+> QML directories appeared, `~/.config/quickshell` still pointed at the checkout,
+> and the settings file's checksum was unchanged. `migrate --pending` then
+> printed `[]`, and `astral-plasma uninstall` without `--yes` listed what it
+> would remove and exited 2 having changed nothing.
+>
+> **Not verified**: the download path of `install.sh` (needs a published
+> `latest.json`, i.e. the next release) and the CI publish job itself.

@@ -111,7 +111,35 @@ jobs:
 
           echo "[*] Target Version: ${VERSION} (Tag: ${TAG})"
 
-          # 3. Automatically update version in daemon/Cargo.toml and commit if changed
+          # 4. A release must say what changed, in words a user can read.
+          #    The updater ships these lines to every installed shell, so a tag
+          #    without an authored summary - or one that disagrees with the tag -
+          #    stops here instead of publishing an empty "what's new".
+          NOTES="docs/releases/${VERSION}.json"
+          if [ ! -f "$NOTES" ]; then
+            echo "[!] Missing ${NOTES}: every release needs an authored summary."
+            exit 1
+          fi
+          python3 - "$NOTES" "$VERSION" <<'PY'
+          import json, sys
+          path, version = sys.argv[1], sys.argv[2]
+          try:
+              data = json.load(open(path))
+          except Exception as exc:
+              print(f"[!] {path} is not valid JSON: {exc}")
+              sys.exit(1)
+          if data.get("version") != version:
+              print(f"[!] {path} says version {data.get('version')!r}, tag says {version!r}")
+              sys.exit(1)
+          highlights = data.get("highlights")
+          if not isinstance(highlights, list) or not highlights:
+              print(f"[!] {path} needs at least one entry in 'highlights'. An empty "
+                    f"release must say so deliberately, not by omission.")
+              sys.exit(1)
+          print(f"[✓] Release notes found: {len(highlights)} highlight(s)")
+          PY
+
+          # 5. Automatically update version in daemon/Cargo.toml and commit if changed
           if [ "$CURRENT_VERSION" != "$VERSION" ]; then
             echo "[*] Updating daemon/Cargo.toml: ${CURRENT_VERSION} -> ${VERSION}..."
             sed -i -E "s/^version = \".*\"/version = \"${VERSION}\"/" daemon/Cargo.toml
@@ -271,6 +299,56 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           echo "=== SHA256 Checksums ==="
           cat SHA256SUMS.txt
+
+      - name: Generate update manifest
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          # The daemon reads exactly one document to decide whether an update
+          # exists. Generating it here keeps the version, the per-arch hashes and
+          # the user-facing highlights in one place that cannot drift from the
+          # artifacts it points at.
+          python3 - <<'PY'
+          import hashlib, json, os, sys
+          from datetime import datetime, timezone
+
+          tag = os.environ["TAG"]
+          version = os.environ["VERSION"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          notes = json.load(open(f"docs/releases/{version}.json"))
+
+          artifacts = {}
+          for arch in ("x86_64", "aarch64"):
+              name = f"astral-plasma-linux-{arch}"
+              path = os.path.join("release_assets", name)
+              if not os.path.isfile(path):
+                  print(f"[!] Missing release artifact {name}; refusing to publish a manifest "
+                        f"that would fail on one architecture.")
+                  sys.exit(1)
+              data = open(path, "rb").read()
+              artifacts[arch] = {
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{name}",
+                  "sha256": hashlib.sha256(data).hexdigest(),
+                  "size": len(data),
+              }
+
+          manifest = {
+              "schema": 1,
+              "version": version,
+              "channel": "stable",
+              "published_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "min_quickshell": "0.3.0",
+              "highlights": notes.get("highlights", []),
+              "changelog": f"https://github.com/{repo}/releases/tag/{tag}",
+              "artifacts": artifacts,
+              "signature": None,
+          }
+          with open("release_assets/latest.json", "w") as handle:
+              json.dump(manifest, handle, indent=2)
+              handle.write("\n")
+          print(json.dumps(manifest, indent=2))
+          PY
 
       - name: Create or update GitHub Release
         env:

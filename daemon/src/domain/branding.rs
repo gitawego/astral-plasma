@@ -42,6 +42,30 @@ pub const PLASMA_BACKUP_SUBDIR: &str = "plasma-backup";
 /// Subdirectory holding the KDE global-shortcut backup.
 pub const SHORTCUTS_BACKUP_SUBDIR: &str = "shortcuts-backup";
 
+// --- Installed layout --------------------------------------------------------
+//
+// A managed install lives entirely under `data_dir()`: the binary it runs, the
+// bundle it loads, the bundle it would roll back to, and the record naming who
+// owns the files. Nothing is symlinked into `~/.config/quickshell`, so an update
+// never has to write through a path the user (or a git checkout) also owns.
+
+/// Subdirectory holding the installed binary (`bin/astral-plasma`).
+pub const BIN_SUBDIR: &str = "bin";
+/// File name of the installed executable.
+pub const BIN_FILE: &str = "astral-plasma";
+/// Suffix kept beside an artifact so one rollback needs no download.
+pub const PREV_SUFFIX: &str = ".prev";
+/// Subdirectory a downloaded bundle is extracted into before it goes live.
+/// Deliberately a sibling of `package/`: Quickshell watches the live path, so a
+/// half-written tree there would be hot-reloaded into the running shell.
+pub const STAGED_PACKAGE_SUBDIR: &str = "package.next";
+/// File recording which install method owns the files.
+pub const INSTALL_RECORD_FILE: &str = "install.json";
+/// Schema version of that record.
+pub const INSTALL_RECORD_SCHEMA: u32 = 1;
+/// Subdirectory holding per-user migration markers.
+pub const MIGRATIONS_SUBDIR: &str = "migrations";
+
 // --- systemd -----------------------------------------------------------------
 
 /// User unit file name.
@@ -114,6 +138,12 @@ pub const ENV_TEST_MODE: &str = "ASTRAL_PLASMA_TEST_MODE";
 pub const ENV_BOOT_ID: &str = "ASTRAL_PLASMA_BOOT_ID";
 /// Overrides the extracted QML package directory.
 pub const ENV_PACKAGE_DIR: &str = "ASTRAL_PLASMA_PACKAGE_DIR";
+/// Overrides the installed binary path used when generating the user unit.
+pub const ENV_BIN_PATH: &str = "ASTRAL_PLASMA_BIN_PATH";
+/// Overrides the install record path.
+pub const ENV_INSTALL_RECORD: &str = "ASTRAL_PLASMA_INSTALL_RECORD";
+/// Overrides the migration marker directory.
+pub const ENV_MIGRATIONS_DIR: &str = "ASTRAL_PLASMA_MIGRATIONS_DIR";
 /// Overrides the theme (repo) directory used by the systemd unit.
 pub const ENV_THEME_DIR: &str = "ASTRAL_PLASMA_THEME_DIR";
 /// Overrides the systemd user unit directory.
@@ -215,6 +245,40 @@ pub fn default_package_dir() -> PathBuf {
 pub fn tmp_dir() -> PathBuf {
     env::temp_dir()
 }
+
+/// Path of the installed executable.
+///
+/// Set by the installer (and overridable for tests). It is not rewritten into
+/// the binary at build time: a checkout, a managed install and a package install
+/// all run the same executable and must not be confused with each other.
+pub fn bin_path() -> PathBuf {
+    if let Some(path) = dir_override(ENV_BIN_PATH) {
+        return path;
+    }
+    data_dir().join(BIN_SUBDIR).join(BIN_FILE)
+}
+
+/// Path of the install record naming who owns this install.
+pub fn install_record_path() -> PathBuf {
+    if let Some(path) = dir_override(ENV_INSTALL_RECORD) {
+        return path;
+    }
+    data_dir().join(INSTALL_RECORD_FILE)
+}
+
+/// Directory a downloaded bundle is extracted into before it goes live.
+pub fn staged_package_dir() -> PathBuf {
+    data_dir().join(STAGED_PACKAGE_SUBDIR)
+}
+
+/// Directory holding per-user migration markers.
+pub fn migrations_dir() -> PathBuf {
+    if let Some(dir) = dir_override(ENV_MIGRATIONS_DIR) {
+        return dir;
+    }
+    state_dir().join(MIGRATIONS_SUBDIR)
+}
+
 
 /// Prefix of every shell-owned temporary file, e.g. `astral_plasma_kwin_query.js`.
 pub const TMP_PREFIX: &str = "astral_plasma_";

@@ -59,6 +59,124 @@ pub async fn run_cli() -> DynResult<()> {
             extract_embedded_theme(&target)?;
             println!("Theme extraction complete.");
         }
+        "install" => {
+            // The installer scripts call this so the layout has one
+            // implementation: they verify the download and place the binary,
+            // this decides where the bundle and the owner record go.
+            use crate::application::install_service::{install, InstallPaths};
+            use crate::domain::install_record::InstallMethod;
+
+            let mut method = InstallMethod::Managed;
+            let mut channel = "stable".to_string();
+            let mut owner_package: Option<String> = None;
+            let mut i = 2;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--method" => {
+                        method = InstallMethod::parse(args.get(i + 1).map(String::as_str).unwrap_or(""))?;
+                        i += 2;
+                    }
+                    "--channel" => {
+                        channel = args.get(i + 1).cloned().unwrap_or_else(|| "stable".to_string());
+                        i += 2;
+                    }
+                    "--package" => {
+                        owner_package = args.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    other => {
+                        eprintln!("Unknown install option: {other}");
+                        eprintln!("Usage: astral-plasma install [--method managed|package|checkout] [--channel stable|beta] [--package <name>]");
+                        std::process::exit(2);
+                    }
+                }
+            }
+
+            let source = std::env::current_exe()?;
+            let outcome = install(
+                method,
+                &channel,
+                owner_package.as_deref(),
+                &source,
+                &InstallPaths::for_user(),
+            )?;
+            println!("{}", serde_json::to_string(&outcome.record)?);
+        }
+        "uninstall" => {
+            use crate::application::uninstall_service::{uninstall, UninstallPaths};
+
+            let confirmed = args.iter().any(|a| a == "--yes" || a == "-y");
+            let keep_settings = !args.iter().any(|a| a == "--purge");
+            let force = args.iter().any(|a| a == "--force");
+            let paths = UninstallPaths::for_user();
+
+            if !confirmed {
+                eprintln!("[{}] This removes Astral Plasma from this machine:", branding::APP_NAME);
+                for path in [
+                    &paths.data_dir,
+                    &paths.state_dir,
+                    &paths.cache_dir,
+                    &paths.systemd_dir.join(branding::SYSTEMD_UNIT),
+                ] {
+                    if path.exists() {
+                        eprintln!("  {}", path.display());
+                    }
+                }
+                eprintln!(
+                    "  settings: {}",
+                    if keep_settings {
+                        "kept (pass --purge to remove them too)"
+                    } else {
+                        "REMOVED (--purge)"
+                    }
+                );
+                eprintln!("Nothing was changed. Re-run with --yes to continue.");
+                std::process::exit(2);
+            }
+
+            // Stop the shell before its files disappear, and disable the unit so
+            // systemd cannot restart a binary that is about to be deleted.
+            let _ = crate::application::shell_lifecycle::quit_running_shell();
+            if !branding::test_mode() {
+                let _ = std::process::Command::new("systemctl")
+                    .args(["--user", "disable", "--now", branding::SYSTEMD_UNIT])
+                    .status();
+            }
+
+            let report = uninstall(&paths, keep_settings, force)?;
+            println!("{}", serde_json::to_string(&report)?);
+            for kept in &report.kept {
+                eprintln!("[kept] {kept}");
+            }
+            eprintln!("[✓] Astral Plasma removed.");
+        }
+        "migrate" => {            use crate::application::migrations::{MigrationContext, MigrationRunner};
+
+            if args.iter().any(|a| a == "--pending") {
+                let ctx = MigrationContext::for_user();
+                let runner = MigrationRunner::standard(&ctx);
+                let pending: Vec<String> = runner
+                    .pending()
+                    .iter()
+                    .map(|(name, describe)| format!("{name}\t{describe}"))
+                    .collect();
+                println!("{}", serde_json::to_string(&pending)?);
+            } else {
+                let ctx = MigrationContext::for_user();
+                let completed = MigrationRunner::standard(&ctx).run_pending(&ctx)?;
+                println!("{}", serde_json::to_string(&completed)?);
+                for entry in completed.iter().filter(|entry| entry.changed) {
+                    if let Some(message) = &entry.message {
+                        eprintln!("[{}] {message}", crate::domain::branding::APP_NAME);
+                    } else {
+                        eprintln!("[{}] Applied migration {}", crate::domain::branding::APP_NAME, entry.name);
+                    }
+                }
+                if completed.is_empty() {
+                    eprintln!("Nothing to migrate.");
+                }
+            }
+        }
         "plasma" => {
             let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
             let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
@@ -2069,6 +2187,9 @@ fn print_usage() {
     eprintln!("  run                     - Run full self-contained Astral Plasma desktop shell");
     eprintln!("  serve [--port <port>]   - Run native REST & Unix socket API server");
     eprintln!("  extract [target_dir]    - Extract embedded QML theme bundle");
+    eprintln!("  install [--method ...]  - Install this binary and its bundle into the managed layout");
+    eprintln!("  migrate [--pending]     - Run one-time repairs for existing installs");
+    eprintln!("  uninstall [--yes] [--purge] - Remove this install (settings kept unless --purge)");
     eprintln!("  plasma <cmd>            - Plasma panels management: disable, restore, status, watchdog");
     eprintln!("  systemd <cmd>           - User-directed systemd service management: status, install, remove");
     eprintln!("  settings [toggle|open|close] - Control Settings GUI window via IPC");
@@ -2126,7 +2247,27 @@ async fn run_self_contained_app() -> DynResult<()> {
         }
     }
 
-    // 1. Determine theme path: if shell.qml exists in current dir, use it (dev mode); otherwise extract embedded theme
+    // 1. One-time repairs for installs that already exist.
+    //
+    // A release cannot fix an installed layout by shipping code alone: the files
+    // on disk came from an older build. Migrations run before anything is
+    // claimed, so a failure stops the start instead of leaving a desktop that is
+    // half old and half new. A dev checkout (`shell.qml` in the working
+    // directory) is not an install and must never be migrated.
+    if !Path::new("shell.qml").exists() {
+        for entry in crate::application::migrations::run_pending_for_user()? {
+            if !entry.changed {
+                continue;
+            }
+            if let Some(message) = entry.message {
+                eprintln!("[{}] {message}", branding::APP_NAME);
+            } else {
+                eprintln!("[{}] Applied migration {}", branding::APP_NAME, entry.name);
+            }
+        }
+    }
+
+    // 2. Determine theme path: if shell.qml exists in current dir, use it (dev mode); otherwise extract embedded theme
     let theme_dir = if Path::new("shell.qml").exists() {
         std::env::current_dir()?
     } else {
@@ -2139,12 +2280,12 @@ async fn run_self_contained_app() -> DynResult<()> {
 
     let is_kwin = crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin;
 
-    // 2. Start API server in background task
+    // 3. Start API server in background task
     tokio::spawn(async move {
         let _ = run_api_server(DEFAULT_API_PORT).await;
     });
 
-    // 3. Backup and disable KDE Plasma panels (only under KDE) and bind shortcuts
+    // 4. Backup and disable KDE Plasma panels (only under KDE) and bind shortcuts
     if is_kwin {
         let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
         // A previous boot's claim comes back before this session takes one.
@@ -2156,7 +2297,7 @@ async fn run_self_contained_app() -> DynResult<()> {
         let _ = shortcuts.bind_shortcuts("meta-space");
     }
 
-    // 4. Launch Quickshell
+    // 5. Launch Quickshell
     //
     // A stock Quickshell cannot initialise QtWebEngine on its own (QtWebEngine
     // must run before QGuiApplication, and Chromium needs argv[0]). When the
@@ -2173,7 +2314,7 @@ async fn run_self_contained_app() -> DynResult<()> {
     }
     let mut child = quickshell.spawn()?;
 
-    // 5. Wait for Quickshell process or signal
+    // 6. Wait for Quickshell process or signal
     #[cfg(unix)]
     {
         use std::time::Duration;
@@ -2206,7 +2347,7 @@ async fn run_self_contained_app() -> DynResult<()> {
         let _ = child.wait();
     }
 
-    // 6. On exit, restore original Plasma panels cleanly (only under KDE), restore shortcuts, and clean up authorization entry
+    // 7. On exit, restore original Plasma panels cleanly (only under KDE), restore shortcuts, and clean up authorization entry
     if is_kwin {
         println!("[{}] Quickshell stopped. Restoring original KDE Plasma panels...", branding::APP_NAME);
         let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
