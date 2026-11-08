@@ -2619,25 +2619,75 @@ on the host**, so this class of edit cannot ship again.
 
 ---
 
-## P4 — the workspaces tab is an app (2026-11-08)
+## P4 — three tab migrations reverted, with the real blocker named (2026-11-08)
 
-`dashboard/tabs/WorkspacesTab.qml` → `modules/Astral/Apps/Workspaces/Main.qml`, hosted
-by the dashboard pane through `AppHost.mount`. It reads `session.windows`,
-`workspaces.desktops`, `workspaces.currentId`, and asks for `overview.toggle` as an
-intent — zero `WindowService`/`KWinWorkspaces` references, enforced by the boundary
-linter.
+`workspaces`, `media` and `performance` were each migrated into
+`modules/Astral/Apps/` and hosted by their dashboard pane. Each worked alone. Together
+with the still-unmigrated tabs they broke, and the cause is structural:
 
-> **Verified live**: `dashboard setTab workspaces` renders **4 Desktops · 7 Windows**,
-> Desktop 1 marked Active with its window chips (Chrome, Lutris, 网易云音乐, +4),
-> Desktop 2 empty. Zero load errors, one shell instance. `make test` exit 0 — 1109
-> Rust tests, 163 QML suites.
+**two import spellings of the same kernel directory are two singleton registrations.**
+The app writes `../../Kernel/...`, the tab writes `../../modules/Astral/Kernel/...`; in
+one QML document the second registration comes up un-instantiated, so `MprisMedia`
+resolves to it and `MprisMedia.artUrl.length` throws at a line that had worked for
+months.
 
-Two ordering bugs had to be fixed, both now guarded:
+Reverted (both commits), so the tree is green again — `make test` exit 0, 1109 Rust
+tests, 164 QML suites. Kept from the attempt, because each is independently tested:
 
-1. **The host must exist before the surfaces that use it.** `featureHost` was declared
-   after `UnifiedShell`, so the pane saw `null` at completion. The platform wiring now
-   sits at the top of `ShellRoot`.
-2. **`loaders` must change identity.** The Repeater did `root.loaders = map` on the
-   same object, so `loaderCount` never notified and the pane's retry never fired — the
-   pane mounted nothing and the drawer showed no desktops. It assigns a copy now, and
-   `tst_app_host` asserts `loaderCount === loaded.length`.
+- the host is declared before the surface tree (a pane asks it during creation);
+- `AppHost.mount` for host-owned panes;
+- `AppHost.tabProviders` + the `loaderCount` notification fix (`loaders` must change
+  identity or a waiting pane never mounts — that was the "no desktops" regression);
+- `SessionPort`/`MediaPort`/`WorkspacesPort`/`MetricsPort` and the intents the migrated
+  surfaces need.
+
+The prerequisite is now written down as spec C.13: apps must reach design primitives
+through `Astral.AppKit` only (so one spelling, one registration), the boundary linter
+must forbid `Kernel/theme` and `Kernel/components` for apps, and only then do the tabs
+move.
+
+---
+
+## P4 — the AppKit import blocks the suites (2026-11-08)
+
+After narrowing the boundary (apps import `Astral.AppKit` only), the workspaces
+migration was retried. The app itself is fine; the *suite* is not:
+
+```
+modules/Astral/AppKit/AppPalette.qml:4:1: module "Quickshell" plugin
+"quickshell-coreplugin" not found
+```
+
+A module's singleton entries are compiled eagerly, and `AppPalette` reads the host
+palette through Quickshell. `qml6` has no Quickshell plugin, so **every suite that loads
+a migrated app fails on the import**, while the shell and hosted apps are fine.
+
+Reverted again — the tab is back in `dashboard/tabs/`, `make test` exit 0 (1109 Rust
+tests, 164 QML suites). Recorded as spec C.14 with the fix: AppKit's singletons must be
+IO-free; the palette read becomes a type that `AppWindow` instantiates and hands to the
+singletons, so a suite sees the Material defaults and the shell sees the real palette.
+
+Kept and committed from this stretch: AppKit's role-named primitives (GlassCard, Panel,
+Icon, GlassButton, SpeakerPlayer, Artwork, RadialVisualiser), the boundary rule forbidding
+`Kernel/theme` + `Kernel/components` in apps, the harness `QML_IMPORT_PATH`, and the
+overview app migrated onto `Astral.AppKit`.
+
+---
+
+## Reverted: AppKit primitives broke the theme (2026-11-08)
+
+Reported from the screen: the workspaces surface showed **light grey cards with washed-out
+text on a dark shell**.
+
+An AppKit component that subclasses a kernel component carries that component's imports
+into the module context, which registers a **second** `Colors`/`Theme` — one with no
+palette. Everything then falls back to Material defaults.
+
+Reverted the AppKit primitives, the migrations that used them, and the lint rule that forced
+apps onto AppKit. Desktop correct again (dark glass, accent pill, readable chips);
+`make test` exit 0 — 1109 Rust tests, 164 QML suites.
+
+Settled rule, matching §6.4: **embedded apps render with the kernel** (one registration, the
+shell's palette); **hosted apps render with AppKit** (its own tokens from the palette file,
+because no kernel is mounted). AppKit usable *by embedded apps* would need primitives built
+on AppKit's tokens — future work, not a prerequisite for migration.

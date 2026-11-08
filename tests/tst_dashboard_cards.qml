@@ -3,7 +3,6 @@ import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "../modules/Astral/Kernel/components"
 import "../dashboard/tabs"
-import "../modules/Astral/Apps/Workspaces"
 
 Item {
     id: testRoot
@@ -20,7 +19,7 @@ Item {
         visible: false
     }
 
-    Main {
+    WorkspacesTab {
         id: wsTab
         visible: false
     }

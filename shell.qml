@@ -18,7 +18,7 @@ ShellRoot {
 
     // The app platform is declared before the surfaces that use it: a pane asks the
     // host for an app during its own creation, so the host and its plan must already
-    // exist (ordering is the contract, spec C.15).
+    // exist (that ordering bug is in spec C.10).
     // ---- app platform wiring -------------------------------------------------
     // The shell owns its state, its window model, and its actions; a surface gets
     // them injected. An imported singleton would be a copy (spec C.9/C.10).
@@ -591,7 +591,6 @@ ShellRoot {
             // The Unified Shell Visual Surface
             UnifiedShell {
                 targetScreen: screenScope.modelData
-                appHost: featureHost
             }
         }
     }

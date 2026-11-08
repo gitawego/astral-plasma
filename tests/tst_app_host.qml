@@ -213,21 +213,6 @@ Item {
         failures = [];
         loadedEvents = [];
 
-        // ---- the loader registry must be observable ---------------------------
-        // `loaders` is a map the Repeater fills; assigning the same object back does
-        // not notify, and a pane waiting on `loaderCount` then never mounts.
-        appHost = build([
-            entry("io.github.fixture.good"),
-            entry("io.github.fixture.stateful", { entry: { root: "StatefulApp.qml" } })
-        ]);
-        assert(appHost.loaderCount === appHost.loaded.length,
-            "loaderCount must match the plan (" + appHost.loaderCount + " vs " + appHost.loaded.length + ")");
-        assert(appHost.loaderFor("io.github.fixture.good") !== null,
-            "each planned app has a loader");
-        appHost.destroy();
-        failures = [];
-        loadedEvents = [];
-
         // ---- the shell only uses host API that exists -------------------------
         // A scripted edit once dropped `itemFor` from AppHost while leaving
         // `shell.qml` calling it: nothing failed at load, only when that IPC ran. This

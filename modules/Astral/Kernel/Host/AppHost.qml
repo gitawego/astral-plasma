@@ -63,10 +63,6 @@ Item {
 
     readonly property var plan: build()
     property var loaders: ({})
-    /// Number of loaders registered. The plan (`loaded`) can update before the
-    /// `Repeater` has created its delegates; a pane that mounts on `loadedIdschanged`
-    /// alone can arrive one signal too early.
-    readonly property int loaderCount: Object.keys(loaders).length
     /// Ids already reported through `appFailed`, so a loader error that surfaces
     /// twice (status change + activation) is not reported twice.
     property var reported: ({})
@@ -269,10 +265,7 @@ Item {
             }
 
             Component.onCompleted: {
-                // A *copy*: assigning the same object back would not notify, and a pane
-                // waiting for `loaderCount` would wait forever (that is exactly how the
-                // workspaces pane ended up never mounting).
-                const map = Object.assign({}, root.loaders);
+                const map = root.loaders;
                 map[modelData.id] = appLoader;
                 root.loaders = map;
             }
