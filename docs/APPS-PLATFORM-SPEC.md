@@ -1907,3 +1907,17 @@ behaviours look tested.
 
 Verified live: the dashboard opens with its six tabs, weather card, system info row
 (`CachyOS Linux · KDE Plasma 6 …`), clock and calendar, themed.
+
+### C.22 The launcher is an app
+
+`shell/CommandLauncher.qml` + `shell/launcher/WallpaperCarousel.qml` →
+`modules/Astral/Apps/Launcher/`. It takes the host and derives `state`/`intents`/`session`, so
+the shell hands over one property instead of five.
+
+New intents the surface needs (each a shell-owned action): `launcher.show { mode }`,
+`launcher.close`, `theme.mode { dark }`, `theme.preset { preset }`. Opening the launcher used to
+set four `Config` values inline (its own visibility plus closing overview/dashboard); that
+sequence now lives in one intent handler, so "one modal at a time" has a single definition.
+
+Verified live: the command launcher opens with its search field and app list (Alacritty, Android
+Studio, Astral Copilot, Astral Dashboard, …), themed.

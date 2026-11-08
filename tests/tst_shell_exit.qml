@@ -76,11 +76,11 @@ Item {
         assert(/Exit Astral Plasma/.test(settings) && /Config\.exitShell\(\)/.test(settings),
             "the settings page must offer Exit Astral Plasma");
 
-        const launcher = readLocalFile("../shell/CommandLauncher.qml");
+        const launcher = readLocalFile("../modules/Astral/Apps/Launcher/LauncherApp.qml");
         assert(/id:\s*"exit"[\s\S]{0,200}aliases:\s*\[[^\]]*"quit"/.test(launcher),
             "the launcher must offer an exit command");
-        assert(/item\.id === "exit"[\s\S]{0,200}Config\.exitShell\(\)/.test(launcher),
-            "the launcher's exit command must call Config.exitShell()");
+        assert(/item\.id === "exit"[\s\S]{0,200}intents\.request\("shell\.exit"\)/.test(launcher),
+            "the launcher's exit command must ask the shell to exit (shell.exit)");
 
         const power = readLocalFile("../dock/popouts/FusedBottomPopout.qml");
         assert(/label:\s*"Exit Astral Plasma"[\s\S]{0,200}Config\.exitShell\(\)/.test(power),

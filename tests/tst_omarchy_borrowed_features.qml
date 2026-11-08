@@ -115,7 +115,7 @@ Item {
         // Test 5: CommandLauncher AI-First Prompt Mode
         // -------------------------------------------------------------
         console.log("Test 5: CommandLauncher AI Prompt Dispatch Mode");
-        const launcherSrc = readLocalFile("../shell/CommandLauncher.qml");
+        const launcherSrc = readLocalFile("../modules/Astral/Apps/Launcher/LauncherApp.qml");
         assert(launcherSrc.length > 1000, "CommandLauncher.qml must be readable");
         assert(launcherSrc.indexOf("isAiMode") !== -1, "CommandLauncher must define isAiMode");
         assert(launcherSrc.indexOf("aiPromptText") !== -1, "CommandLauncher must extract aiPromptText");

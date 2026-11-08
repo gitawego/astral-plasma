@@ -120,7 +120,7 @@ Item {
     function runTests() {
         console.log("RUNNING: Launcher App Discovery Tests");
 
-        const launcherCode = readLocalFile("../shell/CommandLauncher.qml");
+        const launcherCode = readLocalFile("../modules/Astral/Apps/Launcher/LauncherApp.qml");
         const overviewCode = readLocalFile("../shell/ActiveAppsOverview.qml");
         assert(launcherCode.length > 1000, "CommandLauncher.qml must be readable");
         assert(overviewCode.length > 1000, "ActiveAppsOverview.qml must be readable");

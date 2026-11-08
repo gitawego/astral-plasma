@@ -1,5 +1,5 @@
 import QtQuick
-import "../shell/launcher"
+import "../modules/Astral/Apps/Launcher"
 
 // ============================================================================
 // Wallpaper Picker Focus Contract

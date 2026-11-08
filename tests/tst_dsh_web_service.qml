@@ -200,7 +200,7 @@ Item {
         assert(readLocalFile("../dock/components/DockStatusIcons.qml").indexOf("dshItem") === -1,
             "the dock must not carry the DSH icon; it lives in the AI drawer");
 
-        const launcher = readLocalFile("../shell/CommandLauncher.qml");
+        const launcher = readLocalFile("../modules/Astral/Apps/Launcher/LauncherApp.qml");
         assert(launcher.indexOf('id: "dsh"') !== -1,
             "the command launcher must offer a >dsh command");
         assert(launcher.indexOf("DshWebService.open()") !== -1,

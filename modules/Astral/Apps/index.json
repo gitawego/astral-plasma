@@ -18,6 +18,10 @@
       "id": "org.astralplasma.downloads"
     },
     {
+      "dir": "Launcher",
+      "id": "org.astralplasma.launcher"
+    },
+    {
       "dir": "Media",
       "id": "org.astralplasma.media"
     },

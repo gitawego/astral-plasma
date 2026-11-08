@@ -19,6 +19,15 @@ QtObject {
     property bool overviewVisible: false
     /// Whether the command launcher is requested open.
     property bool commandLauncherVisible: false
+    /// `apps`, `wallpaper`, `scheme`, `mode`, `settings` — what the launcher is asking for.
+    property string commandLauncherMode: "apps"
+    /// A query the shell asked the launcher to start with.
+    property string commandLauncherInitialQuery: ""
+    /// The active theme preset (the launcher shows it as selected).
+    property string themePreset: "iris"
+    /// The terminal the AI actions run in, and the agent they use.
+    property string aiTerminal: ""
+    property string aiDefaultAgent: ""
     /// Whether the dashboard is requested open.
     property bool dashboardVisible: false
     /// The dashboard's width, as the user set it.

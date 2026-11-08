@@ -5,7 +5,8 @@ import "../modules/Astral/Kernel/components"
 import "../menus"
 import "../notifications"
 import "../shell"
-import "../shell/launcher"
+import "../modules/Astral/Apps/Launcher"
+import "../modules/Astral/Apps/Launcher"
 
 Item {
     id: testRoot

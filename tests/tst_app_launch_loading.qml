@@ -468,9 +468,9 @@ Item {
         assert(dockSrc.indexOf("WindowService.launchApp(modelData.desktopFile || modelData.appId, modelData)") !== -1,
             "UnifiedDock must pass modelData to launchApp");
 
-        const launcherSrc = readLocalFile("../shell/CommandLauncher.qml");
-        assert(launcherSrc.indexOf("WindowService.launchApp(app.desktop_file || app.exec || app.name, app)") !== -1,
-            "CommandLauncher must pass app metadata to launchApp");
+        const launcherSrc = readLocalFile("../modules/Astral/Apps/Launcher/LauncherApp.qml");
+        assert(launcherSrc.indexOf("root.session.launchApp(app.desktop_file || app.exec || app.name, app)") !== -1,
+            "the launcher must pass app metadata to launchApp through the session port");
 
         const facadeSrc = readLocalFile("../modules/Astral/Kernel/services/DesktopSessionFacade.qml");
         assert(facadeSrc.indexOf("property string activeId: \"\"") !== -1,

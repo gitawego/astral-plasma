@@ -44,7 +44,7 @@ Item {
     function runTests() {
         console.log("RUNNING: Launcher Glass Contract");
 
-        const launcher = readLocalFile("../shell/CommandLauncher.qml");
+        const launcher = readLocalFile("../modules/Astral/Apps/Launcher/LauncherApp.qml");
         assert(launcher.length > 1000, "CommandLauncher.qml must be readable");
 
         // The modal itself must stay glass.

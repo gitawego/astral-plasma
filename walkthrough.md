@@ -2882,3 +2882,19 @@ dropdown's tab switch.
 
 Seven of eleven apps migrated: workspaces, media, performance, ai, downloads, assistant,
 dashboard. Remaining: settings, dock, launcher.
+
+---
+
+## P4 — the launcher is an app (2026-11-08)
+
+`shell/CommandLauncher.qml` + the wallpaper carousel → `modules/Astral/Apps/Launcher/`, taking
+the host and deriving `state`/`intents`/`session`. Four new intents: `launcher.show`,
+`launcher.close`, `theme.mode`, `theme.preset` — the "one modal at a time" sequence now has one
+definition (it used to be four `Config` writes inline).
+
+> **Verified live**: the launcher opens with its search field and app list (Alacritty, Android
+> Studio, AppManager, Ark, Astral Copilot, Astral Dashboard, Astral Tools, Astral Plasma
+> Launcher, Astral Plasma Wallpaper Picker), themed. `make test` exit 0 — 1114 Rust tests,
+> 165 QML suites.
+
+Eight of eleven apps migrated. Remaining: settings, dock — then P5's remainder, P6 and P7.

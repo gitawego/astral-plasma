@@ -15,6 +15,7 @@ import "./modules/Astral/Apps/Performance"
 import "./modules/Astral/Apps/Ai"
 import "./modules/Astral/Apps/Downloads"
 import "./modules/Astral/Apps/Assistant"
+import "./modules/Astral/Apps/Launcher"
 import "./settings_gui"
 import "./modules/Astral/Kernel/services"
 
@@ -31,6 +32,11 @@ ShellRoot {
         id: shellState
         overviewVisible: Config.overviewVisible
         commandLauncherVisible: Config.commandLauncherVisible
+        commandLauncherMode: Config.commandLauncherMode
+        commandLauncherInitialQuery: Config.commandLauncherInitialQuery
+        themePreset: Config.themePreset
+        aiTerminal: Config.aiTerminal
+        aiDefaultAgent: Config.aiDefaultAgent
         dashboardVisible: Config.dashboardVisible
         dashboardWidth: Config.dashboardWidth
         dashboardTabs: Config.dashboardTabs
@@ -646,8 +652,9 @@ ShellRoot {
     }
 
     // Bottom Command Launcher & Wallpaper Carousel Modal
-    CommandLauncher {
+    LauncherApp {
         id: commandLauncher
+        appHost: featureHost
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
 
@@ -778,6 +785,25 @@ ShellRoot {
             Config.openDownloadsWindow();
             return intents.applied();
         });
+        intents.register("theme.mode", function (args) {
+            if (!args || typeof args.dark !== "boolean") {
+                return intents.invalid("theme.mode needs dark=true|false");
+            }
+            Config.setDarkMode(args.dark);
+            return intents.applied();
+        });
+        intents.register("theme.preset", function (args) {
+            const preset = (args && args.preset) ? String(args.preset) : "";
+            if (preset.length === 0) {
+                return intents.invalid("theme.preset needs a preset");
+            }
+            Config.setThemePreset(preset);
+            return intents.applied();
+        });
+        intents.register("launcher.mode", function (args) {
+            Config.commandLauncherMode = (args && args.mode) ? String(args.mode) : "apps";
+            return intents.applied();
+        });
         intents.register("settings.open", function (args) {
             const page = (args && args.page) ? String(args.page) : "";
             const section = (args && args.section) ? String(args.section) : "";
@@ -810,6 +836,19 @@ ShellRoot {
             }
             Config.activeDashboardTab = tab;
             Config.dashboardVisible = true;
+            return intents.applied();
+        });
+        intents.register("launcher.show", function (args) {
+            const mode = (args && args.mode) ? String(args.mode) : "apps";
+            Config.commandLauncherMode = mode;
+            Config.commandLauncherVisible = true;
+            // One modal at a time, exactly as the launcher used to arrange it.
+            Config.overviewVisible = false;
+            Config.dashboardVisible = false;
+            return intents.applied();
+        });
+        intents.register("launcher.close", function () {
+            Config.closeCommandLauncher();
             return intents.applied();
         });
         intents.register("launcher.open", function (args) {

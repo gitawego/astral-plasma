@@ -3,20 +3,28 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
-import "../modules/Astral/Kernel/theme"
-import "../modules/Astral/Kernel/components"
-import "../modules/Astral/Kernel/config"
-import "../modules/Astral/Kernel/services"
+import "../../Kernel/theme"
+import "../../Kernel/components"
 import "launcher"
 
 PanelWindow {
     id: root
 
+    /// Injected by the shell: the host (ports) — the launcher derives what it needs.
+    property var appHost: null
+
+    readonly property var shellState: appHost ? appHost.state : null
+    readonly property var intents: appHost ? appHost.intents : null
+    readonly property var session: appHost ? appHost.session : null
+
+
     property ShellScreen targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     screen: targetScreen
 
     property bool testMode: false
-    property bool activeVisible: testMode ? true : (typeof Config !== "undefined" ? Config.commandLauncherVisible : false)
+    property bool activeVisible: testMode
+        ? true
+        : (root.shellState !== null && root.shellState.commandLauncherVisible)
 
     visible: activeVisible
 
@@ -98,20 +106,22 @@ PanelWindow {
 
 
     Connections {
-        target: (typeof Config !== "undefined") ? Config : null
+        target: root.shellState
+        enabled: root.shellState !== null
+        ignoreUnknownSignals: true
         function onCommandLauncherVisibleChanged() {
-            if (Config && Config.commandLauncherVisible) {
-                const initQ = (Config.commandLauncherInitialQuery || "").trim();
-                if (Config.commandLauncherMode === "wallpaper") {
+            if (root.shellState && root.shellState.commandLauncherVisible) {
+                const initQ = ((root.shellState ? root.shellState.commandLauncherInitialQuery : "") || "").trim();
+                if ((root.shellState ? root.shellState.commandLauncherMode : "apps") === "wallpaper") {
                     root.queryText = initQ.length > 0 ? (">wallpaper " + initQ) : ">wallpaper";
                     root.activeMode = "wallpaper";
-                } else if (Config.commandLauncherMode === "scheme") {
+                } else if ((root.shellState ? root.shellState.commandLauncherMode : "apps") === "scheme") {
                     root.queryText = initQ.length > 0 ? (">scheme " + initQ) : ">scheme";
                     root.activeMode = "scheme";
-                } else if (Config.commandLauncherMode === "settings") {
+                } else if ((root.shellState ? root.shellState.commandLauncherMode : "apps") === "settings") {
                     root.queryText = initQ.length > 0 ? (">settings " + initQ) : ">settings";
                     root.activeMode = "settings";
-                } else if (Config.commandLauncherMode === "mode") {
+                } else if ((root.shellState ? root.shellState.commandLauncherMode : "apps") === "mode") {
                     root.queryText = initQ.length > 0 ? (">mode " + initQ) : ">mode";
                     root.activeMode = "mode";
                 } else {
@@ -122,9 +132,9 @@ PanelWindow {
             }
         }
         function onCommandLauncherModeChanged() {
-            if (Config && Config.commandLauncherVisible) {
-                const initQ = (Config.commandLauncherInitialQuery || "").trim();
-                if (Config.commandLauncherMode === "wallpaper") {
+            if (root.shellState && root.shellState.commandLauncherVisible) {
+                const initQ = ((root.shellState ? root.shellState.commandLauncherInitialQuery : "") || "").trim();
+                if ((root.shellState ? root.shellState.commandLauncherMode : "apps") === "wallpaper") {
                     root.queryText = initQ.length > 0 ? (">wallpaper " + initQ) : ">wallpaper";
                     root.activeMode = "wallpaper";
                 }
@@ -479,8 +489,8 @@ PanelWindow {
                             implicitWidth: pCol.implicitWidth + 24
                             radius: 18
                             color: pHover.containsMouse ? root.colSurfaceContainerHigh : root.colSurfaceContainer
-                            border.color: (typeof Config !== "undefined" && Config.themePreset === modelData.key) ? modelData.col : root.colBorderSubtle
-                            border.width: (typeof Config !== "undefined" && Config.themePreset === modelData.key) ? 2 : 1
+                            border.color: ((root.shellState ? root.shellState.themePreset : "iris") === modelData.key) ? modelData.col : root.colBorderSubtle
+                            border.width: ((root.shellState ? root.shellState.themePreset : "iris") === modelData.key) ? 2 : 1
 
                             Row {
                                 id: pCol
@@ -506,8 +516,8 @@ PanelWindow {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (typeof Config !== "undefined") {
-                                        Config.setThemePreset(modelData.key);
+                                    if (root.intents) {
+                                        root.intents.request("theme.preset", { preset: modelData.key });
                                     }
                                     root.closeLauncher();
                                 }
@@ -543,7 +553,7 @@ PanelWindow {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (typeof Config !== "undefined") Config.setDarkMode(true);
+                            if (root.intents) root.intents.request("theme.mode", { dark: true });
                             root.closeLauncher();
                         }
                     }
@@ -569,7 +579,7 @@ PanelWindow {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (typeof Config !== "undefined") Config.setDarkMode(false);
+                            if (root.intents) root.intents.request("theme.mode", { dark: false });
                             root.closeLauncher();
                         }
                     }
@@ -613,7 +623,7 @@ PanelWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (typeof Config !== "undefined") Config.openSettings(modelData.key);
+                                if (root.intents) root.intents.request("settings.open", { page: modelData.key });
                                 root.closeLauncher();
                             }
                         }
@@ -636,7 +646,7 @@ PanelWindow {
                         color: (typeof Colors !== "undefined" && Colors.aiActivityColor) ? Colors.aiActivityColor : root.colPrimary
                     }
                     Text {
-                        text: "AI Agent: " + ((typeof Config !== "undefined" && Config.aiDefaultAgent) ? Config.aiDefaultAgent : "agy")
+                        text: "AI Agent: " + (((root.shellState ? root.shellState.aiDefaultAgent : "")) ? (root.shellState ? root.shellState.aiDefaultAgent : "") : "agy")
                         font.pixelSize: 13
                         font.weight: Font.DemiBold
                         color: root.colTextOnSurface
@@ -680,7 +690,7 @@ PanelWindow {
                                 Layout.fillWidth: true
                             }
                             Text {
-                                text: "Runs in " + ((typeof Config !== "undefined" && Config.aiTerminal) ? Config.aiTerminal : "ghostty") + " with active AI agent session"
+                                text: "Runs in " + (((root.shellState ? root.shellState.aiTerminal : "")) ? (root.shellState ? root.shellState.aiTerminal : "") : "ghostty") + " with active AI agent session"
                                 font.pixelSize: 11
                                 color: root.colTextMuted
                             }
@@ -747,7 +757,7 @@ PanelWindow {
                             Image {
                                 id: appIcon
                                 anchors.fill: parent
-                                source: Config.iconUrl(modelData.icon)
+                                source: (root.shellState ? root.shellState.iconUrl : function () { return ""; })(modelData.icon)
                                 fillMode: Image.PreserveAspectFit
                                 smooth: true
                                 mipmap: true
@@ -1002,9 +1012,7 @@ PanelWindow {
             root.closeLauncher();
         } else if (item.id === "exit") {
             // Not a mode: leaving the shell runs straight away.
-            if (typeof Config !== "undefined" && Config.exitShell) {
-                Config.exitShell();
-            }
+            if (root.intents) root.intents.request("shell.exit");
             root.closeLauncher();
         }
     }
@@ -1062,15 +1070,15 @@ PanelWindow {
             }
         } else if (root.isSchemeMode) {
             const p = root.commandArg || "iris";
-            if (typeof Config !== "undefined") Config.setThemePreset(p);
+            if (root.intents) root.intents.request("theme.preset", { preset: p });
             root.closeLauncher();
         } else if (root.isModeMode) {
             const m = root.commandArg.includes("light") ? false : true;
-            if (typeof Config !== "undefined") Config.setDarkMode(m);
+            if (root.intents) root.intents.request("theme.mode", { dark: m });
             root.closeLauncher();
         } else if (root.isSettingsMode) {
             const page = root.commandArg || "dock";
-            if (typeof Config !== "undefined") Config.openSettings(page);
+            if (root.intents) root.intents.request("settings.open", { page: page });
             root.closeLauncher();
         } else if (root.isAiMode) {
             const prompt = root.aiPromptText;
@@ -1085,8 +1093,8 @@ PanelWindow {
 
     function launchApp(app) {
         if (!app) return;
-        if (!root.testMode && typeof WindowService !== "undefined" && WindowService.launchApp) {
-            WindowService.launchApp(app.desktop_file || app.exec || app.name, app);
+        if (!root.testMode && typeof WindowService !== "undefined" && root.session.launchApp) {
+            root.session.launchApp(app.desktop_file || app.exec || app.name, app);
         }
         root.closeLauncher();
     }
@@ -1115,11 +1123,10 @@ PanelWindow {
         }
         root.selectedAppIndex = 0;
         root.selectedSuggestionIndex = 0;
-        if (typeof Config !== "undefined") {
-            Config.commandLauncherMode = mode || "apps";
-            Config.commandLauncherVisible = true;
-            Config.overviewVisible = false;
-            Config.dashboardVisible = false;
+        // Opening the launcher is a shell action: it closes the other modals and marks
+        // itself visible, and the shell owns that state (spec C.22).
+        if (root.intents) {
+            root.intents.request("launcher.show", { mode: mode || "apps" });
         }
         searchInput.forceActiveFocus();
         if (appsList) {
@@ -1131,8 +1138,8 @@ PanelWindow {
         if (root.isWallpaperMode) {
             root.exitWallpaperMode();
         }
-        if (typeof Config !== "undefined") {
-            Config.commandLauncherVisible = false;
+        if (root.intents) {
+            root.intents.request("launcher.close");
         }
         root.queryText = "";
         root.activeMode = "";
@@ -1141,7 +1148,7 @@ PanelWindow {
     // Process to query installed apps on completion (with pre-computed search keys for virtual scroll)
     Process {
         id: appsProc
-        command: [(typeof Config !== "undefined" && Config.daemonBin) ? Config.daemonBin : "./bin/astral-plasma", "apps"]
+        command: [((root.shellState ? root.shellState.daemonBin : "")) ? (root.shellState ? root.shellState.daemonBin : "") : "./bin/astral-plasma", "apps"]
         stdout: StdioCollector {
             onStreamFinished: {
                 let parsed;
@@ -1192,12 +1199,12 @@ PanelWindow {
     }
 
     function syncWithConfig() {
-        if (typeof Config !== "undefined" && Config.commandLauncherVisible) {
-            if (Config.commandLauncherMode === "wallpaper") {
+        if ((root.shellState ? root.shellState.commandLauncherVisible : false)) {
+            if ((root.shellState ? root.shellState.commandLauncherMode : "apps") === "wallpaper") {
                 root.openLauncher("wallpaper");
-            } else if (Config.commandLauncherMode === "scheme") {
+            } else if ((root.shellState ? root.shellState.commandLauncherMode : "apps") === "scheme") {
                 root.openLauncher("scheme");
-            } else if (Config.commandLauncherMode === "settings") {
+            } else if ((root.shellState ? root.shellState.commandLauncherMode : "apps") === "settings") {
                 root.openLauncher("settings");
             }
         }
