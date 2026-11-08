@@ -1695,3 +1695,33 @@ Until both land, tabs stay where they are. What *did* stay from the attempt: the
 ordering fix, `AppHost.mount`, `tabProviders`, the `loaderCount` notification fix, and
 the `SessionPort`/`MediaPort`/`WorkspacesPort`/`MetricsPort` + intent wiring — all
 tested, all green (`make test`: 1109 Rust tests, 164 QML suites).
+
+### C.14 Finding: AppKit cannot be imported by the qml6 suites yet
+
+With the boundary narrowed (apps import `Astral.AppKit` only, C.13), the workspaces
+migration was retried and the *suite* failed:
+
+```
+modules/Astral/AppKit/AppPalette.qml:4:1: module "Quickshell" plugin
+"quickshell-coreplugin" not found
+```
+
+Two known facts collide: importing a **module** compiles its singleton entries eagerly
+(C.6), and `AppPalette` reads the host palette with `Quickshell.env`/`FileView` (C.7).
+`qml6` — the test runner — has no Quickshell plugin, so `import Astral.AppKit 1.0`
+fails in every suite that loads a migrated app, even though the same import works in the
+shell and in a hosted app.
+
+The fix is to make **AppKit's singletons IO-free**:
+
+* `Theme`, `Colors`, `Motion`, `AppApi` hold values only (they already do, except the
+  palette read);
+* the palette read becomes a *type* (`PaletteLoader`) that `AppWindow` — or the app's
+  own root — instantiates once and hands to the singletons via setters, so eager
+  singleton compilation touches no Quickshell API;
+* a suite then sees the Material defaults, which is what a layout test asserts against
+  anyway; the shell and hosted apps see the real palette.
+
+Reverted again for now: the workspaces tab stays in `dashboard/tabs/`, the tree is green
+(1109 Rust tests, 164 QML suites), and the AppKit primitives + lint rule + harness
+`QML_IMPORT_PATH` from C.13 are committed and in place.

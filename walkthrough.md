@@ -2645,3 +2645,29 @@ The prerequisite is now written down as spec C.13: apps must reach design primit
 through `Astral.AppKit` only (so one spelling, one registration), the boundary linter
 must forbid `Kernel/theme` and `Kernel/components` for apps, and only then do the tabs
 move.
+
+---
+
+## P4 — the AppKit import blocks the suites (2026-11-08)
+
+After narrowing the boundary (apps import `Astral.AppKit` only), the workspaces
+migration was retried. The app itself is fine; the *suite* is not:
+
+```
+modules/Astral/AppKit/AppPalette.qml:4:1: module "Quickshell" plugin
+"quickshell-coreplugin" not found
+```
+
+A module's singleton entries are compiled eagerly, and `AppPalette` reads the host
+palette through Quickshell. `qml6` has no Quickshell plugin, so **every suite that loads
+a migrated app fails on the import**, while the shell and hosted apps are fine.
+
+Reverted again — the tab is back in `dashboard/tabs/`, `make test` exit 0 (1109 Rust
+tests, 164 QML suites). Recorded as spec C.14 with the fix: AppKit's singletons must be
+IO-free; the palette read becomes a type that `AppWindow` instantiates and hands to the
+singletons, so a suite sees the Material defaults and the shell sees the real palette.
+
+Kept and committed from this stretch: AppKit's role-named primitives (GlassCard, Panel,
+Icon, GlassButton, SpeakerPlayer, Artwork, RadialVisualiser), the boundary rule forbidding
+`Kernel/theme` + `Kernel/components` in apps, the harness `QML_IMPORT_PATH`, and the
+overview app migrated onto `Astral.AppKit`.
