@@ -42,6 +42,8 @@ Item {
     property var session: null
     /// The now-playing model (`MediaPort`), injected for media surfaces.
     property var media: null
+    /// Desktops (`WorkspacesPort`), injected for workspace surfaces.
+    property var workspaces: null
 
     /// Loadable entries, in dependency order.
     readonly property var loaded: plan.load
@@ -139,7 +141,7 @@ Item {
     /// is still valid (it may be pure presentation), so a missing property is not an
     /// error - a TypeError here would be. This is the only injection point, so the
     /// contract is one place: `property var shellState`, `property var intents`,
-    /// `property var session`, `property var media`.
+    /// `property var session`, `property var media`, `property var workspaces`.
     function inject(item) {
         if (!item) {
             return;
@@ -163,6 +165,11 @@ Item {
             item.media = root.media;
         } catch (error) {
             // The app does not read media: fine.
+        }
+        try {
+            item.workspaces = root.workspaces;
+        } catch (error) {
+            // The app does not read desktops: fine.
         }
     }
 

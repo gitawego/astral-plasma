@@ -544,6 +544,34 @@ ShellRoot {
         }
     }
 
+    // Desktops, for surfaces that group windows by workspace. Filled from the shell's
+    // own KWinWorkspaces: a Loader-loaded surface would get its own copy (C.10).
+    WorkspacesPort {
+        id: workspacesPort
+        desktops: KWinWorkspaces.desktops
+        currentId: KWinWorkspaces.currentId
+        switchToImpl: function (id) {
+            KWinWorkspaces.switchTo(id);
+            return true;
+        }
+        createImpl: function (name) {
+            KWinWorkspaces.createDesktop(name);
+            return true;
+        }
+        removeImpl: function (id) {
+            KWinWorkspaces.removeDesktop(id);
+            return true;
+        }
+        refreshImpl: function () {
+            KWinWorkspaces.refresh();
+            return true;
+        }
+        moveWindowImpl: function (windowId, desktopId) {
+            KWinWorkspaces.moveWindow(windowId, desktopId);
+            return true;
+        }
+    }
+
     IntentBus {
         id: intents
     }
@@ -562,6 +590,7 @@ ShellRoot {
         intents: intents
         session: sessionPort
         media: mediaPort
+        workspaces: workspacesPort
         host: ({ level: 1, floor: 1 })
         eager: ["org.astralplasma.overview"]
         onAppFailed: function (id, reason) { console.error("app failed: " + id + " - " + reason) }

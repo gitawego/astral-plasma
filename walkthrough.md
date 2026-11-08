@@ -2576,3 +2576,24 @@ surface does.
 > `removeDesktop`, `refresh`, plus the overview toggle). Bolting those onto
 > `SessionPort` would mix two concerns; it needs a `WorkspacesPort`. The half-moved
 > file was restored, the tree is green, and the mechanism it will use is in place.
+
+---
+
+## P4 — `WorkspacesPort` (2026-11-08)
+
+Desktops are not windows, so they got their own port rather than six extra methods on
+`SessionPort`: `desktops`, `currentId`, `switchTo`, `create`, `remove`, `refresh`,
+`moveWindow`, and `desktopOf(window)` for grouping. The shell fills it from
+`KWinWorkspaces` and injects it through `AppHost`; every call is contained and an
+unsupported operation is a stated failure.
+
+> **Verified**: nine Rust suites' worth of green plus **163** QML suites —
+> `tst_workspaces_port` covers the empty port, data propagation, `desktopOf` for a
+> window with one desktop, no desktop, and a missing window, argument forwarding for
+> all five operations, an unnamed create, and a throwing implementation. The shell was
+> restarted through `run.sh`: one instance, zero load errors.
+>
+> **Not verified**: a migrated workspace surface. `WorkspacesTab` still reads
+> `WindowService`/`KWinWorkspaces`; the port it needs now exists, and the pane content
+> in `shell/CentralDropdown.qml` is where it will be hosted — the panes themselves
+> stay, because the slider indexes them by position.

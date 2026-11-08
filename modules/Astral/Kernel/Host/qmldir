@@ -5,3 +5,4 @@ IntentBus 1.0 IntentBus.qml
 MediaPort 1.0 MediaPort.qml
 SessionPort 1.0 SessionPort.qml
 ShellState 1.0 ShellState.qml
+WorkspacesPort 1.0 WorkspacesPort.qml

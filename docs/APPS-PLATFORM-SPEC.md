@@ -1196,6 +1196,7 @@ need them are mechanical rather than investigative:
 | `ShellState` | shell-owned state (overview/launcher/dashboard open, daemon path, icon resolution) | an imported `Config` is a stale copy (C.9) |
 | `SessionPort` | windows, installed apps, thumbnails, activate/close/launch | same, and it has no windows at all (C.10) |
 | `MediaPort` | now-playing: track, artwork, status, players, seek | same; idle is *empty*, never a fabricated track |
+| `WorkspacesPort` | desktops, current desktop, switch/create/remove/refresh, move a window | desktops are a different concern from windows, so they are a different port |
 
 `MediaPort` is filled by the shell from `MprisMedia`, clamps seeks, and turns every
 operation into a stated failure when the shell cannot do it.
