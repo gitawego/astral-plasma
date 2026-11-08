@@ -129,6 +129,116 @@ pub fn read_registry(data_dir: &Path) -> DynResult<Registry> {
     }
 }
 
+/// Write the registry atomically.
+///
+/// Crash safety is structural rather than hopeful: the bytes go to
+/// `apps.json.tmp`, are `sync_all`ed, and only then rename over the real file, so
+/// a reader never sees half a registry and a crash mid-write leaves the previous
+/// one intact. The directory is synced too, because a rename that is only in the
+/// page cache is not a rename after a power cut.
+pub fn write_registry(data_dir: &Path, registry: &Registry) -> DynResult<()> {
+    use std::io::Write;
+
+    let mut candidate = registry.clone();
+    candidate.schema = REGISTRY_SCHEMA;
+    // Refuse to persist what a reader would refuse: a registry that cannot be
+    // parsed back is a desktop that will not boot.
+    candidate.validate()?;
+
+    std::fs::create_dir_all(data_dir)?;
+    let path = data_dir.join("apps.json");
+    let tmp = data_dir.join("apps.json.tmp");
+
+    let mut bytes = serde_json::to_vec_pretty(&candidate)?;
+    bytes.push(b'\n');
+    {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+    }
+    std::fs::rename(&tmp, &path)?;
+    if let Ok(dir) = std::fs::File::open(data_dir) {
+        let _ = dir.sync_all();
+    }
+    Ok(())
+}
+
+/// Insert or replace an entry by id, keeping the list order stable.
+///
+/// Returns true when an existing entry was replaced.
+pub fn upsert_entry(registry: &mut Registry, entry: RegistryEntry) -> bool {
+    match registry.apps.iter_mut().find(|existing| existing.id == entry.id) {
+        Some(existing) => {
+            *existing = entry;
+            true
+        }
+        None => {
+            registry.apps.push(entry);
+            false
+        }
+    }
+}
+
+/// Enable or disable an installed app. An unknown id is an error, not a no-op.
+pub fn set_enabled(registry: &mut Registry, id: &str, enabled: bool) -> DynResult<bool> {
+    let Some(entry) = registry.apps.iter_mut().find(|entry| entry.id == id) else {
+        return Err(format!("'{id}' is not installed").into());
+    };
+    let changed = entry.enabled != enabled;
+    entry.enabled = enabled;
+    Ok(changed)
+}
+
+pub fn remove_entry(registry: &mut Registry, id: &str) -> bool {
+    let before = registry.apps.len();
+    registry.apps.retain(|entry| entry.id != id);
+    registry.apps.len() != before
+}
+
+/// Remember a version that must never be retried for this app.
+///
+/// Used when a core app fails to load (A28): reverting to the baseline and
+/// re-offering the same build would loop. The list is capped so a hostile or
+/// broken catalog cannot grow it without bound.
+pub fn block_version(registry: &mut Registry, id: &str, version: &str) -> DynResult<()> {
+    const MAX_BLOCKED: usize = 32;
+    let Some(entry) = registry.apps.iter_mut().find(|entry| entry.id == id) else {
+        return Err(format!("'{id}' is not installed").into());
+    };
+    if entry.blocked.iter().any(|blocked| blocked == version) {
+        return Ok(());
+    }
+    entry.blocked.push(version.to_string());
+    if entry.blocked.len() > MAX_BLOCKED {
+        let excess = entry.blocked.len() - MAX_BLOCKED;
+        entry.blocked.drain(0..excess);
+    }
+    Ok(())
+}
+
+/// Read, upsert, write: the only path that records an install.
+pub fn record_install(
+    data_dir: &Path,
+    manifest: &Manifest,
+    digest: &str,
+) -> DynResult<RegistryEntry> {
+    let mut registry = read_registry(data_dir)?;
+    let entry = entry_for(manifest, digest);
+    upsert_entry(&mut registry, entry.clone());
+    write_registry(data_dir, &registry)?;
+    Ok(entry)
+}
+
+/// Read, remove, write.
+pub fn record_uninstall(data_dir: &Path, id: &str) -> DynResult<bool> {
+    let mut registry = read_registry(data_dir)?;
+    let removed = remove_entry(&mut registry, id);
+    if removed {
+        write_registry(data_dir, &registry)?;
+    }
+    Ok(removed)
+}
+
 /// Bridge a registry entry into the policy type used by `app_reconcile`.
 pub fn installed_app(entry: &RegistryEntry, core: bool) -> InstalledApp {
     InstalledApp {
@@ -346,5 +456,146 @@ mod tests {
         };
         let json = serde_json::to_vec(&registry).unwrap();
         assert_eq!(Registry::parse(&json).unwrap(), registry);
+    }
+
+    // ---- writer -----------------------------------------------------------
+
+    fn sample(id: &str, version: &str) -> RegistryEntry {
+        RegistryEntry {
+            id: id.to_string(),
+            version: version.to_string(),
+            kernel_api: 1,
+            enabled: true,
+            preinstalled: false,
+            pinned: false,
+            auto_update: false,
+            data_schema: None,
+            digest: format!("sha256:{version}"),
+            blocked: Vec::new(),
+            installed_at: None,
+            granted: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_written_registry_reads_back_identically() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = Registry {
+            schema: REGISTRY_SCHEMA,
+            apps: vec![sample("io.github.alice.clock", "1.0.0")],
+        };
+        write_registry(dir.path(), &registry).unwrap();
+        assert_eq!(read_registry(dir.path()).unwrap(), registry);
+        assert!(
+            !dir.path().join("apps.json.tmp").exists(),
+            "the temp file must not survive a successful write"
+        );
+    }
+
+    #[test]
+    fn a_failed_validation_never_replaces_the_previous_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = Registry {
+            schema: REGISTRY_SCHEMA,
+            apps: vec![sample("io.github.alice.clock", "1.0.0")],
+        };
+        write_registry(dir.path(), &good).unwrap();
+
+        let broken = Registry {
+            schema: REGISTRY_SCHEMA,
+            apps: vec![sample("Clock", "1.0.0")],
+        };
+        assert!(write_registry(dir.path(), &broken).is_err());
+        assert_eq!(read_registry(dir.path()).unwrap(), good);
+    }
+
+    #[test]
+    fn a_corrupt_registry_is_not_silently_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("apps.json"), b"{not json").unwrap();
+        let manifest = manifest("io.github.alice.clock", None, "community");
+        let error = record_install(dir.path(), &manifest, "sha256:x").unwrap_err();
+        assert!(error.to_string().contains("apps.json"), "got: {error}");
+        // The user's file is still theirs.
+        assert_eq!(
+            std::fs::read(dir.path().join("apps.json")).unwrap(),
+            b"{not json"
+        );
+    }
+
+    #[test]
+    fn record_install_upserts_and_keeps_the_order_stable() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = manifest("io.github.alice.clock", None, "community");
+        let second = manifest("io.github.bob.notes", None, "community");
+        record_install(dir.path(), &first, "sha256:1").unwrap();
+        record_install(dir.path(), &second, "sha256:2").unwrap();
+        let updated = Manifest {
+            version: "1.2.4".to_string(),
+            ..first.clone()
+        };
+        record_install(dir.path(), &updated, "sha256:3").unwrap();
+
+        let registry = read_registry(dir.path()).unwrap();
+        assert_eq!(registry.apps.len(), 2, "an update must not duplicate the app");
+        assert_eq!(registry.apps[0].id, "io.github.alice.clock");
+        assert_eq!(registry.apps[0].version, "1.2.4");
+        assert_eq!(registry.apps[1].id, "io.github.bob.notes");
+    }
+
+    #[test]
+    fn disabling_an_unknown_app_is_an_error_that_names_it() {
+        let mut registry = Registry::default();
+        let error = set_enabled(&mut registry, "io.github.alice.ghost", false).unwrap_err();
+        assert!(error.to_string().contains("io.github.alice.ghost"));
+    }
+
+    #[test]
+    fn disabling_keeps_the_entry_and_its_data() {
+        let mut registry = Registry {
+            schema: REGISTRY_SCHEMA,
+            apps: vec![sample("io.github.alice.clock", "1.0.0")],
+        };
+        assert!(set_enabled(&mut registry, "io.github.alice.clock", false).unwrap());
+        assert!(!registry.apps[0].enabled);
+        assert_eq!(registry.apps[0].version, "1.0.0");
+        assert_eq!(registry.apps[0].digest, "sha256:1.0.0");
+        // Setting the same state again reports "nothing changed".
+        assert!(!set_enabled(&mut registry, "io.github.alice.clock", false).unwrap());
+    }
+
+    #[test]
+    fn a_blocked_version_is_recorded_once_and_capped() {
+        let mut registry = Registry {
+            schema: REGISTRY_SCHEMA,
+            apps: vec![sample("org.astralplasma.dock", "1.0.0")],
+        };
+        block_version(&mut registry, "org.astralplasma.dock", "1.0.1").unwrap();
+        block_version(&mut registry, "org.astralplasma.dock", "1.0.1").unwrap();
+        assert_eq!(
+            registry.apps[0].blocked,
+            vec!["1.0.1".to_string()],
+            "blocking twice must not duplicate the version"
+        );
+        for minor in 0..40 {
+            block_version(&mut registry, "org.astralplasma.dock", &format!("2.0.{minor}")).unwrap();
+        }
+        assert_eq!(registry.apps[0].blocked.len(), 32, "the list is bounded");
+    }
+
+    #[test]
+    fn uninstalling_records_removal_and_keeps_other_apps() {
+        let dir = tempfile::tempdir().unwrap();
+        let clock = manifest("io.github.alice.clock", None, "community");
+        let notes = manifest("io.github.bob.notes", None, "community");
+        record_install(dir.path(), &clock, "sha256:1").unwrap();
+        record_install(dir.path(), &notes, "sha256:2").unwrap();
+
+        assert!(record_uninstall(dir.path(), "io.github.alice.clock").unwrap());
+        let registry = read_registry(dir.path()).unwrap();
+        assert_eq!(registry.apps.len(), 1);
+        assert_eq!(registry.apps[0].id, "io.github.bob.notes");
+
+        assert!(!record_uninstall(dir.path(), "io.github.alice.clock").unwrap());
     }
 }

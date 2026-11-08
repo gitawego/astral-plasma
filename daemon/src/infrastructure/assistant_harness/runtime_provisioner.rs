@@ -236,7 +236,24 @@ impl RuntimeProvisioner {
     /// the only honest answer to "which harness am I running?".
     pub fn probe_pi_version(pi_bin: Option<&Path>) -> Option<String> {
         let bin = pi_bin?;
-        let output = Command::new(bin).arg("--version").output().ok()?;
+        // A spawn can fail with EAGAIN/ETXTBSY on a loaded machine. Reporting
+        // "pi is installed but does not report a version" because the box was
+        // busy is a wrong diagnosis, so a failed *spawn* is retried - once, and
+        // only for the spawn. A binary that runs and refuses is not retried.
+        let mut output = None;
+        for attempt in 0..3 {
+            match Command::new(bin).arg("--version").output() {
+                Ok(result) => {
+                    output = Some(result);
+                    break;
+                }
+                Err(_) if attempt < 2 => {
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                }
+                Err(_) => return None,
+            }
+        }
+        let output = output?;
         if !output.status.success() {
             return None;
         }

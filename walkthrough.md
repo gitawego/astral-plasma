@@ -2230,5 +2230,26 @@ prose:
 > (API 2); this is API 1` / `disabled`, and `astral app install foo` refused with
 > the phase that will implement it.
 >
-> **Not done**: the QML `AppHost`/`AppRegistry`, the `apps.json` writer, and
-> moving `overview` out as the first app. Those are the rest of P2.
+Registry writer, host policy, and the CLI verbs followed in the same phase:
+
+- **Writer** (`application/app_service.rs`) — `apps.json.tmp` + `sync_all` +
+  rename + directory sync; a corrupt existing file is never clobbered, and a
+  registry a reader would refuse is never persisted.
+- **Host policy** (`modules/Astral/Kernel/host/AppHostPolicy.js`, 30 assertions in
+  `tests/tst_app_host_policy.qml`) — who loads, why the rest do not, dependency
+  order, cycles, duplicate ids, and a coherent-window clamp. No app is named.
+- **`astral app enable|disable <id>`** — verified live: `Disabled
+  org.astralplasma.downloads` then `already disabled`, `app list` showing
+  `disabled`, and an unknown id refused with `"'io.github.ghost' is not
+  installed"` and exit 1.
+
+> **Verified**: `make test` exit 0 twice in a row — 1049 Rust tests and 154 QML
+> suites.
+>
+> **Not done**: `AppHost.qml` itself, `SurfaceBroker`/`IntentBus`, and moving
+> `overview` out as the first app. Those are the rest of P2.
+>
+> **One flake, not fixed**: `test_doctor::pi_harness_check_…` failed once in
+> three full runs (a spawn of the fake `pi` script returned no version under
+> parallel load). The probe now retries a failed *spawn* only, but the flake did
+> not reproduce afterwards, so the fix is unproven.

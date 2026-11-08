@@ -2675,6 +2675,20 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
         "available" => {
             println!("{}", apps_not_written_yet("available"));
         }
+        "enable" | "disable" => {
+            let Some(id) = args.get(3) else {
+                return Err(format!("usage: astral app {sub} <app-id>").into());
+            };
+            let mut registry = read_registry(&data_dir)?;
+            let enabled = sub == "enable";
+            let changed = crate::application::app_service::set_enabled(&mut registry, id, enabled)?;
+            if changed {
+                crate::application::app_service::write_registry(&data_dir, &registry)?;
+                println!("{} {}", if enabled { "Enabled" } else { "Disabled" }, id);
+            } else {
+                println!("{id} is already {}", if enabled { "enabled" } else { "disabled" });
+            }
+        }
         other => {
             println!("{}", apps_not_written_yet(other));
         }

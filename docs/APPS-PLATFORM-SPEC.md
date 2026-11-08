@@ -1026,20 +1026,31 @@ Landed:
   platform-move table from §8.5.4 as pure functions.
 - `daemon/src/application/app_service.rs` — `apps.json` registry (schema,
   duplicate-id refusal, missing file = empty registry) and the bridge into policy.
-- `astral app list [--json]` — real, reading the same registry the host will;
-  every other `astral app` subcommand names the phase it lands in instead of
-  silently doing nothing.
+- `application/app_service.rs` writer — `apps.json` is written to
+  `apps.json.tmp`, `sync_all`ed, renamed, and the directory synced: a crash
+  leaves the previous registry intact, a registry a reader would refuse is never
+  persisted, and a *corrupt* existing file is never silently clobbered. Plus
+  `upsert`, `set_enabled`, `remove`, and `block_version` (capped at 32, so a
+  broken catalog cannot grow it without bound).
+- `modules/Astral/Kernel/host/AppHostPolicy.js` — the host's decisions as pure
+  functions: who loads, why the rest do not (`disabled`, `blocked`,
+  `incompatible`, `unresolvedDependency`, `invalid`), dependency-ordered and
+  deterministic. No app is named anywhere.
+- `astral app list [--json]`, `enable`, `disable` — real, reading and writing the
+  same registry the host will; every other `astral app` subcommand names the
+  phase it lands in instead of silently doing nothing.
 - `sdk/examples/hello/` + `daemon/tests/test_app_contract.rs`: the example an
   author copies is validated by the same code that validates an install, so the
   authoring side cannot drift from the enforcement side.
 
 Still open in P2:
 
-- `AppRegistry`/`AppHost`/`SurfaceBroker`/`IntentBus` in QML, and moving
-  `overview` out as the first embedded app.
-- `apps.json` writer (staging + atomic rename + registry last).
-- The `Astral.Kernel 1.0` module URI, now that the kernel is in place (needs the
-  Quickshell-dependent singletons split behind ports first — Appendix C.6).
+- `AppHost.qml` itself (instantiate the plan behind `LazyLoader`s) and
+  `SurfaceBroker`/`IntentBus`; then moving `overview` out as the first embedded
+  app — the point at which the host stops being a library and starts replacing
+  `shell.qml` wiring.
+- The `Astral.Kernel 1.0` module URI (needs the Quickshell-dependent singletons
+  split behind ports first — Appendix C.6).
 
 Original scope:
 
