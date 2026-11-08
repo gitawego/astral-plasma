@@ -52,7 +52,7 @@ Item {
         "../modules/Astral/Kernel/components/RadialCoverRing.qml",
         "../modules/Astral/Kernel/components/HeatmapCoverRing.qml",
         "../modules/Astral/Kernel/components/HeatmapSpeakerPlayer.qml",
-        "../dashboard/tabs/DashboardTab.qml",
+        "../modules/Astral/Apps/Dashboard/DashboardTab.qml",
         "../dock/components/DockStatusIcons.qml"
     ]
 
@@ -142,7 +142,7 @@ Item {
         }
 
         // ---- 6. DashboardTab gates animated GIF decoding on isTargetVisible ----
-        const dashTabSrc = readLocalFile("../dashboard/tabs/DashboardTab.qml");
+        const dashTabSrc = readLocalFile("../modules/Astral/Apps/Dashboard/DashboardTab.qml");
         assert(/id:\s*mascotImg[\s\S]{0,260}playing:\s*root\.isTargetVisible\s*&&/.test(dashTabSrc),
             "DashboardTab mascotImg AnimatedImage must pause decoding when dashboard tab is hidden");
 

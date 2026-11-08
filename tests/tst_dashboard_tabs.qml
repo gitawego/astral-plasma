@@ -1,5 +1,5 @@
 import QtQuick
-import "../dashboard/tabs/DashboardTabs.js" as Tabs
+import "../modules/Astral/Apps/Dashboard/DashboardTabs.js" as Tabs
 
 // ============================================================================
 // Dashboard tab policy
@@ -178,16 +178,14 @@ Item {
                 && config.indexOf("function setDashboardTabsOrder(") >= 0,
             "Config must provide tab reordering setters for settings");
 
-        // Both dashboard views: shell/CentralDropdown is what the shell
-        // instantiates (the top drawer), dashboard/CentralDashboard is the
-        // standalone variant. A hardcoded list in either would silently ignore
-        // the setting and the engine state.
-        for (const view of ["../shell/CentralDropdown.qml", "../dashboard/CentralDashboard.qml"]) {
+        // The dashboard is an app now: one view, and a hardcoded tab list in it would
+        // silently ignore the setting and the engine state.
+        for (const view of ["../modules/Astral/Apps/Dashboard/DashboardApp.qml"]) {
             const src = readLocalFile(view);
             assert(src.indexOf("DashboardTabs.js") >= 0,
                 view + " must use the tab policy module");
-            assert(/availableTabs\(Config\.dashboardTabs, root\.ariaAvailable\)/.test(src),
-                view + " must render Config's tab list filtered by the engine state");
+            assert(/availableTabs\(root\.shellState \? root\.shellState\.dashboardTabs : \[\], root\.ariaAvailable\)/.test(src),
+                view + " must render the shell's tab list filtered by the engine state");
             assert(src.indexOf('{ id: "downloads", label: "Downloads"') < 0,
                 view + " must not hardcode the tab list");
             assert(src.indexOf("fallbackActiveTab(") >= 0,

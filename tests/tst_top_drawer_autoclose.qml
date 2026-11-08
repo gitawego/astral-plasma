@@ -1,6 +1,7 @@
 import QtQuick
 import "../modules/Astral/Kernel/theme"
 import "../shell"
+import "../modules/Astral/Apps/Dashboard"
 import "../modules/Astral/Kernel/config"
 
 Item {
@@ -11,7 +12,7 @@ Item {
     property bool debugMode: false
 
     // 1. Real CentralDropdown component
-    CentralDropdown {
+    DashboardApp {
         id: dropdownContainer
         dropX: 470
         dropW: 980

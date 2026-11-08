@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../modules/Astral/Kernel/components"
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 import "../modules/Astral/Apps/Media"
 import "../modules/Astral/Kernel/theme"
 

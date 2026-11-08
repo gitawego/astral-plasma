@@ -1,17 +1,16 @@
 import QtQuick
 import QtQuick.Layouts
-import "../modules/Astral/Kernel/theme"
-import "../modules/Astral/Kernel/config"
-import "../modules/Astral/Kernel/components"
-import "../dashboard/tabs"
-import "../dashboard/tabs/DashboardTabs.js" as DashboardTabs
-import "../modules/Astral/Kernel/services"
+import "../../Kernel/theme"
+import "../../Kernel/components"
+
+import "./DashboardTabs.js" as DashboardTabs
+import "../../Kernel/services"
 
 Item {
     id: root
 
     property real dropX: (parent.width - dropW) / 2
-    property real dropW: (typeof Config !== "undefined" && Config.dashboardWidth) ? Config.dashboardWidth : 980
+    property real dropW: (root.shellState && root.shellState.dashboardWidth) || 980
     readonly property real targetDropH: cardLayout.implicitHeight > 0
         ? (cardLayout.implicitHeight + Theme.padLarge * 2)
         : 440
@@ -25,20 +24,23 @@ Item {
         }
     }
 
-    property bool isOpen: (typeof Config !== "undefined" && Config.dashboardVisible !== undefined) ? Config.dashboardVisible : false
+    property bool isOpen: root.shellState !== null && root.shellState.dashboardVisible
     readonly property real currentDropH: dropH * offsetProgress
     property real offsetProgress: isOpen ? 1.0 : 0.0
 
     Connections {
-        target: (typeof Config !== "undefined" && Config.dashboardVisible !== undefined) ? Config : null
+        target: root.shellState
+        enabled: root.shellState !== null
+        ignoreUnknownSignals: true
         function onDashboardVisibleChanged() {
-            if (typeof Config !== "undefined" && Config.dashboardVisible !== undefined) {
-                root.isOpen = Config.dashboardVisible;
+            if (root.shellState !== null) {
+                root.isOpen = root.shellState.dashboardVisible;
             }
         }
         function onActiveDashboardTabChanged() {
-            if (typeof Config !== "undefined" && Config.activeDashboardTab && root.activeTab !== Config.activeDashboardTab) {
-                root.activeTab = Config.activeDashboardTab;
+            if (root.shellState !== null && root.shellState.activeDashboardTab
+                    && root.activeTab !== root.shellState.activeDashboardTab) {
+                root.activeTab = root.shellState.activeDashboardTab;
             }
         }
     }
@@ -56,7 +58,7 @@ Item {
     /// The *panes* keep their fixed order below - the content strip and the
     /// per-pane visibility are index-based - so a tab hidden here is simply
     /// never selected, instead of shifting every pane.
-    readonly property var visibleTabs: DashboardTabs.availableTabs(Config.dashboardTabs, root.ariaAvailable)
+    readonly property var visibleTabs: DashboardTabs.availableTabs(root.shellState ? root.shellState.dashboardTabs : [], root.ariaAvailable)
 
     function tabIndex(tabId) {
         for (let i = 0; i < root.visibleTabs.length; ++i) {
@@ -71,15 +73,16 @@ Item {
     /// stored preference can point at a hidden tab (it was disabled, or the
     /// engine went away), and a view left on a tab with no chip is a view the
     /// user cannot leave.
-    property string activeTab: DashboardTabs.fallbackActiveTab(root.visibleTabs, (typeof Config !== "undefined" && Config.activeDashboardTab) ? Config.activeDashboardTab : "dashboard")
+    property string activeTab: DashboardTabs.fallbackActiveTab(root.visibleTabs,
+        (root.shellState && root.shellState.activeDashboardTab) ? root.shellState.activeDashboardTab : "dashboard")
     onActiveTabChanged: {
         // Only a *selected* tab is worth persisting. Writing the fallback back
         // would overwrite the user's choice with the fallback and lose it as soon
         // as the tab becomes available again.
-        if (typeof Config === "undefined" || Config.activeDashboardTab === undefined) return;
+        if (root.shellState === null) return;
         if (!root.visibleTabs.some(t => t.id === root.activeTab)) return;
-        if (Config.activeDashboardTab !== activeTab) {
-            Config.activeDashboardTab = activeTab;
+        if (root.shellState.activeDashboardTab !== activeTab) {
+            if (root.intents) root.intents.request("dashboard.show", { tab: activeTab });
         }
     }
 
@@ -91,8 +94,41 @@ Item {
     readonly property alias settingsBtnItem: settingsBtn
     readonly property alias tabRepeaterItem: tabRepeater
     readonly property alias tabSlidingIndicatorItem: tabSlidingIndicator
-    /// Injected by UnifiedShell: the app host, for panes that host an app's item.
+    // --- host access ---------------------------------------------------------
+    // The dashboard reads the host through these, so a host that does not support app
+    // mounting (a test stub, or a shell without the platform) yields an empty pane with
+    // a reason instead of a TypeError.
+    function hostTabStatus(tabId) {
+        if (root.appHost && typeof root.appHost.tabStatus === "function") {
+            return root.appHost.tabStatus(tabId);
+        }
+        return { id: "", available: false, reason: "this shell does not host apps" };
+    }
+
+    function mountTab(tabId, surface) {
+        if (!root.appHost || typeof root.appHost.providerForTab !== "function") {
+            return null;
+        }
+        const provider = root.appHost.providerForTab(tabId);
+        if (provider.length === 0 || typeof root.appHost.loaderFor !== "function") {
+            return null;
+        }
+        if (root.appHost.loaderFor(provider) === null || surface.children.length > 0) {
+            return null;
+        }
+        return root.appHost.mount(provider, surface);
+    }
+
+    /// Injected by UnifiedShell: the app host. Every port this app needs is reachable
+    /// from it (state, intents, session, media, metrics), so the shell injects one
+    /// object instead of nine (spec C.21).
     property var appHost: null
+
+    readonly property var shellState: appHost ? appHost.state : null
+    readonly property var intents: appHost ? appHost.intents : null
+    readonly property var session: appHost ? appHost.session : null
+    readonly property var media: appHost ? appHost.media : null
+    readonly property var metrics: appHost ? appHost.metrics : null
 
     readonly property alias tabsRowItem: tabsRow
     readonly property alias tabContentContainerItem: tabContentContainer
@@ -125,11 +161,8 @@ Item {
 
     focus: true
     Keys.onEscapePressed: {
-        if (typeof Config !== "undefined") {
-            Config.dashboardVisible = false;
-        } else {
-            root.isOpen = false;
-        }
+        if (root.intents) root.intents.request("dashboard.close");
+        root.isOpen = false;
     }
 
     HoverHandler {
@@ -174,8 +207,10 @@ Item {
                 iconSize: 18
                 elevation: 4
                 onClicked: {
-                    Config.dashboardVisible = false;
-                    Config.openSettings();
+                    if (root.intents) {
+                        root.intents.request("dashboard.close");
+                        root.intents.request("settings.open", {});
+                    }
                 }
 
                 // Tooltip
@@ -270,9 +305,7 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 root.activeTab = modelData.id;
-                                if (typeof Config !== "undefined") {
-                                    Config.activeDashboardTab = modelData.id;
-                                }
+                                if (root.intents) root.intents.request("dashboard.show", { tab: modelData.id });
                             }
                         }
                     }
@@ -383,6 +416,11 @@ Item {
                         id: dashTab
                         width: parent.width
                         height: parent.height
+                        session: root.session
+                        media: root.media
+                        metrics: root.metrics
+                        shellState: root.shellState
+                        intents: root.intents
                     }
                 }
 
@@ -412,9 +450,7 @@ Item {
                             id: mediaAppHint
                             anchors.fill: parent
                             appName: "Media"
-                            readonly property var status: root.appHost
-                                ? root.appHost.tabStatus("media")
-                                : ({ available: false, reason: "" })
+                            readonly property var status: root.hostTabStatus("media")
                             visible: !status.available
                             reason: status.reason
                         }
@@ -429,9 +465,7 @@ Item {
 
                         function mountApp() {
                             if (!root.appHost) return;
-                            const provider = root.appHost.providerForTab("media");
-                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (mediaAppSurface.children.length === 0) root.appHost.mount(provider, mediaAppSurface);
+                            root.mountTab("media", mediaAppSurface);
                         }
                     }
                 }
@@ -462,9 +496,7 @@ Item {
                             id: perfAppHint
                             anchors.fill: parent
                             appName: "Performance"
-                            readonly property var status: root.appHost
-                                ? root.appHost.tabStatus("performance")
-                                : ({ available: false, reason: "" })
+                            readonly property var status: root.hostTabStatus("performance")
                             visible: !status.available
                             reason: status.reason
                         }
@@ -479,9 +511,7 @@ Item {
 
                         function mountApp() {
                             if (!root.appHost) return;
-                            const provider = root.appHost.providerForTab("performance");
-                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (perfAppSurface.children.length === 0) root.appHost.mount(provider, perfAppSurface);
+                            root.mountTab("performance", perfAppSurface);
                         }
                     }
                 }
@@ -512,9 +542,7 @@ Item {
                             id: aiAppHint
                             anchors.fill: parent
                             appName: "AI Quotas"
-                            readonly property var status: root.appHost
-                                ? root.appHost.tabStatus("ai")
-                                : ({ available: false, reason: "" })
+                            readonly property var status: root.hostTabStatus("ai")
                             visible: !status.available
                             reason: status.reason
                         }
@@ -529,9 +557,7 @@ Item {
 
                         function mountApp() {
                             if (!root.appHost) return;
-                            const provider = root.appHost.providerForTab("ai");
-                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (aiAppSurface.children.length === 0) root.appHost.mount(provider, aiAppSurface);
+                            root.mountTab("ai", aiAppSurface);
                         }
                     }
                 }
@@ -562,9 +588,7 @@ Item {
                             id: wsAppHint
                             anchors.fill: parent
                             appName: "Workspaces"
-                            readonly property var status: root.appHost
-                                ? root.appHost.tabStatus("workspaces")
-                                : ({ available: false, reason: "" })
+                            readonly property var status: root.hostTabStatus("workspaces")
                             visible: !status.available
                             reason: status.reason
                         }
@@ -578,12 +602,7 @@ Item {
                         Component.onCompleted: mountApp()
 
                         function mountApp() {
-                            if (!root.appHost) return;
-                            const provider = root.appHost.providerForTab("workspaces");
-                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (wsAppSurface.children.length === 0) {
-                                root.appHost.mount(provider, wsAppSurface);
-                            }
+                            root.mountTab("workspaces", wsAppSurface);
                         }
                     }
                 }
@@ -614,9 +633,7 @@ Item {
                             id: dlAppHostHint
                             anchors.fill: parent
                             appName: "Downloads"
-                            readonly property var status: root.appHost
-                                ? root.appHost.tabStatus("downloads")
-                                : ({ available: false, reason: "" })
+                            readonly property var status: root.hostTabStatus("downloads")
                             visible: !status.available
                             reason: status.reason
                         }
@@ -631,9 +648,7 @@ Item {
 
                         function mountApp() {
                             if (!root.appHost) return;
-                            const provider = root.appHost.providerForTab("downloads");
-                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (dlAppHostSurface.children.length === 0) root.appHost.mount(provider, dlAppHostSurface);
+                            root.mountTab("downloads", dlAppHostSurface);
                         }
                     }
                 }

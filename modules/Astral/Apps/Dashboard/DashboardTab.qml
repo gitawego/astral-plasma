@@ -1,14 +1,20 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
-import "../../modules/Astral/Kernel/components/motion"
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
-import "../../modules/Astral/Kernel/config"
+import "../../Kernel/components/motion"
+import "../../Kernel/theme"
+import "../../Kernel/components"
+import "../../Kernel/services"
 
 Item {
     id: root
+
+    /// Injected by the dashboard app.
+    property var media: null
+    property var metrics: null
+    property var session: null
+    property var shellState: null
+    property var intents: null
 
     implicitWidth: 940
     implicitHeight: 312
@@ -26,18 +32,19 @@ Item {
     readonly property alias diskBarItem: diskMeter
 
     /// Configurable mascot / companion for the media card ("" = default bongocat.gif).
-    readonly property string mascotSource: root.resolveMascotSource((typeof Config !== "undefined") ? Config.bongoCatAvatar : "")
+    readonly property string mascotSource: root.resolveMascotSource(
+        root.shellState ? (root.shellState.bongoCatAvatar || "") : "")
     property alias mascotItem: mascotImg
 
     function resolveMascotSource(configured) {
         const p = (configured || "").trim();
-        if (p === "") return "../../modules/Astral/Kernel/theme/assets/bongocat.gif";
+        if (p === "") return "../../Kernel/theme/assets/bongocat.gif";
         if (p.startsWith("file://")) return p;
         return "file://" + p;
     }
 
     /// Durable avatar for the system-host card ("" = bundled default art).
-    readonly property string hostAvatarSource: root.resolveAvatarSource((typeof Config !== "undefined") ? Config.hostAvatar : "")
+    readonly property string hostAvatarSource: root.resolveAvatarSource((typeof Config !== "undefined") ? (root.shellState ? root.shellState.hostAvatar : "") : "")
     property alias hostAvatarImageItem: hostAvatarImg
     property alias hostAvatarCircle: avatarCircle
     property alias hostAvatarMaskItem: avatarMask
@@ -46,10 +53,10 @@ Item {
 
     // Circle background: configurable color + transparency (Config defaults
     // are white @ 0.2; literals keep the inert-harness case identical).
-    readonly property string hostAvatarBgColor: (typeof Config !== "undefined" && Config.hostAvatarBg) ? Config.hostAvatarBg : "#ffffff"
-    readonly property real hostAvatarBgOpacity: (typeof Config !== "undefined" && Config.hostAvatarBgOpacity !== undefined && !isNaN(Config.hostAvatarBgOpacity)) ? Number(Config.hostAvatarBgOpacity) : 0.2
+    readonly property string hostAvatarBgColor: (typeof Config !== "undefined" && (root.shellState ? root.shellState.hostAvatarBg : "")) ? (root.shellState ? root.shellState.hostAvatarBg : "") : "#ffffff"
+    readonly property real hostAvatarBgOpacity: (typeof Config !== "undefined" && (root.shellState ? root.shellState.hostAvatarBgOpacity : 0.2) !== undefined && !isNaN((root.shellState ? root.shellState.hostAvatarBgOpacity : 0.2))) ? Number((root.shellState ? root.shellState.hostAvatarBgOpacity : 0.2)) : 0.2
     readonly property color hostAvatarBackgroundColor: root.resolveAvatarBg(hostAvatarBgColor, hostAvatarBgOpacity)
-    readonly property bool hostAvatarBorderVisible: (typeof Config !== "undefined" && Config.hostAvatarBorder !== undefined) ? Boolean(Config.hostAvatarBorder) : true
+    readonly property bool hostAvatarBorderVisible: (typeof Config !== "undefined" && (root.shellState ? root.shellState.hostAvatarBorder : false) !== undefined) ? Boolean((root.shellState ? root.shellState.hostAvatarBorder : false)) : true
 
     /// "" -> bundled default art (relative to this file, so it resolves in
     /// the shell and in the offscreen test harness alike); absolute path ->
@@ -63,7 +70,7 @@ Item {
         if (typeof Theme !== "undefined" && Theme.defaultHostAvatar && Theme.defaultHostAvatar !== "") {
             return Theme.defaultHostAvatar;
         }
-        return "../../modules/Astral/Kernel/theme/assets/dino.png";
+        return "../../Kernel/theme/assets/dino.png";
     }
 
     /// Avatar-circle background from a configurable hex color + transparency.
@@ -86,7 +93,7 @@ Item {
     // computation and the dateClicked signal remain fully testable.
     property bool testMode: false
 
-    readonly property bool isTargetVisible: testMode || ((typeof Config !== "undefined" ? Config.dashboardVisible : true) && visible)
+    readonly property bool isTargetVisible: testMode || ((typeof Config !== "undefined" ? (root.shellState ? root.shellState.dashboardVisible : false) : true) && visible)
 
     property var currentDate: new Date()
     Timer {
@@ -103,18 +110,18 @@ Item {
     }
 
     Component.onCompleted: {
-        if (!testMode && typeof SystemService !== "undefined" && SystemService.registerClient) {
-            SystemService.registerClient(root, root.isTargetVisible);
+        if (!testMode && root.metrics !== null && root.metrics.registerClient) {
+            root.metrics.registerClient(root, root.isTargetVisible);
         }
     }
     Component.onDestruction: {
-        if (!testMode && typeof SystemService !== "undefined" && SystemService.unregisterClient) {
-            SystemService.unregisterClient(root);
+        if (!testMode && root.metrics !== null && root.metrics.unregisterClient) {
+            root.metrics.unregisterClient(root);
         }
     }
     onIsTargetVisibleChanged: {
-        if (!testMode && typeof SystemService !== "undefined" && SystemService.registerClient) {
-            SystemService.registerClient(root, root.isTargetVisible);
+        if (!testMode && root.metrics !== null && root.metrics.registerClient) {
+            root.metrics.registerClient(root, root.isTargetVisible);
         }
     }
 
@@ -259,17 +266,17 @@ Item {
                             Row {
                                 spacing: 8
                                 Text { text: "󰣇"; font.family: "JetBrainsMono Nerd Font"; color: Colors.primary; font.pixelSize: 14 }
-                                Text { text: ": " + (SystemService.distroName || "CachyOS Linux"); font.family: Theme.fontFamily; font.pixelSize: 13; font.weight: Font.Medium; color: Colors.textOnSurface }
+                                Text { text: ": " + ((root.metrics && root.metrics.distroName) || "CachyOS Linux"); font.family: Theme.fontFamily; font.pixelSize: 13; font.weight: Font.Medium; color: Colors.textOnSurface }
                             }
                             Row {
                                 spacing: 8
                                 Text { text: "󰨇"; font.family: "JetBrainsMono Nerd Font"; color: Colors.primary; font.pixelSize: 14 }
-                                Text { text: ": " + (SystemService.compositor || "KDE Plasma 6 (KWin)"); font.family: Theme.fontFamily; font.pixelSize: 12; color: Colors.textOnSurfaceVariant }
+                                Text { text: ": " + ((root.metrics && root.metrics.compositor) || "KDE Plasma 6 (KWin)"); font.family: Theme.fontFamily; font.pixelSize: 12; color: Colors.textOnSurfaceVariant }
                             }
                             Row {
                                 spacing: 8
                                 Text { text: "󰥔"; font.family: "JetBrainsMono Nerd Font"; color: Colors.primary; font.pixelSize: 14 }
-                                Text { text: ": " + (SystemService.uptime || "up 2 hours, 15 minutes"); font.family: Theme.fontFamily; font.pixelSize: 12; color: Colors.textOnSurfaceVariant }
+                                Text { text: ": " + (root.metrics.uptime || "up 2 hours, 15 minutes"); font.family: Theme.fontFamily; font.pixelSize: 12; color: Colors.textOnSurfaceVariant }
                             }
                         }
                     }
@@ -412,8 +419,8 @@ Item {
                             var iso = calWidget.isoForCell(cellIndex);
                             calWidget.lastClickedDate = iso;
                             calWidget.dateClicked(iso);
-                            if (!root.testMode && typeof WindowService !== "undefined" && WindowService.openCalendar) {
-                                WindowService.openCalendar(iso);
+                            if (!root.testMode && root.session !== null && root.session.openCalendar) {
+                                root.session.openCalendar(iso);
                             }
                         }
 
@@ -540,8 +547,8 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (typeof Config !== "undefined") {
-                                Config.activeDashboardTab = "performance";
+                            if (root.intents) {
+                                root.intents.request("dashboard.show", { tab: "performance" });
                             }
                         }
                     }
@@ -558,7 +565,7 @@ Item {
                         Text {
                             Layout.alignment: Qt.AlignHCenter
                             text: teleHover.containsMouse
-                                ? (Math.round(SystemService.cpuUsage * 100) + "% · " + Math.round(SystemService.ramUsage * 100) + "% · " + Math.round(SystemService.diskUsage * 100) + "%")
+                                ? (Math.round(root.metrics.cpuUsage * 100) + "% · " + Math.round(root.metrics.ramUsage * 100) + "% · " + Math.round(root.metrics.diskUsage * 100) + "%")
                                 : ""
                             opacity: teleHover.containsMouse ? 1.0 : 0.0
                             font.family: Theme.fontFamily
@@ -586,34 +593,34 @@ Item {
 
                             TelemetryBar {
                                 id: cpuMeter
-                                value: SystemService.cpuUsage
+                                value: root.metrics.cpuUsage
                                 barWidth: 12
                                 nerdGlyph: "󰻠"
                                 iconText: "cpu"
-                                fillColor: SystemService.cpuUsage > 0.85 ? Colors.error : Colors.primary
-                                tooltipText: "CPU: " + Math.round(SystemService.cpuUsage * 100) + "%"
+                                fillColor: root.metrics.cpuUsage > 0.85 ? Colors.error : Colors.primary
+                                tooltipText: "CPU: " + Math.round(root.metrics.cpuUsage * 100) + "%"
                                 height: 130
                             }
 
                             TelemetryBar {
                                 id: ramMeter
-                                value: SystemService.ramUsage
+                                value: root.metrics.ramUsage
                                 barWidth: 12
                                 nerdGlyph: "󰍛"
                                 iconText: "memory"
-                                fillColor: SystemService.ramUsage > 0.85 ? Colors.error : Colors.secondary
-                                tooltipText: "RAM: " + Math.round(SystemService.ramUsage * 100) + "%"
+                                fillColor: root.metrics.ramUsage > 0.85 ? Colors.error : Colors.secondary
+                                tooltipText: "RAM: " + Math.round(root.metrics.ramUsage * 100) + "%"
                                 height: 130
                             }
 
                             TelemetryBar {
                                 id: diskMeter
-                                value: SystemService.diskUsage
+                                value: root.metrics.diskUsage
                                 barWidth: 12
                                 nerdGlyph: "󰋊"
                                 iconText: "hard_drive"
-                                fillColor: SystemService.diskUsage > 0.85 ? Colors.error : (typeof Colors.tertiary !== "undefined" ? Colors.tertiary : Colors.primary)
-                                tooltipText: "Disk: " + Math.round(SystemService.diskUsage * 100) + "%"
+                                fillColor: root.metrics.diskUsage > 0.85 ? Colors.error : (typeof Colors.tertiary !== "undefined" ? Colors.tertiary : Colors.primary)
+                                tooltipText: "Disk: " + Math.round(root.metrics.diskUsage * 100) + "%"
                                 height: 130
                             }
                         }
@@ -638,7 +645,7 @@ Item {
             clip: true
 
             readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
-                (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
+                ((root.shellState ? root.shellState.mediaVisualizerStyle : "radial") === "speaker" || (root.shellState ? root.shellState.mediaVisualizerStyle : "radial") === "heatmap")
             readonly property bool isCyberpunk: (typeof Theme !== "undefined" && Theme.isCyberpunk)
             readonly property bool showOrbitalRing: (typeof Theme !== "undefined" ? Theme.mediaOrbitalRing : true)
             readonly property bool isCircularCover: (typeof Theme !== "undefined" ? Theme.mediaCircularCover : true)
@@ -660,8 +667,10 @@ Item {
                 elevation: 4
                 visible: mediaCard.showOrbitalRing && !mediaCard.isCyberpunk
                 onClicked: {
-                    if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
-                        Config.setMediaVisualizerStyle(mediaCard.isSpeakerStyle ? "radial" : "speaker");
+                    if (root.intents) {
+                        root.intents.request("media.visualizerStyle", {
+                            style: mediaCard.isSpeakerStyle ? "radial" : "speaker"
+                        });
                     }
                 }
             }
@@ -686,7 +695,7 @@ Item {
                         innerRadius: 38
                         outerRadius: 46
                         visible: mediaCard.showOrbitalRing && mediaCard.isSpeakerStyle && !mediaCard.isCyberpunk
-                        isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "dashboard" && visible) : false
+                        isTargetVisible: (typeof Config !== "undefined") ? ((root.shellState ? root.shellState.dashboardVisible : false) && (root.shellState ? root.shellState.activeDashboardTab : "dashboard") === "dashboard" && visible) : false
                     }
 
                     // 2. Radial Audio Spectrum Halo Ring (Radial Style or Cyberpunk)
@@ -694,7 +703,7 @@ Item {
                         anchors.centerIn: parent
                         innerRadius: 42
                         visible: mediaCard.showOrbitalRing && (!mediaCard.isSpeakerStyle || mediaCard.isCyberpunk)
-                        isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "dashboard" && visible) : false
+                        isTargetVisible: (typeof Config !== "undefined") ? ((root.shellState ? root.shellState.dashboardVisible : false) && (root.shellState ? root.shellState.activeDashboardTab : "dashboard") === "dashboard" && visible) : false
                     }
 
                     // Circular Progress ring (Only in non-cyberpunk orbital ring mode)
@@ -702,7 +711,7 @@ Item {
                         id: mediaProgRing
                         anchors.fill: parent
                         visible: mediaCard.showOrbitalRing && !mediaCard.isCyberpunk
-                        property real prog: MprisMedia.progress
+                        property real prog: root.media.progress
 
                         onProgChanged: if (root.isTargetVisible && visible) requestPaint()
                         onVisibleChanged: if (visible && root.isTargetVisible) requestPaint()
@@ -787,7 +796,7 @@ Item {
                             duration: 80
                             bezier: Theme.curveExpressiveFastEffects
                             target: (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active
-                                     && Config.dashboardVisible && Config.activeDashboardTab === "dashboard"
+                                     && (root.shellState ? root.shellState.dashboardVisible : false) && (root.shellState ? root.shellState.activeDashboardTab : "dashboard") === "dashboard"
                                      && AudioVisualizer.displayBeat > 0.05)
                                     ? (1.0 + Math.min(mediaCard.isCyberpunk ? 0.04 : 0.12, AudioVisualizer.displayBeat * (mediaCard.isCyberpunk ? 0.04 : 0.10)))
                                     : 1.0
@@ -820,7 +829,7 @@ Item {
                         // Cover Image masked strictly to the boundary
                         Item {
                             anchors.fill: parent
-                            visible: MprisMedia.artUrl.length > 0 && dashCoverImg.status === Image.Ready
+                            visible: root.media.artUrl.length > 0 && dashCoverImg.status === Image.Ready
                             rotation: (typeof Theme !== "undefined" && !Theme.mediaVinylSpin) ? 0 : (coverPacer.phase * 360)
 
                             Item {
@@ -830,14 +839,14 @@ Item {
 
                                 MotionPacer {
                                     id: coverPacer
-                                    running: (typeof Theme !== "undefined" ? Theme.mediaVinylSpin : true) && root.isTargetVisible && MprisMedia.isPlaying
+                                    running: (typeof Theme !== "undefined" ? Theme.mediaVinylSpin : true) && root.isTargetVisible && root.media.isPlaying
                                     period: 22000
                                 }
 
                                 Image {
                                     id: dashCoverImg
                                     anchors.fill: parent
-                                    source: MprisMedia.artUrl || ""
+                                    source: root.media.artUrl || ""
                                     fillMode: Image.PreserveAspectCrop
                                 }
                             }
@@ -873,7 +882,7 @@ Item {
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: parent.width - 16
-                    text: MprisMedia.title || "No Media Playing"
+                    text: root.media.title || "No Media Playing"
                     font.family: Theme.fontFamily
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
@@ -890,8 +899,8 @@ Item {
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: parent.width - 16
-                    visible: (typeof MprisMedia !== "undefined") && MprisMedia.album && MprisMedia.album.length > 0
-                    text: (typeof MprisMedia !== "undefined") ? (MprisMedia.album || "") : ""
+                    visible: (root.media !== null) && root.media.album && root.media.album.length > 0
+                    text: (root.media !== null) ? (root.media.album || "") : ""
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
                     font.weight: Font.Medium
@@ -903,7 +912,7 @@ Item {
                 }
 
                 Item {
-                    visible: (typeof MprisMedia !== "undefined") && MprisMedia.album && MprisMedia.album.length > 0
+                    visible: (root.media !== null) && root.media.album && root.media.album.length > 0
                     Layout.preferredHeight: 2
                 }
 
@@ -911,7 +920,7 @@ Item {
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: parent.width - 16
-                    text: MprisMedia.artist || "Unknown Artist"
+                    text: root.media.artist || "Unknown Artist"
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
                     color: Qt.alpha(Colors.onSurfaceVariant, 0.75)
@@ -937,7 +946,7 @@ Item {
 
                     readonly property real effectiveProgress: (dashSeekMouse.isDragging)
                         ? dashSeekMouse.dragRatio
-                        : Math.min(1.0, Math.max(0.0, MprisMedia.progress || 0.0))
+                        : Math.min(1.0, Math.max(0.0, root.media.progress || 0.0))
 
                     // Progress Track Background
                     Rectangle {
@@ -967,7 +976,7 @@ Item {
                         width: 3
                         height: 9
                         color: Colors.secondary
-                        opacity: ((typeof MprisMedia !== "undefined") && MprisMedia.canSeek) ? 1.0 : 0.60
+                        opacity: ((root.media !== null) && root.media.canSeek) ? 1.0 : 0.60
                     }
 
                     // Interactive Seek MouseArea
@@ -975,7 +984,7 @@ Item {
                         id: dashSeekMouse
                         anchors.fill: parent
                         anchors.margins: -4
-                        enabled: (typeof MprisMedia !== "undefined") && MprisMedia.canSeek && MprisMedia.length > 0
+                        enabled: (root.media !== null) && root.media.canSeek && root.media.length > 0
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
                         property bool isDragging: false
@@ -995,7 +1004,7 @@ Item {
                             if (isDragging) {
                                 isDragging = false;
                                 var ratio = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                MprisMedia.seekTo(ratio);
+                                root.media.seekTo(ratio);
                             }
                         }
                         onCanceled: function() {
@@ -1004,7 +1013,7 @@ Item {
                         onClicked: function(mouse) {
                             if (!enabled) return;
                             var ratio = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                            MprisMedia.seekTo(ratio);
+                            root.media.seekTo(ratio);
                         }
                     }
                 }
@@ -1031,13 +1040,13 @@ Item {
                         paddingHorizontal: 6
                         paddingVertical: 6
                         elevation: 4
-                        interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true
-                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true) ? 1.0 : 0.45
-                        onClicked: MprisMedia.previous()
+                        interactive: (root.media !== null) ? root.media.canGoPrevious : true
+                        opacity: ((root.media !== null) ? root.media.canGoPrevious : true) ? 1.0 : 0.45
+                        onClicked: root.media.previous()
                     }
                     LiquidGlassButton {
                         id: mediaPlayBtn
-                        iconText: (typeof MprisMedia !== "undefined" && MprisMedia.isPlaying) ? "pause" : "play_arrow"
+                        iconText: (root.media !== null && root.media.isPlaying) ? "pause" : "play_arrow"
                         iconSize: 18
                         isPrimary: true
                         implicitWidth: 38
@@ -1045,7 +1054,7 @@ Item {
                         paddingHorizontal: 8
                         paddingVertical: 8
                         elevation: 6
-                        onClicked: MprisMedia.togglePlay()
+                        onClicked: root.media.togglePlay()
                     }
                     LiquidGlassButton {
                         id: mediaNextBtn
@@ -1056,9 +1065,9 @@ Item {
                         paddingHorizontal: 6
                         paddingVertical: 6
                         elevation: 4
-                        interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true
-                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true) ? 1.0 : 0.45
-                        onClicked: MprisMedia.next()
+                        interactive: (root.media !== null) ? root.media.canGoNext : true
+                        opacity: ((root.media !== null) ? root.media.canGoNext : true) ? 1.0 : 0.45
+                        onClicked: root.media.next()
                     }
                 }
 
@@ -1076,7 +1085,7 @@ Item {
                     Layout.preferredWidth: 76
                     Layout.preferredHeight: 44
                     source: root.mascotSource
-                    playing: root.isTargetVisible && ((typeof MprisMedia !== "undefined") ? MprisMedia.isPlaying : false)
+                    playing: root.isTargetVisible && ((root.media !== null) ? root.media.isPlaying : false)
                     fillMode: Image.PreserveAspectFit
                 }
             }

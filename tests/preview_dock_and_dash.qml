@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "../modules/Astral/Kernel/components"
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 
 Rectangle {
     id: root

@@ -1,5 +1,6 @@
 import QtQuick
 import "../shell"
+import "../modules/Astral/Apps/Dashboard"
 import "../modules/Astral/Kernel/config"
 import "../modules/Astral/Kernel/theme"
 
@@ -27,11 +28,32 @@ Item {
         fusedProgress: 1.0
     }
 
-    CentralDropdown {
+    DashboardApp {
         id: dropdown
         dropX: 470
         dropW: 980
         dropH: 520
+        // The dashboard is an app: it reads the shell through the host it is given, so a
+        // suite hands it a stub of the same shape.
+        appHost: ({
+            state: ({
+                dashboardVisible: true,
+                dashboardWidth: 980,
+                activeDashboardTab: "dashboard",
+                dashboardTabs: [
+                    { id: "dashboard", label: "Dashboard", icon: "dashboard", enabled: true },
+                    { id: "media", label: "Media", icon: "media", enabled: true },
+                    { id: "performance", label: "Performance", icon: "performance", enabled: true },
+                    { id: "ai", label: "AI Quotas", icon: "auto_awesome", enabled: true },
+                    { id: "workspaces", label: "Workspaces", icon: "workspaces", enabled: true },
+                    { id: "downloads", label: "Downloads", icon: "download", enabled: true }
+                ]
+            }),
+            intents: null,
+            session: null,
+            media: null,
+            metrics: null
+        })
     }
 
     Timer {

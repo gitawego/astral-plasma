@@ -32,6 +32,14 @@ ShellRoot {
         overviewVisible: Config.overviewVisible
         commandLauncherVisible: Config.commandLauncherVisible
         dashboardVisible: Config.dashboardVisible
+        dashboardWidth: Config.dashboardWidth
+        dashboardTabs: Config.dashboardTabs
+        activeDashboardTab: Config.activeDashboardTab
+        hostAvatar: Config.hostAvatar
+        hostAvatarBg: Config.hostAvatarBg
+        hostAvatarBgOpacity: Config.hostAvatarBgOpacity
+        hostAvatarBorder: Config.hostAvatarBorder
+        bongoCatAvatar: Config.bongoCatAvatar
         daemonBin: Config.daemonBin
         iconResolver: function (name) { return Config.iconUrl(name); }
         mediaAvatar: Config.mediaAvatar

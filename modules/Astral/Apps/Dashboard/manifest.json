@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "id": "org.astralplasma.dashboard",
+  "name": "Dashboard",
+  "version": "0.1.0",
+  "kernelApi": 1,
+  "dataSchema": 1,
+  "trust": "official",
+  "runtime": "embedded",
+  "publisher": { "name": "Astral Plasma", "key": "minisign:RWSplaceholderReleaseKey" },
+  "entry": { "root": "DashboardApp.qml" },
+  "requires": { "capabilities": [], "qtModules": [], "apps": [] },
+  "permissions": ["media.read", "session.read", "windows.read"],
+  "distribution": "preinstalled"
+}

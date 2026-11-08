@@ -1,6 +1,7 @@
 import QtQuick
 import "../modules/Astral/Kernel/theme"
 import "../shell"
+import "../modules/Astral/Apps/Dashboard"
 
 Item {
     id: testRoot
@@ -13,6 +14,16 @@ Item {
         property bool dashboardVisible: false
         property bool settingsVisible: false
         property bool dashboardShowOnHover: true
+        property real dashboardWidth: 980
+        property string activeDashboardTab: "dashboard"
+        property var dashboardTabs: [
+            { id: "dashboard", label: "Dashboard", icon: "dashboard", enabled: true },
+            { id: "media", label: "Media", icon: "media", enabled: true },
+            { id: "performance", label: "Performance", icon: "performance", enabled: true },
+            { id: "ai", label: "AI Quotas", icon: "auto_awesome", enabled: true },
+            { id: "workspaces", label: "Workspaces", icon: "workspaces", enabled: true },
+            { id: "downloads", label: "Downloads", icon: "download", enabled: true }
+        ]
 
         function openSettings() {
             settingsVisible = true;
@@ -25,12 +36,20 @@ Item {
     }
 
     // CentralDropdown with controlled binding
-    CentralDropdown {
+    DashboardApp {
         id: dropdown
         dropX: 470
         dropW: 980
         dropH: 520
-        isOpen: shellState.dashboardVisible
+        // The dashboard is an app: it reads the shell through the host it is given, so a
+        // suite hands it a stub of the same shape.
+        appHost: ({
+            state: shellState,
+            intents: null,
+            session: null,
+            media: null,
+            metrics: null
+        })
     }
 
     // Top edge hover area matching UnifiedShell.qml (targeted strictly to drawer range)

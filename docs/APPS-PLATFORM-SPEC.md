@@ -1887,3 +1887,23 @@ Two classes of leftovers had to be removed, and both are worth remembering:
 
 Verified live: the Copilot window opens with its session list, provider/model row
 (`OpenCode Go · mimo-v2.6-flash`) and quick actions, in the shell palette.
+
+### C.21 The dashboard is an app: one host, seven-ish ports
+
+`shell/CentralDropdown.qml`, `dashboard/tabs/DashboardTab.qml` and the tab policy
+(`DashboardTabs.js`) moved into `modules/Astral/Apps/Dashboard/`. The app takes **one**
+injected property — the host — and derives everything else from it (`state`, `intents`,
+`session`, `media`, `metrics`), so the shell does not thread eight ports through
+`UnifiedShell`.
+
+The tab panes now mount their apps through tolerant helpers (`hostTabStatus`, `mountTab`): a
+host that cannot mount apps (a suite stub, or a shell without the platform) yields an empty
+pane with a reason instead of a `TypeError`. That tolerance is what let thirteen suites
+survive the move without a stub on every one of them.
+
+`dashboard/CentralDashboard.qml` was **deleted**: nothing instantiated it, and it duplicated
+the dropdown's job with a second tab switch — the kind of dead surface that makes two
+behaviours look tested.
+
+Verified live: the dashboard opens with its six tabs, weather card, system info row
+(`CachyOS Linux · KDE Plasma 6 …`), clock and calendar, themed.

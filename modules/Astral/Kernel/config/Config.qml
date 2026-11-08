@@ -3,7 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "../../../../dashboard/tabs/DashboardTabs.js" as DashboardTabs
+import "../../Apps/Dashboard/DashboardTabs.js" as DashboardTabs
 import "./PopoutModes.js" as PopoutModes
 
 Singleton {

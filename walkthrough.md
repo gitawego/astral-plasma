@@ -2859,3 +2859,26 @@ after the import was removed (**the window never opened**, silently), and an int
 a parenthesis in two `openSettings` calls. Both fixed; the second was caught only by loading.
 
 Six of eleven apps migrated: workspaces, media, performance, ai, downloads, assistant.
+
+---
+
+## P4 — the dashboard is an app (2026-11-08)
+
+`shell/CentralDropdown.qml` + `dashboard/tabs/DashboardTab.qml` + `DashboardTabs.js` →
+`modules/Astral/Apps/Dashboard/`. The app takes one injected property (the host) and derives
+`state`/`intents`/`session`/`media`/`metrics` from it — the shell no longer threads eight ports
+through `UnifiedShell`.
+
+Tab panes now mount through tolerant helpers (`hostTabStatus`, `mountTab`), so a host that
+cannot mount apps degrades to an empty pane with a reason instead of a `TypeError` — which is
+what kept thirteen suites alive through the move.
+
+`dashboard/CentralDashboard.qml` deleted: nothing instantiated it and it duplicated the
+dropdown's tab switch.
+
+> **Verified live**: the dashboard opens with its six tabs, the weather card (4 °C, Partly
+> Cloudy), the system row ("CachyOS Linux · KDE Plasma 6 · up 12 hours"), the clock and the
+> calendar with today marked. `make test` exit 0 — 1114 Rust tests, 165 QML suites.
+
+Seven of eleven apps migrated: workspaces, media, performance, ai, downloads, assistant,
+dashboard. Remaining: settings, dock, launcher.

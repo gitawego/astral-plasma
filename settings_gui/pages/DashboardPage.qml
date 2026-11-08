@@ -5,7 +5,7 @@ import "../../modules/Astral/Kernel/config"
 import "../../modules/Astral/Kernel/theme"
 import "../../modules/Astral/Kernel/components"
 import "../../modules/Astral/Kernel/services"
-import "../../dashboard/tabs/DashboardTabs.js" as DashboardTabs
+import "../../modules/Astral/Apps/Dashboard/DashboardTabs.js" as DashboardTabs
 
 SettingsPage {
     id: root

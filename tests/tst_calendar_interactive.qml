@@ -2,7 +2,7 @@ import QtQuick
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "../modules/Astral/Kernel/components"
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 
 // ============================================================================
 // Calendar Interactivity Contract
@@ -128,7 +128,7 @@ Item {
         // 4. Source contract: interactive cells, motion tokens, no
         //    hardcoded calendar application names
         // --------------------------------------------------------
-        const dashSrc = readLocalFile("../dashboard/tabs/DashboardTab.qml");
+        const dashSrc = readLocalFile("../modules/Astral/Apps/Dashboard/DashboardTab.qml");
         assert(dashSrc.length > 1000, "DashboardTab.qml source must be readable");
         assert(/MouseArea\s*\{/.test(dashSrc), "calendar cells must contain a MouseArea");
         assert(/cursorShape:\s*Qt\.PointingHandCursor/.test(dashSrc),
@@ -141,8 +141,8 @@ Item {
             "calendar hover halo must use Theme.animExpressiveFastEffects (no hardcoded durations)");
         assert(/Theme\.curveExpressiveFastEffects/.test(dashSrc),
             "calendar hover halo must use Theme.curveExpressiveFastEffects");
-        assert(/WindowService\.openCalendar\(iso\)/.test(dashSrc),
-            "calendar click must call WindowService.openCalendar(iso)");
+        assert(/root\.session\.openCalendar\(iso\)/.test(dashSrc),
+            "calendar click must call root.session.openCalendar(iso)");
 
         const forbidden = ["korganizer", "kalendar", "gnome-calendar", "gnome_calendar",
                            "merkuro", "evolution --component=calendar", "outlook"];

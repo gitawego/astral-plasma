@@ -1,4 +1,5 @@
 import QtQuick
+import "../modules/Astral/Apps/Dashboard"
 import QtQuick.Layouts
 import QtQuick.Shapes
 import Quickshell
@@ -1454,7 +1455,7 @@ PanelWindow {
     }
 
     // 3. CENTRAL DROPDOWN DASHBOARD
-    CentralDropdown {
+    DashboardApp {
         id: dropdownContainer
         appHost: root.appHost
         dropX: root.dropX

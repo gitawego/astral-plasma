@@ -1,5 +1,5 @@
 import QtQuick
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 import "../modules/Astral/Apps/Downloads"
 
 /// The window's stage must not move when the segment changes.

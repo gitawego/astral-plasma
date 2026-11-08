@@ -1,5 +1,5 @@
 import QtQuick
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 import "../modules/Astral/Apps/Downloads"
 import "../modules/Astral/Kernel/config"
 

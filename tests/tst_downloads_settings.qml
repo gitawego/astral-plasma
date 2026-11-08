@@ -1,7 +1,7 @@
 import QtQuick
 import "../settings_gui/pages"
 import "../settings_gui/controls"
-import "../dashboard/tabs/DashboardTabs.js" as Tabs
+import "../modules/Astral/Apps/Dashboard/DashboardTabs.js" as Tabs
 
 // ============================================================================
 // Downloads settings + the tab gate

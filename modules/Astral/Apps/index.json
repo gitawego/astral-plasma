@@ -10,6 +10,10 @@
       "id": "org.astralplasma.assistant"
     },
     {
+      "dir": "Dashboard",
+      "id": "org.astralplasma.dashboard"
+    },
+    {
       "dir": "Downloads",
       "id": "org.astralplasma.downloads"
     },

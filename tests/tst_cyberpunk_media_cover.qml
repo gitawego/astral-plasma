@@ -1,7 +1,7 @@
 import QtQuick
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/theme/archetypes"
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 
 Item {
     id: testRoot
@@ -90,7 +90,7 @@ Item {
                "RadialCoverRing must expose isCyberStyle");
 
         // 5. DashboardTab Source Contract Verification
-        const dashSrc = readLocalFile("../dashboard/tabs/DashboardTab.qml");
+        const dashSrc = readLocalFile("../modules/Astral/Apps/Dashboard/DashboardTab.qml");
         assert(/RadialCoverRing/.test(dashSrc),
                "DashboardTab must include RadialCoverRing for cyberpunk and radial styles");
         assert(/visible:\s*mediaCard\.showOrbitalRing\s*&&\s*!mediaCard\.isCyberpunk/.test(dashSrc),

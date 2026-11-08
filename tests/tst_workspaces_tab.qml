@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import "../modules/Astral/Kernel/components"
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 import "../modules/Astral/Apps/Workspaces"
 
 Item {

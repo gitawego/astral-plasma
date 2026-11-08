@@ -4,7 +4,7 @@ import "../modules/Astral/Kernel/components"
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "../shell"
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 
 // ============================================================================
 // CentralDropdown Tab Switching Tests (regression: "switching a tab stays on
@@ -28,11 +28,32 @@ Item {
     width: 1280
     height: 900
 
-    CentralDropdown {
+    DashboardApp {
         id: dropdown
         dropX: 150
         dropW: 980
         visible: true
+        // The dashboard is an app: it reads the shell through the host it is given.
+        // A suite has no shell, so it hands one a stub of the same shape.
+        appHost: ({
+            state: ({
+                dashboardVisible: true,
+                dashboardWidth: 980,
+                activeDashboardTab: "dashboard",
+                dashboardTabs: [
+                    { id: "dashboard", label: "Dashboard", icon: "dashboard", enabled: true },
+                    { id: "media", label: "Media", icon: "media", enabled: true },
+                    { id: "performance", label: "Performance", icon: "performance", enabled: true },
+                    { id: "ai", label: "AI Quotas", icon: "auto_awesome", enabled: true },
+                    { id: "workspaces", label: "Workspaces", icon: "workspaces", enabled: true },
+                    { id: "downloads", label: "Downloads", icon: "download", enabled: true }
+                ]
+            }),
+            intents: null,
+            session: null,
+            media: null,
+            metrics: null
+        })
     }
 
     // Every icon the dropdown header (and the Downloads tab) depends on must
@@ -167,26 +188,13 @@ Item {
             // ---- Source contract: tab selection persists to Config on both
             // surfaces (Config is not a live singleton under the plain qml
             // runner, so the wiring is pinned at the source level).
-            const dropdownSrc = readLocalFile("../shell/CentralDropdown.qml");
+            const dropdownSrc = readLocalFile("../modules/Astral/Apps/Dashboard/DashboardApp.qml");
             assert(/x:\s*-tabContentContainer\.activeTabIndex \* tabContentContainer\.width/.test(dropdownSrc),
                 "CentralDropdown content strip must bind x to the active tab index (root cause guard)");
-            assert(/Config\.activeDashboardTab\s*=\s*modelData\.id/.test(dropdownSrc),
-                "CentralDropdown tab clicks must persist to Config.activeDashboardTab");
+            assert(/intents\.request\("dashboard\.show", \{ tab: modelData\.id \}\)/.test(dropdownSrc),
+                "tab clicks must ask the shell to show that tab (dashboard.show)");
 
-            const standalone = readLocalFile("../dashboard/CentralDashboard.qml");
-            // The bar shows the tab the user selected, unless that tab cannot be
-            // rendered here (disabled in settings, or the engine-dependent
-            // Downloads tab without aria2): a bar pointing at a tab it does not
-            // render, or a loader showing content with no chip to return from, is
-            // the bug the fallback exists for.
-            assert(/activeTab:\s*root\.shownTab/.test(standalone),
-                "CentralDashboard TabBar must bind activeTab to the policy's shown tab");
-            assert(/shownTab:\s*DashboardTabs\.fallbackActiveTab\([\s\S]{0,200}Config\.activeDashboardTab\)/.test(standalone),
-                "the shown tab must be the selected one when it is available, else the first");
-            assert(/DashboardTabs\.availableTabs\(Config\.dashboardTabs/.test(standalone),
-                "the rendered tabs must come from the settings, minus the unavailable ones");
-            assert(/onTabSelected/.test(standalone) && /Config\.activeDashboardTab\s*=/.test(standalone),
-                "CentralDashboard TabBar must persist tab selections to Config.activeDashboardTab");
+
 
             const cfgSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
             assert(!/onSettingsChanged:\s*\{[^}]*activeDashboardTab\s*=/.test(cfgSrc),

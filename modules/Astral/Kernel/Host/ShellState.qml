@@ -21,6 +21,12 @@ QtObject {
     property bool commandLauncherVisible: false
     /// Whether the dashboard is requested open.
     property bool dashboardVisible: false
+    /// The dashboard's width, as the user set it.
+    property real dashboardWidth: 980
+    /// Which tabs the user enabled, in order.
+    property var dashboardTabs: []
+    /// The tab the user last selected.
+    property string activeDashboardTab: "dashboard"
     /// The daemon binary an app may call for its own IPC (absolute path).
     property string daemonBin: ""
 
@@ -53,6 +59,14 @@ QtObject {
     property bool assistantVisible: false
     /// Whether the assistant's session list is expanded.
     property bool assistantSessionsVisible: false
+
+    /// The dashboard host's avatar and its backing (user-chosen).
+    property string hostAvatar: ""
+    property string hostAvatarBg: ""
+    property real hostAvatarBgOpacity: 0.2
+    property bool hostAvatarBorder: false
+    /// The bongo-cat mascot source, when the user picked one.
+    property string bongoCatAvatar: ""
 
     /// Whether the user has AI privacy mode on.
     property bool aiPrivacyMode: true

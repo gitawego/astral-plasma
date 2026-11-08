@@ -1,6 +1,6 @@
 import QtQuick
 import "../modules/Astral/Kernel/config"
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 import "../settings_gui/pages"
 import "../settings_gui/controls"
 
@@ -187,7 +187,7 @@ Item {
             "artwork layer must carry the circle-mask effect");
         assert(dashTab.hostAvatarMaskItem.radius === dashTab.hostAvatarMaskItem.width / 2,
             "mask must be a true circle (radius = width/2)");
-        const tabSrc = readLocalFile("../dashboard/tabs/DashboardTab.qml");
+        const tabSrc = readLocalFile("../modules/Astral/Apps/Dashboard/DashboardTab.qml");
         assert(tabSrc.length > 1000, "DashboardTab.qml source must be readable");
         assert(/maskEnabled:\s*true/.test(tabSrc) && /maskSource:\s*avatarMask/.test(tabSrc),
             "avatar artwork must be masked via the repo maskSource circle pattern");

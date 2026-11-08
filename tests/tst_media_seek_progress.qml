@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../modules/Astral/Kernel/components"
-import "../dashboard/tabs"
+import "../modules/Astral/Apps/Dashboard"
 import "../modules/Astral/Apps/Media"
 import "../modules/Astral/Kernel/theme"
 
@@ -53,9 +53,9 @@ Item {
                "MediaTab must not place style: Text.Outline inside text function body");
 
         // 2. DashboardTab Source Contract Verification
-        const dashSrc = readLocalFile("../dashboard/tabs/DashboardTab.qml");
-        assert(/MprisMedia\.seekTo\(/.test(dashSrc),
-               "DashboardTab must call MprisMedia.seekTo() instead of assigning to readonly MprisMedia.position");
+        const dashSrc = readLocalFile("../modules/Astral/Apps/Dashboard/DashboardTab.qml");
+        assert(/root\.media\.seekTo\(/.test(dashSrc),
+               "the dashboard tab must seek through the injected media port, not a readonly singleton");
         assert(!/MprisMedia\.position\s*=\s*ratio/.test(dashSrc),
                "DashboardTab must NOT assign to readonly MprisMedia.position");
         assert(/enabled:[^\n]*\.canSeek/.test(dashSrc),
