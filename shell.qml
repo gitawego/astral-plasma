@@ -28,8 +28,6 @@ ShellRoot {
         commandLauncherVisible: Config.commandLauncherVisible
         dashboardVisible: Config.dashboardVisible
         daemonBin: Config.daemonBin
-        mediaAvatar: Config.mediaAvatar
-        mediaVisualizerStyle: Config.mediaVisualizerStyle
         iconResolver: function (name) { return Config.iconUrl(name); }
     }
 
@@ -61,10 +59,6 @@ ShellRoot {
         playerName: MprisMedia.identity
         position: MprisMedia.position
         length: MprisMedia.length
-        loopState: MprisMedia.loopState || "enabled"
-        shuffle: Boolean(MprisMedia.shuffle)
-        canGoNext: Boolean(MprisMedia.canGoNext)
-        canGoPrevious: Boolean(MprisMedia.canGoPrevious)
         players: (MprisMedia.players || []).map(function (player) {
             return {
                 id: player.busName || "",
@@ -86,10 +80,6 @@ ShellRoot {
         }
         seekImpl: function (fraction) {
             MprisMedia.seekTo(fraction);
-            return true;
-        }
-        toggleShuffleImpl: function () {
-            MprisMedia.toggleShuffle();
             return true;
         }
         selectPlayerImpl: function (id) {

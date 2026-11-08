@@ -2641,22 +2641,3 @@ Two ordering bugs had to be fixed, both now guarded:
    same object, so `loaderCount` never notified and the pane's retry never fired — the
    pane mounted nothing and the drawer showed no desktops. It assigns a copy now, and
    `tst_app_host` asserts `loaderCount === loaded.length`.
-
----
-
-## P4 — the media tab is an app (2026-11-08)
-
-`dashboard/tabs/MediaTab.qml` → `modules/Astral/Apps/Media/Main.qml`, hosted by its pane.
-Zero `MprisMedia`/`Config` references; it reads the injected `media` + `shellState` and
-writes through `intents`.
-
-`MediaPort` grew what the surface actually uses — `loopState`, `shuffle`,
-`canGoNext`/`canGoPrevious` (the player's own capabilities, distinct from the port's
-`seekAvailable`), and `nameOf(player)`, which had to be renamed because a
-`playerName()` function collides with the `playerName` property and the property wins.
-
-> **Verified live**: `dashboard setTab media` renders the tab — "No Media Playing /
-> NetEase Cloud Music (Wine)", transport controls, 0:00/0:01, the visualizer ring and
-> the cover panel — i.e. it renders the *player's* state, and shows an honest idle
-> state because nothing is playing. `make test` exit 0 — 1109 Rust tests, 163 QML
-> suites.

@@ -99,9 +99,9 @@ Item {
                "DashboardTab must include cyberProgressBar for cyberpunk linear seek track");
 
         // 6. MediaTab Source Contract Verification
-        const mediaSrc = readLocalFile("../modules/Astral/Apps/Media/Main.qml");
+        const mediaSrc = readLocalFile("../dashboard/tabs/MediaTab.qml");
         assert(/RadialCoverVisualiser/.test(mediaSrc),
-               "the media app must include RadialCoverVisualiser");
+               "MediaTab must include RadialCoverVisualiser");
         assert(/visible:\s*visualizerSlot\.isCyberpunk\s*\|\|\s*!visualizerSlot\.isSpeakerStyle/.test(mediaSrc),
                "MediaTab must display RadialCoverVisualiser in Cyberpunk mode");
 

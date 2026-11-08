@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import "../modules/Astral/Kernel/components"
 import "../dashboard/tabs"
-import "../modules/Astral/Apps/Media"
 import "../modules/Astral/Kernel/theme"
 
 Item {
@@ -10,7 +9,7 @@ Item {
     width: 800
     height: 600
 
-    Main {
+    MediaTab {
         id: testMediaTab
         width: 680
         visible: false
@@ -42,9 +41,9 @@ Item {
         console.log("RUNNING: Media Seek & Progress Unit Tests");
 
         // 1. MediaTab Source Contract Verification
-        const mediaSrc = readLocalFile("../modules/Astral/Apps/Media/Main.qml");
-        assert(/enabled:[^\n]*root\.media\.canSeek/.test(mediaSrc),
-               "the media app's sliderMouse must be gated by the injected media port's canSeek");
+        const mediaSrc = readLocalFile("../dashboard/tabs/MediaTab.qml");
+        assert(/enabled:\s*\(typeof MprisMedia !== "undefined"\)\s*&&\s*MprisMedia\.canSeek/.test(mediaSrc),
+               "MediaTab sliderMouse must be gated with MprisMedia.canSeek");
         assert(/isDragging/.test(mediaSrc),
                "MediaTab sliderMouse must track isDragging state for smooth scrubbing");
         assert(/onReleased:/.test(mediaSrc),
@@ -58,11 +57,8 @@ Item {
                "DashboardTab must call MprisMedia.seekTo() instead of assigning to readonly MprisMedia.position");
         assert(!/MprisMedia\.position\s*=\s*ratio/.test(dashSrc),
                "DashboardTab must NOT assign to readonly MprisMedia.position");
-        // DashboardTab is not migrated yet: it may gate on either the port (once it is)
-        // or the kernel service (today). The contract is "gated by canSeek", not the
-        // spelling of the owner.
-        assert(/enabled:[^\n]*\.canSeek/.test(dashSrc),
-               "the dashboard's seek MouseArea must be gated by canSeek");
+        assert(/enabled:\s*\(typeof MprisMedia !== "undefined"\)\s*&&\s*MprisMedia\.canSeek/.test(dashSrc),
+               "DashboardTab seek MouseArea must be gated with MprisMedia.canSeek");
 
         // 3. MprisMedia.qml Source Contract Verification
         const mprisSrc = readLocalFile("../modules/Astral/Kernel/services/MprisMedia.qml");
