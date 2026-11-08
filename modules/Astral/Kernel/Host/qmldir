@@ -2,5 +2,6 @@ module Astral.Kernel.Host
 AppHost 1.0 AppHost.qml
 AppRegistry 1.0 AppRegistry.qml
 IntentBus 1.0 IntentBus.qml
+MediaPort 1.0 MediaPort.qml
 SessionPort 1.0 SessionPort.qml
 ShellState 1.0 ShellState.qml

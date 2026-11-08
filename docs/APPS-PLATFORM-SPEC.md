@@ -1188,9 +1188,21 @@ the ordinary install pipeline — so compatibility, permissions, downgrade and s
 rules are identical to a file install. `astral app available --catalog <path>` lists
 what may be offered.
 
+**Ports (P4 groundwork)**: three injected models now exist, so the migrations that
+need them are mechanical rather than investigative:
+
+| Port | What a surface reads | Why it is injected |
+| :--- | :--- | :--- |
+| `ShellState` | shell-owned state (overview/launcher/dashboard open, daemon path, icon resolution) | an imported `Config` is a stale copy (C.9) |
+| `SessionPort` | windows, installed apps, thumbnails, activate/close/launch | same, and it has no windows at all (C.10) |
+| `MediaPort` | now-playing: track, artwork, status, players, seek | same; idle is *empty*, never a fabricated track |
+
+`MediaPort` is filled by the shell from `MprisMedia`, clamps seeks, and turns every
+operation into a stated failure when the shell cannot do it.
+
 Still open in P3/P5: remote artifact transport and the official inline catalog,
-zstd + minisign *signing*, the Apps page, and migrating `downloads` as the reference
-app.
+zstd + minisign *signing*, the Apps page, and the app migrations themselves
+(`media` next, then `downloads`).
 
 - `astral app new/dev/test/lint/pack` using the installed package as SDK.
 - Templates and `sdk/examples/hello`.

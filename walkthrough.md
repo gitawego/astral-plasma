@@ -2529,3 +2529,28 @@ as `Revoked { id: "…" }` instead of the sentence it was written as. It prints
 >
 > **Not verified**: remote artifact transport (a URL entry is refused with the phase
 > that will implement it), signing, and zstd.
+
+---
+
+## P4 groundwork — `MediaPort`, the third injected model (2026-11-08)
+
+`Host/MediaPort.qml` is the now-playing model a migrated media surface reads:
+track, artwork, status, player list, position/length, and `toggle`/`next`/`previous`/
+`seek`/`selectPlayer`. The shell fills it from its own `MprisMedia` and injects it
+through `AppHost` alongside `shellState`, `session` and `intents`.
+
+The design mirrors `SessionPort` deliberately: data is plain properties, operations
+are callables that default to `null`, every call is contained, and an idle port is
+**empty** — no placeholder track, because "nothing is playing" is information.
+
+Seeks are clamped (`seek(3.4)` → 1.0, `seek(-2)` → 0.0) so a surface never has to
+know whether the player can seek, only that asking is safe.
+
+> **Verified**: `make test` exit 0 — 1109 Rust tests, **161** QML suites (the new
+> `tst_media_port` covers the idle state, data propagation, progress maths including
+> a zero-length track, argument forwarding, seek clamping, and a throwing
+> implementation). The shell was restarted through `run.sh`: one instance, zero load
+> errors, and the desktop captured with the port wired in.
+>
+> **Not verified**: a migrated media surface — `MediaTab` still reads `MprisMedia`
+> directly, so the next slice is moving it through this port.

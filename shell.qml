@@ -496,6 +496,54 @@ ShellRoot {
         refreshThumbnailsImpl: function () { WindowService.refreshOverviewThumbnails(); return true; }
     }
 
+    // The now-playing model a media surface may read: filled from the shell's own
+    // MprisMedia, because a Loader-loaded surface would get a stale duplicate.
+    MediaPort {
+        id: mediaPort
+        hasMedia: MprisMedia.hasMedia
+        title: MprisMedia.title
+        artist: MprisMedia.artist
+        album: MprisMedia.album
+        artUrl: MprisMedia.artUrl
+        status: MprisMedia.isAnyPlayerPlaying ? "playing" : (MprisMedia.hasMedia ? "paused" : "stopped")
+        playerName: MprisMedia.identity
+        position: MprisMedia.position
+        length: MprisMedia.length
+        players: (MprisMedia.players || []).map(function (player) {
+            return {
+                id: player.busName || "",
+                name: MprisMedia.playerIdentity(player)
+            };
+        })
+        activePlayerId: MprisMedia.activePlayer ? (MprisMedia.activePlayer.busName || "") : ""
+        toggleImpl: function () {
+            MprisMedia.togglePlay();
+            return true;
+        }
+        nextImpl: function () {
+            MprisMedia.next();
+            return true;
+        }
+        previousImpl: function () {
+            MprisMedia.previous();
+            return true;
+        }
+        seekImpl: function (fraction) {
+            MprisMedia.seekTo(fraction);
+            return true;
+        }
+        selectPlayerImpl: function (id) {
+            const list = MprisMedia.players || [];
+            for (let index = 0; index < list.length; index++) {
+                if ((list[index].busName || "") === id) {
+                    MprisMedia.selectPlayer(list[index]);
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
     IntentBus {
         id: intents
     }
@@ -513,6 +561,7 @@ ShellRoot {
         state: shellState
         intents: intents
         session: sessionPort
+        media: mediaPort
         host: ({ level: 1, floor: 1 })
         eager: ["org.astralplasma.overview"]
         onAppFailed: function (id, reason) { console.error("app failed: " + id + " - " + reason) }
