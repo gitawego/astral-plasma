@@ -2435,3 +2435,34 @@ same digest.
 >
 > **Not verified**: `astral app dev` (the sandbox is P6), install/update (catalog is
 > P5), and signing (needs a private key the daemon must not own).
+
+---
+
+## Regression fixed: the kernel move disconnected the daemon (2026-11-08)
+
+Reported live: no taskbar app icons, no window previews, no system tray. My fault,
+and the cause was P1.
+
+Twelve services computed the daemon as `<their own directory>/../bin/astral-plasma`.
+That was right when `services/` sat at the repository root; after the move it pointed
+at `modules/Astral/Kernel/bin/`, which does not exist. Every daemon `Process` call
+failed with a warning the shell never showed — windows, tray, previews, clipboard,
+network, downloads, metrics.
+
+Why 153 suites stayed green: nothing asserted where the shell thinks the daemon is.
+
+**Fix**: `modules/Astral/Kernel/config/Paths.qml` owns the layout (`daemonBin`,
+`root`, `scriptsDir`), resolved from its own position with an
+`ASTRAL_PLASMA_DAEMON` override. `Config.daemonBin` delegates to it; the services
+ask it; none of them computes a path.
+
+**Guard**: `daemon/tests/test_runtime_paths.rs` — fails if any kernel file derives
+the daemon from its own directory, if `Config` computes a second path, if a
+`daemonBin` property does not delegate, or if the resolved binary is not a file.
+
+> **Verified**: `make test` exit 0 (1086 Rust tests, 160 QML suites). The shell was
+> restarted with the project's own launcher (`run.sh`, exactly one instance) and the
+> dock came back with running-window icons and badges, and the tray reappeared.
+>
+> The "second background out of sync" report was two `quickshell` instances running
+> simultaneously from my debugging restarts; only one runs now.

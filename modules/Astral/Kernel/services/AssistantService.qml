@@ -306,10 +306,9 @@ Singleton {
         }
     }
 
-    readonly property string daemonBin: {
-        if (typeof Config !== "undefined" && Config.daemonBin) return Config.daemonBin;
-        return Qt.resolvedUrl("../../../../bin/astral-plasma").toString().replace("file://", "");
-    }
+    /// One authority for the layout (`Paths`), so a move cannot leave a service
+    /// pointing at a directory that no longer exists (spec C.12).
+    readonly property string daemonBin: Paths.daemonBin
 
     Component.onCompleted: {
         refreshStatus();

@@ -155,7 +155,7 @@ Singleton {
     Component.onCompleted: updateLifecycle()
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "")
-    readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
+    readonly property string daemonBin: Paths.daemonBin
 
     // ==========================================
     // Subprocess: astral-plasma visualizer

@@ -2733,6 +2733,39 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
             println!("  digest sha256:{}", packed.digest);
             println!("  {} file(s)", packed.files);
         }
+        "dev" => {
+            use crate::application::app_sdk::lint_dir;
+
+            let dir = app_dir_arg(args, 3)?;
+            let problems = lint_dir(&dir)?;
+            if !problems.is_empty() {
+                for problem in &problems {
+                    eprintln!("{problem}");
+                }
+                return Err(format!("{} lint problem(s); fix them before running", problems.len()).into());
+            }
+
+            let sandboxed = args.iter().any(|arg| arg == "--sandbox");
+            let print_only = args.iter().any(|arg| arg == "--print-command");
+            let command = dev_command(&dir, sandboxed)?;
+
+            if print_only {
+                println!("{}", command.join(" "));
+                return Ok(());
+            }
+            if sandboxed && which_binary("bwrap").is_none() {
+                return Err("--sandbox needs bubblewrap (bwrap); install it or drop the flag".into());
+            }
+
+            println!("Running {} ({})", dir.display(), if sandboxed { "sandboxed" } else { "unsandboxed dev" });
+            println!("  {}", command.join(" "));
+            let status = std::process::Command::new(&command[0])
+                .args(&command[1..])
+                .status()?;
+            if !status.success() {
+                return Err(format!("app exited with {status}").into());
+            }
+        }
         "test" => {
             use crate::application::app_sdk::lint_dir;
 
@@ -2822,6 +2855,138 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
         }
     }
     Ok(())
+}
+
+/// The command that runs an app for its author.
+///
+/// Two modes, and the difference is honest: the plain mode runs the app on the
+/// developer's own session (fast, no isolation), the sandboxed mode reuses the
+/// launcher's mount set from the P0 spike. The platform's promise is the sandboxed
+/// one; the plain one exists so a first `astral app dev` does not require bubblewrap
+/// on day one.
+fn dev_command(dir: &std::path::Path, sandboxed: bool) -> DynResult<Vec<String>> {
+    let modules = sdk_modules()?;
+    let payload = dir.canonicalize()?.display().to_string();
+    if !sandboxed {
+        return Ok(vec![
+            "env".to_string(),
+            format!("QML_IMPORT_PATH={modules}"),
+            "quickshell".to_string(),
+            "-p".to_string(),
+            payload,
+        ]);
+    }
+
+    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string());
+    let mut command: Vec<String> = [
+        "bwrap",
+        "--unshare-all",
+        "--die-with-parent",
+        "--new-session",
+        "--ro-bind", "/usr", "/usr",
+        "--ro-bind", "/lib", "/lib",
+        "--ro-bind", "/lib64", "/lib64",
+        "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
+        "--ro-bind", "/etc/fonts", "/etc/fonts",
+        // Without the shared font cache the sandbox rebuilds it: 569 ms instead of
+        // 121 ms of startup (spec C.2).
+        "--ro-bind-try", "/var/cache/fontconfig", "/var/cache/fontconfig",
+        "--ro-bind-try", "/etc/xdg", "/etc/xdg",
+        // Without /sys, EGL falls back to software (spec C.2).
+        "--ro-bind-try", "/sys", "/sys",
+        "--dev", "/dev",
+        "--dev-bind-try", "/dev/dri", "/dev/dri",
+        "--ro-bind-try", "/dev/dri", "/dev/dri",
+        "--proc", "/proc",
+        "--tmpfs", "/dev/shm",
+        "--tmpfs", "/tmp",
+        "--dir", "/run/astral",
+    ]
+    .iter()
+    .map(|arg| arg.to_string())
+    .collect();
+
+    let socket = format!("{runtime}/{}", std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".to_string()));
+    command.push("--ro-bind".into());
+    command.push(socket);
+    command.push("/run/astral/wayland".into());
+    command.push("--ro-bind".into());
+    command.push(modules);
+    command.push("/sdk".into());
+    command.push("--ro-bind".into());
+    command.push(payload);
+    command.push("/app".into());
+    command.push("--clearenv".into());
+    for (key, value) in [
+        ("HOME", "/run/astral/home"),
+        ("XDG_RUNTIME_DIR", "/run/astral"),
+        ("WAYLAND_DISPLAY", "/run/astral/wayland"),
+        ("XDG_CONFIG_HOME", "/run/astral/config"),
+        ("XDG_CACHE_HOME", "/run/astral/cache"),
+        ("XDG_DATA_HOME", "/run/astral/data"),
+        ("QML_IMPORT_PATH", "/sdk"),
+        ("LC_ALL", "C.UTF-8"),
+    ] {
+        command.push("--setenv".into());
+        command.push(key.into());
+        command.push(value.into());
+    }
+    command.push("quickshell".into());
+    command.push("-p".into());
+    command.push("/app".into());
+    Ok(command)
+}
+
+/// Where the SDK module tree is (`Astral.AppKit`, `Astral.Kernel.Host`).
+///
+/// Resolution order matters: an installed package first (that is what a real author
+/// has), then `ASTRAL_SDK_PATH` for a custom install, then the checkout the running
+/// binary belongs to, so `astral app dev` works from a git clone before anything is
+/// installed. Nothing is guessed from the current directory: an author's app is not
+/// a copy of the SDK.
+fn sdk_modules() -> DynResult<String> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    candidates.push(crate::domain::branding::default_package_dir().join("modules"));
+    if let Ok(path) = std::env::var("ASTRAL_SDK_PATH") {
+        let root = std::path::PathBuf::from(path);
+        candidates.push(root.join("modules"));
+        candidates.push(root);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        // `<repo>/daemon/target/<profile>/astral-plasma` -> `<repo>/modules`
+        for ancestor in exe.ancestors().skip(1) {
+            let candidate = ancestor.join("modules/Astral/AppKit/qmldir");
+            if candidate.is_file() {
+                candidates.push(ancestor.join("modules"));
+                break;
+            }
+        }
+    }
+    for candidate in candidates {
+        if candidate.join("Astral/AppKit/qmldir").is_file() {
+            return Ok(candidate.display().to_string());
+        }
+    }
+    Err("cannot find the Astral SDK: install Astral, or set ASTRAL_SDK_PATH to a checkout".into())
+}
+
+/// `which`, without a dependency: look for the binary on PATH and require it to be
+/// executable, so "bwrap is installed" means it can actually run.
+fn which_binary(name: &str) -> Option<std::path::PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+
+    for dir in std::env::var("PATH").unwrap_or_default().split(':') {
+        if dir.is_empty() {
+            continue;
+        }
+        let candidate = std::path::Path::new(dir).join(name);
+        if let Ok(metadata) = std::fs::metadata(&candidate) {
+            if metadata.is_file() && metadata.permissions().mode() & 0o111 != 0 {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }
 
 fn app_dir_arg(args: &[String], index: usize) -> DynResult<std::path::PathBuf> {

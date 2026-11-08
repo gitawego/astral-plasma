@@ -16,7 +16,7 @@ Singleton {
     id: root
 
     readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
-    readonly property string daemonBin: (typeof Config !== "undefined" && Config.daemonBin) ? Config.daemonBin : (root.serviceDir + "/../bin/astral-plasma")
+    readonly property string daemonBin: Paths.daemonBin
 
     /// Test seam: a page may inject a status object instead of running a process.
     property bool testMode: false

@@ -209,13 +209,9 @@ Singleton {
         }
     }
 
-    readonly property string daemonBin: {
-        var bin = (typeof Config !== "undefined" && Config.daemonBin) ? Config.daemonBin : "";
-        if (bin.length > 0) return bin;
-        var url = Qt.resolvedUrl("../../../../bin/astral-plasma").toString();
-        if (url.startsWith("file://")) return url.substring(7);
-        return url;
-    }
+    /// One authority for the layout (`Paths`), so a move cannot leave this service
+    /// pointing at a directory that no longer exists (spec C.12).
+    readonly property string daemonBin: Paths.daemonBin
 
     // Install DeepSeek's icon + a matching .desktop so the browser app window is
     // identified as its own application (daemon infrastructure/dsh_web_desktop.rs).

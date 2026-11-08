@@ -363,11 +363,9 @@ Singleton {
         return root.scriptsDir + "/" + scriptName;
     }
 
-    readonly property string daemonBin: {
-        let url = Qt.resolvedUrl("../../../../bin/astral-plasma").toString();
-        if (url.startsWith("file://")) return url.substring(7);
-        return url;
-    }
+    /// The daemon entry point. `Paths` owns the layout (spec C.12): deriving it here
+    /// a second time is how the kernel lost its daemon when the directories moved.
+    readonly property string daemonBin: Paths.daemonBin
 
     // Centralized, robust icon URL resolution
     // 1. Direct file paths are formatted as file://

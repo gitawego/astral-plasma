@@ -41,8 +41,9 @@ Singleton {
         ? Config.modelActivityEffect
         : true
 
-    readonly property string serviceDir: Qt.resolvedUrl(".").toString().replace("file://", "").replace(/\/$/, "")
-    readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
+    /// Owned by `Paths` (spec C.12): a service must not derive the daemon from its
+    /// own directory, because that silently breaks the day the directory moves.
+    readonly property string daemonBin: Paths.daemonBin
 
     // Query initial state on startup
     Process {

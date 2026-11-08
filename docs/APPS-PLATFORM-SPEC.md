@@ -1565,3 +1565,44 @@ Two things this migration cost, both now encoded:
    the grid is legitimately empty, which cannot distinguish "migration broken" from
    "no windows". The verification that settled it was a single stub window bound to
    `SessionPort.windows` in a dev run: a card appeared, then the stub was removed.
+
+### C.12 Post-mortem: the kernel move silently disconnected the daemon
+
+**Symptom** (user, live session): no taskbar app icons, no window previews, no
+system tray. The shell looked alive; nothing errored.
+
+**Cause**: twelve services computed the daemon path from *their own directory*:
+
+```qml
+readonly property string serviceDir: Qt.resolvedUrl(".")...
+readonly property string daemonBin: root.serviceDir + "/../bin/astral-plasma"
+```
+
+That was correct while `services/` sat at the repository root. P1 moved it to
+`modules/Astral/Kernel/services/`, so the path became
+`<repo>/modules/Astral/Kernel/bin/astral-plasma` — a directory that does not exist.
+Every `Process` call then failed with a warning the shell never surfaced, taking
+windows, tray, previews, clipboard, network, downloads and metrics with it.
+
+**Why the suites missed it**: 153 QML suites and 1000+ Rust tests were green. Nothing
+asserted *where the shell thinks the daemon is*. Every test used fixtures, sources,
+or data structures; the one path that matters at runtime was never resolved.
+
+**Fix**: `modules/Astral/Kernel/config/Paths.qml` owns the layout —
+`daemonBin`, `root`, `scriptsDir` — resolved from its own position
+(`../../../..`), with `ASTRAL_PLASMA_DAEMON` as an override. `Config.daemonBin`
+delegates to it; the twelve services ask it. No service computes a path again.
+
+**Guard**: `daemon/tests/test_runtime_paths.rs` (4 tests, no display needed) fails
+when a kernel file derives the daemon from its own directory, when `Config` computes
+a second path, when any `daemonBin` property does not delegate, and when the
+resolved binary is not a file at the depth `Paths` claims.
+
+**Also observed and explained**: "a second background out of sync during
+animation" was two `quickshell` instances running at once (the debugging restarts
+left duplicates), each drawing its own frame and dock a few frames apart. One
+instance now.
+
+**Lesson for the remaining phases**: a file move is a *runtime* change for every
+path-relative lookup, not only for imports. Any phase that relocates a directory
+needs a resolved-path assertion before it is called done.
