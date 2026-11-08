@@ -171,6 +171,7 @@ app owns ordinary compositor windows.
 | A26 | Data compatibility | `dataSchema` integer in the manifest, recorded at install, re-checked at launch; a build that cannot read the recorded schema never runs. |
 | A27 | Compatibility constants | One Rust constant pair generated into QML; drift fails CI; no semver range parser. |
 | A28 | Core app failure | A core app that fails to load is reverted to its baseline, the failure is recorded, and the failed version is blocked instead of retried. |
+| A31 | Settings editor is not an app | The settings editor owns the settings document; it stays a shell surface and is the only Config consumer, because a generic settings port cannot preserve QML binding reactivity. The dock also stays shell chrome. |
 | A29 | Compatibility failure | An app that no longer fits the window is auto-updated when a compatible version exists, otherwise disabled with a recorded reason and an actionable warning; never uninstalled, never half-loaded. |
 | A30 | Forced-update consent | An auto-update may not add permissions; a candidate that does is not applied and the app disables instead. |
 
@@ -1921,3 +1922,34 @@ sequence now lives in one intent handler, so "one modal at a time" has a single 
 
 Verified live: the command launcher opens with its search field and app list (Alacritty, Android
 Studio, Astral Copilot, Astral Dashboard, …), themed.
+
+### C.23 Why the settings editor and the dock are not apps
+
+Everything else became an app; these two did not, and the reason is not effort.
+
+**The settings editor writes the settings document.** Every other surface was migrated by
+*injecting* its state: the shell reads `Config` once and hands the app a read model
+(`ShellState`), while writes travel as intents. That works because a feature app needs a
+handful of values. The editor needs a *generic* setting, and a generic accessor breaks QML:
+
+```qml
+settings.get("dockIconSize")   // JS call: no QML dependency, the binding never re-evaluates
+```
+
+Reactive access needs a real property per key (`Config.dockIconSize`), so a "port" would be
+either a hundred declared fields with a hundred typed writers — a copy of `Config` with more
+steps — or a non-reactive bridge that renders stale values. Neither is an improvement, and
+both would be the kind of indirection this project keeps deleting.
+
+So the editor stays in the shell and is the **one** place allowed to read `Config` directly.
+It is also the surface that grants app permissions, which is exactly the role that should not
+be delegable to an app.
+
+**The dock is the desktop's frame**: one per screen, always visible, and the surface that
+remains when an app is broken. The launcher became an app because it is a modal surface the
+user summons; the dock is chrome, and it stays with the kernel (its *popouts* can migrate as
+their apps do).
+
+The Apps page therefore lists the apps the platform manages (nine after the launcher), and the
+editor says so in its own header — a user does not have to wonder whether the settings app is
+uninstalled.
