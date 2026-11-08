@@ -1070,20 +1070,6 @@ Now landed: the pipeline a migrated surface needs.
 | `scripts/check_app_boundaries.py` | CI gate: apps may not import `Kernel/config`, another app, or the kernel module; non-official apps are limited to `Astral.AppKit`. `make test` runs it |
 | `Host/qmldir` | `Astral.Kernel.Host` as a module; `run.sh` exports `QML_IMPORT_PATH` |
 
-**The workspaces tab is now an app** (`modules/Astral/Apps/Workspaces/`): the
-dashboard pane mounts its item through `AppHost.mount`, and the tab reads
-`session.windows`, `workspaces.desktops`, `workspaces.currentId` and asks for
-`overview.toggle` as an intent. Live: **4 Desktops · 7 Windows**, Desktop 1 active with
-its window chips.
-
-Two ordering bugs were needed to get there, both now guarded:
-
-* the host is declared **before** the surface tree in `shell.qml`, because a pane asks
-  it for an app during its own creation;
-* `AppHost.loaders` is reassigned as a **new object** on every registration. Assigning
-  the same object back did not notify, so `loaderCount` stayed 0 and the pane waited
-  forever — `tst_app_host` now asserts `loaderCount === loaded.length`.
-
 **The overview is now an app** (`modules/Astral/Apps/Overview/`, loaded from
 `apps/index.json` through `AppHost` with `eager`). `shell.qml` no longer names it:
 the root keeps `ShellState`/`SessionPort`/`IntentBus` and the host.

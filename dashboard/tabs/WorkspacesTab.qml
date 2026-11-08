@@ -1,25 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../Kernel/theme"
-import "../../Kernel/components"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/services"
 
-// Workspaces app (`manifest.entry.dashboardTab` = "workspaces").
-//
-// The shell injects `session` (windows), `workspaces` (desktops) and `intents`
-// (shell actions). No kernel service is imported: a Loader-loaded surface would get
-// its own instance and see nothing (spec C.9/C.10).
 Item {
     id: root
-
-    property var session: null
-    property var workspaces: null
-    property var intents: null
-
-    readonly property var windows: session !== null ? (session.windows || []) : []
-    readonly property var desktops: workspaces !== null ? (workspaces.desktops || []) : []
-    readonly property string currentWorkspaceId: workspaces !== null ? (workspaces.currentId || "") : ""
-    readonly property string activeWindowId: session !== null ? (session.activeWindowId || "") : ""
-
 
     implicitWidth: 680
     implicitHeight: {
@@ -47,10 +33,10 @@ Item {
 
     // Helper: list of windows belonging to a specific virtual desktop
     function getWindowsForDesktop(desktopId) {
-        if (!desktopId || root.session === null || !Array.isArray(root.windows)) {
+        if (!desktopId || typeof WindowService === "undefined" || !WindowService.windows || !Array.isArray(WindowService.windows)) {
             return [];
         }
-        const wins = root.windows;
+        const wins = WindowService.windows;
         const res = [];
         for (let i = 0; i < wins.length; i++) {
             const w = wins[i];
@@ -64,7 +50,7 @@ Item {
                     res.push(w);
                     continue;
                 }
-            } else if (root.workspaces !== null && root.currentWorkspaceId === desktopId && (!w.desktopIds || w.desktopIds.length === 0)) {
+            } else if (typeof KWinWorkspaces !== "undefined" && KWinWorkspaces.currentId === desktopId && (!w.desktopIds || w.desktopIds.length === 0)) {
                 // Fallback for untagged windows on current desktop
                 res.push(w);
             }
@@ -76,9 +62,9 @@ Item {
     function getDesktopNameForWindow(win) {
         if (!win) return "";
         if (win.onAllDesktops) return "All Desktops";
-        if (root.workspaces !== null && root.desktops && win.desktopIds && win.desktopIds.length > 0) {
-            for (let i = 0; i < root.desktops.length; i++) {
-                const d = root.desktops[i];
+        if (typeof KWinWorkspaces !== "undefined" && KWinWorkspaces.desktops && win.desktopIds && win.desktopIds.length > 0) {
+            for (let i = 0; i < KWinWorkspaces.desktops.length; i++) {
+                const d = KWinWorkspaces.desktops[i];
                 if (d && win.desktopIds.indexOf(d.id) !== -1) {
                     return d.name || ("Desktop " + (d.index + 1));
                 }
@@ -90,20 +76,20 @@ Item {
     // Helper: focus a window and switch to its desktop
     function focusWindow(win) {
         if (!win) return;
-        if (root.session !== null) {
-            root.session && root.session.activateWindow(win.id);
+        if (typeof WindowService !== "undefined") {
+            WindowService.activateWindow(win.id);
         }
-        if (win.desktopIds && win.desktopIds.length > 0 && root.workspaces !== null) {
-            root.workspaces && root.workspaces.switchTo(win.desktopIds[0]);
+        if (win.desktopIds && win.desktopIds.length > 0 && typeof KWinWorkspaces !== "undefined") {
+            KWinWorkspaces.switchTo(win.desktopIds[0]);
         }
     }
 
     readonly property var filteredWindows: {
         const q = root.searchQuery.trim().toLowerCase();
-        if (q.length === 0 || root.session === null || !Array.isArray(root.windows)) {
+        if (q.length === 0 || typeof WindowService === "undefined" || !WindowService.windows || !Array.isArray(WindowService.windows)) {
             return [];
         }
-        return root.windows.filter(w => {
+        return WindowService.windows.filter(w => {
             if (!w) return false;
             const title = (w.title || "").toLowerCase();
             const app = (w.appName || w.appId || "").toLowerCase();
@@ -111,8 +97,8 @@ Item {
         });
     }
 
-    readonly property int totalWindowsCount: (root.session !== null && Array.isArray(root.windows)) ? root.windows.length : 0
-    readonly property int totalDesktopsCount: (root.workspaces !== null && root.desktops && Array.isArray(root.desktops)) ? root.desktops.length : 0
+    readonly property int totalWindowsCount: (typeof WindowService !== "undefined" && WindowService.windows && Array.isArray(WindowService.windows)) ? WindowService.windows.length : 0
+    readonly property int totalDesktopsCount: (typeof KWinWorkspaces !== "undefined" && KWinWorkspaces.desktops && Array.isArray(KWinWorkspaces.desktops)) ? KWinWorkspaces.desktops.length : 0
 
     ColumnLayout {
         anchors.fill: parent
@@ -277,8 +263,8 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (root.workspaces !== null) {
-                            root.intents && root.intents.request("overview.toggle");
+                        if (typeof KWinWorkspaces !== "undefined") {
+                            KWinWorkspaces.toggleOverview();
                         }
                     }
                 }
@@ -306,8 +292,8 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (root.workspaces !== null) {
-                            root.workspaces && root.workspaces.create();
+                        if (typeof KWinWorkspaces !== "undefined") {
+                            KWinWorkspaces.createDesktop();
                         }
                     }
                 }
@@ -446,8 +432,8 @@ Item {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (root.session !== null) {
-                                        root.session && root.session.closeWindow(modelData.id);
+                                    if (typeof WindowService !== "undefined") {
+                                        WindowService.closeWindow(modelData.id);
                                     }
                                 }
                             }
@@ -494,7 +480,7 @@ Item {
                     rowSpacing: 10
 
                     Repeater {
-                        model: (root.workspaces !== null && root.desktops) ? root.desktops : []
+                        model: (typeof KWinWorkspaces !== "undefined" && KWinWorkspaces.desktops) ? KWinWorkspaces.desktops : []
 
                         delegate: LiquidGlassCard {
                             id: desktopCard
@@ -518,8 +504,8 @@ Item {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (root.workspaces !== null) {
-                                        root.workspaces && root.workspaces.switchTo(modelData.id);
+                                    if (typeof KWinWorkspaces !== "undefined") {
+                                        KWinWorkspaces.switchTo(modelData.id);
                                     }
                                 }
                             }
@@ -612,8 +598,8 @@ Item {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: {
-                                                if (root.workspaces !== null) {
-                                                    root.workspaces && root.workspaces.remove(modelData.id);
+                                                if (typeof KWinWorkspaces !== "undefined") {
+                                                    KWinWorkspaces.removeDesktop(modelData.id);
                                                 }
                                             }
                                         }
@@ -726,8 +712,8 @@ Item {
                                                 hoverEnabled: true
                                                 cursorShape: Qt.PointingHandCursor
                                                 onClicked: {
-                                                    if (root.workspaces !== null) {
-                                                        root.workspaces && root.workspaces.switchTo(modelData.id);
+                                                    if (typeof KWinWorkspaces !== "undefined") {
+                                                        KWinWorkspaces.switchTo(modelData.id);
                                                     }
                                                 }
                                             }
@@ -742,7 +728,7 @@ Item {
 
                                     // For inactive desktop: "Move active window here"
                                     Rectangle {
-                                        visible: !modelData.active && root.activeWindowId.length > 0
+                                        visible: !modelData.active && typeof WindowService !== "undefined" && Boolean(WindowService.activeId)
                                         height: 22
                                         width: moveBtnRow.implicitWidth + 12
                                         radius: 11
@@ -778,8 +764,8 @@ Item {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: {
-                                                if (root.workspaces !== null && root.session !== null) {
-                                                    root.workspaces && root.workspaces.moveWindow(root.activeWindowId, modelData.id);
+                                                if (typeof KWinWorkspaces !== "undefined" && typeof WindowService !== "undefined") {
+                                                    KWinWorkspaces.moveWindow(WindowService.activeId, modelData.id);
                                                 }
                                             }
                                         }
@@ -827,8 +813,8 @@ Item {
     }
 
     Component.onCompleted: {
-        if (root.workspaces !== null && root.workspaces.canRefresh) {
-            root.workspaces && root.workspaces.refresh();
+        if (typeof KWinWorkspaces !== "undefined" && typeof KWinWorkspaces.refresh === "function") {
+            KWinWorkspaces.refresh();
         }
     }
 }
