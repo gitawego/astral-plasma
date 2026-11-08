@@ -206,7 +206,7 @@ Item {
             "the derived profile must close the coverage gap (got " + fixedWorst.toFixed(2) + "px)");
 
         // ---- 6. The radius actually configured must be covered ------------
-        const cfg = readLocalFile("../config/settings.json");
+        const cfg = readLocalFile("../modules/Astral/Kernel/config/settings.json");
         const rm = cfg.match(/"rounding"\s*:\s*(\d+)/);
         if (rm !== null) {
             const Rc = parseInt(rm[1], 10);

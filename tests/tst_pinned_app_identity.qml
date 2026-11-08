@@ -237,7 +237,7 @@ Item {
             "the merged pin must draw the window's authentic icon, not the material fallback");
 
         // ---- 6. Source contracts ----
-        const wsSrc = readLocalFile("../services/WindowService.qml");
+        const wsSrc = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(wsSrc.indexOf("a.wm_class") !== -1,
             "WindowService must index StartupWMClass in the canonical identity map");
         assert(wsSrc.indexOf("canonicalAppId") !== -1,

@@ -1,6 +1,6 @@
 import QtQuick
-import "../theme"
-import "../theme/archetypes"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/theme/archetypes"
 import "../dashboard/tabs"
 
 Item {
@@ -66,7 +66,7 @@ Item {
                "NordicMinimalArchetype mediaVinylSpin must remain true");
 
         // 3. Theme Singleton Delegation Facade Inspection
-        const themeSrc = readLocalFile("../theme/Theme.qml");
+        const themeSrc = readLocalFile("../modules/Astral/Kernel/theme/Theme.qml");
         assert(/readonly\s+property\s+bool\s+mediaCircularCover:/.test(themeSrc),
                "Theme.qml must expose mediaCircularCover");
         assert(/readonly\s+property\s+bool\s+mediaOrbitalRing:/.test(themeSrc),
@@ -79,13 +79,13 @@ Item {
                "Theme.qml must expose isCyberpunk");
 
         // 4. Component Cyber Style Capabilities
-        const radVizSrc = readLocalFile("../components/RadialCoverVisualiser.qml");
+        const radVizSrc = readLocalFile("../modules/Astral/Kernel/components/RadialCoverVisualiser.qml");
         assert(/readonly\s+property\s+bool\s+isCyberStyle:/.test(radVizSrc),
                "RadialCoverVisualiser must expose isCyberStyle");
         assert(/cyberHudFrame/.test(radVizSrc),
                "RadialCoverVisualiser must include cyber HUD corner reticles");
 
-        const radRingSrc = readLocalFile("../components/RadialCoverRing.qml");
+        const radRingSrc = readLocalFile("../modules/Astral/Kernel/components/RadialCoverRing.qml");
         assert(/readonly\s+property\s+bool\s+isCyberStyle:/.test(radRingSrc),
                "RadialCoverRing must expose isCyberStyle");
 

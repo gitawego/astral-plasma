@@ -264,7 +264,11 @@ fn external_desktop_state_has_one_writer_each() {
     let mut sources: Vec<PathBuf> = Vec::new();
     collect(&repo_root().join("daemon/src"), &mut sources);
     collect(&repo_root().join("scripts"), &mut sources);
-    for entry in ["shell.qml", "config/Config.qml", "services/WindowService.qml"] {
+    for entry in [
+        "shell.qml",
+        "modules/Astral/Kernel/config/Config.qml",
+        "modules/Astral/Kernel/services/WindowService.qml",
+    ] {
         sources.push(repo_root().join(entry));
     }
 

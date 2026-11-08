@@ -1,5 +1,5 @@
 import QtQuick
-import "../components"
+import "../modules/Astral/Kernel/components"
 
 // Serial thumbnail-capture cycle contract (active-apps overview).
 //

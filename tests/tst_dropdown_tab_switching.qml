@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
-import "../components"
-import "../theme"
-import "../config"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
 import "../shell"
 import "../dashboard/tabs"
 
@@ -188,7 +188,7 @@ Item {
             assert(/onTabSelected/.test(standalone) && /Config\.activeDashboardTab\s*=/.test(standalone),
                 "CentralDashboard TabBar must persist tab selections to Config.activeDashboardTab");
 
-            const cfgSrc = readLocalFile("../config/Config.qml");
+            const cfgSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
             assert(!/onSettingsChanged:\s*\{[^}]*activeDashboardTab\s*=/.test(cfgSrc),
                 "Config.qml must never clobber activeDashboardTab on settingsChanged");
 

@@ -39,7 +39,7 @@ Item {
 
     function runTests() {
         // --- service: server handling + browser launch ----------------------
-        const service = readLocalFile("../services/DshWebService.qml");
+        const service = readLocalFile("../modules/Astral/Kernel/services/DshWebService.qml");
         assert(service.length > 1000, "DshWebService.qml must be readable");
         assert(service.indexOf("parseDshUrlLine") !== -1,
             "service must parse the authenticated URL dsh web prints");
@@ -104,7 +104,7 @@ Item {
             "shell.qml must expose the dshweb IPC target");
 
         // --- config + settings ---------------------------------------------
-        const config = readLocalFile("../config/Config.qml");
+        const config = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(config.indexOf("dshWebEnabled") !== -1, "Config must expose dshWebEnabled");
         assert(config.indexOf("dshWebUrl") !== -1, "Config must expose dshWebUrl");
         assert(config.indexOf("dshWebCommand") !== -1, "Config must expose dshWebCommand");
@@ -112,7 +112,7 @@ Item {
         assert(config.indexOf("dshWebBrowser") !== -1, "Config must expose dshWebBrowser");
         assert(config.indexOf("dshWebFirefoxKiosk") !== -1, "Config must expose dshWebFirefoxKiosk");
 
-        const settings = readLocalFile("../config/settings.json");
+        const settings = readLocalFile("../modules/Astral/Kernel/config/settings.json");
         assert(settings.indexOf('"dshWeb"') !== -1, "settings.json must ship DSH web defaults");
         assert(settings.indexOf('"mode": "browser"') !== -1, "browser mode must be the shipped default");
 
@@ -136,10 +136,10 @@ Item {
             "browser detection must resolve the desktop's registrations before PATH");
 
         // --- icon archetypes stay consistent across every surface -----------
-        const materialIcon = readLocalFile("../components/MaterialIcon.qml");
+        const materialIcon = readLocalFile("../modules/Astral/Kernel/components/MaterialIcon.qml");
         assert(materialIcon.indexOf("ThemedImage {") !== -1,
             "MaterialIcon must render app icons through the shared ThemedImage archetype");
-        assert(readLocalFile("../components/ThemedIcon.qml").indexOf("ThemedImage {") !== -1,
+        assert(readLocalFile("../modules/Astral/Kernel/components/ThemedIcon.qml").indexOf("ThemedImage {") !== -1,
             "ThemedIcon must share the same archetype renderer as MaterialIcon");
         const dock = readLocalFile("../shell/UnifiedDock.qml");
         assert(dock.indexOf("Config.iconUrl(modelData.iconName)") === -1,

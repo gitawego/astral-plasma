@@ -63,7 +63,7 @@ Item {
             "DownloadsWindow must expose raiseWindow()");
         assert(winSrc.indexOf("WindowService.activateWindowByTitle") >= 0,
             "raiseWindow must activate the toplevel by caption (shell windows have no UUID in the watcher list)");
-        const windowSvcSrc = readLocalFile("../services/WindowService.qml");
+        const windowSvcSrc = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(/function activateWindowByTitle\(title\)/.test(windowSvcSrc)
                && windowSvcSrc.indexOf("\"activate-title\"") >= 0,
             "WindowService must route caption activation to the daemon's activate-title verb");
@@ -71,7 +71,7 @@ Item {
             "the window must listen for the open/raise request");
 
         // 2. State + transitions in Config.
-        const cfgSrc = readLocalFile("../config/Config.qml");
+        const cfgSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(/property bool downloadsWindowVisible/.test(cfgSrc),
             "Config must own the downloads window visibility");
         for (const fn of ["openDownloadsWindow", "closeDownloadsWindow", "toggleDownloadsWindow"]) {

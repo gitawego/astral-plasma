@@ -2164,3 +2164,36 @@ cannot report a failing suite as passing.
 > **Not verified**: the GitHub Actions signing step itself (it needs a tagged
 > release), and enforcement is deliberately left off until one signed release has
 > shipped.
+
+---
+
+## P1 — kernel moved into `modules/Astral/Kernel` (2026-11-08)
+
+The kernel (`theme/`, `components/`, `config/`, `services/`) now lives at
+`modules/Astral/Kernel/`, so the tree can grow apps beside it instead of beside
+a flat pile of directories. This is a move, not a redesign: no behaviour changed,
+no `qmldir` was introduced yet.
+
+> **Verified**: `make test` exit 0 — 153 QML suites and 988 Rust tests pass after
+> the move. The shell was started on the running KWin/Wayland session
+> (`quickshell -p <checkout>`, zero `ERROR` lines in the log) and three surfaces
+> were captured: the dock with real application icons and the outer frame; the
+> dashboard with all seven tabs, live weather, calendar and power controls; and
+> Nexus Settings showing the real wallpaper thumbnail and the wallpaper-derived
+> accent palette.
+>
+> **Not verified**: a before/after pixel diff. The claim is that the surfaces
+> load and render their real content, not that the rendering is pixel-identical.
+
+Two things the move taught, both recorded in `docs/APPS-PLATFORM-SPEC.md`
+Appendix C.6:
+
+1. **Two import dialects.** Three files used `qs.theme` / `qs.services`, which
+   Quickshell resolves against the shell root. A codemod that only understands
+   `../` reports success and leaves the shell unloadable — the live run is what
+   caught it.
+2. **A `qmldir` is not a rename.** Importing a QML module compiles its singleton
+   entries eagerly; the kernel's singletons import `Quickshell`; `qml6` has no
+   Quickshell plugin, so a module URI would turn all 153 suites red even though
+   `quickshell` loads the same code fine. The module URI is therefore a P2
+   change, made where the real shell owns the import path.

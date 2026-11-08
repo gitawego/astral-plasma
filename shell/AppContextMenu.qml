@@ -1,9 +1,9 @@
 import QtQuick
 import Quickshell
-import "../theme"
-import "../config"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
 import "../menus"
-import "../services"
+import "../modules/Astral/Kernel/services"
 
 Item {
     id: root

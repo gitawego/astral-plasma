@@ -133,7 +133,7 @@ Item {
         // their canonical Material icon name so CentralDropdown never assigns
         // `undefined` to MaterialIcon.text (QString).
         // ------------------------------------------------------------------
-        const shippedFromJson = JSON.parse(readLocalFile("../config/settings.json"));
+        const shippedFromJson = JSON.parse(readLocalFile("../modules/Astral/Kernel/config/settings.json"));
         const reconciledWithJson = Tabs.reconcileTabs(storedOld, shippedFromJson.dashboard.tabs);
         for (const t of reconciledWithJson) {
             assert(typeof t.icon === "string" && t.icon.length > 0,
@@ -164,7 +164,7 @@ Item {
                 && shipped.downloads.speedLimitKbps !== undefined,
             "the engine settings must ship with defaults");
 
-        const config = readLocalFile("../config/Config.qml");
+        const config = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(config.indexOf("DashboardTabs.reconcileTabs(") >= 0,
             "Config must reconcile the stored tab list with the shipped one");
         assert(config.indexOf("readonly property var dashboardTabs") >= 0,

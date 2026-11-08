@@ -452,7 +452,7 @@ Item {
         assert(mockFacade.activeTitle === "Hyprland Editor", "Facade must extract activeTitle");
 
         // ---- Test 7: Source Contracts ----
-        const winServiceSrc = readLocalFile("../services/WindowService.qml");
+        const winServiceSrc = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(winServiceSrc.indexOf("property var pendingLaunches: []") !== -1,
             "WindowService must declare pendingLaunches property");
         assert(winServiceSrc.indexOf("function _resolvePendingLaunches()") !== -1,
@@ -472,7 +472,7 @@ Item {
         assert(launcherSrc.indexOf("WindowService.launchApp(app.desktop_file || app.exec || app.name, app)") !== -1,
             "CommandLauncher must pass app metadata to launchApp");
 
-        const facadeSrc = readLocalFile("../services/DesktopSessionFacade.qml");
+        const facadeSrc = readLocalFile("../modules/Astral/Kernel/services/DesktopSessionFacade.qml");
         assert(facadeSrc.indexOf("property string activeId: \"\"") !== -1,
             "DesktopSessionFacade must declare activeId property");
 

@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../theme"
-import "../../components"
-import "../../components/StateColor.js" as StateColor
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/components/StateColor.js" as StateColor
 
 // ============================================================================
 // Setup group

@@ -1,10 +1,10 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../components/motion"
-import "../../theme"
-import "../../components"
-import "../../services"
-import "../../config"
+import "../../modules/Astral/Kernel/components/motion"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/services"
+import "../../modules/Astral/Kernel/config"
 
 Item {
     id: root

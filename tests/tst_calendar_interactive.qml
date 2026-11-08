@@ -1,7 +1,7 @@
 import QtQuick
-import "../theme"
-import "../config"
-import "../components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/components"
 import "../dashboard/tabs"
 
 // ============================================================================
@@ -151,7 +151,7 @@ Item {
                 "DashboardTab.qml must not hardcode calendar app '" + forbidden[f] + "'");
         }
 
-        const wsSrc = readLocalFile("../services/WindowService.qml");
+        const wsSrc = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(wsSrc.length > 500, "WindowService.qml source must be readable");
         assert(/function openCalendar\(isoDate\)/.test(wsSrc),
             "WindowService must expose openCalendar(isoDate)");

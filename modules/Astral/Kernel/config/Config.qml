@@ -3,7 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "../dashboard/tabs/DashboardTabs.js" as DashboardTabs
+import "../../../../dashboard/tabs/DashboardTabs.js" as DashboardTabs
 import "./PopoutModes.js" as PopoutModes
 
 Singleton {
@@ -352,7 +352,7 @@ Singleton {
 
     // Dynamic script path resolution (config-driven, agnostic, zero hardcoded paths)
     readonly property string scriptsDir: {
-        let url = Qt.resolvedUrl("../scripts").toString();
+        let url = Qt.resolvedUrl("../../../../scripts").toString();
         if (url.startsWith("file://")) {
             return url.substring(7);
         }
@@ -364,7 +364,7 @@ Singleton {
     }
 
     readonly property string daemonBin: {
-        let url = Qt.resolvedUrl("../bin/astral-plasma").toString();
+        let url = Qt.resolvedUrl("../../../../bin/astral-plasma").toString();
         if (url.startsWith("file://")) return url.substring(7);
         return url;
     }

@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
-import "../theme"
-import "../config"
-import "../components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/components"
 import "../dashboard/tabs"
 import "../dashboard/tabs/DashboardTabs.js" as DashboardTabs
-import "../services"
+import "../modules/Astral/Kernel/services"
 
 Item {
     id: root

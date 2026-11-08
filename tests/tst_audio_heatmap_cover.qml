@@ -1,6 +1,6 @@
 import QtQuick
-import "../components"
-import "../theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot

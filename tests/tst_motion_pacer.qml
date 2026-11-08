@@ -1,5 +1,5 @@
 import QtQuick
-import "../components/motion"
+import "../modules/Astral/Kernel/components/motion"
 
 // ============================================================================
 // MotionClock / MotionPacer — decorative frame-budget unit tests

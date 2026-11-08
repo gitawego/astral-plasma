@@ -2,10 +2,10 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
-import qs.theme
-import qs.components
-import qs.config
-import qs.services
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/services"
 
 PanelWindow {
     id: root

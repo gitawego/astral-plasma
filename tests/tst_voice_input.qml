@@ -1,8 +1,8 @@
 import QtQuick
-import "../theme"
-import "../components"
-import "../config"
-import "../services"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/services"
 import "../assistant"
 import "../assistant/components"
 
@@ -783,7 +783,7 @@ Item {
         // ------------------------------------------------------------------
         // 9. Source contracts (QML cannot observe these at runtime)
         // ------------------------------------------------------------------
-        const serviceSrc = readLocalFile("../services/AssistantService.qml");
+        const serviceSrc = readLocalFile("../modules/Astral/Kernel/services/AssistantService.qml");
         assert(serviceSrc.length > 500, "services/AssistantService.qml must be readable");
         // The Level payload is an object; the branch must go through the shared
         // decoder, because `Math.min(1, ev.payload)` is NaN and silently kills
@@ -1057,7 +1057,7 @@ Item {
         // Progress is a bare fraction the UI can read; a re-used `Level { rms }`
         // payload shipped an object no progress bar could read, which is how a
         // 1.5 GiB download sat at 0% and then announced itself as done.
-        const serviceSrc2 = readLocalFile("../services/AssistantService.qml");
+        const serviceSrc2 = readLocalFile("../modules/Astral/Kernel/services/AssistantService.qml");
         assert(/ev\.type === "Progress" && typeof ev\.payload === "number"/.test(serviceSrc2),
             "the install handler must read the Progress event's numeric payload");
         // The session's level meter still uses Level; only the *install* path
@@ -1114,7 +1114,7 @@ Item {
         assert(!/Timer\s*\{[\s\S]{0,200}repeat:\s*true/.test(stripSrc),
             "the strip must not fake progress with its own repeating timer");
 
-        const configSrc = readLocalFile("../config/Config.qml");
+        const configSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(/readonly property bool voiceEnabled/.test(configSrc), "Config must expose voiceEnabled");
         assert(/readonly property string voiceLanguage/.test(configSrc), "Config must expose voiceLanguage");
         assert(/function setVoiceModel\(/.test(configSrc), "Config must expose setVoiceModel");
@@ -1124,7 +1124,7 @@ Item {
         assert(/function setVoiceNoiseSuppress\(/.test(configSrc), "Config must expose setVoiceNoiseSuppress");
 
         // Shipped defaults must match the daemon's documented defaults.
-        const settings = readLocalFile("../config/settings.json");
+        const settings = readLocalFile("../modules/Astral/Kernel/config/settings.json");
         assert(settings.length > 100, "config/settings.json must be readable");
         const parsed = JSON.parse(settings);
         assert(parsed.voice !== undefined, "settings.json must ship a voice block");
@@ -1150,7 +1150,7 @@ Item {
             "noise suppression defaults off: its source node is operator-provisioned");
         // The session must tolerate a non-fatal Warning event without failing:
         // the clipping guard warns once and still transcribes.
-        const warningSrc = readLocalFile("../services/AssistantService.qml");
+        const warningSrc = readLocalFile("../modules/Astral/Kernel/services/AssistantService.qml");
         assert(/ev\.type === "Warning"/.test(warningSrc),
             "AssistantService must handle the non-fatal Warning event (gain guard)");
         // The warning must reach the strip as a live readout: error-toned text
@@ -1175,7 +1175,7 @@ Item {
         // Material Design Icons private-use range maps to unrelated shapes, so a
         // plausible-looking name silently draws the wrong icon rather than
         // failing loudly. Verified by rendering, not by cmap lookup.
-        const iconSrc = readLocalFile("../components/MaterialIcon.qml");
+        const iconSrc = readLocalFile("../modules/Astral/Kernel/components/MaterialIcon.qml");
         for (const required of ['"stop":', '"graphic_eq":', '"chat":', '"info":']) {
             assert(iconSrc.indexOf(required) !== -1,
                 "MaterialIcon must keep the glyph " + required);

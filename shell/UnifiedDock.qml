@@ -1,10 +1,10 @@
 import QtQuick
 import QtQuick.Shapes
 import Quickshell
-import "../theme"
-import "../config"
-import "../components"
-import "../services"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/services"
 import "../dock/components"
 
 Item {
@@ -324,7 +324,7 @@ Item {
                 anchors.centerIn: parent
                 width: Math.round(root.iconS * 0.82)
                 height: Math.round(root.iconS * 0.82)
-                source: Qt.resolvedUrl("../theme/assets/logo.svg")
+                source: Qt.resolvedUrl("../modules/Astral/Kernel/theme/assets/logo.svg")
                 fillMode: Image.PreserveAspectFit
                 smooth: true
                 sourceSize.width: Math.round(root.iconS * 2)

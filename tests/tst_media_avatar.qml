@@ -1,14 +1,14 @@
 import QtQuick
 import QtMultimedia
-import "../components"
-import "../theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
     width: 600
     height: 600
 
-    property string sampleImage: Qt.resolvedUrl("../theme/assets/dino.png").toString()
+    property string sampleImage: Qt.resolvedUrl("../modules/Astral/Kernel/theme/assets/dino.png").toString()
     property string sampleVideo: "/home/hlu/Downloads/soramane.mp4"
 
     MediaAvatar {

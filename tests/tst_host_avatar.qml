@@ -1,5 +1,5 @@
 import QtQuick
-import "../config"
+import "../modules/Astral/Kernel/config"
 import "../dashboard/tabs"
 import "../settings_gui/pages"
 import "../settings_gui/controls"
@@ -264,7 +264,7 @@ Item {
         // 4. Source contracts (Config, DashboardPage, AvatarPathField,
         //    shipped defaults)
         // --------------------------------------------------------
-        const cfgSrc = readLocalFile("../config/Config.qml");
+        const cfgSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(cfgSrc.length > 1000, "Config.qml source must be readable");
         assert(/readonly\s+property\s+string\s+hostAvatar:/.test(cfgSrc), "Config must expose the hostAvatar getter");
         assert(/function\s+setHostAvatar\(/.test(cfgSrc), "Config must expose setHostAvatar()");
@@ -289,7 +289,7 @@ Item {
         assert(/"hostAvatar":\s*""/.test(cfgSrc),
             "defaultSettings must declare hostAvatar \"\" so the key survives deep-merge");
 
-        const shipped = readLocalFile("../config/settings.json");
+        const shipped = readLocalFile("../modules/Astral/Kernel/config/settings.json");
         let shippedCfg = null;
         try { shippedCfg = JSON.parse(shipped); } catch (e) {}
         assert(shippedCfg !== null, "shipped settings.json must stay valid JSON");

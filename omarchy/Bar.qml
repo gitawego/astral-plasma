@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import "../theme"
-import "../config"
-import "../services"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/services"
 import "../dock/components"
 
 Item {

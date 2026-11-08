@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
-import "../components"
-import "../theme"
-import "../config"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
 import "../shell"
 import "../dashboard/tabs"
 
@@ -413,7 +413,7 @@ Item {
 
     // ---- 11. Source contracts (single source of truth in the files) ----
     function sourceContracts() {
-        const svcSrc = readLocalFile("../services/DownloadService.qml");
+        const svcSrc = readLocalFile("../modules/Astral/Kernel/services/DownloadService.qml");
         assert(svcSrc.length > 1000, "DownloadService.qml readable");
         assert(/pragma Singleton/.test(svcSrc), "DownloadService is a Singleton");
         assert(/downloads.*watch/.test(svcSrc), "DownloadService consumes the `downloads watch` event stream");
@@ -435,7 +435,7 @@ Item {
         assert(/isAriaAvailable/.test(tabSrc), "DownloadsTab checks aria availability");
         assert(/ariaInstallBanner/.test(tabSrc), "DownloadsTab includes aria2 install guidance banner");
 
-        const fxSrc = readLocalFile("../components/DownloadBorderEffect.qml");
+        const fxSrc = readLocalFile("../modules/Astral/Kernel/components/DownloadBorderEffect.qml");
         assert(/fusedTopNexus/.test(fxSrc), "effect declares fusedTopNexus");
         assert(/hudCapsule/.test(fxSrc), "effect declares HUD capsule");
         assert(/running:\s*root\.active\s*&&/.test(fxSrc), "effect timers gate on active (0% idle CPU)");
@@ -446,7 +446,7 @@ Item {
         assert(/onDownloadFinished/.test(shellSrc), "shell bridges downloadFinished → toast");
         assert(/Config\.downloadsBorderEffect/.test(shellSrc), "shell honours the border-effect toggle");
 
-        const cfgSrc = readLocalFile("../config/Config.qml");
+        const cfgSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(/downloadsSplit/.test(cfgSrc), "Config exposes downloadsSplit");
         assert(/downloadsDir/.test(cfgSrc), "Config exposes downloadsDir");
         assert(/setDownloadsSplit/.test(cfgSrc), "Config persists split");

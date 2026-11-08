@@ -46,7 +46,7 @@ Item {
     function runTests() {
         console.log("RUNNING: Settings Location Contract");
 
-        const cfg = readLocalFile("../config/Config.qml");
+        const cfg = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(cfg.length > 1000, "config/Config.qml must be readable by the harness");
 
         // 1. The app-folder file is the DEFAULTS, read through a relative path.

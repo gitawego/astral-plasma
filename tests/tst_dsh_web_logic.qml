@@ -1,5 +1,5 @@
 import QtQuick
-import "../services/DshWebLogic.js" as DshLogic
+import "../modules/Astral/Kernel/services/DshWebLogic.js" as DshLogic
 
 Item {
     id: testRoot

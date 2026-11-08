@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "../../config"
+import "../../modules/Astral/Kernel/config"
 
 // ============================================================================
 // Application audio streams (daemon probe)

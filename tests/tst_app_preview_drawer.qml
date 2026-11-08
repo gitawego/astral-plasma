@@ -1,6 +1,6 @@
 import QtQuick
-import "../components"
-import "../theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
@@ -329,7 +329,7 @@ Item {
         assert(/appsContainerHover\.hovered/.test(unifiedDockSrc),
             "UnifiedDock appHover must guard popout close against appsContainerHover");
 
-        const windowServiceSrc = readLocalFile("../services/WindowService.qml");
+        const windowServiceSrc = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(windowServiceSrc.length > 500, "services/WindowService.qml must be readable");
         // The capture runs through WindowService._dispatchPreview (single-slot
         // queue), so the command is built there rather than inline in

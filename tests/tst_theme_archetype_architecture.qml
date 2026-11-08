@@ -1,6 +1,6 @@
 import QtQuick
-import "../theme/archetypes"
-import "../components"
+import "../modules/Astral/Kernel/theme/archetypes"
+import "../modules/Astral/Kernel/components"
 
 Item {
     id: testRoot
@@ -178,7 +178,7 @@ Item {
         // =====================================================================
         // 6. Source Contract Inspection for Theme.qml & Architecture Wiring
         // =====================================================================
-        const themeSrc = readLocalFile("../theme/Theme.qml");
+        const themeSrc = readLocalFile("../modules/Astral/Kernel/theme/Theme.qml");
         assert(themeSrc.length > 500, "Theme.qml must be readable");
         assert(/archetypeLiquidGlass:\s*LiquidGlassArchetype\s*\{/.test(themeSrc), 
                "Theme.qml must declare archetypeLiquidGlass");
@@ -200,13 +200,13 @@ Item {
         // =====================================================================
         // 7. Config & Settings Architecture Contract
         // =====================================================================
-        const configSrc = readLocalFile("../config/Config.qml");
+        const configSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(/themeArchetype/.test(configSrc), "Config.qml must expose themeArchetype");
         assert(/function\s+setThemeArchetype/.test(configSrc), "Config.qml must provide setThemeArchetype helper");
         assert(/function\s+updateSetting\s*\(/.test(configSrc), "Config.qml must provide updateSetting helper");
         assert(/cfg\.theme\.archetype\s*=\s*archetypeId/.test(configSrc), "Config.qml setThemeArchetype must write archetype to settings");
 
-        const settingsJson = readLocalFile("../config/settings.json");
+        const settingsJson = readLocalFile("../modules/Astral/Kernel/config/settings.json");
         assert(/"archetype"\s*:\s*"liquid_glass"/.test(settingsJson), 
                "settings.json must ship default theme archetype: liquid_glass");
 

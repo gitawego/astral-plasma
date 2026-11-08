@@ -1,6 +1,6 @@
 import QtQuick
 import "../dock/popouts"
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot

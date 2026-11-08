@@ -26,11 +26,11 @@ Item {
     Component.onCompleted: {
         console.log("RUNNING: Clipboard & Notification Center Integration Tests");
 
-        const clipServiceSrc = readLocalFile("../services/ClipboardService.qml");
-        const notifServiceSrc = readLocalFile("../services/NotificationService.qml");
+        const clipServiceSrc = readLocalFile("../modules/Astral/Kernel/services/ClipboardService.qml");
+        const notifServiceSrc = readLocalFile("../modules/Astral/Kernel/services/NotificationService.qml");
         const statusIconsSrc = readLocalFile("../dock/components/DockStatusIcons.qml");
         const fusedPopoutSrc = readLocalFile("../dock/popouts/FusedBottomPopout.qml");
-        const settingsSrc = readLocalFile("../config/settings.json");
+        const settingsSrc = readLocalFile("../modules/Astral/Kernel/config/settings.json");
 
         // 1. ClipboardService contracts
         assert(clipServiceSrc.length > 200, "services/ClipboardService.qml must exist and be readable");

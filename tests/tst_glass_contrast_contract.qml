@@ -268,7 +268,7 @@ Item {
         const MIN_TOTAL_TRANSMISSION = 0.35; // plate+card stack (what the user sees)
         const MIN_CARD_DELTA = 12.0;       // card must be perceptibly distinct from plate
 
-        const colorsSrc = readLocalFile("../theme/Colors.qml");
+        const colorsSrc = readLocalFile("../modules/Astral/Kernel/theme/Colors.qml");
         assert(colorsSrc.length > 1000, "theme/Colors.qml must be readable by the test harness");
 
         // ---- 1. Token table must be machine-readable -------------------

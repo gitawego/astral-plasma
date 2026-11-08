@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
-import "../theme"
-import "../components"
-import "../services"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/services"
 
 Item {
     id: root

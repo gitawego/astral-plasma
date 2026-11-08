@@ -77,7 +77,7 @@ Item {
 
         // 2. Architectural Contract Checks on Colors.qml
         console.log("Test 6: Architectural Contract Check on Colors.qml");
-        const colorsSrc = readLocalFile("../theme/Colors.qml");
+        const colorsSrc = readLocalFile("../modules/Astral/Kernel/theme/Colors.qml");
         assert(colorsSrc.length > 500, "Colors.qml must be readable");
 
         // Assert Colors.qml does NOT block accent colors when activeArchetype is present
@@ -90,7 +90,7 @@ Item {
 
         // 3. Architectural Contract Checks on Theme.qml
         console.log("Test 7: Architectural Contract Check on Theme.qml");
-        const themeSrc = readLocalFile("../theme/Theme.qml");
+        const themeSrc = readLocalFile("../modules/Astral/Kernel/theme/Theme.qml");
         assert(themeSrc.length > 500, "Theme.qml must be readable");
 
         // Assert Theme.qml incorporates themeCornerRadius

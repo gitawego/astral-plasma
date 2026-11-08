@@ -1,5 +1,5 @@
 import QtQuick
-import "../components/motion"
+import "../modules/Astral/Kernel/components/motion"
 
 // ============================================================================
 // Performance tab motion budget
@@ -146,7 +146,7 @@ Item {
     // shared clock and keeps its durations on design tokens.
     function sourceContracts() {
         testRoot.tabSource = readLocalFile("../dashboard/tabs/PerformanceTab.qml");
-        testRoot.tweenSource = readLocalFile("../components/motion/MotionTween.qml");
+        testRoot.tweenSource = readLocalFile("../modules/Astral/Kernel/components/motion/MotionTween.qml");
 
         testRoot.assert(testRoot.tweenSource.length > 0, "MotionTween must exist as a reusable primitive");
         testRoot.assert(

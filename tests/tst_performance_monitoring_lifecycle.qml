@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 import "../dashboard/tabs"
-import "../theme"
-import "../config"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
 
 Item {
     id: testRoot
@@ -137,7 +137,7 @@ Item {
         assert(activePerfTab.isTargetVisible === true, "activePerfTab.isTargetVisible must be true when testMode: true and visible: true");
 
         // 2. Static source contract inspection of SystemService.qml
-        let serviceSrc = readLocalFile("../services/SystemService.qml");
+        let serviceSrc = readLocalFile("../modules/Astral/Kernel/services/SystemService.qml");
         assert(serviceSrc.indexOf("property bool isMonitoringActive") !== -1, "SystemService must declare isMonitoringActive");
         assert(serviceSrc.indexOf("property bool rawMonitoringTarget") !== -1, "SystemService must declare rawMonitoringTarget");
         assert(serviceSrc.indexOf("deactivationGraceTimer") !== -1, "SystemService must declare deactivationGraceTimer for anti-thrashing hysteresis");

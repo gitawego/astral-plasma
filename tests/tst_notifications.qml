@@ -1,6 +1,6 @@
 import QtQuick
 import "../notifications"
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
@@ -173,7 +173,7 @@ Item {
         // service must ask the daemon (kernel block layer) before offering
         // "Open in File Manager" / "Safely Remove".
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", Qt.resolvedUrl("../services/NotificationService.qml") + "?v=" + Date.now(), false);
+        xhr.open("GET", Qt.resolvedUrl("../modules/Astral/Kernel/services/NotificationService.qml") + "?v=" + Date.now(), false);
         xhr.send();
         var svc = xhr.responseText;
         assert(svc.length > 500, "NotificationService.qml must be readable");

@@ -65,7 +65,7 @@ Item {
 
         const popup = readLocalFile("../notifications/NotificationPopup.qml");
         const shell = readLocalFile("../shell/UnifiedShell.qml");
-        const card = readLocalFile("../components/LiquidGlassCard.qml");
+        const card = readLocalFile("../modules/Astral/Kernel/components/LiquidGlassCard.qml");
 
         assert(popup.length > 1000 && shell.length > 1000 && card.length > 500,
             "sources must be readable");

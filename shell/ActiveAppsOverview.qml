@@ -3,10 +3,10 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import "../theme"
-import "../components"
-import "../config"
-import "../services"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/services"
 
 // Active-apps overview: a fullscreen liquid-glass surface listing every
 // running window with a live thumbnail and integrated type-to-search across

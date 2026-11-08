@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
-import "../components"
+import "../modules/Astral/Kernel/components"
 import "../dashboard/tabs"
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot

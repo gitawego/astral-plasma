@@ -1,5 +1,5 @@
 import QtQuick
-import "../components"
+import "../modules/Astral/Kernel/components"
 
 Item {
     id: testRoot
@@ -43,7 +43,7 @@ Item {
         // Test 1: Verify AI-Centric & Omarchy-inspired presets in Colors.qml
         // -------------------------------------------------------------
         console.log("Test 1: Omarchy Developer Palettes & AI Preset in Colors.qml");
-        const colorsSrc = readLocalFile("../theme/Colors.qml");
+        const colorsSrc = readLocalFile("../modules/Astral/Kernel/theme/Colors.qml");
         assert(colorsSrc.length > 1000, "theme/Colors.qml must be readable by the test harness");
 
         const requiredPresets = ["astral-ai", "catppuccin", "tokyo-night", "nord", "everforest", "gruvbox", "rose-pine"];
@@ -92,7 +92,7 @@ Item {
         assert(middleClicked, "PillButton middleClicked signal must fire");
 
         // Verify PillButton.qml mouse area has acceptedButtons
-        const pillSrc = readLocalFile("../components/PillButton.qml");
+        const pillSrc = readLocalFile("../modules/Astral/Kernel/components/PillButton.qml");
         assert(pillSrc.indexOf("acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton") !== -1,
                "PillButton.qml must accept Left, Right, and Middle mouse buttons");
         console.log("Passed Test 3: PillButton multi-button signals verified");
@@ -101,7 +101,7 @@ Item {
         // Test 4: ThemeExportService Architecture (SoC)
         // -------------------------------------------------------------
         console.log("Test 4: ThemeExportService Architecture & Formats");
-        const exportSrc = readLocalFile("../services/ThemeExportService.qml");
+        const exportSrc = readLocalFile("../modules/Astral/Kernel/services/ThemeExportService.qml");
         assert(exportSrc.length > 500, "ThemeExportService.qml must exist and be readable");
         assert(exportSrc.indexOf("formatToml") !== -1, "ThemeExportService must provide formatToml");
         assert(exportSrc.indexOf("formatJson") !== -1, "ThemeExportService must provide formatJson");
@@ -127,7 +127,7 @@ Item {
         // Test 6: DesktopSessionFacade & Dock Multi-Action Gestures
         // -------------------------------------------------------------
         console.log("Test 6: Facade Popout Toggle & Dock Status Icons Multi-Gestures");
-        const facadeSrc = readLocalFile("../services/DesktopSessionFacade.qml");
+        const facadeSrc = readLocalFile("../modules/Astral/Kernel/services/DesktopSessionFacade.qml");
         assert(facadeSrc.indexOf("function togglePopout(name)") !== -1, "DesktopSessionFacade must expose togglePopout(name)");
 
         const dockStatusSrc = readLocalFile("../dock/components/DockStatusIcons.qml");

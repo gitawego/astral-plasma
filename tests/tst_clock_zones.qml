@@ -1,5 +1,5 @@
 import QtQuick
-import "../services/ClockZones.js" as ClockZones
+import "../modules/Astral/Kernel/services/ClockZones.js" as ClockZones
 
 // Time-zone logic: the pure model behind the shell's clocks.
 Item {

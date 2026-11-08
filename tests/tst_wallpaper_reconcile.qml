@@ -41,7 +41,7 @@ Item {
     function runTests() {
         console.log("RUNNING: Wallpaper Reconcile Contract");
 
-        const engine = readLocalFile("../services/WallpaperEngine.qml");
+        const engine = readLocalFile("../modules/Astral/Kernel/services/WallpaperEngine.qml");
         assert(engine.length > 1000, "WallpaperEngine.qml must be readable");
 
         // The containment config is watched (polling would be both slower and

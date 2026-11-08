@@ -1,7 +1,7 @@
 import QtQuick
-import "../theme"
-import "../components"
-import "../config"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/config"
 import "../dock/popouts"
 
 Item {
@@ -158,7 +158,7 @@ Item {
         aiSection.activeProviderIndex = 0;
 
         // 9. Provider brand icon URL resolution & asset availability
-        const cfgSrc = readLocalFile("../config/Config.qml");
+        const cfgSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(cfgSrc.indexOf("function providerIconUrl(") !== -1, "Config.qml must define providerIconUrl()");
         assert(cfgSrc.indexOf('"gemini"') !== -1, "Config.qml providerIconUrl must handle gemini");
         assert(cfgSrc.indexOf('"minimax"') !== -1, "Config.qml providerIconUrl must handle minimax");
@@ -167,19 +167,23 @@ Item {
         assert(cfgSrc.indexOf('"anthropic"') !== -1, "Config.qml providerIconUrl must handle anthropic");
         assert(cfgSrc.indexOf('"openai"') !== -1, "Config.qml providerIconUrl must handle openai");
         assert(cfgSrc.indexOf('"antigravity"') !== -1, "Config.qml providerIconUrl must handle antigravity");
-        assert(cfgSrc.indexOf('"../theme/assets/icons/" + name + ".svg"') !== -1, "Config.qml providerIconUrl must construct theme/assets/icons SVG URL");
+        // The contract is "provider icons are built from the theme's icons folder
+        // as <name>.svg" - not the number of "../" in front of that folder, which
+        // changes whenever the kernel moves inside the tree.
+        assert(cfgSrc.indexOf("theme/assets/icons/") !== -1 && cfgSrc.indexOf('+ ".svg"') !== -1,
+            "Config.qml providerIconUrl must construct theme/assets/icons SVG URL");
 
-        assert(readLocalFile("../theme/assets/icons/gemini.svg").length > 0, "gemini.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/minimax.svg").length > 0, "minimax.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/opencode.svg").length > 0, "opencode.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/opencode-dark.svg").length > 0, "opencode-dark.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/xiaomi.svg").length > 0, "xiaomi.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/deepseek.svg").length > 0, "deepseek.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/anthropic.svg").length > 0, "anthropic.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/openai.svg").length > 0, "openai.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/ollama.svg").length > 0, "ollama.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/ollama-dark.svg").length > 0, "ollama-dark.svg must exist");
-        assert(readLocalFile("../theme/assets/icons/antigravity.svg").length > 0, "antigravity.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/gemini.svg").length > 0, "gemini.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/minimax.svg").length > 0, "minimax.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/opencode.svg").length > 0, "opencode.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/opencode-dark.svg").length > 0, "opencode-dark.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/xiaomi.svg").length > 0, "xiaomi.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/deepseek.svg").length > 0, "deepseek.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/anthropic.svg").length > 0, "anthropic.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/openai.svg").length > 0, "openai.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/ollama.svg").length > 0, "ollama.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/ollama-dark.svg").length > 0, "ollama-dark.svg must exist");
+        assert(readLocalFile("../modules/Astral/Kernel/theme/assets/icons/antigravity.svg").length > 0, "antigravity.svg must exist");
 
         if (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function") {
             assert(Config.providerIconUrl("gemini").indexOf("gemini.svg") !== -1, "Gemini icon URL must end with gemini.svg");

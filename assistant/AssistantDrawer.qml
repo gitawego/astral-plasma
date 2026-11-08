@@ -1,10 +1,10 @@
 import QtQuick
 import QtQuick.Layouts
-import "../theme"
-import "../components"
-import "../config"
-import "../services"
-import "components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/services"
+import "./components"
 
 // The AI Copilot's content. It is the body of a real toplevel window
 // (AssistantWindow), so it fills its host and never positions itself: moving,

@@ -1,5 +1,5 @@
 import QtQuick
-import "../components"
+import "../modules/Astral/Kernel/components"
 
 // ============================================================================
 // Shell Exit Contract
@@ -66,7 +66,7 @@ Item {
             "a wedged shell must still be quittable");
 
         // Every interface surface routes through Config.exitShell().
-        const config = readLocalFile("../config/Config.qml");
+        const config = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(/function exitShell\(\)/.test(config),
             "Config must expose exitShell()");
         assert(/\[root\.daemonBin,\s*"shell",\s*"exit"\]/.test(config),

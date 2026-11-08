@@ -1,8 +1,8 @@
 import QtQuick
 import Qt.labs.folderlistmodel
-import "../theme"
-import "../components"
-import "../config"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/config"
 import "../assistant"
 import "../assistant/components"
 
@@ -176,7 +176,7 @@ Item {
         assert(testBar.currentModel.length > 0, "ModelProviderBar must display active model");
 
         // 7. AssistantService Source Contract
-        const serviceSrc = readLocalFile("../services/AssistantService.qml");
+        const serviceSrc = readLocalFile("../modules/Astral/Kernel/services/AssistantService.qml");
         assert(serviceSrc.length > 500, "services/AssistantService.qml must be readable");
         assert(/pragma Singleton/.test(serviceSrc), "AssistantService must be a Singleton");
         assert(/property string selectedHarness/.test(serviceSrc), "AssistantService must track selectedHarness");
@@ -343,7 +343,7 @@ Item {
         assert(/signal minimizeRequested/.test(headerSrc), "AssistantHeader must declare minimizeRequested signal");
         assert(/minimizeButton/.test(headerSrc), "AssistantHeader must provide minimizeButton");
 
-        const configSrc = readLocalFile("../config/Config.qml");
+        const configSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(/assistantMinimized/.test(configSrc), "Config must declare assistantMinimized property");
         assert(!/assistantPinned/.test(configSrc), "Config must not keep pin state: the auto-minimize it suppressed is gone");
         assert(/function minimizeAssistant\(/.test(configSrc), "Config must implement minimizeAssistant");
@@ -800,7 +800,7 @@ Item {
         assert(stripInset >= widestHandle,
             "the scroll strip must sit clear of the widest resize handle (" + widestHandle + "px), got " + stripInset);
 
-        const indicatorSrc = readLocalFile("../components/GlassScrollIndicator.qml");
+        const indicatorSrc = readLocalFile("../modules/Astral/Kernel/components/GlassScrollIndicator.qml");
         assert(/restingOpacity/.test(indicatorSrc), "the indicator must expose a resting opacity");
         assert(/activeOpacity/.test(indicatorSrc), "the indicator must brighten while scrolling");
         assert(/progress/.test(indicatorSrc) && /travel/.test(indicatorSrc),

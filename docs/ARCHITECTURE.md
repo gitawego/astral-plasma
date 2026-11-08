@@ -145,32 +145,41 @@ Key components:
 The frontend is built using **Quickshell** and **Qt Quick / QML**.
 
 ```
-shell/
-├── shell.qml                     # Root entry point, IPC handlers, screen scopes
-├── shell/UnifiedShell.qml        # Core unified desktop surface & frame
-├── services/
-│   ├── DesktopSessionFacade.qml  # Canonical QML facade singleton
-│   ├── WindowService.qml         # Window list and active window state
-│   ├── KWinWorkspaces.qml        # Virtual desktops & workspace state
-│   ├── MprisMedia.qml            # MPRIS media player arbitration
-│   └── NetworkService.qml        # Network and Wi-Fi state
-├── dock/
-│   ├── LeftDock.qml              # Capsule dock container
-│   ├── components/               # Launcher, Taskbar, Clock, StatusIcons, Tray
-│   └── popouts/                  # FusedBottomPopout (Audio, Battery, Network, etc.)
-├── dashboard/
-│   ├── CentralDashboard.qml      # Dropdown dashboard overlay
-│   └── tabs/                     # Dashboard, Media, Performance, Workspaces, AI
-├── settings_gui/                 # In-shell Nexus Settings Hub
-└── omarchy/                      # Hosted Omarchy plugin package
-    ├── manifest.json
-    ├── Service.qml
-    └── Bar.qml
+shell.qml                         # Root entry point, IPC handlers, screen scopes
+shell/UnifiedShell.qml            # Core unified desktop surface & frame
+modules/Astral/Kernel/            # Kernel: shared singletons + primitives
+├── theme/                        # Theme.qml, Colors.qml, archetypes, assets
+├── components/                   # LiquidGlassCard, CornerFillet, MaterialIcon, motion/
+├── config/Config.qml             # Reactive settings singleton
+└── services/
+    ├── DesktopSessionFacade.qml  # Canonical QML facade singleton
+    ├── WindowService.qml         # Window list and active window state
+    ├── KWinWorkspaces.qml        # Virtual desktops & workspace state
+    ├── MprisMedia.qml            # MPRIS media player arbitration
+    └── NetworkService.qml        # Network and Wi-Fi state
+dock/
+├── LeftDock.qml                  # Capsule dock container
+├── components/                   # Launcher, Taskbar, Clock, StatusIcons, Tray
+└── popouts/                      # FusedBottomPopout (Audio, Battery, Network, etc.)
+dashboard/
+├── CentralDashboard.qml          # Dropdown dashboard overlay
+└── tabs/                         # Dashboard, Media, Performance, Workspaces, AI
+settings_gui/                     # In-shell Nexus Settings Hub
+omarchy/                          # Hosted Omarchy plugin package
+├── manifest.json
+├── Service.qml
+└── Bar.qml
 ```
+
+Feature directories import the kernel by path for now
+(`import "../../modules/Astral/Kernel/theme"`). The `Astral.Kernel 1.0` module
+URI lands in P2 of [`APPS-PLATFORM-SPEC.md`](APPS-PLATFORM-SPEC.md): importing a
+`qmldir` module compiles its singletons eagerly, and the kernel's singletons
+import `Quickshell`, which the `qml6` test runner cannot load (Appendix C.6).
 
 - **`DesktopSessionFacade.qml`**: Central singleton acting as the QML presentation facade. It mirrors the canonical `DesktopSessionSnapshot`, checks `capabilities`, tracks `connection` health (`connected`, `degraded`, `disconnected`), and updates reactively without hardcoded compositor checks.
 - **Zero-Overlap Partitioning**: Panels and frames are mathematically partitioned to eliminate dark seam artifacts caused by stacked semi-translucent fills.
-- **Concave Shoulder Fillets** (`components/CornerFillet.qml`): $C^1$-continuous inverted corner fillets blending vertical panels smoothly into the outer desktop frame.
+- **Concave Shoulder Fillets** (`modules/Astral/Kernel/components/CornerFillet.qml`): $C^1$-continuous inverted corner fillets blending vertical panels smoothly into the outer desktop frame.
 - **Liquid Motion Physics**: All spatial transitions use Material 3 Expressive beziers with decoupled leading/trailing edge durations (500ms/750ms).
 
 ---

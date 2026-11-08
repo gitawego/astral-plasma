@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
-import "../components"
-import "../theme"
-import "../config"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
 import "../shell"
 import "../dashboard/tabs"
 

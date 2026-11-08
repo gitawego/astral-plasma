@@ -1,5 +1,5 @@
 import QtQuick
-import "../services/MediaElection.js" as Election
+import "../modules/Astral/Kernel/services/MediaElection.js" as Election
 
 /// Which player does the media widget show?
 ///

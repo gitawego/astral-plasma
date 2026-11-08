@@ -1,5 +1,5 @@
 import QtQuick
-import "../services/Logging.js" as Logging
+import "../modules/Astral/Kernel/services/Logging.js" as Logging
 
 // ============================================================================
 // Log Level Contract
@@ -68,7 +68,7 @@ Item {
         // --------------------------------------------------------------------
         // The shipped default is quiet
         // --------------------------------------------------------------------
-        const shipped = JSON.parse(readLocalFile("../config/settings.json"));
+        const shipped = JSON.parse(readLocalFile("../modules/Astral/Kernel/config/settings.json"));
         assert(shipped.logging && shipped.logging.level,
             "the shipped settings must carry a logging block");
         assert(shipped.logging.level === Logging.DEFAULT_LEVEL,
@@ -139,7 +139,7 @@ Item {
                 && shell.indexOf('console.log("[BlurRegion]') < 0,
             "raw console.log trails must be replaced by the leveled logger");
 
-        const log = readLocalFile("../services/Log.qml");
+        const log = readLocalFile("../modules/Astral/Kernel/services/Log.qml");
         assert(log.indexOf("Logging.levelFor(") >= 0 && log.indexOf("Logging.isEnabled(") >= 0,
             "the singleton must resolve levels through the pure core");
         assert(log.indexOf("function emit(") >= 0 && log.indexOf("console.warn(line)") >= 0
@@ -149,7 +149,7 @@ Item {
 
         // The setting and its UI: a level has to be reachable without editing
         // files by hand, and both live in the reactive config.
-        const config = readLocalFile("../config/Config.qml");
+        const config = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(config.indexOf("readonly property string logLevel") >= 0,
             "Config must expose the level reactively");
         assert(config.indexOf("function setLogLevel(") >= 0,

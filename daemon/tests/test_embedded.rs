@@ -7,5 +7,10 @@ fn test_embedded_dir_extraction() {
     assert!(res.is_ok(), "Extraction of self-contained bundle must succeed");
     assert!(tmp.path().join("shell.qml").exists());
     assert!(tmp.path().join("dock").exists());
-    assert!(tmp.path().join("theme").exists());
+    // The kernel lives under modules/Astral/Kernel so the tree keeps one shape
+    // in the repo, in the extracted package, and in the AppHost import path.
+    assert!(tmp.path().join("modules/Astral/Kernel/theme").exists());
+    assert!(tmp.path().join("modules/Astral/Kernel/components").exists());
+    assert!(tmp.path().join("modules/Astral/Kernel/config/Config.qml").exists());
+    assert!(tmp.path().join("modules/Astral/Kernel/services").exists());
 }

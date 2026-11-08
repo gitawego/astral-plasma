@@ -1,7 +1,7 @@
 import QtQuick
-import "../theme"
-import "../config"
-import "../components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/components"
 import "../dashboard/tabs"
 
 Item {

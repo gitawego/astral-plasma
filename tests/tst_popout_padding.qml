@@ -1,5 +1,5 @@
 import QtQuick
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
@@ -79,7 +79,7 @@ Item {
             "ghosttySurface must bind border.color to Colors.drawerSubstrateBorder");
 
         // Verify Colors.qml defines drawerSubstrate tokens tied to root.primary
-        const colorsSrc = readLocalFile("../theme/Colors.qml");
+        const colorsSrc = readLocalFile("../modules/Astral/Kernel/theme/Colors.qml");
         assert(/readonly\s+property\s+color\s+drawerSubstrate:/.test(colorsSrc),
             "Colors.qml must define drawerSubstrate token");
         assert(/readonly\s+property\s+color\s+drawerSubstrateBorder:/.test(colorsSrc),

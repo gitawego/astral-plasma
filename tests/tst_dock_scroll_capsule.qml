@@ -1,6 +1,6 @@
 import QtQuick
 import "../dock/components"
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 // ============================================================================
 // Dock Scroll Capsule Contract

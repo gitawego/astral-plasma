@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../theme"
-import "../../components"
-import "../../components/QuotaMath.js" as QuotaMath
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/components/QuotaMath.js" as QuotaMath
 import "../controls"
-import "../../services"
-import "../../config"
+import "../../modules/Astral/Kernel/services"
+import "../../modules/Astral/Kernel/config"
 
 /**
  * Page root is a plain Item, not the ColumnLayout.

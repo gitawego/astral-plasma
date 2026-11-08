@@ -1,5 +1,5 @@
 import QtQuick
-import "../services/InputMethods.js" as InputMethods
+import "../modules/Astral/Kernel/services/InputMethods.js" as InputMethods
 
 /// The dock's input-method drawer must be configuration, not a constant.
 ///
@@ -163,7 +163,7 @@ Item {
         // -------------------------------------------------------------
         // 6. Service contract: real sources, not a constant
         // -------------------------------------------------------------
-        const serviceSrc = readLocalFile("../services/InputMethodService.qml");
+        const serviceSrc = readLocalFile("../modules/Astral/Kernel/services/InputMethodService.qml");
         assert(serviceSrc.length > 1000, "InputMethodService.qml must exist");
         // The DBus method names are string literals inside command arrays, so
         // these checks run on the raw source.
@@ -186,7 +186,7 @@ Item {
         // -------------------------------------------------------------
         const fusedSrc = readLocalFile("../dock/popouts/FusedBottomPopout.qml");
         const fusedCode = codeOnly(fusedSrc);
-        const listSrc = readLocalFile("../components/InputMethodList.qml");
+        const listSrc = readLocalFile("../modules/Astral/Kernel/components/InputMethodList.qml");
         const listCode = codeOnly(listSrc);
         assert(fusedCode.indexOf("InputMethodList") >= 0,
             "the drawer must render the shared input-method list");

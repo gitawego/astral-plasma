@@ -1,5 +1,5 @@
 import QtQuick
-import "../config/PopoutModes.js" as PopoutModes
+import "../modules/Astral/Kernel/config/PopoutModes.js" as PopoutModes
 
 /// Retired drawer modes must be inert.
 ///

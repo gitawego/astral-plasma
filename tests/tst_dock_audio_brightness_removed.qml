@@ -70,8 +70,8 @@ Item {
         const fusedSrc = readLocalFile("../dock/popouts/FusedBottomPopout.qml");
         const railSrc = readLocalFile("../shell/RightEdgeControl.qml");
         const shellSrc = readLocalFile("../shell/UnifiedShell.qml");
-        const defaultsSrc = readLocalFile("../config/settings.json");
-        const configSrc = readLocalFile("../config/Config.qml");
+        const defaultsSrc = readLocalFile("../modules/Astral/Kernel/config/settings.json");
+        const configSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
 
         assert(dockStatusSrc.length > 1000, "DockStatusIcons.qml must be readable");
         assert(fusedSrc.length > 1000, "FusedBottomPopout.qml must be readable");

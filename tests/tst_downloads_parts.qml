@@ -1,6 +1,6 @@
 import QtQuick
 import "../dashboard/tabs"
-import "../config"
+import "../modules/Astral/Kernel/config"
 
 /// Per-task connection control.
 ///
@@ -72,7 +72,7 @@ Item {
         assert(/partsStepper[\s\S]{0,400}status === "active"/.test(tabSrc),
             "the stepper belongs to live tasks (active/waiting/paused)");
 
-        const svcSrc = readLocalFile("../services/DownloadService.qml");
+        const svcSrc = readLocalFile("../modules/Astral/Kernel/services/DownloadService.qml");
         assert(/function setParts\(gid, parts\)/.test(svcSrc), "DownloadService must expose setParts()");
         assert(svcSrc.indexOf("\"set-parts\"") >= 0, "setParts must call the daemon's set-parts verb");
         assert(/Math\.max\(1, Math\.min\(16/.test(svcSrc), "setParts must clamp 1..16 in the UI too");

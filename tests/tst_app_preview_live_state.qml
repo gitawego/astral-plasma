@@ -1,5 +1,5 @@
 import QtQuick
-import "../services/PreviewAppState.js" as Preview
+import "../modules/Astral/Kernel/services/PreviewAppState.js" as Preview
 
 // ============================================================================
 // App Preview Drawer — Live Window State
@@ -168,7 +168,7 @@ Item {
         assert(sigTitle !== sigA, "A title change changes the signature");
 
         // ---- 10. Wiring contracts -------------------------------------------
-        const wsCode = readLocalFile("../services/WindowService.qml");
+        const wsCode = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(wsCode.length > 1000, "WindowService.qml must be readable");
         assert(/import "PreviewAppState\.js" as PreviewAppState/.test(wsCode),
             "WindowService must import the preview state module");
@@ -224,7 +224,7 @@ Item {
             "No hover stays no hover");
 
         // ---- 13. The popout must use that policy ----------------------------
-        assert(/import "\.\.\/\.\.\/services\/PreviewAppState\.js" as PreviewAppState/.test(popoutCode),
+        assert(/import "[^"]*services\/PreviewAppState\.js" as PreviewAppState/.test(popoutCode),
             "FusedBottomPopout must import the preview state module");
         assert(/PreviewAppState\.expandedWindowId\(/.test(popoutCode),
             "Row expansion must go through the tested policy");

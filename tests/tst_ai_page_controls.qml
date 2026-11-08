@@ -1,8 +1,8 @@
 import QtQuick
 import "../settings_gui/controls"
-import "../components"
-import "../theme"
-import "../components/StateColor.js" as StateColor
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components/StateColor.js" as StateColor
 
 // ============================================================================
 // AI page controls: section header, setup group, threshold range

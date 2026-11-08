@@ -82,7 +82,7 @@ Item {
         console.log("RUNNING: Motion Token Contract (DESIGN.md <-> Theme.qml)");
 
         const design = readLocalFile("../DESIGN.md");
-        const theme = readLocalFile("../theme/Theme.qml");
+        const theme = readLocalFile("../modules/Astral/Kernel/theme/Theme.qml");
         assert(design.length > 500, "DESIGN.md must be readable");
         assert(theme.length > 500, "theme/Theme.qml must be readable");
 

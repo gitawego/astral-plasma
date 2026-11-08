@@ -82,7 +82,7 @@ Item {
 
         const dockSrc = readLocalFile("../dock/components/DockStatusIcons.qml");
         const fusedSrc = readLocalFile("../dock/popouts/FusedBottomPopout.qml");
-        const powerSrc = readLocalFile("../services/PowerService.qml");
+        const powerSrc = readLocalFile("../modules/Astral/Kernel/services/PowerService.qml");
         assert(dockSrc.length > 1000, "DockStatusIcons.qml must be readable");
         assert(fusedSrc.length > 1000, "FusedBottomPopout.qml must be readable");
         assert(powerSrc.length > 1000, "PowerService.qml must be readable");

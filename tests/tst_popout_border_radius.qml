@@ -1,7 +1,7 @@
 import QtQuick
 import "../shell"
-import "../config"
-import "../theme"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot

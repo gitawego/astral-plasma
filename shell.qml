@@ -5,12 +5,12 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "config"
-import "theme"
-import "shell"
-import "settings_gui"
-import "services"
-import "assistant"
+import "./modules/Astral/Kernel/config"
+import "./modules/Astral/Kernel/theme"
+import "./shell"
+import "./settings_gui"
+import "./modules/Astral/Kernel/services"
+import "./assistant"
 
 ShellRoot {
     id: root

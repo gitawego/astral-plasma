@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../theme"
-import "../../components"
-import "../../services"
-import "../../config"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/services"
+import "../../modules/Astral/Kernel/config"
 
 // Downloads manager tab (D1): hero header (aggregate state + add action),
 // Material 3 segmented control (active / queued / finished), a designed empty

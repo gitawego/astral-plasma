@@ -1,7 +1,7 @@
 import QtQuick
-import "../components"
-import "../theme"
-import "../config"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
 
 // ============================================================================
 // Top-Right Download Border Effect Unit Tests (TDD)
@@ -141,7 +141,7 @@ Item {
         assert(dlEffect.secondaryColor !== undefined, "declares secondaryColor for dual-phase chromatic electric effects");
 
         // ---- 10. Source Contracts & Zero-Regression Geometry ----
-        const fxSrc = readLocalFile("../components/DownloadBorderEffect.qml");
+        const fxSrc = readLocalFile("../modules/Astral/Kernel/components/DownloadBorderEffect.qml");
         assert(fxSrc.length > 1000, "DownloadBorderEffect.qml readable");
         assert(/fusedTopNexus/.test(fxSrc), "declares fusedTopNexus");
         assert(/hudCapsule/.test(fxSrc), "declares hudCapsule");

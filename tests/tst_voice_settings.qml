@@ -1,7 +1,7 @@
 import QtQuick
-import "../theme"
-import "../components"
-import "../config"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/config"
 import "../settings_gui/pages"
 
 /**
@@ -445,7 +445,7 @@ Item {
         const hardcodedCatalog = /models_available:\s*\[/.test(pageSrc);
         assert(!hardcodedCatalog, "the model catalog must come from the daemon, not a hardcoded list");
 
-        const configSrc = readLocalFile("../config/Config.qml");
+        const configSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(/function setVoiceEngine\(engineId\)\s*\{\s*updateSettings\(/.test(configSrc),
             "Config.qml must use updateSettings for setVoiceEngine to ensure reactive binding updates");
         assert(/function setVoiceLanguages\(/.test(configSrc),
@@ -461,7 +461,7 @@ Item {
         assert(/function toggleVoice\(\)/.test(shellSrc), "shell.qml must expose a voice.toggle IPC action");
         assert(/function stopVoice\(\)/.test(shellSrc), "shell.qml must expose voice stop over IPC");
 
-        const serviceSrc = readLocalFile("../services/AssistantService.qml");
+        const serviceSrc = readLocalFile("../modules/Astral/Kernel/services/AssistantService.qml");
         assert(/voiceModelInstallProgress/.test(serviceSrc), "AssistantService must track install progress");
         assert(/installVoiceModel/.test(serviceSrc), "AssistantService must expose installVoiceModel");
         assert(/installVoiceVadModel/.test(serviceSrc), "AssistantService must expose installVoiceVadModel");

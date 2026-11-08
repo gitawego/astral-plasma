@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Rectangle {
     id: root

@@ -1,5 +1,5 @@
 import QtQuick
-import "../services/DshAuth.js" as DshAuth
+import "../modules/Astral/Kernel/services/DshAuth.js" as DshAuth
 
 Item {
     id: testRoot

@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 import "../controls"
-import "../../config"
-import "../../theme"
-import "../../components"
+import "../../modules/Astral/Kernel/config"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
 
 SettingsPage {
     id: root

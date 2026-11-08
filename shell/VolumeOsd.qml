@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Effects
-import "../theme"
-import "../config"
-import "../services"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/services"
 
 Item {
     id: root

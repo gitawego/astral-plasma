@@ -5,12 +5,11 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
-import qs.theme
-import qs.config
-import qs.components
-import qs.services
-import "../../services"
-import "../../services/PreviewAppState.js" as PreviewAppState
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/config"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/services"
+import "../../modules/Astral/Kernel/services/PreviewAppState.js" as PreviewAppState
 
 Item {
     id: root

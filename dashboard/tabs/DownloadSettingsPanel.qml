@@ -1,10 +1,10 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Dialogs
-import "../../theme"
-import "../../components"
-import "../../config"
-import "../../services"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/config"
+import "../../modules/Astral/Kernel/services"
 import "DownloadSettingsMath.js" as SettingsMath
 
 /// Transfer settings, designed as a console rather than a settings page.

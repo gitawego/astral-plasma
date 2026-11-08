@@ -1,6 +1,6 @@
 import QtQuick
-import "../components"
-import "../theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
@@ -207,7 +207,7 @@ Item {
             "direct file path must resolve to file:// URI, got: " + iconDirectPath.resolvedIconUrl);
 
         // 12. Bundled asset resolution contract in Config.qml
-        const cfgSrc = readLocalFile("../config/Config.qml");
+        const cfgSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(cfgSrc.indexOf("function iconUrl(") !== -1, "Config.qml must define iconUrl()");
         assert(cfgSrc.indexOf('"antigravity"') !== -1, "Config.qml must include antigravity in bundled icons");
         assert(cfgSrc.indexOf("bundledIcons") !== -1, "Config.qml must check bundled icons list");

@@ -104,7 +104,7 @@ Item {
         console.log("RUNNING: DesktopSessionFacade Contract Tests");
 
         // ---- 1. Source Contract Verification ----
-        const facadeSrc = readLocalFile("../services/DesktopSessionFacade.qml");
+        const facadeSrc = readLocalFile("../modules/Astral/Kernel/services/DesktopSessionFacade.qml");
         assert(facadeSrc.length > 500, "services/DesktopSessionFacade.qml must be readable");
         assert(/pragma Singleton/.test(facadeSrc), "DesktopSessionFacade must be a Singleton");
         assert(/property string profile:\s*"kde"/.test(facadeSrc), "DesktopSessionFacade default profile must be kde");

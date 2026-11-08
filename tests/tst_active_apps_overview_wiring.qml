@@ -103,7 +103,7 @@ Item {
             "shell.qml must instantiate the ActiveAppsOverview surface");
 
         // ---- 8. Config state machine ------------------------------------------------
-        const config = readLocalFile("../config/Config.qml");
+        const config = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(config.length > 1000, "Config.qml must be readable");
         assert(/property bool overviewVisible/.test(config),
             "Config must expose the overviewVisible gate");
@@ -129,7 +129,7 @@ Item {
             "the surface must drive the thumbnail cycle from its visibility");
 
         // ---- 10. WindowService thumbnail cycle ---------------------------------------
-        const ws = readLocalFile("../services/WindowService.qml");
+        const ws = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(ws.length > 1000, "WindowService.qml must be readable");
         assert(/function startOverviewThumbnails\(/.test(ws),
             "WindowService must expose startOverviewThumbnails()");

@@ -1,8 +1,8 @@
 import QtQuick
-import "../../theme"
-import "../../components"
-import "../../services"
-import "../../config"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/services"
+import "../../modules/Astral/Kernel/config"
 
 Item {
     id: root

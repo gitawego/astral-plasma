@@ -35,7 +35,7 @@ Item {
         running: true
         repeat: false
         onTriggered: {
-            const src = testRoot.readLocalFile("../services/AssistantService.qml");
+            const src = testRoot.readLocalFile("../modules/Astral/Kernel/services/AssistantService.qml");
             testRoot.assert(src.length > 500, "AssistantService.qml must be readable");
 
             const wd = /Timer \{\s*id: streamWatchdog[\s\S]*?\n    \}/.exec(src);

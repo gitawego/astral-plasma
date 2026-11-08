@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 import "../controls"
-import "../../config"
-import "../../theme"
-import "../../components"
-import "../../services"
-import "../../services/ClockZones.js" as ClockZones
+import "../../modules/Astral/Kernel/config"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/services"
+import "../../modules/Astral/Kernel/services/ClockZones.js" as ClockZones
 
 // World Clock: the cities shown under the local time in the clock popout.
 //

@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../theme"
-import "../../components"
-import "../../services"
-import "../../config"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/services"
+import "../../modules/Astral/Kernel/config"
 
 Item {
     id: root
@@ -332,7 +332,7 @@ Item {
 
                 ThemedIcon {
                     anchors.centerIn: parent
-                    source: Qt.resolvedUrl("../../theme/assets/icons/deepseek.svg")
+                    source: Qt.resolvedUrl("../../modules/Astral/Kernel/theme/assets/icons/deepseek.svg")
                     forceColorize: true
                     size: 15
                     color: {

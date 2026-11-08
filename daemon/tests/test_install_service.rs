@@ -34,7 +34,7 @@ fn a_managed_install_writes_binary_bundle_and_record() {
         "the bundle must be extracted where the shell loads it from"
     );
     assert!(
-        paths.package_dir.join("theme/Theme.qml").is_file(),
+        paths.package_dir.join("modules/Astral/Kernel/theme/Theme.qml").is_file(),
         "the whole QML tree must be present, not only the entry point"
     );
 

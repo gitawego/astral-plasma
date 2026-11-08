@@ -1,7 +1,7 @@
 import QtQuick
 import "../settings_gui/pages"
-import "../services"
-import "../services/Logging.js" as Logging
+import "../modules/Astral/Kernel/services"
+import "../modules/Astral/Kernel/services/Logging.js" as Logging
 
 Item {
     id: testRoot

@@ -1,5 +1,5 @@
 import QtQuick
-import "../config"
+import "../modules/Astral/Kernel/config"
 
 Item {
     id: testRoot
@@ -31,8 +31,8 @@ Item {
         console.log("RUNNING: Dock System Tray Auto-Expand Budget Tests");
 
         dockSource = readLocalFile("../shell/UnifiedDock.qml");
-        settingsSource = readLocalFile("../config/settings.json");
-        const configSource = readLocalFile("../config/Config.qml");
+        settingsSource = readLocalFile("../modules/Astral/Kernel/config/settings.json");
+        const configSource = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         const dockPageSource = readLocalFile("../settings_gui/pages/DockPage.qml");
 
         // 1. Settings default contract: tray.autoExpand must be enabled by default

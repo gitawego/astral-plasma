@@ -135,7 +135,7 @@ Item {
         assert(/"calendar",\s*"resolve"/.test(resolverSrc),
             "resolver must run the daemon 'calendar resolve' command");
 
-        const cfgSrc = readLocalFile("../config/Config.qml");
+        const cfgSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(cfgSrc.length > 1000, "Config.qml source must be readable");
         assert(/"calendarApp":\s*""/.test(cfgSrc),
             "shipped default must be empty (follow the system default)");

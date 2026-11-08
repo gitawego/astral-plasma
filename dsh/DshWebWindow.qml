@@ -3,10 +3,10 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 import QtWebEngine
-import "../theme"
-import "../components"
-import "../services"
-import "../config"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/services"
+import "../modules/Astral/Kernel/config"
 
 // The embedded DSH web UI. Only ever instantiated when the hosting Quickshell
 // supports QtWebEngine (DshWebService.webEngineSupported); stock Quickshell

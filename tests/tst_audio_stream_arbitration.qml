@@ -1,5 +1,5 @@
 import QtQuick
-import "../components"
+import "../modules/Astral/Kernel/components"
 
 // ============================================================================
 // Audio Stream Arbitration
@@ -81,7 +81,7 @@ Item {
 
         // When the audible application is a browser, the browser wins.
         const edgeAudible = Qt.createQmlObject(
-            'import QtQuick; import "../components"; AudioStreamMatcher { streams: [{ name: "Microsoft Edge", binary: "msedge" }] }',
+            'import QtQuick; import "../modules/Astral/Kernel/components"; AudioStreamMatcher { streams: [{ name: "Microsoft Edge", binary: "msedge" }] }',
             testRoot);
         assert(edgeAudible.isAudible("Microsoft Edge", "org.mpris.MediaPlayer2.edge.instance3710"),
             "a browser that is really making sound is playing");
@@ -92,7 +92,7 @@ Item {
         // the caller falls back to the players' own claims instead of reporting
         // that nothing is playing.
         const unknown = Qt.createQmlObject(
-            'import QtQuick; import "../components"; AudioStreamMatcher { streams: [{ name: "audio-src", binary: "wine-preloader" }] }',
+            'import QtQuick; import "../modules/Astral/Kernel/components"; AudioStreamMatcher { streams: [{ name: "audio-src", binary: "wine-preloader" }] }',
             testRoot);
         assert(!unknown.isAudible("NetEase Cloud Music (Wine)", "org.mpris.MediaPlayer2.cloudmusic"),
             "a generic stream name must not be guessed onto a player");
@@ -115,7 +115,7 @@ Item {
         // owns is *ownership*: an uncorked stream is reported for every client
         // that holds one, which is why ownership alone cannot elect.
         const multi = Qt.createQmlObject(
-            'import QtQuick; import "../components"; AudioStreamMatcher { streams: ['
+            'import QtQuick; import "../modules/Astral/Kernel/components"; AudioStreamMatcher { streams: ['
             + '{ name: "Microsoft Edge", binary: "msedge" },'
             + '{ name: "NetEase Cloud Music", binary: "wine-preloader" }] }',
             testRoot);
@@ -124,8 +124,8 @@ Item {
         assert(multi.isAudible("NetEase Cloud Music (Wine)", "org.mpris.MediaPlayer2.cloudmusic"),
             "both applications own a stream at once - the case that broke the election");
 
-        const mpris = readLocalFile("../services/MprisMedia.qml");
-        const election = readLocalFile("../services/MediaElection.js");
+        const mpris = readLocalFile("../modules/Astral/Kernel/services/MprisMedia.qml");
+        const election = readLocalFile("../modules/Astral/Kernel/services/MediaElection.js");
         assert(/import "MediaElection.js" as MediaElection/.test(mpris),
             "MprisMedia must import the shared election module");
         assert(/MediaElection\.resolveSelection\(/.test(mpris),
@@ -145,7 +145,7 @@ Item {
         // The flow gate must not wait for a long hold: a pause stops the samples,
         // which the capture reports as exact 0.0, while a quiet passage still
         // reports some energy.
-        const media = readLocalFile("../services/MprisMedia.qml");
+        const media = readLocalFile("../modules/Astral/Kernel/services/MprisMedia.qml");
         assert(/interval:\s*250/.test(media),
             "the audio-flow gate must poll fast enough to feel immediate");
         assert(/silentSinceMs[\s\S]{0,120}350/.test(media),

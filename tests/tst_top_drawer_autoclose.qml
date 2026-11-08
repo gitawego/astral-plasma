@@ -1,7 +1,7 @@
 import QtQuick
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 import "../shell"
-import "../config"
+import "../modules/Astral/Kernel/config"
 
 Item {
     id: testRoot
@@ -134,10 +134,10 @@ Item {
         // The drawer is transient: no persisted `dashboardVisible` may open it
         // on a reload. That key in settings.json is what made every restart (and
         // every hot reload) pop the top drawer open.
-        const configSrc = readLocalFile("../config/Config.qml");
+        const configSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(!/dashboardVisible:\s*\(typeof Quickshell[\s\S]{0,200}?settings\.dashboardVisible/.test(configSrc),
             "the dashboard's initial visibility must not be read from settings");
-        const settingsSrc = readLocalFile("../config/settings.json");
+        const settingsSrc = readLocalFile("../modules/Astral/Kernel/config/settings.json");
         assert(!/"dashboardVisible"/.test(settingsSrc),
             "settings.json must not ship a transient overlay state");
 

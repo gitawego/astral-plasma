@@ -48,7 +48,7 @@ Item {
     function runTests() {
         console.log("RUNNING: Dynamic Palette Reload Contract");
 
-        const colors = readLocalFile("../theme/Colors.qml");
+        const colors = readLocalFile("../modules/Astral/Kernel/theme/Colors.qml");
         assert(colors.length > 1000, "theme/Colors.qml must be readable by the harness");
 
         // Isolate the palette loader.

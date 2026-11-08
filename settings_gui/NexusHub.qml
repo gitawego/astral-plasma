@@ -1,12 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
-import "../theme"
-import "../components"
-import "../config"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/config"
 import "pages"
 import "SectionSpy.js" as SectionSpy
 import "ScrollMotion.js" as ScrollMotion
-import "../services"
+import "../modules/Astral/Kernel/services"
 
 Item {
     id: root

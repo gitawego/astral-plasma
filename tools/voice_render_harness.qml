@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Window
-import "../theme"
-import "../components"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/components"
 import "../assistant/components"
 
 /**

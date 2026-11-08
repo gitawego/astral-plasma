@@ -1,5 +1,5 @@
 import QtQuick
-import "../components"
+import "../modules/Astral/Kernel/components"
 
 // ============================================================================
 // Quota runway

@@ -274,7 +274,7 @@ Item {
                 + mockWindowService.externalActivationCount);
 
         // ---- 5. Source Contract: services/WindowService.qml ----
-        const winServiceSrc = readLocalFile("../services/WindowService.qml");
+        const winServiceSrc = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(winServiceSrc.length > 500, "WindowService.qml must be readable");
         assert(/command:\s*\[root\.daemonBin,\s*"watch"\]/.test(winServiceSrc),
             "WindowService must launch daemonBin 'watch'");

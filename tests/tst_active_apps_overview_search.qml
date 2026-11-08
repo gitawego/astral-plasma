@@ -255,7 +255,7 @@ Item {
         console.log("RUNNING: Active apps overview search tests");
 
         // ---- 1. WindowService exposes installedApps and reloadInstalledApps ---
-        const wsCode = readLocalFile("../services/WindowService.qml");
+        const wsCode = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(wsCode.length > 1000, "WindowService.qml must be readable");
         assert(/property var installedApps:\s*\[\]/.test(wsCode),
             "WindowService must declare property var installedApps: []");

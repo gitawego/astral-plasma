@@ -45,13 +45,13 @@ Item {
     // Decorative motion: visible for as long as its feature is active, so it must
     // never advance at display refresh rate.
     readonly property var decorativeFiles: [
-        "../components/MatrixBorderEffect.qml",
-        "../components/DownloadBorderEffect.qml",
-        "../components/VinylPlayer.qml",
-        "../components/RadialCoverVisualiser.qml",
-        "../components/RadialCoverRing.qml",
-        "../components/HeatmapCoverRing.qml",
-        "../components/HeatmapSpeakerPlayer.qml",
+        "../modules/Astral/Kernel/components/MatrixBorderEffect.qml",
+        "../modules/Astral/Kernel/components/DownloadBorderEffect.qml",
+        "../modules/Astral/Kernel/components/VinylPlayer.qml",
+        "../modules/Astral/Kernel/components/RadialCoverVisualiser.qml",
+        "../modules/Astral/Kernel/components/RadialCoverRing.qml",
+        "../modules/Astral/Kernel/components/HeatmapCoverRing.qml",
+        "../modules/Astral/Kernel/components/HeatmapSpeakerPlayer.qml",
         "../dashboard/tabs/DashboardTab.qml",
         "../dock/components/DockStatusIcons.qml"
     ]
@@ -67,12 +67,12 @@ Item {
         console.log("RUNNING: Decorative frame budget contracts");
 
         // ---- 1. Shared token ------------------------------------------------
-        const themeSrc = readLocalFile("../theme/Theme.qml");
+        const themeSrc = readLocalFile("../modules/Astral/Kernel/theme/Theme.qml");
         assert(/decorativeMaxFps:\s*30\b/.test(themeSrc),
             "Theme must declare decorativeMaxFps: 30 as the decorative motion budget");
 
         // ---- 2. MotionClock / MotionPacer implementation contract -----------
-        const clockSrc = readLocalFile("../components/motion/MotionClock.qml");
+        const clockSrc = readLocalFile("../modules/Astral/Kernel/components/motion/MotionClock.qml");
         assert(clockSrc.length > 500, "MotionClock.qml must be readable");
         assert(/frameBudget:[\s\S]{0,200}Theme\.decorativeMaxFps/.test(clockSrc),
             "MotionClock must take its frame budget from Theme.decorativeMaxFps");
@@ -86,7 +86,7 @@ Item {
         assert(/^[ \t]*(NumberAnimation|SequentialAnimation|RotationAnimation|FrameAnimation)\s*\{/m.test(clockSrc) === false,
             "MotionClock must not use vsync-driven animations (they keep the render loop awake)");
 
-        const pacerSrc = readLocalFile("../components/motion/MotionPacer.qml");
+        const pacerSrc = readLocalFile("../modules/Astral/Kernel/components/motion/MotionPacer.qml");
         assert(pacerSrc.length > 500, "MotionPacer.qml must be readable");
         assert(/property\s+bool\s+running/.test(pacerSrc),
             "MotionPacer must gate advancing on a running property (0% idle CPU)");
@@ -115,12 +115,12 @@ Item {
         }
 
         // ---- 4. The two full-screen border effects stay gated on activity ---
-        const matrixSrc = readLocalFile("../components/MatrixBorderEffect.qml");
+        const matrixSrc = readLocalFile("../modules/Astral/Kernel/components/MatrixBorderEffect.qml");
         assert(/id:\s*pulsePacer[\s\S]{0,200}running:\s*root\.active/.test(matrixSrc),
             "MatrixBorderEffect pulse pacer must be gated on root.active");
         assert(/id:\s*travelPacer[\s\S]{0,200}running:\s*root\.active\s*&&/.test(matrixSrc),
             "MatrixBorderEffect travel pacer must be gated on root.active && growth");
-        const dlSrc = readLocalFile("../components/DownloadBorderEffect.qml");
+        const dlSrc = readLocalFile("../modules/Astral/Kernel/components/DownloadBorderEffect.qml");
         assert(/id:\s*travelPacer[\s\S]{0,220}running:\s*root\.active\s*&&/.test(dlSrc),
             "DownloadBorderEffect travel pacer must be gated on root.active && activity");
         assert(/id:\s*pulsePacer[\s\S]{0,220}running:\s*root\.active\s*&&/.test(dlSrc),
@@ -128,9 +128,9 @@ Item {
 
         // ---- 5. Visualizer canvases repaint on 30 Hz displayBands mirror, not 180 Hz raw stream ----
         const canvasVizFiles = [
-            "../components/CyberOscilloscope.qml",
-            "../components/HeatmapCoverRing.qml",
-            "../components/HeatmapSpeakerPlayer.qml"
+            "../modules/Astral/Kernel/components/CyberOscilloscope.qml",
+            "../modules/Astral/Kernel/components/HeatmapCoverRing.qml",
+            "../modules/Astral/Kernel/components/HeatmapSpeakerPlayer.qml"
         ];
         for (let j = 0; j < canvasVizFiles.length; j++) {
             const vFile = canvasVizFiles[j];

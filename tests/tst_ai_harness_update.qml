@@ -1,6 +1,6 @@
 import QtQuick
 import "../settings_gui/pages"
-import "../services/PiUpdateMessage.js" as PiUpdateMessage
+import "../modules/Astral/Kernel/services/PiUpdateMessage.js" as PiUpdateMessage
 
 // ============================================================================
 // Pi Harness card (Settings -> AI)

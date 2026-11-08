@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../dashboard/tabs"
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
@@ -90,7 +90,7 @@ Item {
             assert(formattedMb === "100.0 MiB", "perfTab.formatBytes(104857600) must return '100.0 MiB', got: " + formattedMb);
 
             // 7. Verify SystemService.qml static contract & ground-truth telemetry properties
-            let serviceContent = readLocalFile("../services/SystemService.qml");
+            let serviceContent = readLocalFile("../modules/Astral/Kernel/services/SystemService.qml");
             assert(serviceContent.indexOf("property real cpuUsage") !== -1, "SystemService must declare cpuUsage");
             assert(serviceContent.indexOf("property var cpuHistory") !== -1, "SystemService must declare cpuHistory");
             assert(serviceContent.indexOf("property real ramTotalBytes") !== -1, "SystemService must declare ramTotalBytes");

@@ -1,6 +1,6 @@
 import QtQuick
-import "../../theme"
-import "../../components"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
 
 // A dock capsule whose content scrolls when it does not fit.
 //

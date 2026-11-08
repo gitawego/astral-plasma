@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
-import "../components"
+import "../modules/Astral/Kernel/components"
 import "../dashboard/tabs"
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
@@ -61,7 +61,7 @@ Item {
                "DashboardTab seek MouseArea must be gated with MprisMedia.canSeek");
 
         // 3. MprisMedia.qml Source Contract Verification
-        const mprisSrc = readLocalFile("../services/MprisMedia.qml");
+        const mprisSrc = readLocalFile("../modules/Astral/Kernel/services/MprisMedia.qml");
         assert(/function seekTo\(fraction\)\s*\{[\s\S]*?if\s*\(!canSeek\)\s*return;/.test(mprisSrc),
                "MprisMedia.seekTo must immediately return if !canSeek (no fake position mutation)");
 

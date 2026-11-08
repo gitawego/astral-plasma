@@ -12,11 +12,11 @@ Item {
 
             // 1. Check UnifiedDock.qml references logo.svg
             const dockSrc = readLocalFile("../shell/UnifiedDock.qml");
-            assert(/source:\s*Qt\.resolvedUrl\("\.\.\/theme\/assets\/logo\.svg/.test(dockSrc),
-                "UnifiedDock.qml must reference ../theme/assets/logo.svg for launcherIcon");
+            assert(/source:\s*Qt\.resolvedUrl\("[^"]*theme\/assets\/logo\.svg/.test(dockSrc),
+                "UnifiedDock.qml must reference theme/assets/logo.svg for launcherIcon");
 
             // 2. Check logo.svg content
-            const logoSrc = readLocalFile("../theme/assets/logo.svg");
+            const logoSrc = readLocalFile("../modules/Astral/Kernel/theme/assets/logo.svg");
             assert(logoSrc.indexOf("<svg") !== -1, "logo.svg must be an SVG file");
 
             // 3. Verify Arch Linux silhouette path

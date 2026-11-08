@@ -1,5 +1,5 @@
 import QtQuick
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
@@ -95,7 +95,7 @@ Item {
         // substrate the Copilot card uses, not a fully transparent block. The
         // token itself is checked at the source, because the theme singleton is
         // not resolvable from a bare test shell.
-        const colorsSrc = readLocalFile("../theme/Colors.qml");
+        const colorsSrc = readLocalFile("../modules/Astral/Kernel/theme/Colors.qml");
         const substrateDef = /glassPanelSubstrate:\s*glassTinted\([\s\S]{0,120}?\)/.exec(colorsSrc);
         assert(substrateDef !== null, "Colors must define a shared glassPanelSubstrate token");
         const alphas = (colorsSrc.match(/panelAlpha:\s*([0-9.]+)/g) || []).map(m => Number(m.split(":")[1]));

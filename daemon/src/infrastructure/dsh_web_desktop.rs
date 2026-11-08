@@ -38,7 +38,7 @@ pub const KWIN_RULE_PREFIX: &str = "Astral Plasma: DSH web app window";
 pub const SIZE_RULE: &str = "3";
 
 /// DeepSeek's mark, embedded so the entry installs without the checkout.
-pub const DEEPSEEK_SVG: &str = include_str!("../../../theme/assets/icons/deepseek.svg");
+pub const DEEPSEEK_SVG: &str = include_str!("../../../modules/Astral/Kernel/theme/assets/icons/deepseek.svg");
 
 pub fn icon_path() -> PathBuf {
     branding::data_home()

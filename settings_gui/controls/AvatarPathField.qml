@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Dialogs
-import "../../theme"
-import "../../components"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
 
 // Shared avatar path card: editable path + Browse… native picker + Reset.
 //

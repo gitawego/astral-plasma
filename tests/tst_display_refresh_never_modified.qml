@@ -49,13 +49,13 @@ Item {
     Component.onCompleted: {
         // ------------------------------------------------------------------ 1 --
         // No shipped preference: the session's current mode is the only truth.
-        const settings = JSON.parse(readLocalFile("../config/settings.json"));
+        const settings = JSON.parse(readLocalFile("../modules/Astral/Kernel/config/settings.json"));
         testRoot.assert(settings.display === undefined,
             "settings.json must not ship a display block: the user's rate is not the shell's to set");
 
         // ------------------------------------------------------------------ 2 --
         // No setting, setter or picker.
-        const config = readLocalFile("../config/Config.qml");
+        const config = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         testRoot.assert(config.indexOf("displayRefreshRate") === -1,
             "Config.qml must not expose a refresh-rate setting");
         testRoot.assert(config.indexOf("setDisplayRefreshRate") === -1,
@@ -65,7 +65,7 @@ Item {
 
         // ------------------------------------------------------------------ 3 --
         // No service applies it, at startup or on change.
-        const service = readLocalFile("../services/DisplayService.qml");
+        const service = readLocalFile("../modules/Astral/Kernel/services/DisplayService.qml");
         testRoot.assert(service.length === 0,
             "services/DisplayService.qml must not exist: nothing may apply a refresh preference");
 

@@ -34,7 +34,7 @@ Item {
 
         // Test 1: NotificationService Crash Detection and Wiring
         console.log("Test 1: NotificationService crash detection and diagnosis wiring");
-        const notifSrc = readLocalFile("../services/NotificationService.qml");
+        const notifSrc = readLocalFile("../modules/Astral/Kernel/services/NotificationService.qml");
         assert(notifSrc.length > 500, "services/NotificationService.qml must be readable");
         assert(notifSrc.indexOf("isCrashNotification") !== -1, "NotificationService must define isCrashNotification");
         assert(notifSrc.indexOf("diagnoseCrashWithAgent") !== -1, "NotificationService must define diagnoseCrashWithAgent");
@@ -79,15 +79,15 @@ Item {
 
         // Test 3: Configuration Contracts
         console.log("Test 3: Configuration schema & Config.qml property");
-        const settingsSrc = readLocalFile("../config/settings.json");
+        const settingsSrc = readLocalFile("../modules/Astral/Kernel/config/settings.json");
         assert(settingsSrc.indexOf("crashDiagnosisEnabled") !== -1, "settings.json must specify crashDiagnosisEnabled");
-        const configSrc = readLocalFile("../config/Config.qml");
+        const configSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(configSrc.indexOf("aiCrashDiagnosisEnabled") !== -1, "Config.qml must expose aiCrashDiagnosisEnabled");
         console.log("Passed Test 3: Configuration contracts verified");
 
         // Test 4: DesktopSessionFacade crash diagnosis method
         console.log("Test 4: DesktopSessionFacade diagnoseCrash");
-        const facadeSrc = readLocalFile("../services/DesktopSessionFacade.qml");
+        const facadeSrc = readLocalFile("../modules/Astral/Kernel/services/DesktopSessionFacade.qml");
         assert(facadeSrc.indexOf("function diagnoseCrash(target)") !== -1, "DesktopSessionFacade must expose diagnoseCrash(target)");
         console.log("Passed Test 4: DesktopSessionFacade diagnoseCrash verified");
 

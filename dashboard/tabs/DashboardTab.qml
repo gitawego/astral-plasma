@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
-import "../../components/motion"
-import "../../theme"
-import "../../components"
-import "../../services"
-import "../../config"
+import "../../modules/Astral/Kernel/components/motion"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/services"
+import "../../modules/Astral/Kernel/config"
 
 Item {
     id: root
@@ -31,7 +31,7 @@ Item {
 
     function resolveMascotSource(configured) {
         const p = (configured || "").trim();
-        if (p === "") return "../../theme/assets/bongocat.gif";
+        if (p === "") return "../../modules/Astral/Kernel/theme/assets/bongocat.gif";
         if (p.startsWith("file://")) return p;
         return "file://" + p;
     }
@@ -63,7 +63,7 @@ Item {
         if (typeof Theme !== "undefined" && Theme.defaultHostAvatar && Theme.defaultHostAvatar !== "") {
             return Theme.defaultHostAvatar;
         }
-        return "../../theme/assets/dino.png";
+        return "../../modules/Astral/Kernel/theme/assets/dino.png";
     }
 
     /// Avatar-circle background from a configurable hex color + transparency.

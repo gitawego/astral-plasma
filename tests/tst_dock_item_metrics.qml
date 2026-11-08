@@ -1,5 +1,5 @@
 import QtQuick
-import "../components"
+import "../modules/Astral/Kernel/components"
 
 // The dock's leading indicator bar must not touch the app icon. The item has to
 // reserve the indicator's gutter on both sides so the centred icon clears it.

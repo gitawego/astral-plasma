@@ -1,9 +1,9 @@
 import QtQuick
 import Quickshell
 import Quickshell.Services.SystemTray
-import "../../theme"
-import "../../components"
-import "../../config"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/config"
 
 Item {
     id: root

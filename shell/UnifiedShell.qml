@@ -4,10 +4,10 @@ import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import "../theme"
-import "../config"
-import "../components"
-import "../services"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/services"
 import "../dock/popouts"
 import "../notifications"
 

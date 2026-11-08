@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
-import "../components"
-import "../theme"
+import "../modules/Astral/Kernel/components"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
@@ -72,7 +72,7 @@ Item {
         assert(astroidCustom.strokeWidth === 2.5, "Custom strokeWidth must be 2.5");
 
         // 3. Shape renderer architecture: GeometryRenderer is mandatory
-        const astroidSrc = readLocalFile("../components/AstroidIcon.qml");
+        const astroidSrc = readLocalFile("../modules/Astral/Kernel/components/AstroidIcon.qml");
         assert(astroidSrc.indexOf("Shape.GeometryRenderer") !== -1,
             "AstroidIcon must enforce Shape.GeometryRenderer for Intel Mesa stability");
         assert(astroidSrc.indexOf("M12.983 21.186a1 1 0 0 1-1.966 0") !== -1,
@@ -88,7 +88,7 @@ Item {
         assert(matIconToken.displaySymbol === "", "MaterialIcon('token') must not emit stacked layers glyph");
 
         // 5. Verify stacked layers glyph \uf51e is completely removed from token mappings
-        const matIconSrc = readLocalFile("../components/MaterialIcon.qml");
+        const matIconSrc = readLocalFile("../modules/Astral/Kernel/components/MaterialIcon.qml");
         assert(!/"token":\s*"\\uf51e"/.test(matIconSrc),
             "MaterialIcon must NOT map 'token' to \\uf51e stacked-layers glyph");
         assert(!/"tokens":\s*"\\uf51e"/.test(matIconSrc),

@@ -1,6 +1,6 @@
 import QtQuick
 import Quickshell
-import "../config"
+import "../modules/Astral/Kernel/config"
 
 Scope {
     id: root

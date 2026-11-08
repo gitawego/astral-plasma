@@ -1,5 +1,5 @@
 import QtQuick
-import "../components/motion"
+import "../modules/Astral/Kernel/components/motion"
 
 // ============================================================================
 // Audio-visualiser frame budget
@@ -97,7 +97,7 @@ Item {
 
     // ---------------------------------------------------------------- phase 2 --
     function sourceContracts() {
-        testRoot.serviceSource = readLocalFile("../services/AudioVisualizer.qml");
+        testRoot.serviceSource = readLocalFile("../modules/Astral/Kernel/services/AudioVisualizer.qml");
 
         const service = testRoot.serviceSource;
         testRoot.assert(service.length > 0, "AudioVisualizer.qml must be readable");
@@ -130,7 +130,7 @@ Item {
         ];
         let mirrored = 0;
         for (const name of components) {
-            const src = readLocalFile("../components/" + name + ".qml");
+            const src = readLocalFile("../modules/Astral/Kernel/components/" + name + ".qml");
             testRoot.assert(src.length > 0, name + ".qml must be readable");
             for (const raw of ["bands", "energy", "beat", "bass", "treble"]) {
                 testRoot.assert(
@@ -171,7 +171,7 @@ Item {
         // The two spectrum rings draw in one Canvas each: a delegate per bar means
         // one item, one geometry update and one animation per bar per frame.
         for (const name of ["RadialCoverRing", "RadialCoverVisualiser"]) {
-            const src = readLocalFile("../components/" + name + ".qml");
+            const src = readLocalFile("../modules/Astral/Kernel/components/" + name + ".qml");
             testRoot.assert(
                 src.indexOf("Canvas {") !== -1 && src.indexOf("MotionTick") !== -1,
                 name + " must draw its spectrum bars in one Canvas driven by the shared clock"
@@ -184,7 +184,7 @@ Item {
 
         // The playback-detection logic in MprisMedia legitimately needs the truth,
         // and is the one place allowed to read it.
-        const mpris = readLocalFile("../services/MprisMedia.qml");
+        const mpris = readLocalFile("../modules/Astral/Kernel/services/MprisMedia.qml");
         if (mpris.length > 0) {
             testRoot.assert(mpris.indexOf("MotionTick") < 0, "MprisMedia must not hold the decorative clock");
         }

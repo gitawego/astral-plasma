@@ -5,7 +5,7 @@ import Quickshell
 import Quickshell.Io
 import "../config"
 import "PiUpdateMessage.js" as PiUpdateMessage
-import "../services"
+import "."
 
 Singleton {
     id: root
@@ -308,7 +308,7 @@ Singleton {
 
     readonly property string daemonBin: {
         if (typeof Config !== "undefined" && Config.daemonBin) return Config.daemonBin;
-        return Qt.resolvedUrl("../bin/astral-plasma").toString().replace("file://", "");
+        return Qt.resolvedUrl("../../../../bin/astral-plasma").toString().replace("file://", "");
     }
 
     Component.onCompleted: {
@@ -1703,7 +1703,7 @@ Singleton {
         const reqId = "req_" + (++mermaidReqId);
         mermaidCallbacks[reqId] = callback;
 
-        const script = Qt.resolvedUrl("../scripts/render_mermaid.mjs").toString().replace("file://", "");
+        const script = Qt.resolvedUrl("../../../../scripts/render_mermaid.mjs").toString().replace("file://", "");
         mermaidRenderProc.currentReqId = reqId;
         runProc(mermaidRenderProc, ["node", script, code.trim()]);
     }

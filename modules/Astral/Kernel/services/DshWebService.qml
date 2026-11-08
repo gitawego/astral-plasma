@@ -212,7 +212,7 @@ Singleton {
     readonly property string daemonBin: {
         var bin = (typeof Config !== "undefined" && Config.daemonBin) ? Config.daemonBin : "";
         if (bin.length > 0) return bin;
-        var url = Qt.resolvedUrl("../bin/astral-plasma").toString();
+        var url = Qt.resolvedUrl("../../../../bin/astral-plasma").toString();
         if (url.startsWith("file://")) return url.substring(7);
         return url;
     }

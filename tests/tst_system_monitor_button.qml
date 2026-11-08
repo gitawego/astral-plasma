@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../dashboard/tabs"
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Item {
     id: testRoot
@@ -54,13 +54,13 @@ Item {
             assert(/sysMonMa[\s\S]*?onClicked:\s*root\.openSystemMonitor\(\)/.test(perfSrc) || /sysMonMa[\s\S]*?onClicked:[\s\S]*?openSystemMonitor/.test(perfSrc), "System monitor MouseArea onClicked must call openSystemMonitor");
 
             // 3. WindowService Service Audit
-            const wsSrc = readLocalFile("../services/WindowService.qml");
+            const wsSrc = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
             assert(wsSrc.length > 500, "WindowService.qml source must be readable");
             assert(wsSrc.indexOf("function openSystemMonitor()") !== -1, "WindowService must expose openSystemMonitor()");
             assert(wsSrc.indexOf('"system-monitor"') !== -1 || wsSrc.indexOf("'system-monitor'") !== -1, "WindowService must invoke daemon system-monitor command");
 
             // 4. SystemService Service Audit
-            const ssSrc = readLocalFile("../services/SystemService.qml");
+            const ssSrc = readLocalFile("../modules/Astral/Kernel/services/SystemService.qml");
             assert(ssSrc.length > 500, "SystemService.qml source must be readable");
             assert(ssSrc.indexOf("function openSystemMonitor()") !== -1, "SystemService must expose openSystemMonitor()");
 

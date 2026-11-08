@@ -1,5 +1,5 @@
 import QtQuick
-import "../theme"
+import "../modules/Astral/Kernel/theme"
 
 Rectangle {
     id: root

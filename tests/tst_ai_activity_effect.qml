@@ -1,6 +1,6 @@
 import QtQuick
-import "../theme"
-import "../config"
+import "../modules/Astral/Kernel/theme"
+import "../modules/Astral/Kernel/config"
 
 // ============================================================================
 // AI Agent Model Activity & Theme Effect Unit Tests
@@ -249,7 +249,7 @@ Item {
         assert(activityModel.activeAgents.length === 0, "activeAgents must be empty");
 
         // ---- 6. Source Contract: services/AiActivityService.qml ----
-        const serviceSrc = readLocalFile("../services/AiActivityService.qml");
+        const serviceSrc = readLocalFile("../modules/Astral/Kernel/services/AiActivityService.qml");
         assert(serviceSrc.length > 500, "AiActivityService.qml must be readable");
         assert(/pragma Singleton/.test(serviceSrc), "AiActivityService must be a Singleton");
         assert(/command:\s*\[root\.daemonBin,\s*"ai",\s*"activity"\]/.test(serviceSrc),
@@ -270,7 +270,7 @@ Item {
             "DockStatusIcons must strictly use 'astroid' or 'token' icon for AI activity/quota pill");
 
         // ---- 8. Source Contract: components/MatrixBorderEffect.qml ----
-        const matrixSrc = readLocalFile("../components/MatrixBorderEffect.qml");
+        const matrixSrc = readLocalFile("../modules/Astral/Kernel/components/MatrixBorderEffect.qml");
         assert(matrixSrc.length > 1000, "MatrixBorderEffect.qml must be readable");
         assert(!/if\s*\(!agentInfo\)\s*return\s*"Gemini Flash 3\.8"/.test(matrixSrc),
             "MatrixBorderEffect must not hardcode Gemini Flash 3.8 fallback for missing agentInfo");
@@ -310,13 +310,13 @@ Item {
             "UnifiedShell aiMatrixBorderEffect must bind activeAgents to AiActivityService");
 
         // ---- 10. Source Contract: services/WindowService.qml event routing ----
-        const winServiceSrc = readLocalFile("../services/WindowService.qml");
+        const winServiceSrc = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");
         assert(winServiceSrc.length > 1000, "WindowService.qml must be readable");
         assert(/data\.msg_type\s*===\s*"ai_activity"/.test(winServiceSrc),
             "WindowService must route ai_activity IPC events from daemon to AiActivityService");
 
         // ---- 11. Config Reactivity ----
-        const configSrc = readLocalFile("../config/Config.qml");
+        const configSrc = readLocalFile("../modules/Astral/Kernel/config/Config.qml");
         assert(/property\s+bool\s+modelActivityEffect:/.test(configSrc),
             "Config.qml must declare modelActivityEffect property");
 
