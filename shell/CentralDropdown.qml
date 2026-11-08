@@ -392,34 +392,14 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: mediaApp.children.length > 0
-                        ? mediaApp.children[0].implicitHeight : 320
+                    implicitHeight: mediaTab.implicitHeight
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 1) || tabSlider.isAnimating
 
-                    // Hosted, not instantiated: the pane owns geometry, the media app
-                    // owns behaviour and receives its ports from the host.
-                    Item {
-                        id: mediaApp
+                    MediaTab {
+                        id: mediaTab
                         width: parent.width
                         height: parent.height
-
-                        function mountApp() {
-                            if (!root.appHost) return;
-                            const provider = root.appHost.providerForTab("media");
-                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (mediaApp.children.length === 0) root.appHost.mount(provider, mediaApp);
-                        }
-
-                        Component.onCompleted: mountApp()
-
-                        Connections {
-                            target: root.appHost
-                            enabled: root.appHost !== null
-                            ignoreUnknownSignals: true
-                            function onLoaderCountChanged() { mediaApp.mountApp(); }
-                            function onTabProvidersChanged() { mediaApp.mountApp(); }
-                        }
                     }
                 }
 

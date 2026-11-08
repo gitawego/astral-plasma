@@ -1,24 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../Kernel/theme"
-import "../../Kernel/components"
-import "../../../../menus"
+import "../../modules/Astral/Kernel/theme"
+import "../../modules/Astral/Kernel/components"
+import "../../modules/Astral/Kernel/services"
+import "../../menus"
+import "../../modules/Astral/Kernel/config"
 
-// Media app (`manifest.entry.dashboardTab` = "media").
-//
-// Injected: `media` (now-playing), `shellState` (the two settings it renders) and
-// `intents` (settings it writes, dashboard navigation). No kernel service import.
 Item {
     id: root
-
-    property var media: null
-    property var shellState: null
-    property var intents: null
-
-    readonly property bool hasPlayer: media !== null && media.hasMedia
-    /// Whether the dashboard is showing this tab right now (used to gate previews).
-    readonly property bool isDashboardMediaTab: shellState !== null
-        && shellState.dashboardVisible && shellState.activeDashboardTab === "media"
 
     implicitWidth: 680
     implicitHeight: 260
@@ -46,7 +35,7 @@ Item {
                 Layout.alignment: Qt.AlignVCenter
 
                 readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
-                    ((root.shellState ? root.shellState.mediaVisualizerStyle : "radial") === "speaker" || (root.shellState ? root.shellState.mediaVisualizerStyle : "radial") === "heatmap")
+                    (Config.mediaVisualizerStyle === "speaker" || Config.mediaVisualizerStyle === "heatmap")
                 readonly property bool isCyberpunk: (typeof Theme !== "undefined" && Theme.isCyberpunk)
 
                 // Radial Visualizer (Spectrum halo around circular album art - Cyberpunk or Radial style)
@@ -56,11 +45,11 @@ Item {
                     width: 240
                     height: 240
                     visible: visualizerSlot.isCyberpunk || !visualizerSlot.isSpeakerStyle
-                    isPlaying: (root.media && root.media.isPlaying)
-                    artUrl: (root.media && root.media.artUrl)
-                    title: (root.media && root.media.title)
-                    artist: (root.media && root.media.artist)
-                    isTargetVisible: root.isDashboardMediaTab && visible
+                    isPlaying: MprisMedia.isPlaying
+                    artUrl: MprisMedia.artUrl
+                    title: MprisMedia.title
+                    artist: MprisMedia.artist
+                    isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "media" && visible) : false
                 }
 
                 // Original Heatmap Speaker Player (Pulsing speaker cone with orbiting rainbow notes & beads)
@@ -70,11 +59,11 @@ Item {
                     width: 240
                     height: 240
                     visible: !visualizerSlot.isCyberpunk && visualizerSlot.isSpeakerStyle
-                    isPlaying: (root.media && root.media.isPlaying)
-                    artUrl: (root.media && root.media.artUrl)
-                    title: (root.media && root.media.title)
-                    artist: (root.media && root.media.artist)
-                    isTargetVisible: root.isDashboardMediaTab && visible
+                    isPlaying: MprisMedia.isPlaying
+                    artUrl: MprisMedia.artUrl
+                    title: MprisMedia.title
+                    artist: MprisMedia.artist
+                    isTargetVisible: (typeof Config !== "undefined") ? (Config.dashboardVisible && Config.activeDashboardTab === "media" && visible) : false
                 }
 
                 // Visualizer Switcher Pill Button (Floating subtle toggle - hidden in Cyberpunk)
@@ -94,10 +83,8 @@ Item {
                     elevation: 4
                     visible: !visualizerSlot.isCyberpunk
                     onClicked: {
-                        if (root.intents) {
-                            root.intents.request("media.visualizerStyle", {
-                                style: visualizerSlot.isSpeakerStyle ? "radial" : "speaker"
-                            });
+                        if (typeof Config !== "undefined" && Config.setMediaVisualizerStyle) {
+                            Config.setMediaVisualizerStyle(visualizerSlot.isSpeakerStyle ? "radial" : "speaker");
                         }
                     }
                 }
@@ -111,7 +98,7 @@ Item {
 
                 // Track Title
                 Text {
-                    text: (root.media && root.media.title) || "No Media Playing"
+                    text: MprisMedia.title || "No Media Playing"
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontTitleLarge
                     font.weight: Font.DemiBold
@@ -125,7 +112,7 @@ Item {
 
                 // Track Album (if present)
                 Text {
-                    text: (root.media && root.media.album) || ""
+                    text: MprisMedia.album || ""
                     visible: text.length > 0
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBodySmall
@@ -139,7 +126,7 @@ Item {
 
                 // Track Artist
                 Text {
-                    text: (root.media && root.media.artist) || "Unknown Artist"
+                    text: MprisMedia.artist || "Unknown Artist"
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBodyMedium
                     color: Colors.m3onSurfaceVariant
@@ -166,9 +153,9 @@ Item {
                         iconText: "skip_previous"
                         iconSize: 20
                         elevation: 2
-                        interactive: (root.media !== null) ? (root.media && root.media.canGoPrevious) : true
-                        opacity: ((root.media !== null) ? (root.media && root.media.canGoPrevious) : true) ? 1.0 : 0.40
-                        onClicked: root.media && root.media.previous()
+                        interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true
+                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoPrevious : true) ? 1.0 : 0.40
+                        onClicked: MprisMedia.previous()
                     }
 
                     // Play / Pause (Hero Circular Liquid Glass Gem)
@@ -178,11 +165,11 @@ Item {
                         paddingHorizontal: 8
                         paddingVertical: 8
                         isPrimary: true
-                        iconText: (root.media !== null && (root.media && root.media.isPlaying)) ? "pause" : "play_arrow"
+                        iconText: (typeof MprisMedia !== "undefined" && MprisMedia.isPlaying) ? "pause" : "play_arrow"
                         iconSize: 24
                         accentColor: Colors.primary
                         elevation: 6
-                        onClicked: root.media && root.media.toggle()
+                        onClicked: MprisMedia.playPause()
                     }
 
                     // Skip Next
@@ -194,9 +181,9 @@ Item {
                         iconText: "skip_next"
                         iconSize: 20
                         elevation: 2
-                        interactive: (root.media !== null) ? (root.media && root.media.canGoNext) : true
-                        opacity: ((root.media !== null) ? (root.media && root.media.canGoNext) : true) ? 1.0 : 0.40
-                        onClicked: root.media && root.media.next()
+                        interactive: (typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true
+                        opacity: ((typeof MprisMedia !== "undefined") ? MprisMedia.canGoNext : true) ? 1.0 : 0.40
+                        onClicked: MprisMedia.next()
                     }
                 }
 
@@ -210,7 +197,7 @@ Item {
 
                     readonly property real effectiveProgress: (sliderMouse.isDragging)
                         ? sliderMouse.dragFraction
-                        : Math.min(1.0, Math.max(0.0, (root.media && root.media.progress)))
+                        : Math.min(1.0, Math.max(0.0, MprisMedia.progress))
 
                     // Frosted Glass Track Groove
                     Rectangle {
@@ -263,8 +250,8 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             x: Math.max(0, Math.min(parent.width - width, parent.width * sliderContainer.effectiveProgress - width / 2))
                             color: Colors.primary
-                            visible: (root.media && root.media.length) > 0
-                            opacity: (root.media && root.media.canSeek) ? 1.0 : 0.60
+                            visible: MprisMedia.length > 0
+                            opacity: MprisMedia.canSeek ? 1.0 : 0.60
 
                             border.color: Qt.rgba(1.0, 1.0, 1.0, 0.85)
                             border.width: 1
@@ -278,7 +265,7 @@ Item {
                     MouseArea {
                         id: sliderMouse
                         anchors.fill: parent
-                        enabled: (root.media !== null) && (root.media && root.media.canSeek) && (root.media && root.media.length) > 0
+                        enabled: (typeof MprisMedia !== "undefined") && MprisMedia.canSeek && MprisMedia.length > 0
                         hoverEnabled: enabled
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
@@ -299,7 +286,7 @@ Item {
                             if (isDragging) {
                                 isDragging = false;
                                 let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                root.media && root.media.seek(frac);
+                                MprisMedia.seekTo(frac);
                             }
                         }
                         onCanceled: {
@@ -308,7 +295,7 @@ Item {
                         onClicked: mouse => {
                             if (!enabled) return;
                             let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                            root.media && root.media.seek(frac);
+                            MprisMedia.seekTo(frac);
                         }
                     }
                 }
@@ -321,8 +308,8 @@ Item {
                     Text {
                         text: {
                             const secs = Math.floor(sliderMouse.isDragging
-                                ? (sliderMouse.dragFraction * ((root.media && root.media.length) || 0))
-                                : ((root.media && root.media.position) || 0));
+                                ? (sliderMouse.dragFraction * (MprisMedia.length || 0))
+                                : (MprisMedia.position || 0));
                             const m = Math.floor(secs / 60);
                             const s = secs % 60;
                             return m + ":" + (s < 10 ? "0" : "") + s;
@@ -338,7 +325,7 @@ Item {
 
                     Text {
                         text: {
-                            const secs = Math.floor((root.media && root.media.length) || 0);
+                            const secs = Math.floor(MprisMedia.length || 0);
                             const m = Math.floor(secs / 60);
                             const s = secs % 60;
                             return m + ":" + (s < 10 ? "0" : "") + s;
@@ -363,10 +350,10 @@ Item {
                         width: 32
                         height: 32
                         radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, 16) : 16
-                        color: (root.media !== null && (root.media && root.media.shuffle))
+                        color: (typeof MprisMedia !== "undefined" && MprisMedia.shuffle)
                             ? Qt.alpha(Colors.primary, 0.22)
                             : (shufHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : "transparent")
-                        border.color: (root.media !== null && (root.media && root.media.shuffle))
+                        border.color: (typeof MprisMedia !== "undefined" && MprisMedia.shuffle)
                             ? Qt.alpha(Colors.primary, 0.60)
                             : (shufHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.16) : "transparent")
                         border.width: 1
@@ -378,7 +365,7 @@ Item {
                             anchors.centerIn: parent
                             text: "shuffle"
                             size: 16
-                            color: (root.media !== null && (root.media && root.media.shuffle)) ? Colors.primary : Colors.m3onSurfaceVariant
+                            color: (typeof MprisMedia !== "undefined" && MprisMedia.shuffle) ? Colors.primary : Colors.m3onSurfaceVariant
                         }
 
                         MouseArea {
@@ -386,7 +373,7 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.media && root.media.toggleShuffle()
+                            onClicked: MprisMedia.toggleShuffle()
                         }
                     }
 
@@ -415,14 +402,14 @@ Item {
                             spacing: 5
 
                             MaterialIcon {
-                                text: ((root.media && root.media.players) && (root.media && root.media.players).length > 1) ? "graphic_eq" : "music_note"
+                                text: (MprisMedia.players && MprisMedia.players.length > 1) ? "graphic_eq" : "music_note"
                                 size: 14
                                 color: Colors.primary
                                 Layout.alignment: Qt.AlignVCenter
                             }
 
                             Text {
-                                text: (root.media && root.media.identity) || "Media Player"
+                                text: MprisMedia.identity || "Media Player"
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontLabelSmall
                                 font.weight: Font.Medium
@@ -433,7 +420,7 @@ Item {
                             }
 
                             MaterialIcon {
-                                visible: (root.media && root.media.players) && (root.media && root.media.players).length > 1
+                                visible: MprisMedia.players && MprisMedia.players.length > 1
                                 text: "expand_more"
                                 size: 14
                                 color: Colors.onSurfaceVariant
@@ -447,16 +434,16 @@ Item {
                             id: playerBadgeMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            cursorShape: ((root.media && root.media.players) && (root.media && root.media.players).length > 1) ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            cursorShape: (MprisMedia.players && MprisMedia.players.length > 1) ? Qt.PointingHandCursor : Qt.ArrowCursor
                             onClicked: {
-                                if ((root.media && root.media.players) && (root.media && root.media.players).length > 1) {
+                                if (MprisMedia.players && MprisMedia.players.length > 1) {
                                     if (!playerDropdownOverlay.visible) {
                                         playerDropdownOverlay.open();
                                     } else {
                                         playerDropdownOverlay.visible = false;
                                     }
                                 } else {
-                                    (root.media && root.media.cyclePlayer)();
+                                    MprisMedia.cyclePlayer();
                                 }
                             }
                         }
@@ -467,10 +454,10 @@ Item {
                         width: 32
                         height: 32
                         radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, 16) : 16
-                        color: (root.media !== null && (root.media && root.media.loopState) !== 0)
+                        color: (typeof MprisMedia !== "undefined" && MprisMedia.loopState !== 0)
                             ? Qt.alpha(Colors.primary, 0.22)
                             : (loopHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.08) : "transparent")
-                        border.color: (root.media !== null && (root.media && root.media.loopState) !== 0)
+                        border.color: (typeof MprisMedia !== "undefined" && MprisMedia.loopState !== 0)
                             ? Qt.alpha(Colors.primary, 0.60)
                             : (loopHover.containsMouse ? Qt.rgba(1.0, 1.0, 1.0, 0.16) : "transparent")
                         border.width: 1
@@ -480,9 +467,9 @@ Item {
 
                         MaterialIcon {
                             anchors.centerIn: parent
-                            text: (root.media !== null && (root.media && root.media.loopState) === 1) ? "repeat_one" : "repeat"
+                            text: (typeof MprisMedia !== "undefined" && MprisMedia.loopState === 1) ? "repeat_one" : "repeat"
                             size: 16
-                            color: (root.media !== null && (root.media && root.media.loopState) !== 0) ? Colors.primary : Colors.m3onSurfaceVariant
+                            color: (typeof MprisMedia !== "undefined" && MprisMedia.loopState !== 0) ? Colors.primary : Colors.m3onSurfaceVariant
                         }
 
                         MouseArea {
@@ -490,7 +477,7 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: (root.media && root.media.cycleLoop)()
+                            onClicked: MprisMedia.cycleLoop()
                         }
                     }
                 }
@@ -505,8 +492,8 @@ Item {
                 MediaAvatar {
                     id: mediaAvatar
                     anchors.fill: parent
-                    source: (root.shellState ? root.shellState.mediaAvatar : "")
-                    isPlaying: (root.media && root.media.isPlaying)
+                    source: Config.mediaAvatar
+                    isPlaying: MprisMedia.isPlaying
                 }
             }
         }
@@ -520,7 +507,7 @@ Item {
 
             function open() {
                 let pos = playerBadge.mapToItem(playerDropdownOverlay, 0, 0);
-                let count = ((root.media && root.media.players) && (root.media && root.media.players).length > 0) ? (root.media && root.media.players).length : 1;
+                let count = (MprisMedia.players && MprisMedia.players.length > 0) ? MprisMedia.players.length : 1;
                 let menuH = 52 + count * 42;
                 let targetX = Math.round(pos.x + (playerBadge.width - playerDropdownMenu.width) / 2);
                 let targetY = Math.round(pos.y - menuH - 8);
@@ -546,17 +533,17 @@ Item {
                 }
 
                 Repeater {
-                    model: (root.media && root.media.players)
+                    model: MprisMedia.players
 
                     MenuItem {
                         required property var modelData
                         width: parent.width
-                        text: root.media && root.media.nameOf(modelData)
+                        text: MprisMedia.playerIdentity(modelData)
                         subtext: modelData.playbackState === 1 ? "Playing" : (modelData.playbackState === 2 ? "Paused" : "Stopped")
                         materialIcon: modelData.playbackState === 1 ? "play_arrow" : "pause"
-                        checked: (root.media && root.media.isPlayerActive)(modelData)
+                        checked: MprisMedia.isPlayerActive(modelData)
                         onClicked: {
-                            root.media && root.media.selectPlayer(modelData);
+                            MprisMedia.selectPlayer(modelData);
                             playerDropdownOverlay.visible = false;
                         }
                     }

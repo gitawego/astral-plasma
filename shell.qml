@@ -28,8 +28,6 @@ ShellRoot {
         commandLauncherVisible: Config.commandLauncherVisible
         dashboardVisible: Config.dashboardVisible
         daemonBin: Config.daemonBin
-        mediaAvatar: Config.mediaAvatar
-        mediaVisualizerStyle: Config.mediaVisualizerStyle
         iconResolver: function (name) { return Config.iconUrl(name); }
     }
 
@@ -61,10 +59,6 @@ ShellRoot {
         playerName: MprisMedia.identity
         position: MprisMedia.position
         length: MprisMedia.length
-        loopState: MprisMedia.loopState || "enabled"
-        shuffle: Boolean(MprisMedia.shuffle)
-        canGoNext: Boolean(MprisMedia.canGoNext)
-        canGoPrevious: Boolean(MprisMedia.canGoPrevious)
         players: (MprisMedia.players || []).map(function (player) {
             return {
                 id: player.busName || "",
@@ -86,10 +80,6 @@ ShellRoot {
         }
         seekImpl: function (fraction) {
             MprisMedia.seekTo(fraction);
-            return true;
-        }
-        toggleShuffleImpl: function () {
-            MprisMedia.toggleShuffle();
             return true;
         }
         selectPlayerImpl: function (id) {
@@ -657,23 +647,6 @@ ShellRoot {
         });
         intents.register("overview.toggle", function () {
             Config.toggleOverview();
-            return intents.applied();
-        });
-        intents.register("media.visualizerStyle", function (args) {
-            const style = (args && args.style) ? String(args.style) : "";
-            if (style !== "radial" && style !== "speaker") {
-                return intents.invalid("media.visualizerStyle needs style=radial|speaker");
-            }
-            Config.setMediaVisualizerStyle(style);
-            return intents.applied();
-        });
-        intents.register("dashboard.show", function (args) {
-            const tab = (args && args.tab) ? String(args.tab) : "";
-            if (tab.length === 0) {
-                return intents.invalid("dashboard.show needs a tab");
-            }
-            Config.activeDashboardTab = tab;
-            Config.dashboardVisible = true;
             return intents.applied();
         });
         intents.register("launcher.open", function (args) {

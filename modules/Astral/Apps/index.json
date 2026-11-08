@@ -2,10 +2,6 @@
   "schema": 1,
   "apps": [
     {
-      "dir": "Media",
-      "id": "org.astralplasma.media"
-    },
-    {
       "dir": "Overview",
       "id": "org.astralplasma.overview"
     },

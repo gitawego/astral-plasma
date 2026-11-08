@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import "../modules/Astral/Kernel/components"
 import "../dashboard/tabs"
-import "../modules/Astral/Apps/Media"
 import "../modules/Astral/Kernel/theme"
 
 Item {
@@ -10,7 +9,7 @@ Item {
     width: 800
     height: 600
 
-    Main {
+    MediaTab {
         id: testMediaTab
         width: 680
         visible: false
