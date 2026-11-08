@@ -5,7 +5,6 @@ import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/components"
 import "../modules/Astral/Kernel/config"
 import "../modules/Astral/Kernel/services"
-import "../dashboard/tabs"
 
 /// Dedicated download manager: a real desktop window, not a drawer.
 ///
@@ -20,6 +19,9 @@ import "../dashboard/tabs"
 /// starts a compositor-native move.
 FloatingWindow {
     id: root
+
+    /// The shell-declared downloads app component (injected by shell.qml).
+    property Component appComponent: null
 
     property ShellScreen targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     screen: targetScreen
@@ -102,12 +104,17 @@ FloatingWindow {
         showShadow: false
         color: (typeof Colors !== "undefined") ? Colors.glassPanelSubstrate : "#1e1e2e"
 
-        DownloadsTab {
-            id: downloads
+        // The downloads UI is an app: the window instantiates the shell-declared component,
+        // so it shares the shell's kernel registration and palette (spec C.18).
+        Loader {
             anchors.fill: parent
-            windowMode: true
-            windowHandle: root
-            onCloseRequested: Config.closeDownloadsWindow()
+            sourceComponent: root.appComponent
+
+            onLoaded: {
+                item.windowMode = true;
+                item.windowHandle = root;
+                item.closeRequested.connect(function () { Config.closeDownloadsWindow(); });
+            }
         }
     }
 }

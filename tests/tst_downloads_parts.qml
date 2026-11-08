@@ -1,5 +1,6 @@
 import QtQuick
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Downloads"
 import "../modules/Astral/Kernel/config"
 
 /// Per-task connection control.
@@ -13,7 +14,7 @@ Item {
     width: 900
     height: 700
 
-    DownloadsTab {
+    DownloadsApp {
         id: dlTab
         visible: false
         width: 880
@@ -64,9 +65,9 @@ Item {
         assert(dlTab.nextParts({ split: 4 }, 1) === 5, "one step adds one part");
 
         // 3. Wiring: the tab calls the service, the service calls the daemon.
-        const tabSrc = readLocalFile("../dashboard/tabs/DownloadsTab.qml");
-        assert(tabSrc.indexOf("DownloadService.setParts(") >= 0,
-            "the stepper must write through DownloadService");
+        const tabSrc = readLocalFile("../modules/Astral/Apps/Downloads/DownloadsApp.qml");
+        assert(tabSrc.indexOf("root.downloads.setParts(") >= 0,
+            "the stepper must write through the injected download service");
         assert(tabSrc.indexOf("task.split") >= 0 || tabSrc.indexOf("t.split") >= 0,
             "the row must read the task's own split");
         assert(/partsStepper[\s\S]{0,400}status === "active"/.test(tabSrc),

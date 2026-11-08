@@ -1,5 +1,5 @@
 import QtQuick
-import "../dashboard/tabs/DownloadSettingsMath.js" as SettingsMath
+import "../modules/Astral/Apps/Downloads/DownloadSettingsMath.js" as SettingsMath
 
 /// Download settings inside the manager window.
 ///
@@ -53,13 +53,13 @@ Item {
         assert(SettingsMath.formatKbps(2048) === "2 MiB/s", "whole MiB caps read cleanly");
 
         // 2. The panel is the same settings, not a parallel implementation.
-        const panelSrc = readLocalFile("../dashboard/tabs/DownloadSettingsPanel.qml");
-        for (const setter of ["setDownloadsDir", "setDownloadsSplit", "setDownloadsMaxConcurrent",
-                              "setDownloadsSpeedLimit", "setDownloadsBorderEffect"]) {
-            assert(panelSrc.indexOf("Config." + setter) >= 0,
-                "the panel must use Config." + setter + " (the same setter as Settings)");
+        const panelSrc = readLocalFile("../modules/Astral/Apps/Downloads/DownloadSettingsPanel.qml");
+        for (const intent of ["downloads.dir", "downloads.split", "downloads.maxConcurrent",
+                              "downloads.speedLimit", "downloads.borderEffect"]) {
+            assert(panelSrc.indexOf('"' + intent + '"') >= 0,
+                "the panel must ask for " + intent + " (the shell applies the same setter)");
         }
-        assert(panelSrc.indexOf("DownloadService.applyEngineSettings") >= 0,
+        assert(panelSrc.indexOf("downloads.applyEngineSettings") >= 0,
             "engine-wide values must be pushed to the running aria2");
         assert(panelSrc.indexOf("FolderDialog") >= 0 && panelSrc.indexOf("TextInput") >= 0,
             "the destination must be an editable path with the native folder picker");
@@ -69,7 +69,7 @@ Item {
             "speed and the border HUD need their own controls");
 
         // 3. The manager hosts it behind a header toggle; the drawer does not.
-        const tabSrc = readLocalFile("../dashboard/tabs/DownloadsTab.qml");
+        const tabSrc = readLocalFile("../modules/Astral/Apps/Downloads/DownloadsApp.qml");
         assert(/property bool settingsOpen/.test(tabSrc), "DownloadsTab must own the settings state");
         assert(/DownloadSettingsPanel\s*\{/.test(tabSrc), "the window must host the settings panel");
         assert(/visible:\s*root\.windowMode\s*&&\s*root\.settingsOpen/.test(tabSrc),

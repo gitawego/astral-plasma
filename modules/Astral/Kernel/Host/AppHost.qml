@@ -48,6 +48,8 @@ Item {
     property var metrics: null
     /// The AI quota service, injected for the AI surface (live instance).
     property var ai: null
+    /// The download service, injected for the downloads surface (live instance).
+    property var downloads: null
 
     /// Loadable entries, in dependency order.
     readonly property var loaded: plan.load
@@ -193,6 +195,11 @@ Item {
             item.ai = root.ai;
         } catch (error) {
             // The app does not read AI state: fine.
+        }
+        try {
+            item.downloads = root.downloads;
+        } catch (error) {
+            // The app does not read downloads: fine.
         }
     }
 

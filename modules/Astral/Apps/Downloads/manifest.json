@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "id": "org.astralplasma.downloads",
+  "name": "Downloads",
+  "version": "0.1.0",
+  "kernelApi": 1,
+  "dataSchema": 1,
+  "trust": "official",
+  "runtime": "embedded",
+  "publisher": { "name": "Astral Plasma", "key": "minisign:RWSplaceholderReleaseKey" },
+  "entry": { "root": "DownloadsApp.qml", "dashboardTab": "downloads" },
+  "requires": { "capabilities": [], "qtModules": [], "apps": [] },
+  "permissions": ["files.read", "files.write", "network"],
+  "distribution": "preinstalled"
+}

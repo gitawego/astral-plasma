@@ -1,10 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Dialogs
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/config"
-import "../../modules/Astral/Kernel/services"
+import "../../Kernel/theme"
+import "../../Kernel/components"
 import "DownloadSettingsMath.js" as SettingsMath
 
 /// Transfer settings, designed as a console rather than a settings page.
@@ -20,25 +18,30 @@ import "DownloadSettingsMath.js" as SettingsMath
 Rectangle {
     id: sheet
 
+    /// Injected by the downloads app: the shell's live download service and ports.
+    property var downloads: null
+    property var shellState: null
+    property var intents: null
+
     signal closeRequested()
 
     readonly property int pad: 22
 
-    readonly property string dir: (typeof Config !== "undefined" && Config.downloadsDir)
-        ? Config.downloadsDir : ""
-    readonly property int splitParts: (typeof Config !== "undefined" && Config.downloadsSplit)
-        ? Config.downloadsSplit : 4
-    readonly property int parallelDownloads: (typeof Config !== "undefined" && Config.downloadsMaxConcurrent)
-        ? Config.downloadsMaxConcurrent : 5
-    readonly property int speedLimitKbps: (typeof Config !== "undefined" && Config.downloadsSpeedLimit !== undefined)
-        ? Config.downloadsSpeedLimit : 0
-    readonly property bool borderEffect: (typeof Config !== "undefined" && Config.downloadsBorderEffect !== undefined)
-        ? Config.downloadsBorderEffect : true
+    readonly property string dir: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsDir : ""))
+        ? (sheet.shellState ? sheet.shellState.downloadsDir : "") : ""
+    readonly property int splitParts: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsSplit : false))
+        ? (sheet.shellState ? sheet.shellState.downloadsSplit : false) : 4
+    readonly property int parallelDownloads: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsMaxConcurrent : 3))
+        ? (sheet.shellState ? sheet.shellState.downloadsMaxConcurrent : 3) : 5
+    readonly property int speedLimitKbps: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsSpeedLimit : 0) !== undefined)
+        ? (sheet.shellState ? sheet.shellState.downloadsSpeedLimit : 0) : 0
+    readonly property bool borderEffect: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsBorderEffect : true) !== undefined)
+        ? (sheet.shellState ? sheet.shellState.downloadsBorderEffect : true) : true
 
     readonly property int capacity: SettingsMath.capacity(sheet.parallelDownloads, sheet.splitParts)
     readonly property string speedText: SettingsMath.formatKbps(sheet.speedLimitKbps)
     readonly property string engineVersion: (typeof DownloadService !== "undefined" && DownloadService
-        && DownloadService.ariaVersion) ? String(DownloadService.ariaVersion) : ""
+        && sheet.downloads.ariaVersion) ? String(sheet.downloads.ariaVersion) : ""
 
     implicitWidth: 660
     implicitHeight: content.implicitHeight + sheet.pad * 2
@@ -53,32 +56,34 @@ Rectangle {
 
     function chooseDir(path) {
         const value = String(path || "").trim();
-        Config.setDownloadsDir(value);
+        sheet.intents && sheet.intents.request("downloads.dir", { value: value });
         sheet.pushToEngine();
+    }
+
+    function applyDirectory(value) {
+        if (sheet.intents) sheet.intents.request("downloads.dir", { value: String(value) });
     }
 
     function applySplit(value) {
-        Config.setDownloadsSplit(SettingsMath.parts(value));
+        if (sheet.intents) sheet.intents.request("downloads.split", { value: SettingsMath.parts(value) });
     }
 
     function applyParallel(value) {
-        Config.setDownloadsMaxConcurrent(SettingsMath.parallel(value));
-        sheet.pushToEngine();
+        if (sheet.intents) sheet.intents.request("downloads.maxConcurrent", { value: SettingsMath.parallel(value) });
     }
 
     function applySpeed(value) {
-        Config.setDownloadsSpeedLimit(SettingsMath.speedKbps(value));
-        sheet.pushToEngine();
+        if (sheet.intents) sheet.intents.request("downloads.speedLimit", { value: SettingsMath.speedKbps(value) });
     }
 
-    function setBorder(enabled) {
-        Config.setDownloadsBorderEffect(Boolean(enabled));
+    function applyBorderEffect(enabled) {
+        if (sheet.intents) sheet.intents.request("downloads.borderEffect", { value: Boolean(enabled) });
     }
 
     function pushToEngine() {
         if (typeof DownloadService !== "undefined" && DownloadService
-                && typeof DownloadService.applyEngineSettings === "function") {
-            DownloadService.applyEngineSettings();
+                && typeof sheet.downloads.applyEngineSettings === "function") {
+            sheet.downloads.applyEngineSettings();
         }
     }
 

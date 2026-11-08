@@ -97,13 +97,15 @@ Item {
     readonly property alias tabsRowItem: tabsRow
     readonly property alias tabContentContainerItem: tabContentContainer
     readonly property alias tabSliderItem: tabSlider
-    readonly property alias downloadsTabItem: dlTab
+    /// The hosted downloads app's item, or null while it is not mounted.
+    readonly property Item downloadsTabItem: dlAppHost.children.length > 0
+        ? dlAppHost.children[0] : null
     readonly property Item workspacesTabItem: wsApp.children.length > 0 ? wsApp.children[0] : null
 
     // Keyboard contract for the shell's layer surface: while a tab captures
     // text (the Downloads add sheet, Workspaces search), UnifiedShell requests
     // compositor keyboard focus. A new text-capturing tab must OR its state in here.
-    readonly property bool textInputActive: dlTab.addDialogOpen
+    readonly property bool textInputActive: Boolean(downloadsTabItem && downloadsTabItem.addDialogOpen)
         || Boolean(workspacesTabItem && workspacesTabItem.searchActive)
 
     x: dropX
@@ -524,14 +526,30 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 5
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: dlTab.implicitHeight
+                    implicitHeight: dlAppHost.children.length > 0
+                        ? Math.max(dlAppHost.children[0].implicitHeight, 320) : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 5) || tabSlider.isAnimating
 
-                    DownloadsTab {
-                        id: dlTab
+                    Item {
+                        id: dlAppHost
                         width: parent.width
                         height: parent.height
+
+                        readonly property int hostReadiness: {
+                            if (!root.appHost) return 0;
+                            return root.appHost.loaderCount * 1000
+                                + Object.keys(root.appHost.tabProviders).length;
+                        }
+                        onHostReadinessChanged: mountApp()
+                        Component.onCompleted: mountApp()
+
+                        function mountApp() {
+                            if (!root.appHost) return;
+                            const provider = root.appHost.providerForTab("downloads");
+                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
+                            if (dlAppHost.children.length === 0) root.appHost.mount(provider, dlAppHost);
+                        }
                     }
                 }
             }

@@ -1818,7 +1818,10 @@ Playing · NetEase Cloud Music (Wine)"), transport, progress and artwork, and th
 **performance** tab renders live telemetry (CPU 11%, memory 40%, GPU 33%, speed, temperature,
 processes) — all hosted in their dashboard panes, zero load errors, `make test` 1109 Rust
 tests + 164 QML suites. and the **AI** tab renders live quota data (98% cache hit, per-provider remaining limits,
-three connected accounts). Four apps are migrated; the pattern is mechanical now.
+three connected accounts). and **downloads** renders its manager (segments, "1 finished", add-sheet, empty state) — five
+apps are migrated; the pattern is mechanical now. `DownloadsWindow` instantiates the same
+shell-declared component, so the drawer and the window share one implementation and one
+registration.
 
 The trade-off is explicit: `shell.qml` names each migrated app once, in a component
 declaration. That is the price of sharing one kernel registration, and it is smaller than

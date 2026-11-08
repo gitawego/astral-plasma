@@ -13,6 +13,7 @@ import "./modules/Astral/Apps/Workspaces"
 import "./modules/Astral/Apps/Media"
 import "./modules/Astral/Apps/Performance"
 import "./modules/Astral/Apps/Ai"
+import "./modules/Astral/Apps/Downloads"
 import "./settings_gui"
 import "./modules/Astral/Kernel/services"
 import "./assistant"
@@ -35,6 +36,12 @@ ShellRoot {
         iconResolver: function (name) { return Config.iconUrl(name); }
         mediaAvatar: Config.mediaAvatar
         mediaVisualizerStyle: Config.mediaVisualizerStyle
+        downloadsSegment: Config.activeDownloadsSegment
+        downloadsDir: Config.downloadsDir
+        downloadsSplit: Config.downloadsSplit
+        downloadsMaxConcurrent: Config.downloadsMaxConcurrent
+        downloadsSpeedLimit: Config.downloadsSpeedLimit
+        downloadsBorderEffect: Config.downloadsBorderEffect
         aiPrivacyMode: Config.aiPrivacyMode
         providerIconResolver: function (name) { return Config.providerIconUrl(name); }
     }
@@ -155,13 +162,15 @@ ShellRoot {
         workspaces: workspacesPort
         metrics: SystemService
         ai: AiTokenService
+        downloads: DownloadService
         // Shell-declared components share the shell's kernel registration, which is what
         // makes a migrated app themed (spec C.18).
         components: ({
             "org.astralplasma.workspaces": workspacesApp,
             "org.astralplasma.media": mediaApp,
             "org.astralplasma.performance": performanceApp,
-            "org.astralplasma.ai": aiApp
+            "org.astralplasma.ai": aiApp,
+            "org.astralplasma.downloads": downloadsApp
         })
         eager: []
         host: ({ level: 1, floor: 1 })
@@ -641,6 +650,10 @@ ShellRoot {
         id: aiApp
         AiApp {}
     }
+    Component {
+        id: downloadsApp
+        DownloadsApp {}
+    }
 
     // Settings GUI Window
     SettingsWindow {
@@ -663,6 +676,7 @@ ShellRoot {
 
     // Dedicated download manager Window (real toplevel, opened from the drawer)
     DownloadsWindow {
+        appComponent: downloadsApp
         id: downloadsWindow
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
@@ -707,6 +721,38 @@ ShellRoot {
         });
         intents.register("dashboard.close", function () {
             Config.dashboardVisible = false;
+            return intents.applied();
+        });
+        intents.register("downloads.segment", function (args) {
+            const segment = (args && args.segment) ? String(args.segment) : "";
+            if (segment.length === 0) {
+                return intents.invalid("downloads.segment needs a segment");
+            }
+            Config.activeDownloadsSegment = segment;
+            return intents.applied();
+        });
+        intents.register("downloads.dir", function (args) {
+            Config.setDownloadsDir(String((args && args.value) || ""));
+            return intents.applied();
+        });
+        intents.register("downloads.maxConcurrent", function (args) {
+            Config.setDownloadsMaxConcurrent(Number((args && args.value) || 0));
+            return intents.applied();
+        });
+        intents.register("downloads.speedLimit", function (args) {
+            Config.setDownloadsSpeedLimit(Number((args && args.value) || 0));
+            return intents.applied();
+        });
+        intents.register("downloads.split", function (args) {
+            Config.setDownloadsSplit(!!(args && args.value));
+            return intents.applied();
+        });
+        intents.register("downloads.borderEffect", function (args) {
+            Config.setDownloadsBorderEffect(!!(args && args.value));
+            return intents.applied();
+        });
+        intents.register("downloads.window", function () {
+            Config.openDownloadsWindow();
             return intents.applied();
         });
         intents.register("settings.open", function (args) {

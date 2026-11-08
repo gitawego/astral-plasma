@@ -88,14 +88,14 @@ Item {
             "every open request must signal the window to raise itself");
 
         // 3. The drawer exposes the action and adapts to its host.
-        const tabSrc = readLocalFile("../dashboard/tabs/DownloadsTab.qml");
+        const tabSrc = readLocalFile("../modules/Astral/Apps/Downloads/DownloadsApp.qml");
         assert(/property bool windowMode/.test(tabSrc),
             "DownloadsTab must know whether it is hosted in the window");
         assert(/property var windowHandle/.test(tabSrc),
             "DownloadsTab must receive the hosting window for native drag");
         assert(/signal closeRequested\(\)/.test(tabSrc),
             "DownloadsTab must signal the window close action");
-        assert(/Config\.openDownloadsWindow\(\)/.test(tabSrc),
+        assert(/intents\.request\("downloads\.window"\)/.test(tabSrc),
             "the drawer header must offer opening the dedicated window");
         assert(/startSystemMove/.test(tabSrc),
             "the window header must start a compositor-native move");

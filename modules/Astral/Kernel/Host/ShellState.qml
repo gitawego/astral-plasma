@@ -36,6 +36,19 @@ QtObject {
     /// `speaker` or `radial`; the surface renders it, the shell stores it.
     property string mediaVisualizerStyle: "radial"
 
+    /// Which downloads segment the user last looked at (`active`, `waiting`, …).
+    property string downloadsSegment: "active"
+    /// The download directory, as the user configured it.
+    property string downloadsDir: ""
+    /// Whether the tab splits into columns or shows one list.
+    property bool downloadsSplit: false
+    /// Concurrent download slots the user asked for.
+    property int downloadsMaxConcurrent: 3
+    /// Speed limit in bytes/s (0 = unlimited).
+    property int downloadsSpeedLimit: 0
+    /// Whether the download rows use the blurred glass border.
+    property bool downloadsBorderEffect: true
+
     /// Whether the user has AI privacy mode on.
     property bool aiPrivacyMode: true
     /// Provider brand icon resolution, supplied by the shell (it knows the assets).

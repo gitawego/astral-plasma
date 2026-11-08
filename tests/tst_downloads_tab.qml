@@ -5,6 +5,7 @@ import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "../shell"
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Downloads"
 
 // ============================================================================
 // Downloads Tab & 6-Tab Dropdown + Border Effect Unit Tests (TDD, D1–D15)
@@ -24,7 +25,7 @@ Item {
     width: 1280
     height: 900
 
-    DownloadsTab {
+    DownloadsApp {
         id: dlTab
         visible: false
         width: 948
@@ -159,10 +160,14 @@ Item {
         assert(dropdown.tabs[5].id === "downloads", "6th tab must be 'downloads', got " + dropdown.tabs[5].id);
         assert(dropdown.tabs[5].label === "Downloads", "downloads tab label");
 
-        assert(dropdown.downloadsTabItem !== undefined && dropdown.downloadsTabItem !== null,
+        // The downloads tab is a hosted app: the accessor exists, and is null until the
+        // host has mounted it (a suite has no host).
+        assert(dropdown.downloadsTabItem !== undefined,
             "CentralDropdown must expose downloadsTabItem");
-        assert(dropdown.textInputActive === dropdown.downloadsTabItem.addDialogOpen,
-            "dropdown textInputActive must track the add sheet");
+        if (dropdown.downloadsTabItem !== null) {
+            assert(dropdown.textInputActive === dropdown.downloadsTabItem.addDialogOpen,
+                "dropdown textInputActive must track the add sheet");
+        }
 
         const repeater = dropdown.tabRepeaterItem;
         assert(repeater !== undefined && repeater !== null, "must expose tabRepeaterItem");
@@ -425,7 +430,7 @@ Item {
         assert(/openFile/.test(svcSrc) && /openFolder/.test(svcSrc) && /xdg-open/.test(svcSrc),
             "DownloadService exposes openFile and openFolder using xdg-open");
 
-        const tabSrc = readLocalFile("../dashboard/tabs/DownloadsTab.qml");
+        const tabSrc = readLocalFile("../modules/Astral/Apps/Downloads/DownloadsApp.qml");
         assert(/LiquidGlassButton/.test(tabSrc), "DownloadsTab uses LiquidGlassButton");
         assert(/Theme\.animExpressive/.test(tabSrc), "DownloadsTab animates with Theme expressive tokens");
         assert(/Flickable/.test(tabSrc), "task list is Flickable-bounded");

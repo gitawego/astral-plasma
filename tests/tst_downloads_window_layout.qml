@@ -1,5 +1,6 @@
 import QtQuick
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Downloads"
 
 /// The window's stage must not move when the segment changes.
 ///
@@ -12,7 +13,7 @@ Item {
     width: 1000
     height: 900
 
-    DownloadsTab {
+    DownloadsApp {
         id: winTab
         anchors.fill: parent
         windowMode: true

@@ -1,9 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
-import "../../modules/Astral/Kernel/config"
+import "../../Kernel/theme"
+import "../../Kernel/components"
 
 // Downloads manager tab (D1): hero header (aggregate state + add action),
 // Material 3 segmented control (active / queued / finished), a designed empty
@@ -16,8 +14,16 @@ import "../../modules/Astral/Kernel/config"
 //
 // Height is content-driven: the empty state is compact, the list clamps at
 // `maxListHeight` (4 rows) and scrolls, so the dropdown never grows unbounded.
+// Downloads app (`manifest.entry.dashboardTab` = "downloads").
+//
+// Declared as a Component in `shell.qml` (one kernel registration, spec C.18). `downloads` is
+// the shell's live download service; settings and navigation go through shellState/intents.
 Item {
     id: root
+
+    property var downloads: null
+    property var shellState: null
+    property var intents: null
 
     implicitWidth: 680
     implicitHeight: contentColumn.implicitHeight + root.padMedium * 2
@@ -26,11 +32,11 @@ Item {
     property var testTasks: null
 
     // Segment filter: "active" | "queued" | "finished" (AriaNg list routes).
-    property string segment: (typeof Config !== "undefined" && Config && Config.activeDownloadsSegment)
-        ? Config.activeDownloadsSegment : "active"
+    property string segment: (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsSegment : "active"))
+        ? (root.shellState ? root.shellState.downloadsSegment : "active") : "active"
     onSegmentChanged: {
-        if (typeof Config !== "undefined" && Config && Config.activeDownloadsSegment !== root.segment) {
-            Config.activeDownloadsSegment = root.segment;
+        if (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsSegment : "active") !== root.segment) {
+            if (root.intents) root.intents.request("downloads.segment", { segment: root.segment });
         }
     }
     property bool addDialogOpen: false
@@ -49,8 +55,8 @@ Item {
     // Connections per file for the next add (1..16, clamped by setSplitValue).
     property int splitValue: 4
     // Global default, used only when the engine did not report a task's split.
-    readonly property int defaultSplit: (typeof Config !== "undefined" && Config && Config.downloadsSplit)
-        ? Config.downloadsSplit : 4
+    readonly property int defaultSplit: (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsSplit : false))
+        ? (root.shellState ? root.shellState.downloadsSplit : false) : 4
 
     // Keyboard contract: the shell's layer surface runs with
     // WlrKeyboardFocus.None by default (pointer-only drawers). Any surface
@@ -62,8 +68,8 @@ Item {
     property var testAriaAvailable: null
     readonly property bool isAriaAvailable: root.testAriaAvailable !== null
         ? Boolean(root.testAriaAvailable)
-        : ((typeof DownloadService !== "undefined" && DownloadService && DownloadService.ariaAvailable !== undefined)
-            ? Boolean(DownloadService.ariaAvailable)
+        : ((root.downloads !== null && root.downloads && root.downloads.ariaAvailable !== undefined)
+            ? Boolean(root.downloads.ariaAvailable)
             : true)
 
     // Clipboard paste: TextEdit.paste() under the hood; testMode can inject
@@ -145,8 +151,8 @@ Item {
     readonly property int emptyStateHeight: 150
 
     readonly property bool isTargetVisible: testMode || (
-        visible && ((typeof Config !== "undefined" && Config)
-            ? (Boolean(Config.dashboardVisible) && Config.activeDashboardTab === "downloads")
+        visible && ((root.shellState !== null && Config)
+            ? (Boolean((root.shellState ? root.shellState.dashboardVisible : false)) && (root.shellState && root.shellState.activeDashboardTab === "downloads"))
             : true)
     )
 
@@ -154,9 +160,9 @@ Item {
     // Helpers (pure; unit-tested in tst_downloads_tab.qml)
     // =====================================================================
     function formatBytes(bytes) {
-        if (typeof DownloadService !== "undefined" && DownloadService
-                && typeof DownloadService.formatBytes === "function") {
-            return DownloadService.formatBytes(bytes);
+        if (root.downloads !== null && root.downloads
+                && typeof root.downloads.formatBytes === "function") {
+            return root.downloads.formatBytes(bytes);
         }
         if (!bytes || bytes <= 0) return "0 B";
         const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -166,9 +172,9 @@ Item {
     }
 
     function formatSpeed(bytesPerSec) {
-        if (typeof DownloadService !== "undefined" && DownloadService
-                && typeof DownloadService.formatSpeed === "function") {
-            return DownloadService.formatSpeed(bytesPerSec);
+        if (root.downloads !== null && root.downloads
+                && typeof root.downloads.formatSpeed === "function") {
+            return root.downloads.formatSpeed(bytesPerSec);
         }
         return root.formatBytes(bytesPerSec) + "/s";
     }
@@ -257,9 +263,9 @@ Item {
         if (!t || !t.gid) return;
         const next = root.nextParts(t, delta);
         if (next === root.taskParts(t)) return;
-        if (typeof DownloadService !== "undefined" && DownloadService
-                && typeof DownloadService.setParts === "function") {
-            DownloadService.setParts(t.gid, next);
+        if (root.downloads !== null && root.downloads
+                && typeof root.downloads.setParts === "function") {
+            root.downloads.setParts(t.gid, next);
         }
     }
 
@@ -290,9 +296,9 @@ Item {
 
     function submitDownload() {
         const urls = (urlInput.text || "").trim();
-        if (urls.length > 0 && typeof DownloadService !== "undefined" && DownloadService
-                && typeof DownloadService.addUrls === "function") {
-            DownloadService.addUrls(urls, { split: root.splitValue });
+        if (urls.length > 0 && root.downloads !== null && root.downloads
+                && typeof root.downloads.addUrls === "function") {
+            root.downloads.addUrls(urls, { split: root.splitValue });
         }
         urlInput.text = "";
         root.addDialogOpen = false;
@@ -315,10 +321,10 @@ Item {
         if (root.testMode && root.testTasks !== null) {
             return (root.testTasks || []).filter(function(t) { return root.matchesSegment(t); });
         }
-        if (typeof DownloadService === "undefined" || !DownloadService) return [];
-        if (root.segment === "active") return DownloadService.activeTasks || [];
-        if (root.segment === "queued") return DownloadService.waitingTasks || [];
-        return DownloadService.stoppedTasks || [];
+        if (root.downloads === null) return [];
+        if (root.segment === "active") return root.downloads.activeTasks || [];
+        if (root.segment === "queued") return root.downloads.waitingTasks || [];
+        return root.downloads.stoppedTasks || [];
     }
 
     function countWhere(pred) {
@@ -331,7 +337,7 @@ Item {
     readonly property int activeCount: {
         const injected = root.countWhere(function(t) { return root.taskStatus(t) === "active"; });
         if (injected >= 0) return injected;
-        return (typeof DownloadService !== "undefined" && DownloadService && DownloadService.activeCount) || 0;
+        return (root.downloads !== null && root.downloads && root.downloads.activeCount) || 0;
     }
     readonly property int queuedCount: {
         const injected = root.countWhere(function(t) {
@@ -339,16 +345,16 @@ Item {
             return st === "waiting" || st === "paused";
         });
         if (injected >= 0) return injected;
-        return (typeof DownloadService !== "undefined" && DownloadService && (DownloadService.waitingTasks || []).length) || 0;
+        return (root.downloads !== null && root.downloads && (root.downloads.waitingTasks || []).length) || 0;
     }
     readonly property int finishedCount: {
         const injected = root.countWhere(function(t) { return root.isFinishedStatus(t); });
         if (injected >= 0) return injected;
-        return (typeof DownloadService !== "undefined" && DownloadService && (DownloadService.stoppedTasks || []).length) || 0;
+        return (root.downloads !== null && root.downloads && (root.downloads.stoppedTasks || []).length) || 0;
     }
 
-    readonly property real aggregateProgress: (typeof DownloadService !== "undefined" && DownloadService && DownloadService.totalProgress) || 0
-    readonly property real aggregateSpeed: (typeof DownloadService !== "undefined" && DownloadService && DownloadService.totalSpeed) || 0
+    readonly property real aggregateProgress: (root.downloads !== null && root.downloads && root.downloads.totalProgress) || 0
+    readonly property real aggregateSpeed: (root.downloads !== null && root.downloads && root.downloads.totalSpeed) || 0
 
     // Explicit composition state: what the tab is showing, independent of the
     // parent's effective visibility (Qt forces child `visible` off under an
@@ -386,14 +392,14 @@ Item {
     }
 
     readonly property string destinationLabel: {
-        if (typeof Config !== "undefined" && Config && Config.downloadsDir && Config.downloadsDir.length > 0)
-            return Config.downloadsDir;
+        if (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsDir : "") && (root.shellState ? root.shellState.downloadsDir : "").length > 0)
+            return (root.shellState ? root.shellState.downloadsDir : "");
         return "~/Downloads";
     }
 
     Component.onCompleted: {
-        if (typeof Config !== "undefined" && Config && Config.downloadsSplit)
-            root.setSplitValue(Config.downloadsSplit);
+        if (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsSplit : false))
+            root.setSplitValue((root.shellState ? root.shellState.downloadsSplit : false));
     }
 
     onAddDialogOpenChanged: {
@@ -407,9 +413,9 @@ Item {
     // Closing the dashboard must release the keyboard capture even when the
     // sheet was never explicitly dismissed.
     Connections {
-        target: (typeof Config !== "undefined" && Config && Config.dashboardVisible !== undefined) ? Config : null
+        target: (root.shellState !== null && Config && (root.shellState ? root.shellState.dashboardVisible : false) !== undefined) ? Config : null
         function onDashboardVisibleChanged() {
-            if (typeof Config !== "undefined" && Config && Config.dashboardVisible === false) {
+            if (root.shellState !== null && Config && (root.shellState ? root.shellState.dashboardVisible : false) === false) {
                 root.addDialogOpen = false;
                 root.inputMenuOpen = false;
             }
@@ -498,8 +504,8 @@ Item {
                             const pct = Math.round(root.aggregateProgress * 100);
                             return pct + "% · " + root.formatSpeed(root.aggregateSpeed)
                                 + " · ETA " + root.taskEta({
-                                    total_length: (typeof DownloadService !== "undefined" && DownloadService ? DownloadService.totalBytes : 0) || 0,
-                                    completed_length: (typeof DownloadService !== "undefined" && DownloadService ? DownloadService.totalCompletedBytes : 0) || 0,
+                                    total_length: (root.downloads !== null && root.downloads ? root.downloads.totalBytes : 0) || 0,
+                                    completed_length: (root.downloads !== null && root.downloads ? root.downloads.totalCompletedBytes : 0) || 0,
                                     download_speed: root.aggregateSpeed
                                 });
                         }
@@ -696,9 +702,9 @@ Item {
                     onClicked: {
                         if (root.windowMode) {
                             root.closeRequested();
-                        } else if (typeof Config !== "undefined" && Config
-                                && typeof Config.openDownloadsWindow === "function") {
-                            Config.openDownloadsWindow();
+                        } else if (root.shellState !== null && Config
+                                && root.intents !== null) {
+                            root.intents && root.intents.request("downloads.window");
                         }
                     }
                 }
@@ -736,7 +742,7 @@ Item {
         Card {
             id: ariaInstallBanner
             Layout.fillWidth: true
-            visible: (typeof DownloadService !== "undefined" && DownloadService && !DownloadService.ariaAvailable)
+            visible: (root.downloads !== null && root.downloads && !root.downloads.ariaAvailable)
             radius: root.radiusCard
             implicitHeight: bannerColumn.implicitHeight + root.padMedium * 2
 
@@ -806,8 +812,8 @@ Item {
                             anchors.leftMargin: 12
                             anchors.rightMargin: 12
                             verticalAlignment: Text.AlignVCenter
-                            text: (typeof DownloadService !== "undefined" && DownloadService && DownloadService.ariaInstallCommand)
-                                ? DownloadService.ariaInstallCommand
+                            text: (root.downloads !== null && root.downloads && root.downloads.ariaInstallCommand)
+                                ? root.downloads.ariaInstallCommand
                                 : "sudo pacman -S aria2"
                             font.family: root.fontMonospace
                             font.pixelSize: root.fontLabelSmall
@@ -827,11 +833,11 @@ Item {
                         iconSize: 14
                         elevation: 3
                         onClicked: {
-                            const cmd = (typeof DownloadService !== "undefined" && DownloadService && DownloadService.ariaInstallCommand)
-                                ? DownloadService.ariaInstallCommand
+                            const cmd = (root.downloads !== null && root.downloads && root.downloads.ariaInstallCommand)
+                                ? root.downloads.ariaInstallCommand
                                 : "sudo pacman -S aria2";
-                            if (typeof DownloadService !== "undefined" && DownloadService && typeof DownloadService.copyToClipboard === "function") {
-                                DownloadService.copyToClipboard(cmd);
+                            if (root.downloads !== null && root.downloads && typeof root.downloads.copyToClipboard === "function") {
+                                root.downloads.copyToClipboard(cmd);
                             }
                             copyTimer.restart();
                         }
@@ -1139,11 +1145,11 @@ Item {
                             if (root.isAriaAvailable) {
                                 root.submitDownload();
                             } else {
-                                const cmd = (typeof DownloadService !== "undefined" && DownloadService && DownloadService.ariaInstallCommand)
-                                    ? DownloadService.ariaInstallCommand
+                                const cmd = (root.downloads !== null && root.downloads && root.downloads.ariaInstallCommand)
+                                    ? root.downloads.ariaInstallCommand
                                     : "sudo pacman -S aria2";
-                                if (typeof DownloadService !== "undefined" && DownloadService && typeof DownloadService.copyToClipboard === "function") {
-                                    DownloadService.copyToClipboard(cmd);
+                                if (root.downloads !== null && root.downloads && typeof root.downloads.copyToClipboard === "function") {
+                                    root.downloads.copyToClipboard(cmd);
                                 }
                                 copySubmitTimer.restart();
                             }
@@ -1191,6 +1197,9 @@ Item {
             }
 
             DownloadSettingsPanel {
+                downloads: root.downloads
+                shellState: root.shellState
+                intents: root.intents
                 id: settingsPanel
                 anchors.centerIn: parent
                 width: Math.min(680, parent.width - 48)
@@ -1290,8 +1299,8 @@ Item {
                     active: true
                     onClicked: {
                         if (root.segment === "finished") {
-                            if (typeof DownloadService !== "undefined" && DownloadService) {
-                                DownloadService.openFolder("");
+                            if (root.downloads !== null && root.downloads) {
+                                root.downloads.openFolder("");
                             }
                         } else {
                             root.addDialogOpen = true;
@@ -1343,11 +1352,11 @@ Item {
                             z: -1
                             cursorShape: (taskCard.status === "complete") ? Qt.PointingHandCursor : Qt.ArrowCursor
                             onClicked: {
-                                if (taskCard.status === "complete" && typeof DownloadService !== "undefined" && DownloadService) {
+                                if (taskCard.status === "complete" && root.downloads !== null && root.downloads) {
                                     const t = taskCard.task;
                                     const name = (t && t.name) || "";
                                     const dir = (t && t.dir) || "";
-                                    DownloadService.openFile(dir, name);
+                                    root.downloads.openFile(dir, name);
                                 }
                             }
                         }
@@ -1529,18 +1538,18 @@ Item {
                                                 hoverEnabled: true
                                                 cursorShape: Qt.PointingHandCursor
                                                 onClicked: {
-                                                    if (typeof DownloadService === "undefined" || !DownloadService) return;
+                                                    if (root.downloads === null) return;
                                                     const t = taskCard.task;
                                                     const gid = (t && t.gid) || "";
                                                     const name = (t && t.name) || "";
                                                     const dir = (t && t.dir) || "";
-                                                    if (actionButton.modelData === "pause") DownloadService.pause(gid);
-                                                    else if (actionButton.modelData === "resume") DownloadService.resume(gid);
-                                                    else if (actionButton.modelData === "cancel") DownloadService.cancel(gid, false);
-                                                    else if (actionButton.modelData === "retry") DownloadService.retry(gid);
-                                                    else if (actionButton.modelData === "open") DownloadService.openFile(dir, name);
-                                                    else if (actionButton.modelData === "folder") DownloadService.openFolder(dir);
-                                                    else DownloadService.removeResult(gid);
+                                                    if (actionButton.modelData === "pause") root.downloads.pause(gid);
+                                                    else if (actionButton.modelData === "resume") root.downloads.resume(gid);
+                                                    else if (actionButton.modelData === "cancel") root.downloads.cancel(gid, false);
+                                                    else if (actionButton.modelData === "retry") root.downloads.retry(gid);
+                                                    else if (actionButton.modelData === "open") root.downloads.openFile(dir, name);
+                                                    else if (actionButton.modelData === "folder") root.downloads.openFolder(dir);
+                                                    else root.downloads.removeResult(gid);
                                                 }
                                             }
                                         }
@@ -1661,8 +1670,8 @@ Item {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (typeof DownloadService !== "undefined" && DownloadService) {
-                            DownloadService.openFolder("");
+                        if (root.downloads !== null && root.downloads) {
+                            root.downloads.openFolder("");
                         }
                     }
                 }
@@ -1685,9 +1694,9 @@ Item {
                     paddingVertical: 3
                     elevation: 2
                     onClicked: {
-                        if (typeof DownloadService !== "undefined" && DownloadService
-                                && typeof DownloadService.purge === "function") {
-                            DownloadService.purge();
+                        if (root.downloads !== null && root.downloads
+                                && typeof root.downloads.purge === "function") {
+                            root.downloads.purge();
                         }
                     }
                 }

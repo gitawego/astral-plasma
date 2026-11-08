@@ -6,6 +6,10 @@
       "id": "org.astralplasma.ai"
     },
     {
+      "dir": "Downloads",
+      "id": "org.astralplasma.downloads"
+    },
+    {
       "dir": "Media",
       "id": "org.astralplasma.media"
     },
