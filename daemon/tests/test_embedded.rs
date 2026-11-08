@@ -13,4 +13,11 @@ fn test_embedded_dir_extraction() {
     assert!(tmp.path().join("modules/Astral/Kernel/components").exists());
     assert!(tmp.path().join("modules/Astral/Kernel/config/Config.qml").exists());
     assert!(tmp.path().join("modules/Astral/Kernel/services").exists());
+    // AppKit and the bundled apps travel with the package: a hosted app needs the
+    // SDK on the import path, and the shell loads its apps from data.
+    assert!(tmp.path().join("modules/Astral/AppKit/qmldir").exists());
+    assert!(tmp
+        .path()
+        .join("modules/Astral/Kernel/Host/AppHost.qml")
+        .exists());
 }

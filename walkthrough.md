@@ -2314,3 +2314,33 @@ so an archetype change reaches community apps without a rebuild.
 >
 > **Not done**: `SurfaceBroker`/`IntentBus`, and routing `overview` through the
 > host (that is the change that touches `shell.qml`).
+
+---
+
+## P2 close-out attempt — reverted, and why (2026-11-08)
+
+I tried to move the overview out of `shell.qml` and load it through `AppHost`, with
+a generated `modules/Astral/Apps/index.json` instead of an import. The pieces all
+worked — the host planned it, activated it, and reported `app loaded`; the IPC
+handler flipped `Config.overviewVisible` from `false` to `true` — and the surface
+still did nothing.
+
+The reason is a real one: **a component loaded through a `Loader` gets its own
+singleton instance for a directory import.** The app's `Config.overviewVisible`
+stayed `false` on every tick while the shell's copy was `true`. So a migrated
+surface reads stale settings, and no relative path fixes that.
+
+> **Verified**: `IPC overview toggle; was false` / `now true` in the shell, while
+> the app logged `app sees Config.overviewVisible=false` on a 700 ms timer, with
+> three screenshots showing no overlay.
+>
+> **Reverted**: `shell.qml`, the surface file, and the three suites it touched are
+> back to committed state; the app directory and index generator are gone. `make
+> test` green again — 1059 Rust tests, 156 QML suites.
+
+Kept from the attempt: the packaging fix (a package must ship `modules/` as one
+tree, or an installed shell has no AppKit and no host).
+
+Conclusion, now recorded in the spec as a prerequisite: migrating an embedded app
+needs `IntentBus` for shell state and a port for the settings it reads. That is the
+next unit of work, and it is a design change — not a file move.
