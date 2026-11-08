@@ -3,7 +3,8 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import Astral.AppKit 1.0
+import "../../Kernel/theme"
+import "../../Kernel/components"
 
 // Overview app entry point (`manifest.entry.root`).
 //
@@ -483,7 +484,7 @@ PanelWindow {
     }
 
     // Integrated Liquid Glass Search & Status Capsule (macOS & Raycast style)
-    GlassCard {
+    LiquidGlassCard {
         id: searchCapsule
         anchors.top: parent.top
         anchors.topMargin: Math.max(16, root.gridMargin * 0.32)
@@ -515,7 +516,7 @@ PanelWindow {
             anchors.rightMargin: 12
             spacing: 10
 
-            Icon {
+            MaterialIcon {
                 text: root.isCommandMode ? "terminal" : "search"
                 size: 20
                 color: (root.searchQuery.length > 0 || root.isCommandMode) ? Colors.primary : Colors.textMuted
@@ -630,7 +631,7 @@ PanelWindow {
                 radius: 12
                 color: clearMouse.containsMouse ? Colors.glassCardHover : "transparent"
 
-                Icon {
+                MaterialIcon {
                     anchors.centerIn: parent
                     text: "close"
                     size: 15
@@ -665,7 +666,7 @@ PanelWindow {
                         anchors.centerIn: parent
                         spacing: 4
 
-                        Icon {
+                        MaterialIcon {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "space_dashboard"
                             size: 13
@@ -796,7 +797,7 @@ PanelWindow {
                     }
                 }
 
-                GlassCard {
+                LiquidGlassCard {
                     id: card
                     anchors.fill: parent
                     radius: Theme.radiusGlassCard
@@ -844,7 +845,7 @@ PanelWindow {
                                     fillMode: Image.PreserveAspectFit
                                 }
 
-                                Icon {
+                                MaterialIcon {
                                     anchors.centerIn: parent
                                     text: "wallpaper"
                                     size: 28
@@ -880,7 +881,7 @@ PanelWindow {
                                     visible: status === Image.Ready
                                 }
 
-                                Icon {
+                                MaterialIcon {
                                     anchors.centerIn: parent
                                     text: modelData.materialIcon ? modelData.materialIcon : "window"
                                     size: 15
@@ -944,7 +945,7 @@ PanelWindow {
                         }
                         Behavior on color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
 
-                        Icon {
+                        MaterialIcon {
                             anchors.centerIn: parent
                             text: "close"
                             size: 13
@@ -985,7 +986,7 @@ PanelWindow {
             spacing: Theme.spaceMedium
             visible: root.windows.length === 0
 
-            Icon {
+            MaterialIcon {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "space_dashboard"
                 size: 44
@@ -1057,7 +1058,7 @@ PanelWindow {
             }
         }
 
-        GlassCard {
+        LiquidGlassCard {
             id: searchCard
             anchors.fill: parent
             radius: Theme.radiusGlassModal
@@ -1096,7 +1097,7 @@ PanelWindow {
                         anchors.leftMargin: 8
                         spacing: 8
 
-                        Icon {
+                        MaterialIcon {
                             anchors.verticalCenter: parent.verticalCenter
                             text: section === "window" ? "space_dashboard" : (section === "command" ? "terminal" : "apps")
                             size: 14
@@ -1193,7 +1194,7 @@ PanelWindow {
                                     fillMode: Image.PreserveAspectFit
                                 }
 
-                                Icon {
+                                MaterialIcon {
                                     anchors.centerIn: parent
                                     text: "wallpaper"
                                     size: 20
@@ -1223,7 +1224,7 @@ PanelWindow {
                                     visible: status === Image.Ready
                                 }
 
-                                Icon {
+                                MaterialIcon {
                                     anchors.centerIn: parent
                                     text: modelData.data.materialIcon || "window"
                                     size: 11
@@ -1253,7 +1254,7 @@ PanelWindow {
                                 visible: status === Image.Ready
                             }
 
-                            Icon {
+                            MaterialIcon {
                                 anchors.centerIn: parent
                                 text: "rocket_launch"
                                 size: 22
@@ -1276,7 +1277,7 @@ PanelWindow {
                                 border.width: 1
                                 border.color: isSelected ? "transparent" : Colors.glassBorderSubtle
 
-                                Icon {
+                                MaterialIcon {
                                     anchors.centerIn: parent
                                     text: (modelData.data && modelData.data.icon) ? modelData.data.icon : "terminal"
                                     size: 18
@@ -1359,7 +1360,7 @@ PanelWindow {
                 spacing: Theme.spaceMedium
                 visible: (root.searchQuery.length > 0 || root.isCommandMode) && root.searchResults.length === 0
 
-                Icon {
+                MaterialIcon {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: root.isCommandMode ? "terminal" : "search_off"
                     size: 40
