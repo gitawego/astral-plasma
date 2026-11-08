@@ -23,6 +23,10 @@ QtObject {
     property bool dashboardVisible: false
     /// The daemon binary an app may call for its own IPC (absolute path).
     property string daemonBin: ""
+    /// Media card artwork override chosen by the user ("" = the track's own art).
+    property string mediaAvatar: ""
+    /// `speaker` or `radial`; the surface renders it, the shell stores it.
+    property string mediaVisualizerStyle: "radial"
 
     /// Icon resolution, supplied by the shell so an app needs no icon-theme logic.
     property var iconResolver: null
