@@ -1175,8 +1175,22 @@ Update keeps one previous payload in `.prev/` for rollback. Ten unit tests cover
 lifecycle, and the CLI was driven end to end: `pack → install → list → install again
 (up to date) → remove`.
 
-Still open in P3/P5: the catalog (so `install <id>` resolves a URL), zstd + minisign,
-and migrating `downloads` as the official reference app.
+**Catalog (P5, local half)**: `domain/app_catalog.rs` validates a signed index
+(schema, ids, versions, sha256 digests, duplicate ids, `revoked`); a catalog that
+declares a `publisherKey` must carry a `.minisig` beside it, verified through the
+same `minisign` path the release manifest uses, and a local catalog without a key
+loads as *unsigned* rather than pretending otherwise.
+
+`astral app install <id> --catalog <path>` resolves the entry, refuses a revoked id,
+fetches the artifact beside the catalog, **verifies its SHA-256 against the entry**
+(the digest is the contract; the signature only authenticates the index), then runs
+the ordinary install pipeline — so compatibility, permissions, downgrade and staging
+rules are identical to a file install. `astral app available --catalog <path>` lists
+what may be offered.
+
+Still open in P3/P5: remote artifact transport and the official inline catalog,
+zstd + minisign *signing*, the Apps page, and migrating `downloads` as the reference
+app.
 
 - `astral app new/dev/test/lint/pack` using the installed package as SDK.
 - Templates and `sdk/examples/hello`.

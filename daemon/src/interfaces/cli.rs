@@ -2673,7 +2673,28 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
             }
         }
         "available" => {
-            println!("{}", apps_not_written_yet("available"));
+            use crate::application::app_catalog_service::{load, CatalogSource};
+
+            let Some(catalog_path) = catalog_arg(args) else {
+                println!("{}", apps_not_written_yet("available"));
+                return Ok(());
+            };
+            let source = CatalogSource::parse(&catalog_path);
+            let catalog = load(&source)?;
+            if catalog.offerable().next().is_none() {
+                println!("No apps in {}", catalog_path);
+                return Ok(());
+            }
+            println!("{:<34} {:<10} {:>4}  {}", "ID", "VERSION", "API", "TRUST");
+            for entry in catalog.offerable() {
+                println!(
+                    "{:<34} {:<10} {:>4}  {}",
+                    entry.id,
+                    entry.version,
+                    entry.kernel_api,
+                    entry.trust.as_deref().unwrap_or("-"),
+                );
+            }
         }
         "new" => {
             use crate::application::app_sdk::{create_app, Template};
@@ -2737,21 +2758,45 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
             use crate::application::app_install::install_file;
             use crate::domain::app_compat::HostApi;
 
-            let Some(file) = args.get(3) else {
-                return Err("usage: astral app install <file.astralapp> [--accept-permissions] [--allow-downgrade]".into());
+            let Some(target) = args.get(3) else {
+                return Err("usage: astral app install <file.astralapp | app-id> [--catalog <path>] [--accept-permissions] [--allow-downgrade]".into());
             };
             let accept = args.iter().any(|flag| flag == "--accept-permissions");
             let allow_downgrade = args.iter().any(|flag| flag == "--allow-downgrade");
             let host = HostApi::current(running_quickshell_version().as_deref());
+            let data_dir = branding::data_dir();
+            let apps_root = data_dir.join("apps");
 
-            let installed = install_file(
-                &branding::data_dir(),
-                &branding::data_dir().join("apps"),
-                std::path::Path::new(file),
-                &host,
-                accept,
-                allow_downgrade,
-            )?;
+            let installed = if std::path::Path::new(target).is_file() {
+                install_file(
+                    &data_dir,
+                    &apps_root,
+                    std::path::Path::new(target),
+                    &host,
+                    accept,
+                    allow_downgrade,
+                )?
+            } else {
+                use crate::application::app_catalog_service::{install_from_catalog, load, CatalogSource};
+
+                let catalog_path = catalog_arg(args).ok_or_else(|| {
+                    format!(
+                        "installing '{target}' needs a catalog: pass --catalog <path> (or install a .astralapp file)"
+                    )
+                })?;
+                let source = CatalogSource::parse(&catalog_path);
+                let catalog = load(&source)?;
+                install_from_catalog(
+                    &catalog,
+                    &source,
+                    &data_dir,
+                    &apps_root,
+                    target,
+                    &host,
+                    accept,
+                    allow_downgrade,
+                )?
+            };
             println!("{} {} ({})", installed.outcome, installed.id, installed.version);
             println!("  payload {}", installed.payload.display());
             println!("  digest sha256:{}", installed.digest);
@@ -3029,6 +3074,14 @@ fn which_binary(name: &str) -> Option<std::path::PathBuf> {
         }
     }
     None
+}
+
+/// `--catalog <path>` when the caller passed one.
+fn catalog_arg(args: &[String]) -> Option<String> {
+    args.iter()
+        .position(|arg| arg == "--catalog")
+        .and_then(|index| args.get(index + 1))
+        .cloned()
 }
 
 fn app_dir_arg(args: &[String], index: usize) -> DynResult<std::path::PathBuf> {

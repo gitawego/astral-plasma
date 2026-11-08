@@ -2498,3 +2498,34 @@ can read.
 >
 > **Not verified**: signing (needs a private key the daemon must not own) and the
 > catalog/URL path — both P5 remainder, together with zstd.
+
+---
+
+## P5 — catalog: `install <id>` verifies what the index vouches for (2026-11-08)
+
+```
+astral app available --catalog /tmp/c/catalog.json
+  ID                        VERSION   API  TRUST
+  io.github.astral.hello    0.1.0       1  community
+
+astral app install io.github.astral.hello --catalog /tmp/c/catalog.json
+  → installed io.github.astral.hello (0.1.0) · sha256:924ff4a1…
+
+# with "revoked": true in the entry
+  → 'io.github.astral.hello' was revoked by the catalog publisher and will not be installed
+```
+
+The digest is the contract, not the signature: the artifact's SHA-256 must equal the
+entry's, and a mismatch writes nothing. The signature authenticates *the index*
+(`publisherKey` + a detached `.minisig`, verified with the same `minisign` path the
+release manifest uses); a keyless local catalog loads as **unsigned** and says so.
+
+Also fixed while here: `main` printed errors with `{:?}`, so a typed refusal appeared
+as `Revoked { id: "…" }` instead of the sentence it was written as. It prints
+`Display` now, which is what every refusal in this codebase is written for.
+
+> **Verified**: `make test` exit 0 — **1109 Rust tests** (13 new for the catalog),
+> 160 QML suites. The CLI loop ran against a throwaway `XDG_DATA_HOME`.
+>
+> **Not verified**: remote artifact transport (a URL entry is refused with the phase
+> that will implement it), signing, and zstd.
