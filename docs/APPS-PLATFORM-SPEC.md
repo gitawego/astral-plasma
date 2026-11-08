@@ -1157,8 +1157,26 @@ truncated bundle fail at install rather than at launch.
 Every template is **load-verified**: `daemon/tests/test_app_sdk_templates.rs`
 creates each one, lints it, packs it, and starts it under a real `quickshell`.
 
-Still open in P3: `astral app dev` (needs the P6 sandbox), install/update (P5
-catalog), and migrating `downloads` as the official reference app.
+`astral app dev <dir>` runs the app for its author: `--print-command` shows what
+would run (used by tests), the plain mode runs it on the session, and `--sandbox`
+builds the P0 `bwrap` mount set (`/sys`, the shared font cache, a private runtime
+dir) — with a clear refusal when bubblewrap is missing. Lint runs first, so an app
+that would not install never starts.
+
+**Install and remove landed with it** (P5's front half):
+
+| Verb | Rules |
+| :--- | :--- |
+| `astral app install <file>` | verify → stage → activate by rename → **record last**; refuses an incompatible API level, a republished artifact, and a downgrade the data layout cannot survive |
+| update | a permission **widening** update is refused unless `--accept-permissions`, and the new grants are recorded |
+| `astral app remove <id> [--purge]` | deletes the payload and the record; keeps app data unless `--purge` |
+
+Update keeps one previous payload in `.prev/` for rollback. Ten unit tests cover the
+lifecycle, and the CLI was driven end to end: `pack → install → list → install again
+(up to date) → remove`.
+
+Still open in P3/P5: the catalog (so `install <id>` resolves a URL), zstd + minisign,
+and migrating `downloads` as the official reference app.
 
 - `astral app new/dev/test/lint/pack` using the installed package as SDK.
 - Templates and `sdk/examples/hello`.

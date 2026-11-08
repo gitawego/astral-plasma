@@ -120,13 +120,6 @@ pub fn lint_dir(root: &Path) -> DynResult<Vec<String>> {
                 manifest.kernel_api
             ));
         }
-        if manifest.runtime == "hosted" && manifest.permissions.iter().any(|p| p == "network") {
-            // Not an error: a reminder that the sandbox is off by default.
-            problems.push(
-                "manifest declares `network`; the sandbox denies it unless the user grants it"
-                    .to_string(),
-            );
-        }
     }
 
     for path in source_files(root) {

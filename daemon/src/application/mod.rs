@@ -1,3 +1,4 @@
+pub mod app_install;
 pub mod app_sdk;
 pub mod app_service;
 pub mod retry;

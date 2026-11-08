@@ -2733,6 +2733,48 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
             println!("  digest sha256:{}", packed.digest);
             println!("  {} file(s)", packed.files);
         }
+        "install" => {
+            use crate::application::app_install::install_file;
+            use crate::domain::app_compat::HostApi;
+
+            let Some(file) = args.get(3) else {
+                return Err("usage: astral app install <file.astralapp> [--accept-permissions] [--allow-downgrade]".into());
+            };
+            let accept = args.iter().any(|flag| flag == "--accept-permissions");
+            let allow_downgrade = args.iter().any(|flag| flag == "--allow-downgrade");
+            let host = HostApi::current(running_quickshell_version().as_deref());
+
+            let installed = install_file(
+                &branding::data_dir(),
+                &branding::data_dir().join("apps"),
+                std::path::Path::new(file),
+                &host,
+                accept,
+                allow_downgrade,
+            )?;
+            println!("{} {} ({})", installed.outcome, installed.id, installed.version);
+            println!("  payload {}", installed.payload.display());
+            println!("  digest sha256:{}", installed.digest);
+            println!("  {} file(s)", installed.files);
+        }
+        "remove" | "uninstall" => {
+            use crate::application::app_install::remove_app;
+
+            let Some(id) = args.get(3) else {
+                return Err("usage: astral app remove <app-id> [--purge]".into());
+            };
+            let purge = args.iter().any(|flag| flag == "--purge");
+            let removed = remove_app(
+                &branding::data_dir(),
+                &branding::data_dir().join("apps"),
+                id,
+                purge,
+            )?;
+            println!("Removed {}", removed.id);
+            if removed.kept_data {
+                println!("  kept app data (--purge removes it)");
+            }
+        }
         "dev" => {
             use crate::application::app_sdk::lint_dir;
 

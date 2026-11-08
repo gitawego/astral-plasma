@@ -2466,3 +2466,35 @@ the daemon from its own directory, if `Config` computes a second path, if a
 >
 > The "second background out of sync" report was two `quickshell` instances running
 > simultaneously from my debugging restarts; only one runs now.
+
+---
+
+## P5 (front half) — install and remove, verified end to end (2026-11-08)
+
+```
+astral app pack sdk/examples/hello --out /tmp/x
+  → io.github.astral.hello-0.1.0.astralapp · sha256:924ff4a1… · 3 files
+
+astral app install /tmp/x/io.github.astral.hello-0.1.0.astralapp
+  → installed io.github.astral.hello (0.1.0) · payload …/apps/io.github.astral.hello/payload
+
+astral app list
+  → io.github.astral.hello  0.1.0  API 1  ready
+
+astral app install <same file>   → already installed
+astral app remove io.github.astral.hello → Removed
+astral app list                  → No apps installed.
+```
+
+Order is the crash-safety contract: verify, stage in `apps/.staging/<id>`, activate by
+rename, record last. An update keeps `.prev/` for rollback; a permission-widening
+update is refused without `--accept-permissions` (and the new grants are recorded when
+accepted); a downgrade needs `--allow-downgrade` *and* a data schema the target build
+can read.
+
+> **Verified**: `make test` exit 0 — **1096 Rust tests** (10 new for install/remove),
+> 160 QML suites. The CLI loop above ran against a throwaway `XDG_DATA_HOME`, so it
+> did not touch the live install.
+>
+> **Not verified**: signing (needs a private key the daemon must not own) and the
+> catalog/URL path — both P5 remainder, together with zstd.
