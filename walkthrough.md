@@ -2253,3 +2253,33 @@ Registry writer, host policy, and the CLI verbs followed in the same phase:
 > three full runs (a spawn of the fake `pi` script returned no version under
 > parallel load). The probe now retries a failed *spawn* only, but the flake did
 > not reproduce afterwards, so the fix is unproven.
+
+---
+
+## P3 (first slice) — `Astral.AppKit`, and a real app through it (2026-11-08)
+
+`modules/Astral/AppKit/` is the public module an app author targets:
+
+| Type | What it is |
+| :--- | :--- |
+| `AppApi` | level/floor + level→release history, pinned to the daemon by test |
+| `AppPalette` | reads the host's exported palette (internal) |
+| `Colors`, `Theme` | public roles, radii, typeface — from that palette, with Material 3 fallbacks |
+| `Motion` | design constants, pinned to `theme/Theme.qml` by test |
+| `AppWindow` | the glass toplevel, self-contained |
+
+The sandbox decided the architecture: a hosted app mounts `Astral/AppKit` and
+nothing else, so AppKit cannot import the kernel — it reads the palette the kernel
+already writes. `ThemeExportService` now exports `radius_*` and `font_family` too,
+so an archetype change reaches community apps without a rebuild.
+
+> **Verified**: `daemon/tests/test_appkit.rs`, 7 tests. The live one starts
+> `quickshell` on a temp app, sets `ASTRAL_APPKIT_PALETTE` to a palette with
+> `radius_large: 12` and `font_family: "Test Sans"`, and asserts the app logs
+> `radius=12`, `source=palette`, `font=Test Sans` — i.e. it painted with the
+> host's data, not with AppKit's fallbacks. `sdk/examples/hello` was also run on
+> the running session and captured: a glass card reading "Hello Astral / built
+> against API 1" beside the real dock.
+>
+> **Not verified**: the sandbox itself (no `bwrap` mount of a real app yet), and
+> the SDK verbs (`new/dev/test/lint/pack`) — P3 remainder.

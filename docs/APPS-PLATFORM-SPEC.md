@@ -1067,7 +1067,30 @@ Original scope:
 app declaring `kernelApi: 99` is refused with a reason that names both levels;
 registry/host tests green.
 
-### P3 — SDK v0 + first reference app: downloads (L)
+### P3 — SDK v0 + first reference app: downloads (L) — **AppKit landed**
+
+`Astral.AppKit` exists and a real app loads through it:
+
+| Type | What it is |
+| :--- | :--- |
+| `AppApi` | level/floor + level→release history; constants pinned to the daemon by test |
+| `AppPalette` | reads the host's exported palette (`current-palette.json`) with `FileView`; internal |
+| `Colors`, `Theme` | the public roles, radii, and typeface, resolved from that palette with Material 3 fallbacks |
+| `Motion` | the design constants, pinned to `theme/Theme.qml` by test |
+| `AppWindow` | the glass toplevel: self-contained, no kernel import |
+
+The sandbox rule decided the architecture: a hosted app mounts `Astral/AppKit` and
+nothing else, so AppKit cannot import the kernel — it *reads the palette the kernel
+already exports*, and `ThemeExportService` now also publishes `radius_*` and
+`font_family` so an archetype change reaches apps without a rebuild.
+
+Verified: `daemon/tests/test_appkit.rs` (7 tests — constants drift, motion drift,
+palette keys, qmldir completeness, no kernel import, and a live `quickshell` load
+that asserts the app painted with *the palette file's* radius and typeface), plus
+`sdk/examples/hello` rendering on the running session.
+
+Still open in P3: `astral app new/dev/test/lint/pack`, templates, and migrating
+`downloads` as the official reference app.
 
 - `astral app new/dev/test/lint/pack` using the installed package as SDK.
 - Templates and `sdk/examples/hello`.
@@ -1351,3 +1374,29 @@ Findings that changed the plan:
    `"../theme/..."` inside other files. They were re-pinned to the *shape* of the
    reference (`theme/assets/icons/` + `.svg`, `[^"]*services/PreviewAppState.js`)
    so the next move does not rewrite them again.
+
+### C.7 AppKit (same day)
+
+| Claim | Result |
+| :--- | :--- |
+| `import Astral.AppKit 1.0` resolves from `QML_IMPORT_PATH` and renders a window | **Pass** — layer-shell window on the live session |
+| A hosted app reads the host palette without kernel access | **Pass** — `radius=12`, `font=Test Sans` from the test's palette file |
+| `AppKit` compiles with no kernel import | **Pass** — asserted per file |
+| Drift between AppKit constants and the daemon/kernel | **Caught by tests** — `AppApi` vs `domain::app_compat`, `Motion` vs `theme/Theme.qml` |
+| `QtObject` accepts an unnamed child | **Fail** — no default property; the reader is a named `FileView` property |
+| `FileView.data()` returns the parsed JSON | **No** — returns `{}` for a flat `.json`; `text()` + `JSON.parse` is what works |
+
+Three findings worth keeping:
+
+1. **`Palette` is already a QML type.** Naming the internal singleton `Palette`
+   shadowed `QtQuick`'s own type and surfaced as `Property 'color' … is not a
+   function`. It is now `AppPalette`, and internal singletons avoid names QML
+   already uses.
+2. **A sandbox has no kernel.** The first attempt forwarded the kernel's theme
+   through a relative import, which cannot work once only `Astral/AppKit` is
+   mounted — and it silently produced `undefined` colours instead of failing.
+   Palette-file-driven AppKit is the only version that survives the sandbox.
+3. **Theme data has to travel with the palette.** Radii and the typeface were
+   kernel-only, so a hosted app would have rendered with the shell's *default*
+   shape and type. `ThemeExportService` now exports them, and a test asserts every
+   key AppKit reads exists in the exported payload.

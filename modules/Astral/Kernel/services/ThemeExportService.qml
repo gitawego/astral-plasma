@@ -83,7 +83,14 @@ Singleton {
             "tertiary": toHex((typeof Colors !== "undefined") ? Colors.tertiary : "#c084fc"),
             "outline": toHex((typeof Colors !== "undefined") ? Colors.outlineColor : "#6366f1"),
             "on_surface": toHex((typeof Colors !== "undefined") ? Colors.textMain : "#eef2ff"),
-            "ai_color": toHex((typeof Colors !== "undefined") ? Colors.aiActivityColor : "#818cf8")
+            "ai_color": toHex((typeof Colors !== "undefined") ? Colors.aiActivityColor : "#818cf8"),
+            // Shape and type travel with the palette so hosted apps follow an
+            // archetype change without importing anything from the kernel.
+            "radius_small": (typeof Theme !== "undefined") ? Theme.radiusSmall : 10,
+            "radius_medium": (typeof Theme !== "undefined") ? Theme.radiusMedium : 16,
+            "radius_large": (typeof Theme !== "undefined") ? Theme.radiusLarge : 24,
+            "font_family": (typeof Theme !== "undefined") ? Theme.fontFamily
+                                                         : "Google Sans Flex, Cantarell, Noto Sans, sans-serif"
         };
         return JSON.stringify(payload, null, 2);
     }

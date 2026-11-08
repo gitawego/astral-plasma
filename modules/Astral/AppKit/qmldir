@@ -1,0 +1,7 @@
+module Astral.AppKit
+singleton AppApi 1.0 AppApi.qml
+singleton AppPalette 1.0 AppPalette.qml
+singleton Theme 1.0 Theme.qml
+singleton Colors 1.0 Colors.qml
+singleton Motion 1.0 Motion.qml
+AppWindow 1.0 AppWindow.qml
