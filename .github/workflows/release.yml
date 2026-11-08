@@ -304,6 +304,10 @@ jobs:
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
+          # Optional: when the release key exists, its secret key is stored as a
+          # repository secret and every manifest is signed. Without it the
+          # manifest is published unsigned and the daemon verifies nothing.
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
           # The daemon reads exactly one document to decide whether an update
           # exists. Generating it here keeps the version, the per-arch hashes and
@@ -349,6 +353,16 @@ jobs:
               handle.write("\n")
           print(json.dumps(manifest, indent=2))
           PY
+
+          if [ -n "${MINISIGN_SECRET_KEY:-}" ]; then
+            key_file="${RUNNER_TEMP}/astral-plasma.minisign.key"
+            printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key_file"
+            chmod 600 "$key_file"
+            bash scripts/astral-sign.sh release_assets/latest.json "$key_file"
+            rm -f "$key_file"
+          else
+            echo "::warning::Release manifest is unsigned (MINISIGN_SECRET_KEY is not configured)."
+          fi
 
       - name: Create or update GitHub Release
         env:

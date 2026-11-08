@@ -135,3 +135,39 @@ fn the_installer_and_uninstaller_are_shipped_next_to_the_binary() {
         "the uninstaller must delegate removal to the binary"
     );
 }
+
+#[test]
+fn signing_is_wired_before_the_key_exists() {
+    let workflow = read(".github/workflows/release.yml");
+    assert!(
+        workflow.contains("MINISIGN_SECRET_KEY"),
+        "CI must sign a manifest when the repository secret is configured"
+    );
+    assert!(
+        workflow.contains("scripts/astral-sign.sh"),
+        "CI must use the one signing tool, not an inline minisign invocation"
+    );
+
+    let script = read("scripts/astral-sign.sh");
+    assert!(script.contains("minisign -Sm"), "signature over the manifest itself");
+    assert!(
+        script.contains("\"signature\"") && script.contains("json.dump"),
+        "the signature travels inside the manifest the daemon verifies"
+    );
+
+    let source = read("daemon/src/infrastructure/update_source.rs");
+    assert!(
+        source.contains("PINNED_MINISIGN_KEY"),
+        "a build needs one place to pin the published key"
+    );
+
+    let service = read("daemon/src/application/update_service.rs");
+    assert!(
+        service.contains("ASTRAL_PLASMA_REQUIRE_SIGNATURE"),
+        "requiring signatures must be a switch, not a rebuild"
+    );
+    assert!(
+        service.contains("no publisher key is pinned"),
+        "a signature with nothing to check it against must be refused, not trusted"
+    );
+}

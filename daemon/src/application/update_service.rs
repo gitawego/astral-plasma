@@ -26,6 +26,8 @@ const FREE_SPACE_MARGIN: u64 = 64 * 1024 * 1024;
 
 /// Environment override for the pinned signing key (see `docs/UPDATES.md`).
 pub const ENV_MINISIGN_KEY: &str = "ASTRAL_PLASMA_MINISIGN_KEY";
+/// `1` refuses unsigned releases. Turn on once the release key exists.
+pub const ENV_REQUIRE_SIGNATURE: &str = "ASTRAL_PLASMA_REQUIRE_SIGNATURE";
 
 #[derive(Debug, Clone)]
 pub struct UpdatePaths {
@@ -123,6 +125,8 @@ pub struct UpdateService {
     pub manifest_url: String,
     pub quickshell_version: Option<String>,
     pub current_version: String,
+    /// Refuse releases that carry no signature (see `ENV_REQUIRE_SIGNATURE`).
+    pub require_signature: bool,
     /// Skip the interactive guards (session lock). Set only by tests.
     pub ignore_session_lock: bool,
 }
@@ -135,6 +139,9 @@ impl UpdateService {
             manifest_url: crate::infrastructure::update_source::manifest_url(),
             quickshell_version: running_quickshell_version(),
             current_version: env!("CARGO_PKG_VERSION").to_string(),
+            require_signature: branding::env_value(ENV_REQUIRE_SIGNATURE)
+                .map(|value| value == "1")
+                .unwrap_or(false),
             ignore_session_lock: branding::test_mode(),
         }
     }
@@ -146,6 +153,7 @@ impl UpdateService {
             manifest_url: "https://example.invalid/latest.json".to_string(),
             quickshell_version: Some("0.3.2".to_string()),
             current_version: env!("CARGO_PKG_VERSION").to_string(),
+            require_signature: false,
             ignore_session_lock: true,
         }
     }
@@ -184,14 +192,16 @@ impl UpdateService {
         let method = self.install_method()?;
         let channel = self.channel()?;
         let candidate = state.candidate.clone();
-        let refuse_reason = refuse_reason(method, candidate.is_some(), &self.paths);
+        let refusal = refusal(method, candidate.is_some(), state.last_check_unix, &self.paths);
         Ok(UpdateStatus {
             current_version: self.current_version.clone(),
             channel: channel.as_str().to_string(),
             install_method: method.as_str().to_string(),
             arch: host_arch(),
-            can_apply: refuse_reason.is_none(),
-            refuse_reason,
+            // Applying needs something to apply *and* no reason to refuse:
+            // "checked, nothing available" is not a refusal.
+            can_apply: refusal.is_none() && candidate.is_some(),
+            refuse_reason: refusal,
             candidate: candidate.as_ref().map(UpdateCandidate::view),
             last_check_unix: state.last_check_unix,
             last_error: state.last_error,
@@ -228,6 +238,12 @@ impl UpdateService {
         }
 
         let manifest = ReleaseManifest::parse(&fetched.body)?;
+        if self.require_signature && !is_signed(&manifest) {
+            let message = "this build only installs signed releases, and the published                            release is unsigned";
+            state.record_error(message);
+            state.save(&self.paths.state_path)?;
+            return Err(message.into());
+        }
         self.cache_manifest(&fetched.body)?;
 
         let selection = select(
@@ -363,19 +379,32 @@ impl UpdateService {
 
     fn verify_signature(&self) -> DynResult<()> {
         let Ok(text) = fs::read_to_string(&self.paths.manifest_cache) else {
-            return Ok(());
+            return Err("the release manifest is no longer cached; check again before applying".into());
         };
-        let Ok(manifest) = serde_json::from_str::<ReleaseManifest>(&text) else {
+        let manifest: ReleaseManifest = serde_json::from_str(&text)
+            .map_err(|err| format!("cached release manifest is unreadable: {err}"))?;
+
+        if !is_signed(&manifest) {
+            if self.require_signature {
+                return Err("this build only installs signed releases, and this one is unsigned".into());
+            }
             return Ok(());
-        };
-        let key = branding::env_value(ENV_MINISIGN_KEY);
+        }
+
+        let key = branding::env_value(ENV_MINISIGN_KEY).or_else(|| {
+            crate::infrastructure::update_source::PINNED_MINISIGN_KEY.map(str::to_string)
+        });
+        let key = key.ok_or(
+            "this release is signed, but no publisher key is pinned in this build; \
+             set ASTRAL_PLASMA_MINISIGN_KEY to the published key",
+        )?;
         let verified = crate::infrastructure::update_source::verify_minisign(
             &self.paths.manifest_cache,
             manifest.signature.as_deref().unwrap_or(""),
-            key.as_deref(),
+            Some(&key),
         )?;
-        if manifest.signature.is_some() && !verified {
-            return Err("this release is signed but the signature could not be checked".into());
+        if !verified {
+            return Err("this release is signed but the signature was not verified".into());
         }
         Ok(())
     }
@@ -427,8 +456,18 @@ impl UpdateService {
     }
 }
 
-/// Why this install cannot apply an update right now (None when it can).
-fn refuse_reason(method: InstallMethod, has_candidate: bool, paths: &UpdatePaths) -> Option<String> {
+/// Why this install cannot apply an update right now.
+///
+/// `None` means "nothing stands in the way" - which is *not* the same as "there
+/// is an update": an install that was checked and is current has no refusal and
+/// no candidate. Conflating the two made the page tell a checked, up-to-date
+/// install that it had never been checked.
+fn refusal(
+    method: InstallMethod,
+    has_candidate: bool,
+    last_check_unix: u64,
+    paths: &UpdatePaths,
+) -> Option<String> {
     match method {
         InstallMethod::Package => Some(
             "Your package manager owns this install; update it with pacman.".to_string(),
@@ -437,9 +476,9 @@ fn refuse_reason(method: InstallMethod, has_candidate: bool, paths: &UpdatePaths
             "This is a git checkout; update it with `git pull`.".to_string(),
         ),
         InstallMethod::Managed => {
-            if !has_candidate {
+            if !has_candidate && last_check_unix == 0 {
                 Some("No update has been checked yet.".to_string())
-            } else if RestartRequest::read(&paths.restart_path).is_some() {
+            } else if has_candidate && RestartRequest::read(&paths.restart_path).is_some() {
                 Some("An update is already staged and waiting for a restart.".to_string())
             } else {
                 None
@@ -551,6 +590,18 @@ fn set_executable(path: &Path) -> DynResult<()> {
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
     Ok(())
+}
+
+/// Whether a manifest carries a signature this daemon could check.
+fn is_signed(manifest: &ReleaseManifest) -> bool {
+    manifest
+        .signature
+        .as_deref()
+        .map(|signature| {
+            let trimmed = signature.trim();
+            !trimmed.is_empty() && trimmed != "null"
+        })
+        .unwrap_or(false)
 }
 
 /// Package that owns `exe`, when the system package manager says so.

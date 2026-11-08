@@ -6,6 +6,7 @@ import "../config"
 import "pages"
 import "SectionSpy.js" as SectionSpy
 import "ScrollMotion.js" as ScrollMotion
+import "../services"
 
 Item {
     id: root
@@ -521,6 +522,14 @@ Item {
                                         label: modelData.label
                                         iconText: modelData.icon
                                         active: root.activePage === modelData.id
+                                        // A release is waiting: the entry that
+                                        // leads to it says so. Never in tests,
+                                        // where the singleton would spawn
+                                        // processes against the host.
+                                        badgeVisible: !root.testMode
+                                            && modelData.id === "updates"
+                                            && typeof Updates !== "undefined"
+                                            && Updates.updateAvailable
                                         onClicked: root.navigateTo(modelData.id)
                                     }
                                 }

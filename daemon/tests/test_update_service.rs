@@ -317,3 +317,55 @@ fn pacman_ownership_is_parsed_from_the_real_output_shape() {
         "a user-owned path is not a package install"
     );
 }
+
+#[test]
+fn a_checked_current_install_is_not_reported_as_never_checked() {
+    let root = tempfile::tempdir().unwrap();
+    let paths = seeded(root.path(), InstallMethod::Managed);
+    let bytes = payload();
+    // The release is the version already running: nothing to install.
+    let service = service(paths.clone(), &manifest_for("0.1.3", &bytes), bytes);
+
+    let fresh = service.status().unwrap();
+    assert!(
+        fresh.refuse_reason.as_deref().unwrap_or_default().contains("been checked"),
+        "before any check, say so: {fresh:?}"
+    );
+
+    let after = service.check(false).unwrap();
+    assert!(!after.can_apply, "there is nothing to apply");
+    assert_eq!(
+        after.refuse_reason, None,
+        "a checked, current install has nothing to refuse: {after:?}"
+    );
+    assert!(after.last_check_unix > 0);
+}
+
+#[test]
+fn an_unsigned_release_is_refused_when_signatures_are_required() {
+    let root = tempfile::tempdir().unwrap();
+    let paths = seeded(root.path(), InstallMethod::Managed);
+    let bytes = payload();
+    let mut service = service(paths.clone(), &manifest_for("0.2.0", &bytes), bytes);
+    service.require_signature = true;
+
+    let err = service.check(false).expect_err("an unsigned release must not be offered");
+    assert!(err.to_string().contains("unsigned"), "{err}");
+
+    let status = service.status().unwrap();
+    assert!(status.candidate.is_none());
+    assert!(status.last_error.unwrap_or_default().contains("unsigned"));
+
+    // The same release is accepted when signatures are not required yet.
+    let mut lenient = service_without_signature_requirement(root.path());
+    let status = lenient.check(false).unwrap();
+    assert!(status.can_apply, "{status:?}");
+}
+
+fn service_without_signature_requirement(root: &Path) -> UpdateService {
+    let paths = UpdatePaths::rooted_at(root);
+    let bytes = payload();
+    let mut service = service(paths, &manifest_for("0.2.0", &bytes), bytes);
+    service.require_signature = false;
+    service
+}

@@ -2084,3 +2084,37 @@ cannot report a failing suite as passing.
 > **Not verified**: the curtain mid-update (it only appears while an apply is
 > running; the swap and rollback are proven in `test_update_supervisor.rs` and in
 > the throwaway-root run against a local HTTP release).
+
+---
+
+## 29. "Up To Date" On An Install That Had Never Been Checked
+
+> [!NOTE]
+> **Issue**: the Updates page said "This install is up to date." while its own
+> subtitle said "No update has been checked yet." Both were rendered from the
+> same daemon status, so one of them was a lie.
+>
+> **Root cause**: `refusal()` treated "no candidate" as "nothing has been
+> checked". Those are different states - an install that was checked and is
+> current has no candidate *and* nothing to refuse - and `can_apply` was derived
+> from the refusal alone, so the two collapsed into one.
+>
+> **Solution**: refusal now distinguishes never-checked (from `last_check_unix`)
+> from checked-and-current, `can_apply` requires a candidate *and* no refusal, and
+> the page's eyebrow reads "not checked" until a check has actually happened.
+> Tests pin both states, plus the staged-update refusal.
+>
+> **Also in this round**: the settings rail shows an opt-in attention dot
+> (`PillButton.badgeVisible`) when a release is waiting; release signing is wired
+> end to end (`scripts/astral-sign.sh`, conditional CI signing with
+> `MINISIGN_SECRET_KEY`, `PINNED_MINISIGN_KEY`, `ASTRAL_PLASMA_REQUIRE_SIGNATURE`)
+> and a signature with no key to check it against is refused instead of being
+> compared with the user's own keyring.
+>
+> **Verified live**: with a candidate served by a local release server, the page
+> showed "AVAILABLE · 0.2.0", a real size, an enabled "Update and restart", and
+> the rail carried the dot on "Updates & About"; the candidate state was removed
+> afterwards. Quitting restored plasmashell and shortcuts.
+>
+> **Not verified**: executing `scripts/astral-sign.sh` end to end - `minisign` is
+> not installed on this machine, so only its syntax and its wiring are proven.

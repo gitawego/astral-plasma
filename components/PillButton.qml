@@ -8,6 +8,11 @@ Rectangle {
     signal rightClicked()
     signal middleClicked()
 
+    /// A small attention dot at the trailing edge. Off by default: this is an
+    /// opt-in decoration for navigation entries that lead somewhere new, not a
+    /// change to how any existing pill looks.
+    property bool badgeVisible: false
+
     // Semantic Design System Properties
     property string accent: "primary" // "primary" | "secondary" | "error" | "danger" | "destructive" | "warning" | "info" | "success" | "neutral" | "surface"
     property string variant: "tonal"  // "tonal" | "filled" | "outlined" | "ghost"
@@ -377,6 +382,19 @@ Rectangle {
             color: root.active ? root.activeTextColor : root.inactiveTextColor
             anchors.verticalCenter: parent.verticalCenter
         }
+    }
+
+    // 4b. Attention dot (opt-in)
+    Rectangle {
+        id: badgeDot
+        visible: root.badgeVisible
+        width: 8
+        height: 8
+        radius: 4
+        color: root.active ? root.activeTextColor : root.accentPalette.base
+        anchors.right: parent.right
+        anchors.rightMargin: 12
+        anchors.verticalCenter: parent.verticalCenter
     }
 
     // 5. Interactive MouseArea

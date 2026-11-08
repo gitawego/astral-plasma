@@ -60,6 +60,7 @@ SettingsPage {
             highlights: live.highlights,
             size: live.candidateBytes
         }) : null,
+        last_check_unix: live ? live.lastCheckUnix : 0,
         last_error: live ? live.lastError : "",
         rollback: (live && live.rollbackVersion !== "") ? ({
             version: live.rollbackVersion,
@@ -78,6 +79,7 @@ SettingsPage {
     readonly property var rollback: status.rollback || null
     readonly property string restartPending: status.restart_pending || ""
     readonly property bool updateAvailable: candidateVersion !== ""
+    readonly property bool checkedAtLeastOnce: (status.last_check_unix || 0) > 0
     readonly property bool canApply: status.can_apply === true
     readonly property bool applying: !testMode && live !== null ? live.applying : false
 
@@ -221,7 +223,9 @@ SettingsPage {
             if (root.applying) return "applying";
             if (root.restartPending !== "") return "staged · " + root.restartPending;
             if (root.updateAvailable) return "available · " + root.candidateVersion;
-            return "up to date";
+            // "Up to date" is a claim about a check that happened; without one
+            // the honest word is "not checked".
+            return root.checkedAtLeastOnce ? "up to date" : "not checked";
         }
     }
 
@@ -252,7 +256,9 @@ SettingsPage {
                         return "Version " + root.candidateVersion + " is available" +
                             (root.sizeText !== "" ? " (" + root.sizeText + ")" : "") + ".";
                     }
-                    return "This install is up to date.";
+                    return root.checkedAtLeastOnce
+                        ? "This install is up to date."
+                        : "No check has run yet.";
                 }
                 font.family: root.fontFamilyVal
                 font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 15

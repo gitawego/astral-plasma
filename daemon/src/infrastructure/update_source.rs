@@ -25,6 +25,15 @@ pub const DEFAULT_MANIFEST_URL: &str =
 /// Environment override, used by mirrors and by the test suite.
 pub const ENV_MANIFEST_URL: &str = "ASTRAL_PLASMA_UPDATE_URL";
 
+/// Public key this build trusts for release signatures.
+///
+/// `None` until the project key is published (see `scripts/astral-sign.sh`).
+/// Filling this in is what makes a signature check meaningful to a user who has
+/// not set an environment variable; until then a signed release is verified only
+/// when `ASTRAL_PLASMA_MINISIGN_KEY` provides the key, and a signature without a
+/// key is refused rather than checked against the user's own keyring.
+pub const PINNED_MINISIGN_KEY: Option<&str> = None;
+
 const CONNECT_TIMEOUT_SECS: u32 = 15;
 const MANIFEST_TIMEOUT_SECS: u32 = 30;
 const ARTIFACT_TIMEOUT_SECS: u32 = 600;
