@@ -1,9 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
-import "../../modules/Astral/Kernel/config"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Item {
     id: root
@@ -26,10 +24,10 @@ Item {
     /// catcher key off this instead of either flag.
     readonly property bool menusOpen: providerMenuOpen || modelMenuOpen
 
-    readonly property string currentProvider: testMode ? testProvider : ((typeof AssistantService !== "undefined" && AssistantService.selectedProviderId) ? AssistantService.selectedProviderId : testProvider)
-    readonly property string currentModel: testMode ? testModel : ((typeof AssistantService !== "undefined" && AssistantService.selectedModelId) ? AssistantService.selectedModelId : testModel)
-    readonly property string providerName: (typeof AssistantService !== "undefined" && typeof AssistantService.getProviderDisplayName === "function") ? AssistantService.getProviderDisplayName(currentProvider) : (currentProvider === "opencode-go" ? "OpenCode Go" : currentProvider.toUpperCase())
-    readonly property var availableModels: (typeof AssistantService !== "undefined" && typeof AssistantService.getModelsForProvider === "function") ? AssistantService.getModelsForProvider(currentProvider) : ["mimo-v2.6-flash", "mimo-v2.6-pro", "deepseek-v4-flash", "qwen3.8-flash"]
+    readonly property string currentProvider: testMode ? testProvider : ((typeof AssistantService !== "undefined" && AssistantContext.assistant.selectedProviderId) ? AssistantContext.assistant.selectedProviderId : testProvider)
+    readonly property string currentModel: testMode ? testModel : ((typeof AssistantService !== "undefined" && AssistantContext.assistant.selectedModelId) ? AssistantContext.assistant.selectedModelId : testModel)
+    readonly property string providerName: (typeof AssistantService !== "undefined" && typeof AssistantContext.assistant.getProviderDisplayName === "function") ? AssistantContext.assistant.getProviderDisplayName(currentProvider) : (currentProvider === "opencode-go" ? "OpenCode Go" : currentProvider.toUpperCase())
+    readonly property var availableModels: (typeof AssistantService !== "undefined" && typeof AssistantContext.assistant.getModelsForProvider === "function") ? AssistantContext.assistant.getModelsForProvider(currentProvider) : ["mimo-v2.6-flash", "mimo-v2.6-pro", "deepseek-v4-flash", "qwen3.8-flash"]
 
     // Liquid Glass Container
     Rectangle {
@@ -217,8 +215,8 @@ Item {
                     onClicked: {
                         root.providerMenuOpen = false;
                         root.modelMenuOpen = false;
-                        if (typeof Config !== "undefined") {
-                            Config.openSettings("ai");
+                        if (true) {
+                            AssistantContext.intents && AssistantContext.intents.request("settings.open", { page: "ai" });
                         }
                     }
                 }
@@ -286,7 +284,7 @@ Item {
                 }
 
                 Repeater {
-                    model: (typeof AssistantService !== "undefined" && AssistantService.availableProviders) ? AssistantService.availableProviders : []
+                    model: (typeof AssistantService !== "undefined" && AssistantContext.assistant.availableProviders) ? AssistantContext.assistant.availableProviders : []
                     delegate: Rectangle {
                         Layout.fillWidth: true
                         implicitHeight: 30
@@ -330,7 +328,7 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 if (typeof AssistantService !== "undefined") {
-                                    AssistantService.selectProvider(modelData.id);
+                                    AssistantContext.assistant.selectProvider(modelData.id);
                                 }
                                 root.providerMenuOpen = false;
                             }
@@ -459,7 +457,7 @@ Item {
                         Keys.onReturnPressed: {
                             if (text.trim().length > 0) {
                                 if (typeof AssistantService !== "undefined") {
-                                    AssistantService.selectModel(text.trim());
+                                    AssistantContext.assistant.selectModel(text.trim());
                                 }
                                 root.modelMenuOpen = false;
                             }
@@ -529,7 +527,7 @@ Item {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     if (typeof AssistantService !== "undefined") {
-                                        AssistantService.selectModel(modelData);
+                                        AssistantContext.assistant.selectModel(modelData);
                                     }
                                     root.modelMenuOpen = false;
                                 }

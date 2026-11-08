@@ -1,9 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../modules/Astral/Kernel/theme"
-import "../modules/Astral/Kernel/components"
-import "../modules/Astral/Kernel/config"
-import "../modules/Astral/Kernel/services"
+import "../../Kernel/theme"
+import "../../Kernel/components"
 import "./components"
 
 // The AI Copilot's content. It is the body of a real toplevel window
@@ -49,27 +47,33 @@ Item {
     readonly property int preferredWidth: Math.min(maxWidth, Math.max(minWidth, defaultWidth))
     readonly property int preferredHeight: Math.min(maxHeight, Math.max(minHeight, defaultHeight))
 
-    property bool isOpen: (typeof Config !== "undefined") ? Config.assistantVisible : false
+    property bool isOpen: AssistantContext.shellState !== null
+        && AssistantContext.shellState.assistantVisible
     property bool addProviderVisible: false
     property bool imagePickerVisible: false
-    property bool sessionsVisible: root.testMode ? false : ((typeof Config !== "undefined") ? Config.assistantSessionsVisible : true)
+    property bool sessionsVisible: root.testMode
+        ? false
+        : (AssistantContext.shellState ? AssistantContext.shellState.assistantSessionsVisible : true)
 
     onSessionsVisibleChanged: {
-        if (!root.testMode && typeof Config !== "undefined" && Config.assistantSessionsVisible !== sessionsVisible) {
-            Config.assistantSessionsVisible = sessionsVisible;
+        // The shell owns this setting; the drawer asks for the change.
+        if (!root.testMode && AssistantContext.intents !== null
+                && AssistantContext.shellState !== null
+                && AssistantContext.shellState.assistantSessionsVisible !== sessionsVisible) {
+            AssistantContext.intents.request("assistant.sessions", { visible: sessionsVisible });
         }
     }
 
     onIsOpenChanged: {
         if (isOpen) {
-            if (typeof AssistantService !== "undefined" && typeof AssistantService.refreshStatus === "function") {
-                AssistantService.refreshStatus();
+            if (typeof AssistantService !== "undefined" && typeof AssistantContext.assistant.refreshStatus === "function") {
+                AssistantContext.assistant.refreshStatus();
             }
             // Re-probe voice readiness on every open. The engine or model can be
             // installed from Settings while the shell is running, so a probe
             // taken only at startup would leave a stale, wrong mic-button state.
-            if (typeof AssistantService !== "undefined" && typeof AssistantService.refreshVoiceStatus === "function") {
-                AssistantService.refreshVoiceStatus();
+            if (typeof AssistantService !== "undefined" && typeof AssistantContext.assistant.refreshVoiceStatus === "function") {
+                AssistantContext.assistant.refreshVoiceStatus();
             }
             Qt.callLater(function() {
                 if (typeof chatInput !== "undefined" && chatInput.focusInput) {
@@ -120,7 +124,7 @@ Item {
         color: (typeof Colors !== "undefined") ? Colors.glassPanelSubstrate : "#1e1e2e"
 
         focus: root.isOpen
-        Keys.onEscapePressed: Config.closeAssistant()
+        Keys.onEscapePressed: AssistantContext.intents && AssistantContext.intents.request("assistant.close")
 
         // Empty card surfaces start a compositor-native window move, so dragging
         // the card drags the window exactly like a titlebar would.
@@ -235,13 +239,13 @@ Item {
                 testMode: root.testMode
                 windowHandle: root.windowHandle
                 sessionsOpen: root.sessionsVisible
-                onCloseRequested: Config.closeAssistant()
-                onMinimizeRequested: Config.minimizeAssistant()
+                onCloseRequested: AssistantContext.intents && AssistantContext.intents.request("assistant.close")
+                onMinimizeRequested: AssistantContext.intents && AssistantContext.intents.request("assistant.minimize")
                 onAddProviderRequested: root.addProviderVisible = true
                 onSessionsRequested: root.sessionsVisible = !root.sessionsVisible
                 onNewChatRequested: {
                     if (typeof AssistantService !== "undefined") {
-                        AssistantService.createNewSession();
+                        AssistantContext.assistant.createNewSession();
                     }
                 }
             }
@@ -280,12 +284,12 @@ Item {
                     onClosed: root.sessionsVisible = false
                     onSessionSelected: function(id) {
                         if (typeof AssistantService !== "undefined") {
-                            AssistantService.loadSession(id);
+                            AssistantContext.assistant.loadSession(id);
                         }
                     }
                     onNewSessionRequested: {
                         if (typeof AssistantService !== "undefined") {
-                            AssistantService.createNewSession();
+                            AssistantContext.assistant.createNewSession();
                         }
                     }
                 }
@@ -323,7 +327,7 @@ Item {
                         Layout.bottomMargin: 4
                         radius: 10
 
-                        readonly property var crashesList: (typeof AssistantService !== "undefined" && AssistantService.activeCrashes) ? AssistantService.activeCrashes : []
+                        readonly property var crashesList: (typeof AssistantService !== "undefined" && AssistantContext.assistant.activeCrashes) ? AssistantContext.assistant.activeCrashes : []
                         readonly property int crashCount: crashesList ? crashesList.length : 0
                         readonly property bool hasCrashes: crashCount > 0
 
@@ -543,7 +547,7 @@ Item {
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
                                             if (crashBanner.currentCrash && typeof AssistantService !== "undefined") {
-                                                AssistantService.diagnoseCrash(crashBanner.currentCrash);
+                                                AssistantContext.assistant.diagnoseCrash(crashBanner.currentCrash);
                                             }
                                         }
                                     }
@@ -574,7 +578,7 @@ Item {
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
                                             if (crashBanner.currentCrash && typeof AssistantService !== "undefined") {
-                                                AssistantService.dismissCrash(crashBanner.currentCrash.id);
+                                                AssistantContext.assistant.dismissCrash(crashBanner.currentCrash.id);
                                             }
                                         }
                                     }
@@ -637,7 +641,7 @@ Item {
 
                         onSubmitMessage: function(text, images) {
                             if (typeof AssistantService !== "undefined") {
-                                AssistantService.sendMessage(text, images);
+                                AssistantContext.assistant.sendMessage(text, images);
                             }
                         }
                     }
@@ -674,14 +678,14 @@ Item {
             sequence: "Ctrl+N"
             onActivated: {
                 if (typeof AssistantService !== "undefined") {
-                    AssistantService.createNewSession();
+                    AssistantContext.assistant.createNewSession();
                 }
             }
         }
 
         Shortcut {
             sequence: "Esc"
-            onActivated: Config.closeAssistant()
+            onActivated: AssistantContext.intents && AssistantContext.intents.request("assistant.close")
         }
     }
 }

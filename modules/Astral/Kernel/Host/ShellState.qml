@@ -49,6 +49,11 @@ QtObject {
     /// Whether the download rows use the blurred glass border.
     property bool downloadsBorderEffect: true
 
+    /// Whether the assistant window is requested open.
+    property bool assistantVisible: false
+    /// Whether the assistant's session list is expanded.
+    property bool assistantSessionsVisible: false
+
     /// Whether the user has AI privacy mode on.
     property bool aiPrivacyMode: true
     /// Provider brand icon resolution, supplied by the shell (it knows the assets).

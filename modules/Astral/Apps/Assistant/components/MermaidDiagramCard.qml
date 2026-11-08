@@ -1,8 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Rectangle {
     id: root
@@ -32,8 +31,8 @@ Rectangle {
         isRendering = true;
         errorMessage = "";
 
-        if (typeof AssistantService !== "undefined" && typeof AssistantService.renderMermaid === "function") {
-            AssistantService.renderMermaid(mermaidSource.trim(), function(res) {
+        if (typeof AssistantService !== "undefined" && typeof AssistantContext.assistant.renderMermaid === "function") {
+            AssistantContext.assistant.renderMermaid(mermaidSource.trim(), function(res) {
                 if (res && res.success) {
                     root.diagramHtml = res.html || "";
                     root.diagramPlain = res.plain || "";
@@ -189,8 +188,8 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (typeof AssistantService !== "undefined" && typeof AssistantService.copyToClipboard === "function") {
-                            AssistantService.copyToClipboard(root.mermaidSource);
+                        if (typeof AssistantService !== "undefined" && typeof AssistantContext.assistant.copyToClipboard === "function") {
+                            AssistantContext.assistant.copyToClipboard(root.mermaidSource);
                         }
                         root.copyFeedback = true;
                         copyTimer.start();

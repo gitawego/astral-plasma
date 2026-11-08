@@ -1,10 +1,8 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
-import "../modules/Astral/Kernel/theme"
-import "../modules/Astral/Kernel/components"
-import "../modules/Astral/Kernel/config"
-import "../modules/Astral/Kernel/services"
+import "../../Kernel/theme"
+import "../../Kernel/components"
 
 // The AI Copilot is a real desktop window, not a layer-shell overlay.
 //
@@ -20,11 +18,24 @@ import "../modules/Astral/Kernel/services"
 FloatingWindow {
     id: root
 
+    /// Injected by the shell: the live assistant service, the read model, and the bus.
+    property var assistant: null
+    property var shellState: null
+    property var intents: null
+
+    Component.onCompleted: {
+        AssistantContext.assistant = root.assistant;
+        AssistantContext.shellState = root.shellState;
+        AssistantContext.intents = root.intents;
+    }
+
     property ShellScreen targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     screen: targetScreen
 
     property bool testMode: false
-    property bool activeVisible: testMode ? true : (typeof Config !== "undefined" ? Config.assistantVisible : false)
+    property bool activeVisible: testMode
+        ? true
+        : (AssistantContext.shellState !== null && AssistantContext.shellState.assistantVisible)
     readonly property alias drawerItem: drawer
 
     // Window identity: this is what the user reads in Alt+Tab and in any

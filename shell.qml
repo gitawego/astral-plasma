@@ -14,9 +14,9 @@ import "./modules/Astral/Apps/Media"
 import "./modules/Astral/Apps/Performance"
 import "./modules/Astral/Apps/Ai"
 import "./modules/Astral/Apps/Downloads"
+import "./modules/Astral/Apps/Assistant"
 import "./settings_gui"
 import "./modules/Astral/Kernel/services"
-import "./assistant"
 
 ShellRoot {
     id: root
@@ -43,6 +43,8 @@ ShellRoot {
         downloadsSpeedLimit: Config.downloadsSpeedLimit
         downloadsBorderEffect: Config.downloadsBorderEffect
         aiPrivacyMode: Config.aiPrivacyMode
+        assistantVisible: Config.assistantVisible
+        assistantSessionsVisible: Config.assistantSessionsVisible
         providerIconResolver: function (name) { return Config.providerIconUrl(name); }
     }
 
@@ -74,6 +76,10 @@ ShellRoot {
         playerName: MprisMedia.identity
         position: MprisMedia.position
         length: MprisMedia.length
+        loopState: MprisMedia.loopState || "enabled"
+        shuffle: Boolean(MprisMedia.shuffle)
+        canGoNext: Boolean(MprisMedia.canGoNext)
+        canGoPrevious: Boolean(MprisMedia.canGoPrevious)
         players: (MprisMedia.players || []).map(function (player) {
             return {
                 id: player.busName || "",
@@ -95,6 +101,10 @@ ShellRoot {
         }
         seekImpl: function (fraction) {
             MprisMedia.seekTo(fraction);
+            return true;
+        }
+        toggleShuffleImpl: function () {
+            MprisMedia.toggleShuffle();
             return true;
         }
         selectPlayerImpl: function (id) {
@@ -672,6 +682,9 @@ ShellRoot {
 
     // AI Assistant Copilot Window
     AssistantWindow {
+        assistant: AssistantService
+        shellState: shellState
+        intents: intents
         id: assistantWindow
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
@@ -759,7 +772,20 @@ ShellRoot {
         });
         intents.register("settings.open", function (args) {
             const page = (args && args.page) ? String(args.page) : "";
-            Config.openSettings(page);
+            const section = (args && args.section) ? String(args.section) : "";
+            Config.openSettings(page, section);
+            return intents.applied();
+        });
+        intents.register("assistant.close", function () {
+            Config.closeAssistant();
+            return intents.applied();
+        });
+        intents.register("assistant.minimize", function () {
+            Config.minimizeAssistant();
+            return intents.applied();
+        });
+        intents.register("assistant.sessions", function (args) {
+            Config.assistantSessionsVisible = !!(args && args.visible);
             return intents.applied();
         });
         intents.register("ai.privacyMode", function (args) {

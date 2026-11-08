@@ -2840,3 +2840,22 @@ broken).
 > ("4 Desktops · 8 Windows", Desktop 1 active with chips); `app disable` → restart → the pane
 > explains why it is empty; `app enable` → restart → the tab returns.
 > `make test` exit 0 — 1114 Rust tests, 165 QML suites.
+
+---
+
+## P4 — the assistant is an app (2026-11-08)
+
+`assistant/` → `modules/Astral/Apps/Assistant/` (13 files). One `AssistantContext` singleton
+holds the three ports (`assistant`, `shellState`, `intents`), filled by the window from what
+the host injected — instead of a property on every file.
+
+> **Verified live**: the Copilot window renders "Astral Copilot · PI Engine · opencode-go /
+> mimo-v2.6-flash", its session drawer ("No previous sessions yet"), the provider/model row
+> and quick actions (Diagnose Errors, Check High CPU, Fix Audio, Clean Cache), themed.
+> `make test` exit 0 — 1114 Rust tests, 165 QML suites.
+
+Two leftovers were not cosmetic: `typeof Config !== "undefined" ? …` guards became always-false
+after the import was removed (**the window never opened**, silently), and an intent rewrite ate
+a parenthesis in two `openSettings` calls. Both fixed; the second was caught only by loading.
+
+Six of eleven apps migrated: workspaces, media, performance, ai, downloads, assistant.

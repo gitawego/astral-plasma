@@ -30,6 +30,12 @@ QtObject {
     /// Human name of the elected player (MPRIS identity).
     property string playerName: ""
 
+    /// `enabled`, `track`, or `playlist` — the player's loop mode.
+    property string loopState: "enabled"
+    property bool shuffle: false
+    property bool canGoNext: true
+    property bool canGoPrevious: true
+
     property real position: 0
     property real length: 0
     readonly property real progress: length > 0 ? Math.min(1, Math.max(0, position / length)) : 0
@@ -46,11 +52,13 @@ QtObject {
     property var previousImpl: null
     property var seekImpl: null
     property var selectPlayerImpl: null
+    property var toggleShuffleImpl: null
 
     readonly property bool canToggle: toggleImpl !== null
     readonly property bool canSkip: nextImpl !== null
     readonly property bool canSeek: seekImpl !== null
     readonly property bool canSelectPlayer: selectPlayerImpl !== null
+    readonly property bool canShuffle: toggleShuffleImpl !== null
 
     signal operationFailed(string operation, string reason)
 
@@ -89,7 +97,34 @@ QtObject {
         return call("seek", seekImpl, [value]);
     }
 
-    function selectPlayer(playerId) {
-        return call("selectPlayer", selectPlayerImpl, [String(playerId || "")]);
+    function selectPlayer(playerOrId) {
+        const id = (playerOrId && typeof playerOrId === "object")
+            ? String(playerOrId.busName || playerOrId.id || "")
+            : String(playerOrId || "");
+        return call("selectPlayer", selectPlayerImpl, [id]);
+    }
+
+    /// The display name of a player entry (or id). Named `nameOf`, not `playerName`:
+    /// a function and a property with one name collide, and the property wins.
+    function nameOf(playerOrId) {
+        if (playerOrId && typeof playerOrId === "object") {
+            if (playerOrId.name) return String(playerOrId.name);
+            if (playerOrId.identity) return String(playerOrId.identity);
+            if (playerOrId.busName) return String(playerOrId.busName);
+        }
+        const id = typeof playerOrId === "string"
+            ? playerOrId
+            : (playerOrId && playerOrId.id ? String(playerOrId.id) : "");
+        for (let index = 0; index < players.length; index++) {
+            const entry = players[index];
+            if (String(entry.id || entry.busName || "") === id) {
+                return String(entry.name || entry.identity || id);
+            }
+        }
+        return "";
+    }
+
+    function toggleShuffle() {
+        return call("toggleShuffle", toggleShuffleImpl, []);
     }
 }

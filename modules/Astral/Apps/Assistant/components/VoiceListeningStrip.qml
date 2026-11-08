@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 /**
  * Live voice-capture strip shown above the chat composer.
@@ -284,10 +284,10 @@ LiquidGlassCard {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: {
-            if (typeof Config !== "undefined" && typeof Config.openSettings === "function") {
-                // The chip promises "Settings > AI > Voice input": land on the
-                // voice section, not at the top of a long AI page.
-                Config.openSettings("ai", "voice");
+            // The chip promises "Settings > AI > Voice input": land on the voice
+            // section, not at the top of a long AI page.
+            if (AssistantContext.intents !== null) {
+                AssistantContext.intents.request("settings.open", { page: "ai", section: "voice" });
             }
         }
     }

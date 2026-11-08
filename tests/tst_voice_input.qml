@@ -3,8 +3,8 @@ import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/components"
 import "../modules/Astral/Kernel/config"
 import "../modules/Astral/Kernel/services"
-import "../assistant"
-import "../assistant/components"
+import "../modules/Astral/Apps/Assistant"
+import "../modules/Astral/Apps/Assistant/components"
 
 /**
  * Voice input UI contracts.
@@ -349,7 +349,7 @@ Item {
         // The strip's layout contract is asserted from source: offscreen the
         // layout never runs, so a runtime width would be 0 for the wrong reason
         // and would not catch a real collapse failure.
-        const stripLayoutSrc = readLocalFile("../assistant/components/VoiceListeningStrip.qml");
+        const stripLayoutSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/VoiceListeningStrip.qml");
         // ------------------------------------------------------------------
         // 3. Composer geometry: the strip is inside the height budget
         // ------------------------------------------------------------------
@@ -609,7 +609,7 @@ Item {
         // ------------------------------------------------------------------
         // 7c. The language reading must be visible while it can still matter
         // ------------------------------------------------------------------
-        const languageStripSrc = readLocalFile("../assistant/components/VoiceListeningStrip.qml");
+        const languageStripSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/VoiceListeningStrip.qml");
         //
         // D8 promised that the detected language is displayed and that this
         // turns a mystery into a one-glance override. It could not: the strip
@@ -1014,7 +1014,7 @@ Item {
         assert(/voiceSessionProc\.write\("stop\\n"\)/.test(serviceSrc),
             "stop must be delivered as a control line, not a process kill");
 
-        const barSrc = readLocalFile("../assistant/components/ChatInputBar.qml");
+        const barSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/ChatInputBar.qml");
         assert(/onVoiceTranscriptChanged/.test(barSrc), "the composer must react to a finalized transcript");
         assert(/function appendTranscript\(/.test(barSrc), "ChatInputBar must implement appendTranscript");
         assert(/onDismissRequested/.test(barSrc),
@@ -1079,10 +1079,11 @@ Item {
         assert(/voiceStatus\.engine_install_command/.test(voicePageSrc),
             "the engine notice must render the command the daemon reported");
 
-        const stripSrc = readLocalFile("../assistant/components/VoiceListeningStrip.qml");
+        const stripSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/VoiceListeningStrip.qml");
         assert(/LiquidGlassCard/.test(stripSrc),
             "the strip must be a LiquidGlassCard, not a bespoke translucent Rectangle");
-        assert(/openSettings\("ai",\s*"voice"\)/.test(stripSrc),
+        // The strip is migrated: it asks the shell for the page *and* the section.
+        assert(/settings\.open", \{ page: "ai", section: "voice" \}/.test(stripSrc),
             "the destination chip must ask for the voice section, not just the AI page");
         assert(!/openSettings\("ai"\)/.test(stripSrc),
             "the chip must name its section, not just the page");
@@ -1156,14 +1157,14 @@ Item {
         // The warning must reach the strip as a live readout: error-toned text
         // beside a live meter, never collapsing capture readouts and never
         // surviving past the session that produced it.
-        const vadStripSrc = readLocalFile("../assistant/components/VoiceListeningStrip.qml");
+        const vadStripSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/VoiceListeningStrip.qml");
         assert(/property string warningMessage/.test(vadStripSrc),
             "the strip must accept the live warning text");
         assert(/hasWarning: warningMessage\.length > 0 && isCapturing/.test(vadStripSrc),
             "the warning must be live-only: showing it beside a dead meter reads as a broken microphone");
         assert(/hasWarning && root\.partialText\.length === 0/.test(vadStripSrc),
             "a real partial always wins over the warning; the warning borrows the error tone");
-        const barSrc2 = readLocalFile("../assistant/components/ChatInputBar.qml");
+        const barSrc2 = readLocalFile("../modules/Astral/Apps/Assistant/components/ChatInputBar.qml");
         assert(/warningMessage: root\.voiceWarning/.test(barSrc2),
             "the composer must pass the backend warning into the strip");
         // Pre-existing keys must be untouched by this feature.

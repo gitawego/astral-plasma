@@ -1,8 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Item {
     id: root
@@ -76,7 +75,7 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             if (typeof AssistantService !== "undefined") {
-                                AssistantService.sendMessage(modelData.prompt);
+                                AssistantContext.assistant.sendMessage(modelData.prompt);
                             }
                             root.chipClicked(modelData.prompt);
                         }

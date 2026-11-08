@@ -1,8 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Flickable {
     id: root
@@ -18,8 +17,8 @@ Flickable {
     readonly property var currentMessages: {
         if (testMode && testMessages !== null) return testMessages;
         if (typeof AssistantService !== "undefined") {
-            let _ = AssistantService.messagesRevision;
-            return AssistantService.messages;
+            let _ = AssistantContext.assistant.messagesRevision;
+            return AssistantContext.assistant.messages;
         }
         return [];
     }
@@ -124,13 +123,13 @@ Flickable {
             readonly property bool isSystem: modelData.role === "system"
 
             readonly property bool isLastAssistantMessage: index === (root.currentMessages.length - 1) && modelData.role === "assistant"
-            readonly property bool isCurrentlyStreaming: isLastAssistantMessage && (typeof AssistantService !== "undefined" && AssistantService.isStreaming)
-            readonly property int itemRevision: (typeof AssistantService !== "undefined") ? AssistantService.messagesRevision : 0
+            readonly property bool isCurrentlyStreaming: isLastAssistantMessage && (typeof AssistantService !== "undefined" && AssistantContext.assistant.isStreaming)
+            readonly property int itemRevision: (typeof AssistantService !== "undefined") ? AssistantContext.assistant.messagesRevision : 0
 
             readonly property string fullContent: {
                 let _ = itemRevision;
                 if (isCurrentlyStreaming) {
-                    let live = (typeof AssistantService !== "undefined") ? AssistantService.activeStreamingContent : "";
+                    let live = (typeof AssistantService !== "undefined") ? AssistantContext.assistant.activeStreamingContent : "";
                     if (live && live.length > 0) return live;
                     return "Thinking...";
                 }
@@ -320,17 +319,17 @@ Flickable {
                     model: {
                         let _ = itemRevision;
                         if (isCurrentlyStreaming && typeof AssistantService !== "undefined") {
-                            return AssistantService.activeToolProposals || [];
+                            return AssistantContext.assistant.activeToolProposals || [];
                         }
                         return (modelData.tool_calls && modelData.tool_calls.length > 0) ? modelData.tool_calls : [];
                     }
                     delegate: ToolConfirmationCard {
                         toolProposal: modelData
                         onApproved: {
-                            if (typeof AssistantService !== "undefined") AssistantService.approveToolCall(modelData);
+                            if (typeof AssistantService !== "undefined") AssistantContext.assistant.approveToolCall(modelData);
                         }
                         onDenied: {
-                            if (typeof AssistantService !== "undefined") AssistantService.denyToolCall(modelData);
+                            if (typeof AssistantService !== "undefined") AssistantContext.assistant.denyToolCall(modelData);
                         }
                     }
                 }

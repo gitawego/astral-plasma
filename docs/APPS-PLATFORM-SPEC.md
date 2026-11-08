@@ -1859,3 +1859,31 @@ Two defects were found by driving the Apps page's own actions end to end:
 
 Re-enabling restores the tab on the next start, so the round trip is: enabled → mounted and
 themed, disabled → excluded with a reason, re-enabled → back.
+
+### C.20 The assistant: one context object instead of three properties
+
+The assistant is thirteen files (window, drawer, five components) that all needed the same
+three ports. Threading them individually would have meant a property on each. Instead the app
+owns `AssistantContext` (a QtQuick-only singleton in its own directory) that the window fills
+from what the host injected:
+
+```
+AssistantContext.assistant   the shell's live assistant service
+AssistantContext.shellState  visibility, settings it renders
+AssistantContext.intents     settings navigation, close, minimize, sessions
+```
+
+A singleton living inside an app directory is compiled when the app is, in the same
+registration (C.18), so it shares the shell's kernel singletons.
+
+Two classes of leftovers had to be removed, and both are worth remembering:
+
+* `typeof Config !== "undefined" ? … : false` guards became *always false* once the app lost
+  its Config import — **the window never opened**, with no error. Guards on a name the app
+  cannot see are not defensive, they are broken.
+* `Config.openSettings("ai")` → an intent rewrite left `{ page: "ai");` in two places (the
+  substitution ate a parenthesis). The app failed to parse; the suites caught it, the linter
+  would not have.
+
+Verified live: the Copilot window opens with its session list, provider/model row
+(`OpenCode Go · mimo-v2.6-flash`) and quick actions, in the shell palette.

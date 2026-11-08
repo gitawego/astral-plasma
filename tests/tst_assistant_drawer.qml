@@ -3,8 +3,8 @@ import Qt.labs.folderlistmodel
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/components"
 import "../modules/Astral/Kernel/config"
-import "../assistant"
-import "../assistant/components"
+import "../modules/Astral/Apps/Assistant"
+import "../modules/Astral/Apps/Assistant/components"
 
 Item {
     id: testRoot
@@ -220,7 +220,7 @@ Item {
         // The copilot is an xdg-toplevel: Alt+Tab, minimize and stacking belong
         // to the compositor, and the shell only supplies the size the window
         // takes when it is next mapped.
-        const windowSrc = readLocalFile("../assistant/AssistantWindow.qml");
+        const windowSrc = readLocalFile("../modules/Astral/Apps/Assistant/AssistantWindow.qml");
         assert(floatingDrawer.preferredWidth > 480, "preferredWidth must scale with the screen width");
         assert(floatingDrawer.preferredHeight >= 540, "preferredHeight must scale with the screen height");
         assert(/implicitWidth:\s*drawer\s*\?\s*drawer\.preferredWidth/.test(windowSrc), "AssistantWindow must size the toplevel from the drawer's preferred width");
@@ -230,7 +230,7 @@ Item {
         // Alt+Tab lists application windows only: KWin hard-codes skipSwitcher
         // for layer-shell surfaces, so a layer surface can never be reached with
         // the system switcher.
-        assert(windowSrc.length > 300, "assistant/AssistantWindow.qml must be readable");
+        assert(windowSrc.length > 300, "the assistant app window must be readable");
         assert(/FloatingWindow\s*\{/.test(windowSrc), "AssistantWindow must be a FloatingWindow (real xdg-toplevel), not a layer-shell overlay");
         assert(!/WlrLayershell/.test(windowSrc), "AssistantWindow must not be a layer-shell surface: those never appear in Alt+Tab");
         assert(!/mask:\s*Region/.test(windowSrc), "AssistantWindow must not declare a clickthrough mask: the window is card-sized");
@@ -248,8 +248,8 @@ Item {
         assert(!/minimized:\s*minimizedToDock/.test(windowSrc), "AssistantWindow must not drive a compositor minimize it could never undo");
 
         // 10. Streaming Content Reactivity Contract
-        const chatViewSrc = readLocalFile("../assistant/components/ChatView.qml");
-        assert(chatViewSrc.length > 500, "assistant/components/ChatView.qml must be readable");
+        const chatViewSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/ChatView.qml");
+        assert(chatViewSrc.length > 500, "the assistant chat view must be readable");
         assert(/activeStreamingContent/.test(chatViewSrc), "ChatView must reactively bind to activeStreamingContent");
         assert(/messagesRevision/.test(chatViewSrc), "ChatView must reactively track messagesRevision");
         assert(/messagesRevision/.test(serviceSrc), "AssistantService must provide messagesRevision property");
@@ -257,7 +257,7 @@ Item {
         // 11. Native Move & Glass Clarity Contract
         // Moving a window is the compositor's interactive move: the shell must
         // not emulate it by writing item coordinates.
-        const drawerSrc = readLocalFile("../assistant/AssistantDrawer.qml");
+        const drawerSrc = readLocalFile("../modules/Astral/Apps/Assistant/AssistantDrawer.qml");
         assert(drawerSrc.length > 500, "assistant/AssistantDrawer.qml must be readable");
         assert(/headerItem/.test(drawerSrc), "AssistantDrawer must expose the header drag zone");
         assert(/dialogDragArea/.test(drawerSrc), "AssistantDrawer must declare dialogDragArea for background surface dragging");
@@ -269,12 +269,12 @@ Item {
             "AssistantDrawer must use the shared readable panel substrate");
         assert(!/Qt\.rgba\(0\.07, 0\.08, 0\.12, 0\.82\)/.test(drawerSrc),
             "the substrate recipe must live in Colors, not be re-inlined per surface");
-        const headerDragSrc = readLocalFile("../assistant/components/AssistantHeader.qml");
+        const headerDragSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/AssistantHeader.qml");
         assert(/startSystemMove/.test(headerDragSrc), "AssistantHeader drag zone must start a compositor move");
         assert(!/drag\.target/.test(headerDragSrc), "AssistantHeader must not drag item coordinates");
 
         // 12. Send Button Visibility & Interaction Contract
-        const inputBarSrc = readLocalFile("../assistant/components/ChatInputBar.qml");
+        const inputBarSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/ChatInputBar.qml");
         assert(inputBarSrc.length > 500, "assistant/components/ChatInputBar.qml must be readable");
         assert(/sendButton/.test(inputBarSrc), "ChatInputBar must declare sendButton");
         assert(/iconName:\s*sendButton\.isStreaming\s*\?\s*"stop"\s*:\s*"send"/.test(inputBarSrc), "ChatInputBar must bind send/stop icon dynamically");
@@ -325,7 +325,7 @@ Item {
         assert(testMermaidCard.showSource === true, "MermaidDiagramCard must support toggling showSource");
         testMermaidCard.showSource = false;
 
-        const mermaidCardSrc = readLocalFile("../assistant/components/MermaidDiagramCard.qml");
+        const mermaidCardSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/MermaidDiagramCard.qml");
         assert(mermaidCardSrc.length > 500, "MermaidDiagramCard.qml must be readable");
         assert(/renderDiagram/.test(mermaidCardSrc), "MermaidDiagramCard must implement renderDiagram");
         assert(/copyToClipboard/.test(mermaidCardSrc), "MermaidDiagramCard must support copying diagram/source to clipboard");
@@ -339,7 +339,7 @@ Item {
         assert(/```mermaid/.test(chatViewSrc), "ChatView must detect mermaid code fences");
 
         // 16. Minimize to Taskbar / Dock Contract
-        const headerSrc = readLocalFile("../assistant/components/AssistantHeader.qml");
+        const headerSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/AssistantHeader.qml");
         assert(/signal minimizeRequested/.test(headerSrc), "AssistantHeader must declare minimizeRequested signal");
         assert(/minimizeButton/.test(headerSrc), "AssistantHeader must provide minimizeButton");
 
@@ -377,7 +377,7 @@ Item {
         }
 
         // 17. Liquid Glass In-Process File Picker Contract
-        const pickerSrc = readLocalFile("../assistant/components/LiquidGlassFilePicker.qml");
+        const pickerSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/LiquidGlassFilePicker.qml");
         assert(pickerSrc.length > 500, "LiquidGlassFilePicker.qml must be readable");
         assert(/FolderListModel/.test(pickerSrc), "LiquidGlassFilePicker must use FolderListModel for local file enumeration");
         assert(/quickPlaces/.test(pickerSrc), "LiquidGlassFilePicker must provide quick places sidebar navigation");
@@ -415,7 +415,7 @@ Item {
         assert(/function deleteSession\(/.test(serviceSrc), "AssistantService must implement deleteSession");
         assert(/function persistActiveSession\(/.test(serviceSrc), "AssistantService must implement persistActiveSession");
 
-        const sessionDrawerSrc = readLocalFile("../assistant/components/SessionListDrawer.qml");
+        const sessionDrawerSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/SessionListDrawer.qml");
         assert(sessionDrawerSrc.length > 500, "SessionListDrawer.qml must be readable");
         assert(/SessionListDrawer/.test(drawerSrc), "AssistantDrawer must embed SessionListDrawer");
         assert(!/root\.sessionSelected\([^)]*\);\s*root\.closed\(\)/.test(sessionDrawerSrc), "SessionListDrawer must NOT auto-close when selecting a session");
@@ -579,7 +579,7 @@ Item {
         assert(banner.safeIndex <= Math.max(0, banner.crashCount - 1), "safeIndex must clamp to crashCount - 1");
 
         // Verify source contract for multi-crash carousel controls & dismiss
-        const assistantDrawerSrc = readLocalFile("../assistant/AssistantDrawer.qml");
+        const assistantDrawerSrc = readLocalFile("../modules/Astral/Apps/Assistant/AssistantDrawer.qml");
         assert(/chevron_left/.test(assistantDrawerSrc), "AssistantDrawer must include previous crash chevron");
         assert(/chevron_right/.test(assistantDrawerSrc), "AssistantDrawer must include next crash chevron");
         assert(/dismissMouse/.test(assistantDrawerSrc), "AssistantDrawer must include dismiss button");
@@ -626,36 +626,36 @@ Item {
         assert(/Qt\.alpha\(Colors\.m3error,\s*0\.20\)/.test(assistantDrawerSrc), "crashBanner Debug button must use liquid glass translucent fill");
 
         // Verify SessionListDrawer + New button and action buttons
-        const sessionSrc = readLocalFile("../assistant/components/SessionListDrawer.qml");
+        const sessionSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/SessionListDrawer.qml");
         assert(/radius:\s*14/.test(sessionSrc), "SessionListDrawer + New button must be a stadium pill (radius 14)");
         assert(/newChatMouse\.pressed\s*\?\s*0\.95/.test(sessionSrc), "SessionListDrawer + New button must have spring scale micro-physics");
         assert(/delMouse\.pressed\s*\?\s*0\.90/.test(sessionSrc), "SessionListDrawer delete button must have spring scale micro-physics");
         assert(/closeMouse\.pressed\s*\?\s*0\.90/.test(sessionSrc), "SessionListDrawer close button must have spring scale micro-physics");
 
         // Verify ChatInputBar liquid glass buttons & spring micro-physics
-        const chatInputSrc = readLocalFile("../assistant/components/ChatInputBar.qml");
+        const chatInputSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/ChatInputBar.qml");
         assert(/sendMouse\.pressed\s*\?\s*0\.94/.test(chatInputSrc), "ChatInputBar send button must have spring scale micro-physics");
         assert(/attachMouse\.pressed\s*\?\s*0\.94/.test(chatInputSrc), "ChatInputBar attach button must have spring scale micro-physics");
         assert(/Qt\.alpha\(Colors\.primary,\s*0\.18\)/.test(chatInputSrc), "ChatInputBar send button must use liquid glass primary fill");
 
         // Verify ToolConfirmationCard liquid glass buttons
-        const toolCardSrc = readLocalFile("../assistant/components/ToolConfirmationCard.qml");
+        const toolCardSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/ToolConfirmationCard.qml");
         assert(/approveMouse\.pressed\s*\?\s*0\.94/.test(toolCardSrc), "ToolConfirmationCard approve button must have spring scale micro-physics");
         assert(/denyMouse\.pressed\s*\?\s*0\.94/.test(toolCardSrc), "ToolConfirmationCard deny button must have spring scale micro-physics");
 
         // Verify LiquidGlassFilePicker Attach button & checkboxes (zero hardcoded #12131A)
-        const filePickerSrc = readLocalFile("../assistant/components/LiquidGlassFilePicker.qml");
+        const filePickerSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/LiquidGlassFilePicker.qml");
         assert(!/#12131A/i.test(filePickerSrc), "LiquidGlassFilePicker must NOT contain hardcoded #12131A text/colors");
         assert(/attachMouse\.pressed\s*\?\s*0\.94/.test(filePickerSrc), "LiquidGlassFilePicker attach button must have spring scale micro-physics");
 
         // Verify ModelProviderBar frosted glass dropdowns & spring micro-physics
-        const modelBarSrc = readLocalFile("../assistant/components/ModelProviderBar.qml");
+        const modelBarSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/ModelProviderBar.qml");
         assert(/providerHover\.pressed\s*\?\s*0\.96/.test(modelBarSrc), "ModelProviderBar provider button must have spring scale micro-physics");
         assert(/modelHover\.pressed\s*\?\s*0\.96/.test(modelBarSrc), "ModelProviderBar model button must have spring scale micro-physics");
         assert(/0\.90/.test(modelBarSrc), "ModelProviderBar dropdown popups must use frosted glass (0.90 alpha)");
 
         // Verify AssistantHeader action buttons spring micro-physics
-        const asstHdrSrc = readLocalFile("../assistant/components/AssistantHeader.qml");
+        const asstHdrSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/AssistantHeader.qml");
         assert(/newChatMouse\.pressed\s*\?\s*0\.92/.test(asstHdrSrc), "AssistantHeader newChat button must have spring scale micro-physics");
         assert(/closeMouse\.pressed\s*\?\s*0\.92/.test(asstHdrSrc), "AssistantHeader close button must have spring scale micro-physics");
 
@@ -722,7 +722,7 @@ Item {
 
         // It has to cover the whole window, not the 44px bar row: the dropdown
         // is anchored to the bar but the click that dismisses it is anywhere.
-        const dropdownBarSrc = readLocalFile("../assistant/components/ModelProviderBar.qml");
+        const dropdownBarSrc = readLocalFile("../modules/Astral/Apps/Assistant/components/ModelProviderBar.qml");
         assert(/Window\.window\.width/.test(dropdownBarSrc) && /Window\.window\.height/.test(dropdownBarSrc),
             "the dismissal catcher must span the window, not just the bar");
         assert(/z:\s*100/.test(dropdownBarSrc), "the catcher must sit below the popups (z: 150)");
@@ -787,7 +787,7 @@ Item {
         // The resize handles own the card's edges. The scroll strip must sit
         // clear of them, or grabbing the bar resizes the window instead of
         // scrolling - exactly the report this contract answers.
-        const handleSrc = readLocalFile("../assistant/AssistantDrawer.qml");
+        const handleSrc = readLocalFile("../modules/Astral/Apps/Assistant/AssistantDrawer.qml");
         const stripMargin = /id:\s*chatScrollIndicator[\s\S]{0,600}?anchors\.rightMargin:\s*(\d+)/.exec(handleSrc);
         const rightHandle = /id:\s*rightResizeHandle[\s\S]{0,400}?width:\s*(\d+)/.exec(handleSrc);
         const cornerHandle = /id:\s*cornerResizeHandle[\s\S]{0,400}?width:\s*(\d+)/.exec(handleSrc);
@@ -814,9 +814,9 @@ Item {
 
         // Qt Quick's enum is Font.DemiBold (600); Font.SemiBold is undefined and
         // logs `Unable to assign [undefined] to int` when bound to font.weight.
-        assert(!/Font\.SemiBold\b/.test(readLocalFile("../assistant/components/LiquidGlassFilePicker.qml")),
+        assert(!/Font\.SemiBold\b/.test(readLocalFile("../modules/Astral/Apps/Assistant/components/LiquidGlassFilePicker.qml")),
             "LiquidGlassFilePicker.qml must use Font.DemiBold instead of undefined Font.SemiBold");
-        assert(!/Font\.SemiBold\b/.test(readLocalFile("../assistant/components/SessionListDrawer.qml")),
+        assert(!/Font\.SemiBold\b/.test(readLocalFile("../modules/Astral/Apps/Assistant/components/SessionListDrawer.qml")),
             "SessionListDrawer.qml must use Font.DemiBold instead of undefined Font.SemiBold");
 
         console.log("PASS: All Assistant Drawer tests passed!");

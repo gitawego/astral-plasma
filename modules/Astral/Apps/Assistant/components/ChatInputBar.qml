@@ -1,9 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Dialogs
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Rectangle {
     id: root
@@ -131,7 +130,7 @@ Rectangle {
         inputField.forceActiveFocus();
     }
 
-    readonly property bool isStreaming: (typeof AssistantService !== "undefined") ? AssistantService.isStreaming : false
+    readonly property bool isStreaming: (typeof AssistantService !== "undefined") ? AssistantContext.assistant.isStreaming : false
     readonly property bool showSkillPopup: inputField.text.startsWith("/") && !inputField.text.includes(" ")
 
     // Native System File Explorer (Non-Modal to avoid layer-shell input freezes)
@@ -316,8 +315,9 @@ Rectangle {
                 // this is the smallest honest version of it -- it does not
                 // re-render the audio, it takes the user to the picker.
                 onCorrectLanguageRequested: {
-                    if (typeof Config !== "undefined" && typeof Config.openSettings === "function")
-                        Config.openSettings("ai", "voice");
+                    if (AssistantContext.intents !== null) {
+                        AssistantContext.intents.request("settings.open", { page: "ai", section: "voice" });
+                    }
                 }
 
                 // Routed through the backend so the dismissal is scoped to the
@@ -424,14 +424,14 @@ Rectangle {
                     Keys.onReturnPressed: function(event) { doSubmit(event); }
                     Keys.onEnterPressed: function(event) { doSubmit(event); }
                     Keys.onEscapePressed: {
-                        if (typeof Config !== "undefined") Config.closeAssistant();
+                        AssistantContext.intents && AssistantContext.intents.request("assistant.close");
                     }
 
                     // Clipboard Paste (Ctrl+V) Image Ingestion
                     Keys.onPressed: function(event) {
                         if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
-                            if (typeof AssistantService !== "undefined" && typeof AssistantService.pasteClipboardImage === "function") {
-                                AssistantService.pasteClipboardImage(function(path) {
+                            if (typeof AssistantService !== "undefined" && typeof AssistantContext.assistant.pasteClipboardImage === "function") {
+                                AssistantContext.assistant.pasteClipboardImage(function(path) {
                                     if (path && path.length > 0) {
                                         root.stageImage(path);
                                     }
@@ -610,7 +610,7 @@ Rectangle {
                     }
 
                     Text {
-                        text: ((typeof AssistantService !== "undefined") ? AssistantService.selectedModelId : "") || "auto"
+                        text: ((typeof AssistantService !== "undefined") ? AssistantContext.assistant.selectedModelId : "") || "auto"
                         font.family: Theme.fontMonospace
                         font.pixelSize: 10
                         font.weight: Font.Medium
@@ -708,7 +708,7 @@ Rectangle {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         if (sendButton.isStreaming) {
-                            if (typeof AssistantService !== "undefined") AssistantService.stopStreaming();
+                            if (typeof AssistantService !== "undefined") AssistantContext.assistant.stopStreaming();
                         } else if (sendButton.hasContent) {
                             if (root.voice) {
                                 root.voice.cancelVoiceInput();
@@ -815,7 +815,7 @@ Rectangle {
 
         readonly property string query: inputField.text.substring(1).toLowerCase()
         readonly property var allSkills: {
-            const src = (typeof AssistantService !== "undefined") ? AssistantService.discoveredSkills : [];
+            const src = (typeof AssistantService !== "undefined") ? AssistantContext.assistant.discoveredSkills : [];
             // Guarded: the list is empty until the async skills scan lands, and a
             // null intermediate would throw on every keystroke of a "/".
             return Array.isArray(src) ? src : [];

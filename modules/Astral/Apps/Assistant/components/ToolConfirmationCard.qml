@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Rectangle {
     id: root

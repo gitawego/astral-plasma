@@ -1,8 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Rectangle {
     id: root
@@ -262,8 +261,8 @@ Rectangle {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             let pId = root.selectedType.toLowerCase();
-                            AssistantService.selectedProviderId = pId;
-                            AssistantService.selectedModelId = modelInput.text;
+                            AssistantContext.assistant.selectedProviderId = pId;
+                            AssistantContext.assistant.selectedModelId = modelInput.text;
                             root.closed();
                         }
                     }

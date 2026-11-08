@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "id": "org.astralplasma.assistant",
+  "name": "Assistant",
+  "version": "0.1.0",
+  "kernelApi": 1,
+  "dataSchema": 1,
+  "trust": "official",
+  "runtime": "embedded",
+  "publisher": { "name": "Astral Plasma", "key": "minisign:RWSplaceholderReleaseKey" },
+  "entry": { "root": "AssistantWindow.qml" },
+  "requires": { "capabilities": [], "qtModules": [], "apps": [] },
+  "permissions": ["session.read"],
+  "distribution": "preinstalled"
+}

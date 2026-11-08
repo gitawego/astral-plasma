@@ -1,8 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Rectangle {
     id: root
@@ -17,8 +16,8 @@ Rectangle {
     border.width: 0
     clip: true
 
-    readonly property var allSessions: (typeof AssistantService !== "undefined" && AssistantService.sessions) ? AssistantService.sessions : []
-    readonly property string activeId: (typeof AssistantService !== "undefined") ? AssistantService.activeSessionId : ""
+    readonly property var allSessions: (typeof AssistantService !== "undefined" && AssistantContext.assistant.sessions) ? AssistantContext.assistant.sessions : []
+    readonly property string activeId: (typeof AssistantService !== "undefined") ? AssistantContext.assistant.activeSessionId : ""
 
     property string searchQuery: ""
 
@@ -118,7 +117,7 @@ Rectangle {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         if (typeof AssistantService !== "undefined") {
-                            AssistantService.createNewSession();
+                            AssistantContext.assistant.createNewSession();
                         }
                         root.newSessionRequested();
                     }
@@ -317,7 +316,7 @@ Rectangle {
                             z: 0
                             onClicked: {
                                 if (typeof AssistantService !== "undefined") {
-                                    AssistantService.loadSession(modelData.id);
+                                    AssistantContext.assistant.loadSession(modelData.id);
                                 }
                                 root.sessionSelected(modelData.id);
                             }
@@ -428,7 +427,7 @@ Rectangle {
                                     onClicked: mouse => {
                                         mouse.accepted = true;
                                         if (typeof AssistantService !== "undefined") {
-                                            AssistantService.deleteSession(modelData.id);
+                                            AssistantContext.assistant.deleteSession(modelData.id);
                                         }
                                     }
                                 }

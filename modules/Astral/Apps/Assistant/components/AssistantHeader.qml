@@ -1,10 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
-import "../../modules/Astral/Kernel/config"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Item {
     id: root
@@ -29,10 +27,10 @@ Item {
 
     property bool providerMenuOpen: false
 
-    readonly property string activeHarness: testMode ? testHarness : ((typeof AssistantService !== "undefined" && AssistantService.selectedHarness) ? AssistantService.selectedHarness : testHarness)
-    readonly property string activeProvider: testMode ? testProvider : ((typeof AssistantService !== "undefined" && AssistantService.selectedProviderId) ? AssistantService.selectedProviderId : "opencode-go")
-    readonly property string activeModel: testMode ? "mimo-v2.6-flash" : ((typeof AssistantService !== "undefined" && AssistantService.selectedModelId) ? AssistantService.selectedModelId : "mimo-v2.6-flash")
-    readonly property string activeProviderName: (typeof AssistantService !== "undefined" && typeof AssistantService.getProviderDisplayName === "function") ? AssistantService.getProviderDisplayName(root.activeProvider) : root.activeProvider
+    readonly property string activeHarness: testMode ? testHarness : ((typeof AssistantService !== "undefined" && AssistantContext.assistant.selectedHarness) ? AssistantContext.assistant.selectedHarness : testHarness)
+    readonly property string activeProvider: testMode ? testProvider : ((typeof AssistantService !== "undefined" && AssistantContext.assistant.selectedProviderId) ? AssistantContext.assistant.selectedProviderId : "opencode-go")
+    readonly property string activeModel: testMode ? "mimo-v2.6-flash" : ((typeof AssistantService !== "undefined" && AssistantContext.assistant.selectedModelId) ? AssistantContext.assistant.selectedModelId : "mimo-v2.6-flash")
+    readonly property string activeProviderName: (typeof AssistantService !== "undefined" && typeof AssistantContext.assistant.getProviderDisplayName === "function") ? AssistantContext.assistant.getProviderDisplayName(root.activeProvider) : root.activeProvider
 
     // Header Background Drag Area: Enables dragging from title/spacer while NEVER covering action buttons
     MouseArea {
@@ -182,7 +180,7 @@ Item {
                     onClicked: {
                         let next = (root.activeHarness === "pi") ? "hermes" : "pi";
                         if (typeof AssistantService !== "undefined") {
-                            AssistantService.selectedHarness = next;
+                            AssistantContext.assistant.selectedHarness = next;
                         }
                         root.testHarness = next;
                     }
@@ -319,7 +317,7 @@ Item {
                     z: 10
                     onClicked: {
                         if (typeof AssistantService !== "undefined") {
-                            AssistantService.clearChat();
+                            AssistantContext.assistant.clearChat();
                         }
                     }
                 }
@@ -374,8 +372,8 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     z: 10
                     onClicked: {
-                        if (typeof Config !== "undefined") {
-                            Config.openSettings("ai");
+                        if (true) {
+                            AssistantContext.intents && AssistantContext.intents.request("settings.open", { page: "ai" });
                         }
                     }
                 }

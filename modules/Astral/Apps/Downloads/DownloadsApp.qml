@@ -32,10 +32,10 @@ Item {
     property var testTasks: null
 
     // Segment filter: "active" | "queued" | "finished" (AriaNg list routes).
-    property string segment: (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsSegment : "active"))
+    property string segment: (root.shellState !== null && (root.shellState ? root.shellState.downloadsSegment : "active"))
         ? (root.shellState ? root.shellState.downloadsSegment : "active") : "active"
     onSegmentChanged: {
-        if (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsSegment : "active") !== root.segment) {
+        if (root.shellState !== null && (root.shellState ? root.shellState.downloadsSegment : "active") !== root.segment) {
             if (root.intents) root.intents.request("downloads.segment", { segment: root.segment });
         }
     }
@@ -55,7 +55,7 @@ Item {
     // Connections per file for the next add (1..16, clamped by setSplitValue).
     property int splitValue: 4
     // Global default, used only when the engine did not report a task's split.
-    readonly property int defaultSplit: (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsSplit : false))
+    readonly property int defaultSplit: (root.shellState !== null && (root.shellState ? root.shellState.downloadsSplit : false))
         ? (root.shellState ? root.shellState.downloadsSplit : false) : 4
 
     // Keyboard contract: the shell's layer surface runs with
@@ -151,7 +151,7 @@ Item {
     readonly property int emptyStateHeight: 150
 
     readonly property bool isTargetVisible: testMode || (
-        visible && ((root.shellState !== null && Config)
+        visible && ((root.shellState !== null )
             ? (Boolean((root.shellState ? root.shellState.dashboardVisible : false)) && (root.shellState && root.shellState.activeDashboardTab === "downloads"))
             : true)
     )
@@ -392,13 +392,13 @@ Item {
     }
 
     readonly property string destinationLabel: {
-        if (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsDir : "") && (root.shellState ? root.shellState.downloadsDir : "").length > 0)
+        if (root.shellState !== null && (root.shellState ? root.shellState.downloadsDir : "") && (root.shellState ? root.shellState.downloadsDir : "").length > 0)
             return (root.shellState ? root.shellState.downloadsDir : "");
         return "~/Downloads";
     }
 
     Component.onCompleted: {
-        if (root.shellState !== null && Config && (root.shellState ? root.shellState.downloadsSplit : false))
+        if (root.shellState !== null && (root.shellState ? root.shellState.downloadsSplit : false))
             root.setSplitValue((root.shellState ? root.shellState.downloadsSplit : false));
     }
 
@@ -413,9 +413,11 @@ Item {
     // Closing the dashboard must release the keyboard capture even when the
     // sheet was never explicitly dismissed.
     Connections {
-        target: (root.shellState !== null && Config && (root.shellState ? root.shellState.dashboardVisible : false) !== undefined) ? Config : null
+        target: root.shellState
+        enabled: root.shellState !== null
+        ignoreUnknownSignals: true
         function onDashboardVisibleChanged() {
-            if (root.shellState !== null && Config && (root.shellState ? root.shellState.dashboardVisible : false) === false) {
+            if (root.shellState !== null && (root.shellState ? root.shellState.dashboardVisible : false) === false) {
                 root.addDialogOpen = false;
                 root.inputMenuOpen = false;
             }
@@ -702,7 +704,7 @@ Item {
                     onClicked: {
                         if (root.windowMode) {
                             root.closeRequested();
-                        } else if (root.shellState !== null && Config
+                        } else if (root.shellState !== null
                                 && root.intents !== null) {
                             root.intents && root.intents.request("downloads.window");
                         }

@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 import Qt.labs.folderlistmodel
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
+import "../../../Kernel/theme"
+import "../../../Kernel/components"
 
 Rectangle {
     id: root
