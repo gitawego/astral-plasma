@@ -47,12 +47,27 @@ fi
 # Generate initial dynamic palette if needed
 bash "$DIR/scripts/generate_palette.sh" || true
 
-# Ensure astral-plasma daemon binary is built
+# Ensure astral-plasma daemon binary is built, and that bin/ is this build.
+#
+# A stale bin/ is a silent trap: the shell runs bin/astral-plasma for every daemon
+# command (app list, downloads, workspaces), so a copy from an older checkout makes new
+# subcommands look unimplemented. Refresh whenever the built binary is newer.
 if [ ! -f "$DIR/bin/astral-plasma" ]; then
     echo "[*] Building astral-plasma daemon binary..."
     cargo build --release --manifest-path "$DIR/daemon/Cargo.toml"
-    mkdir -p "$DIR/bin"
-    cp -f "$DIR/daemon/target/release/astral-plasma" "$DIR/bin/astral-plasma"
+fi
+# Whichever build is newest: a stale release binary must not shadow a fresh debug one.
+BUILT="$DIR/daemon/target/release/astral-plasma"
+DEBUG_BIN="$DIR/daemon/target/debug/astral-plasma"
+if [ -f "$DEBUG_BIN" ] && { [ ! -f "$BUILT" ] || [ "$DEBUG_BIN" -nt "$BUILT" ]; }; then
+    BUILT="$DEBUG_BIN"
+fi
+if [ -f "$BUILT" ]; then
+    if [ ! -f "$DIR/bin/astral-plasma" ] || [ "$BUILT" -nt "$DIR/bin/astral-plasma" ]; then
+        mkdir -p "$DIR/bin"
+        cp -f "$BUILT" "$DIR/bin/astral-plasma"
+        echo "[*] bin/astral-plasma refreshed from $(basename "$(dirname "$BUILT")") build"
+    fi
 fi
 
 # Detect compositor environment (Hyprland vs KWin/Plasma)

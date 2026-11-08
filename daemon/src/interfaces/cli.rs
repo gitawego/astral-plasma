@@ -2361,6 +2361,12 @@ fn release_previous_boot_claim() -> Vec<crate::domain::desktop_integration::Hand
 }
 
 async fn run_self_contained_app() -> DynResult<()> {
+    // First boot (and every start): the registry learns about the bundled apps before
+    // the host reads it.
+    let _ = crate::application::preinstalled::reconcile_preinstalled(
+        &branding::data_dir(),
+        &bundled_apps_dir(),
+    );
     // 0. Guard against running standalone Quickshell root beside omarchy-shell
     if crate::infrastructure::desktop_factory::detect_profile() == crate::infrastructure::desktop_factory::EnvironmentProfile::Omarchy {
         let has_override = std::env::var("ASTRAL_STANDALONE_OVERRIDE").is_ok();
@@ -2614,9 +2620,17 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
     let sub = args.get(2).map(String::as_str).unwrap_or("list");
     let is_json = args.iter().any(|a| a == "--json");
     let data_dir = branding::data_dir();
+    let apps_root = data_dir.join("apps");
 
     match sub {
         "list" | "installed" => {
+            // First-boot semantics: every bundled app is installed. Idempotent, and the
+            // user's own state (version, pin, grants) always wins.
+            if let Ok(outcome) = crate::application::preinstalled::reconcile_preinstalled(&data_dir, &bundled_apps_dir()) {
+                for (id, reason) in &outcome.skipped {
+                    eprintln!("skipped bundled app {id}: {reason}");
+                }
+            }
             let registry = read_registry(&data_dir)?;
             let host = HostApi::current(running_quickshell_version().as_deref());
             let rows: Vec<_> = registry
@@ -2629,8 +2643,21 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
                         installed.min_quickshell.as_deref(),
                         &host,
                     );
+                    // The recorded name, with the manifest as a fallback for entries
+                    // written before the registry carried one.
+                    let name = if entry.name.is_empty() {
+                        std::fs::read_to_string(apps_root.join(&entry.id).join("manifest.json"))
+                            .ok()
+                            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                            .and_then(|value| value.get("name").and_then(|n| n.as_str()).map(str::to_string))
+                            .unwrap_or_else(|| entry.id.clone())
+                    } else {
+                        entry.name.clone()
+                    };
+
                     serde_json::json!({
                         "id": entry.id,
+                        "name": name,
                         "version": entry.version,
                         "kernelApi": entry.kernel_api,
                         "preinstalled": entry.preinstalled,
@@ -3074,6 +3101,24 @@ fn which_binary(name: &str) -> Option<std::path::PathBuf> {
         }
     }
     None
+}
+
+/// Where the bundled apps live: the installed package first, then the checkout the
+/// running binary belongs to (a dev session has no package).
+fn bundled_apps_dir() -> std::path::PathBuf {
+    let packaged = branding::default_package_dir().join("modules/Astral/Apps");
+    if packaged.is_dir() {
+        return packaged;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().skip(1) {
+            let candidate = ancestor.join("modules/Astral/Apps");
+            if candidate.is_dir() {
+                return candidate;
+            }
+        }
+    }
+    packaged
 }
 
 /// `--catalog <path>` when the caller passed one.

@@ -387,7 +387,8 @@ Item {
                 { id: "dock", label: "Dock & Layout", icon: "dashboard" },
                 { id: "status", label: "Status Icons", icon: "tune" },
                 { id: "dashboard", label: "Dashboard Tabs", icon: "calendar_month" },
-                { id: "downloads", label: "Downloads", icon: "download" }
+                { id: "downloads", label: "Downloads", icon: "download" },
+                { id: "apps", label: "Apps", icon: "apps" }
             ]
         },
         {
@@ -694,6 +695,7 @@ Item {
                                 case "status": return statusPageComp;
                                 case "dashboard": return dashPageComp;
                                 case "downloads": return downloadsPageComp;
+                                case "apps": return appsPageComp;
                                 case "time": return timePageComp;
                                 case "system": return systemPageComp;
                                 case "updates": return updatesPageComp;
@@ -739,6 +741,7 @@ Item {
     Component { id: statusPageComp; StatusIconsPage {} }
     Component { id: dashPageComp; DashboardPage { testMode: root.testMode } }
     Component { id: downloadsPageComp; DownloadsPage { testMode: root.testMode } }
+    Component { id: appsPageComp; AppsPage { testMode: root.testMode } }
     Component { id: timePageComp; TimePage { testMode: root.testMode } }
     Component { id: systemPageComp; SystemPage { testMode: root.testMode } }
     Component { id: updatesPageComp; UpdatesPage { testMode: root.testMode } }

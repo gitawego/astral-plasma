@@ -2789,3 +2789,32 @@ hosted in its pane; declared as a Component in `shell.qml`.
 > the shell palette. Zero load errors. `make test` exit 0 — 1109 Rust tests, 164 QML suites.
 
 Four of eleven apps migrated: workspaces, media, performance, ai.
+
+---
+
+## P5 — the Apps page, with management (2026-11-08)
+
+Settings → Apps lists every installed app:
+
+| Column | Source |
+| :--- | :--- |
+| name, version, API level | the registry (name recorded at install; filled in for older records) |
+| state | `Enabled` / `Disabled` / `Incompatible` + the daemon's reason |
+| actions | **Disable/Enable** (registry, reversible) and **Remove** (payload + record, data kept) |
+
+It renders `astral-plasma app list --json` through `AppsService.qml` — no local copy of the
+truth, no optimistic patching, and a failure shows the daemon's own sentence.
+
+Bundled apps appear because the registry is reconciled on every start and on `app list`:
+`application/preinstalled.rs` records each shipped manifest that has no entry
+(`preinstalled`, enabled, payload digest) and **never** overwrites an existing record's
+version, pin, grants or blocked list.
+
+> **Verified live**: "Installed apps · 5 installed · 5 enabled" with **AI Quotas**,
+> **Downloads**, **Media**, **Performance**, **Workspaces** rows showing `0.1.0 · API 1 ·
+> bundled`, and the `Enabled | Disable | Remove` controls. `make test` exit 0 — 1113 Rust
+> tests (+4 reconcile), 165 QML suites (+1 Apps page).
+
+While wiring it: `run.sh` only copied `bin/astral-plasma` when the file was missing, so a
+22 MB binary from an older checkout answered every daemon command and made the new
+subcommands look unimplemented. It now takes whichever build is newest.

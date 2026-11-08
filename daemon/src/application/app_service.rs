@@ -23,6 +23,10 @@ pub const REGISTRY_SCHEMA: u32 = 1;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegistryEntry {
     pub id: String,
+    /// Human name from the manifest at install time. The registry is the durable record;
+    /// a list must not have to read the payload to print a name.
+    #[serde(default)]
+    pub name: String,
     pub version: String,
     #[serde(rename = "kernelApi")]
     pub kernel_api: u32,
@@ -263,6 +267,7 @@ pub fn installed_app(entry: &RegistryEntry, core: bool) -> InstalledApp {
 pub fn entry_for(manifest: &Manifest, digest: &str) -> RegistryEntry {
     RegistryEntry {
         id: manifest.id.clone(),
+        name: manifest.name.clone(),
         version: manifest.version.clone(),
         kernel_api: manifest.kernel_api,
         enabled: true,
@@ -344,7 +349,8 @@ mod tests {
             schema: 1,
             apps: vec![
                 RegistryEntry {
-                    id: "org.astralplasma.downloads".to_string(),
+                    name: "Fixture".to_string(),
+            id: "org.astralplasma.downloads".to_string(),
                     version: "0.2.0".to_string(),
                     kernel_api: 1,
                     enabled: true,
@@ -358,7 +364,8 @@ mod tests {
                     granted: Vec::new(),
                 },
                 RegistryEntry {
-                    id: "io.github.alice.clock".to_string(),
+                    name: "Fixture".to_string(),
+            id: "io.github.alice.clock".to_string(),
                     version: "1.0.0".to_string(),
                     kernel_api: 1,
                     enabled: false,
@@ -462,6 +469,7 @@ mod tests {
 
     fn sample(id: &str, version: &str) -> RegistryEntry {
         RegistryEntry {
+            name: "Fixture".to_string(),
             id: id.to_string(),
             version: version.to_string(),
             kernel_api: 1,

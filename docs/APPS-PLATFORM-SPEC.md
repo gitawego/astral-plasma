@@ -1215,9 +1215,24 @@ contains its old `switch` while the tabs are migrated one at a time; the provide
 lookup is what replaces it. `SessionPort` also carries the workspace list and
 `moveWindowToWorkspace`, which a workspace surface needs for grouping.
 
-Still open in P3/P5: remote artifact transport and the official inline catalog,
-zstd + minisign *signing*, the Apps page, and the app migrations themselves
-(`media` next, then `downloads`).
+**The Apps page exists** (Settings → Apps): every installed app with its name, version,
+API level, state (Enabled / Disabled / Incompatible and the reason) and two actions —
+enable/disable (registry, reversible) and remove (payload + record, data kept). It renders
+`astral-plasma app list --json` through `AppsService`; it keeps no copy of the truth and
+patches nothing optimistically. A failed action shows the daemon's own sentence.
+
+Bundled apps appear because the registry is reconciled on every `run` and on `app list`:
+each shipped manifest with no record is recorded as installed (`preinstalled`, enabled,
+digest of its payload). Existing records are never overwritten — version, pin, grants and
+blocked versions are the user's state — and a record written before the registry carried
+names gets one filled in.
+
+Also fixed while wiring it: `run.sh` refreshed `bin/astral-plasma` only when the file was
+*missing*, so a stale copy silently ran every daemon command and made new subcommands look
+unimplemented. It now copies whichever build (release or debug) is newest.
+
+Still open in P3/P5: remote artifact transport and the official inline catalog, zstd +
+minisign *signing*, and the remaining app migrations.
 
 - `astral app new/dev/test/lint/pack` using the installed package as SDK.
 - Templates and `sdk/examples/hello`.
