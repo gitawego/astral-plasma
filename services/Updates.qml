@@ -101,10 +101,11 @@ Singleton {
 
     function uninstall() {
         if (root.testMode) return;
-        // --from-shell keeps the desktop claim alive: the shell exits through
-        // its own IPC after the files are gone, so the supervisor can still
-        // restore the user's panels.
-        Quickshell.execDetached([root.daemonBin, "uninstall", "--yes", "--from-shell"]);
+        // --from-shell keeps the desktop claim alive: the supervisor that started
+        // this shell is still running and restores the panels when it exits, so
+        // removal ends with the shell quitting itself rather than the files
+        // disappearing under a shell that keeps running.
+        uninstallProc.running = true;
     }
 
     Process {
@@ -135,6 +136,20 @@ Singleton {
                 } catch (e) {
                     console.warn("Updates: changelog parse error:", e);
                 }
+            }
+        }
+    }
+
+    Process {
+        id: uninstallProc
+        command: [root.daemonBin, "uninstall", "--yes", "--from-shell"]
+        onExited: (exitCode) => {
+            if (exitCode === 0) {
+                // The install this process runs from is gone; leave cleanly so
+                // the supervisor can hand the desktop back.
+                Qt.quit();
+            } else {
+                root.applyError = "Astral Plasma could not be removed.";
             }
         }
     }
