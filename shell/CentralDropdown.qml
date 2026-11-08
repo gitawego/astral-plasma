@@ -91,16 +91,22 @@ Item {
     readonly property alias settingsBtnItem: settingsBtn
     readonly property alias tabRepeaterItem: tabRepeater
     readonly property alias tabSlidingIndicatorItem: tabSlidingIndicator
+    /// Injected by UnifiedShell: the app host, for panes that host an app's item.
+    property var appHost: null
+
     readonly property alias tabsRowItem: tabsRow
     readonly property alias tabContentContainerItem: tabContentContainer
     readonly property alias tabSliderItem: tabSlider
     readonly property alias downloadsTabItem: dlTab
-    readonly property alias workspacesTabItem: wsTab
+    /// The hosted workspaces app's item (created through the host), or null while it
+    /// has not been mounted yet.
+    readonly property Item workspacesTabItem: wsApp.children.length > 0 ? wsApp.children[0] : null
 
     // Keyboard contract for the shell's layer surface: while a tab captures
     // text (the Downloads add sheet, Workspaces search), UnifiedShell requests
     // compositor keyboard focus. A new text-capturing tab must OR its state in here.
-    readonly property bool textInputActive: dlTab.addDialogOpen || Boolean(wsTab && wsTab.searchActive)
+    readonly property bool textInputActive: dlTab.addDialogOpen
+        || Boolean(workspacesTabItem && workspacesTabItem.searchActive)
 
     x: dropX
     y: 0
@@ -437,14 +443,44 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 4
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: wsTab.implicitHeight
+                    implicitHeight: wsApp.children.length > 0
+                        ? wsApp.children[0].implicitHeight : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 4) || tabSlider.isAnimating
 
-                    WorkspacesTab {
-                        id: wsTab
+                    // Hosted, not instantiated: the pane owns the geometry, the
+                    // workspaces app owns the behaviour and receives its ports from
+                    // the host (spec C.9/C.10).
+                    Item {
+                        id: wsApp
                         width: parent.width
                         height: parent.height
+
+                        // The host's plan (and the host itself) may finish after this
+                        // pane: mount when it does, not only once at completion.
+                        function mountApp() {
+                            if (!root.appHost) {
+                                return;
+                            }
+                            const provider = root.appHost.providerForTab("workspaces");
+                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) {
+                                // The plan is known but the loader is not created yet;
+                                // `onLoaderCountChanged` calls back.
+                                return;
+                            }
+                            root.appHost.mount(provider, wsApp);
+                        }
+
+                        Component.onCompleted: mountApp()
+
+                        Connections {
+                            target: root.appHost
+                            enabled: root.appHost !== null
+                            ignoreUnknownSignals: true
+                            function onLoaderCountChanged() { wsApp.mountApp(); }
+                            function onLoadedIdsChanged() { wsApp.mountApp(); }
+                            function onTabProvidersChanged() { wsApp.mountApp(); }
+                        }
                     }
                 }
 

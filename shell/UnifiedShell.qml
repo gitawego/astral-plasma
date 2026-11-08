@@ -14,6 +14,10 @@ import "../notifications"
 PanelWindow {
     id: root
 
+    /// The app host, so a dashboard pane can embed an app's item (spec §9.4). The
+    /// pane owns layout; the app owns behaviour.
+    property var appHost: null
+
     required property ShellScreen targetScreen
     screen: targetScreen
 
@@ -1455,6 +1459,7 @@ PanelWindow {
         id: dropdownContainer
         dropX: root.dropX
         dropW: root.dropW
+        appHost: root.appHost
     }
 
     // 4. TASKBAR APP CONTEXT MENU

@@ -4,6 +4,10 @@
     {
       "dir": "Overview",
       "id": "org.astralplasma.overview"
+    },
+    {
+      "dir": "Workspaces",
+      "id": "org.astralplasma.workspaces"
     }
   ]
 }
