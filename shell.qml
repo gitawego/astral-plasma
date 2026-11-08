@@ -150,6 +150,8 @@ ShellRoot {
     AppRegistry {
         id: bundledApps
         bundledRoot: Qt.resolvedUrl("modules/Astral/Apps/").toString().replace(/^file:\/\//, "")
+        // The daemon's records: a bundled app can be disabled or pinned.
+        statePath: Paths.appsRegistryPath
     }
 
     AppHost {

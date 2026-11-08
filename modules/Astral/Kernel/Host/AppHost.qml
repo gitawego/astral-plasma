@@ -121,6 +121,30 @@ Item {
         return providers;
     }
 
+    /// Who would provide `tabId`, and — when nobody does — why. A pane needs both: an
+    /// empty gap tells the user nothing (spec C.19).
+    function tabStatus(tabId) {
+        const provider = providerForTab(tabId);
+        if (provider.length > 0) {
+            return { id: provider, available: true, reason: "" };
+        }
+        // Find the app that *declares* this tab, even if it is not in the plan.
+        const all = entries || [];
+        for (let index = 0; index < all.length; index++) {
+            const entry = all[index];
+            const tab = entry && entry.entry ? entry.entry.dashboardTab : "";
+            if (tab === tabId) {
+                const skipped = reasonFor(entry.id);
+                return {
+                    id: entry.id,
+                    available: false,
+                    reason: skipped ? skipped.reason : "it is not installed"
+                };
+            }
+        }
+        return { id: "", available: false, reason: "no app provides this tab" };
+    }
+
     /// The app id that provides `tabId`, or "" when no installed app does.
     function providerForTab(tabId) {
         return tabProviders[tabId] || "";

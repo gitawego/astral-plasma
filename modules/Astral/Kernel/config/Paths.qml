@@ -41,6 +41,18 @@ QtObject {
         return path.endsWith("/") ? path.slice(0, -1) : path;
     }
 
+    /// `$XDG_DATA_HOME/astral-plasma` (or `~/.local/share/astral-plasma`): the daemon's
+    /// data root — registry, installed apps, catalogs.
+    readonly property string dataDir: {
+        const xdg = Quickshell.env("XDG_DATA_HOME");
+        const home = Quickshell.env("HOME");
+        const base = (xdg && xdg.length > 0) ? xdg : ((home || "") + "/.local/share");
+        return base + "/astral-plasma";
+    }
+
+    /// The app registry the daemon writes and the host reads.
+    readonly property string appsRegistryPath: dataDir + "/apps.json"
+
     /// `scripts/` beside the binary, for the shell scripts the UI invokes.
     readonly property string scriptsDir: root + "/scripts"
 }

@@ -98,9 +98,9 @@ Item {
     readonly property alias tabContentContainerItem: tabContentContainer
     readonly property alias tabSliderItem: tabSlider
     /// The hosted downloads app's item, or null while it is not mounted.
-    readonly property Item downloadsTabItem: dlAppHost.children.length > 0
-        ? dlAppHost.children[0] : null
-    readonly property Item workspacesTabItem: wsApp.children.length > 0 ? wsApp.children[0] : null
+    readonly property Item downloadsTabItem: dlAppHostSurface.children.length > 0
+        ? dlAppHostSurface.children[0] : null
+    readonly property Item workspacesTabItem: wsAppSurface.children.length > 0 ? wsAppSurface.children[0] : null
 
     // Keyboard contract for the shell's layer surface: while a tab captures
     // text (the Downloads add sheet, Workspaces search), UnifiedShell requests
@@ -392,8 +392,8 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: mediaApp.children.length > 0
-                        ? Math.max(mediaApp.children[0].implicitHeight, 320) : 320
+                    implicitHeight: mediaAppSurface.children.length > 0
+                        ? Math.max(mediaAppSurface.children[0].implicitHeight, 320) : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 1) || tabSlider.isAnimating
 
@@ -401,6 +401,23 @@ Item {
                         id: mediaApp
                         width: parent.width
                         height: parent.height
+
+                        /// The app's item lives here, so the pane can also hold a hint.
+                        Item {
+                            id: mediaAppSurface
+                            anchors.fill: parent
+                        }
+
+                        AppUnavailableHint {
+                            id: mediaAppHint
+                            anchors.fill: parent
+                            appName: "Media"
+                            readonly property var status: root.appHost
+                                ? root.appHost.tabStatus("media")
+                                : ({ available: false, reason: "" })
+                            visible: !status.available
+                            reason: status.reason
+                        }
 
                         readonly property int hostReadiness: {
                             if (!root.appHost) return 0;
@@ -414,7 +431,7 @@ Item {
                             if (!root.appHost) return;
                             const provider = root.appHost.providerForTab("media");
                             if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (mediaApp.children.length === 0) root.appHost.mount(provider, mediaApp);
+                            if (mediaAppSurface.children.length === 0) root.appHost.mount(provider, mediaAppSurface);
                         }
                     }
                 }
@@ -425,8 +442,8 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 2
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: perfApp.children.length > 0
-                        ? Math.max(perfApp.children[0].implicitHeight, 320) : 320
+                    implicitHeight: perfAppSurface.children.length > 0
+                        ? Math.max(perfAppSurface.children[0].implicitHeight, 320) : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 2) || tabSlider.isAnimating
 
@@ -434,6 +451,23 @@ Item {
                         id: perfApp
                         width: parent.width
                         height: parent.height
+
+                        /// The app's item lives here, so the pane can also hold a hint.
+                        Item {
+                            id: perfAppSurface
+                            anchors.fill: parent
+                        }
+
+                        AppUnavailableHint {
+                            id: perfAppHint
+                            anchors.fill: parent
+                            appName: "Performance"
+                            readonly property var status: root.appHost
+                                ? root.appHost.tabStatus("performance")
+                                : ({ available: false, reason: "" })
+                            visible: !status.available
+                            reason: status.reason
+                        }
 
                         readonly property int hostReadiness: {
                             if (!root.appHost) return 0;
@@ -447,7 +481,7 @@ Item {
                             if (!root.appHost) return;
                             const provider = root.appHost.providerForTab("performance");
                             if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (perfApp.children.length === 0) root.appHost.mount(provider, perfApp);
+                            if (perfAppSurface.children.length === 0) root.appHost.mount(provider, perfAppSurface);
                         }
                     }
                 }
@@ -458,8 +492,8 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 3
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: aiApp.children.length > 0
-                        ? Math.max(aiApp.children[0].implicitHeight, 320) : 320
+                    implicitHeight: aiAppSurface.children.length > 0
+                        ? Math.max(aiAppSurface.children[0].implicitHeight, 320) : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 3) || tabSlider.isAnimating
 
@@ -467,6 +501,23 @@ Item {
                         id: aiApp
                         width: parent.width
                         height: parent.height
+
+                        /// The app's item lives here, so the pane can also hold a hint.
+                        Item {
+                            id: aiAppSurface
+                            anchors.fill: parent
+                        }
+
+                        AppUnavailableHint {
+                            id: aiAppHint
+                            anchors.fill: parent
+                            appName: "AI Quotas"
+                            readonly property var status: root.appHost
+                                ? root.appHost.tabStatus("ai")
+                                : ({ available: false, reason: "" })
+                            visible: !status.available
+                            reason: status.reason
+                        }
 
                         readonly property int hostReadiness: {
                             if (!root.appHost) return 0;
@@ -480,7 +531,7 @@ Item {
                             if (!root.appHost) return;
                             const provider = root.appHost.providerForTab("ai");
                             if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (aiApp.children.length === 0) root.appHost.mount(provider, aiApp);
+                            if (aiAppSurface.children.length === 0) root.appHost.mount(provider, aiAppSurface);
                         }
                     }
                 }
@@ -491,8 +542,8 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 4
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: wsApp.children.length > 0
-                        ? Math.max(wsApp.children[0].implicitHeight, 320) : 320
+                    implicitHeight: wsAppSurface.children.length > 0
+                        ? Math.max(wsAppSurface.children[0].implicitHeight, 320) : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 4) || tabSlider.isAnimating
 
@@ -500,6 +551,23 @@ Item {
                         id: wsApp
                         width: parent.width
                         height: parent.height
+
+                        /// The app's item lives here, so the pane can also hold a hint.
+                        Item {
+                            id: wsAppSurface
+                            anchors.fill: parent
+                        }
+
+                        AppUnavailableHint {
+                            id: wsAppHint
+                            anchors.fill: parent
+                            appName: "Workspaces"
+                            readonly property var status: root.appHost
+                                ? root.appHost.tabStatus("workspaces")
+                                : ({ available: false, reason: "" })
+                            visible: !status.available
+                            reason: status.reason
+                        }
 
                         readonly property int hostReadiness: {
                             if (!root.appHost) return 0;
@@ -513,8 +581,8 @@ Item {
                             if (!root.appHost) return;
                             const provider = root.appHost.providerForTab("workspaces");
                             if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (wsApp.children.length === 0) {
-                                root.appHost.mount(provider, wsApp);
+                            if (wsAppSurface.children.length === 0) {
+                                root.appHost.mount(provider, wsAppSurface);
                             }
                         }
                     }
@@ -526,8 +594,8 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 5
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: dlAppHost.children.length > 0
-                        ? Math.max(dlAppHost.children[0].implicitHeight, 320) : 320
+                    implicitHeight: dlAppHostSurface.children.length > 0
+                        ? Math.max(dlAppHostSurface.children[0].implicitHeight, 320) : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 5) || tabSlider.isAnimating
 
@@ -535,6 +603,23 @@ Item {
                         id: dlAppHost
                         width: parent.width
                         height: parent.height
+
+                        /// The app's item lives here, so the pane can also hold a hint.
+                        Item {
+                            id: dlAppHostSurface
+                            anchors.fill: parent
+                        }
+
+                        AppUnavailableHint {
+                            id: dlAppHostHint
+                            anchors.fill: parent
+                            appName: "Downloads"
+                            readonly property var status: root.appHost
+                                ? root.appHost.tabStatus("downloads")
+                                : ({ available: false, reason: "" })
+                            visible: !status.available
+                            reason: status.reason
+                        }
 
                         readonly property int hostReadiness: {
                             if (!root.appHost) return 0;
@@ -548,7 +633,7 @@ Item {
                             if (!root.appHost) return;
                             const provider = root.appHost.providerForTab("downloads");
                             if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (dlAppHost.children.length === 0) root.appHost.mount(provider, dlAppHost);
+                            if (dlAppHostSurface.children.length === 0) root.appHost.mount(provider, dlAppHostSurface);
                         }
                     }
                 }

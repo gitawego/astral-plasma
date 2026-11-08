@@ -1841,3 +1841,21 @@ registration.
 The trade-off is explicit: `shell.qml` names each migrated app once, in a component
 declaration. That is the price of sharing one kernel registration, and it is smaller than
 the alternative (duplicating the shell's theme state into every app).
+
+### C.19 Disabling an app must reach the plan, and the gap must explain itself
+
+Two defects were found by driving the Apps page's own actions end to end:
+
+1. **The host ignored the registry.** `AppRegistry`'s bundled mode synthesised
+   `enabled: true` for every shipped app without reading `apps.json`, so *Disable* changed
+   the file and nothing else — the app kept loading. It now merges the daemon's records
+   (enabled, pinned, blocked) over the bundled index, with `Paths.dataDir` supplying the
+   registry path.
+2. **A disabled app left a blank rectangle.** A dashboard pane whose app is not in the plan
+   now renders `AppUnavailableHint` with the host's own reason — `AppHost.tabStatus(tabId)`
+   answers `{ id, available, reason }` for the app that *declares* the tab, even when that
+   app is skipped. Verified: "Workspaces is not available / disabled in the registry; its
+   files stay on disk".
+
+Re-enabling restores the tab on the next start, so the round trip is: enabled → mounted and
+themed, disabled → excluded with a reason, re-enabled → back.

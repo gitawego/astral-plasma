@@ -2818,3 +2818,25 @@ version, pin, grants or blocked list.
 While wiring it: `run.sh` only copied `bin/astral-plasma` when the file was missing, so a
 22 MB binary from an older checkout answered every daemon command and made the new
 subcommands look unimplemented. It now takes whichever build is newest.
+
+---
+
+## P4/P5 — managing an app really manages it (2026-11-08)
+
+Driving the Apps page's own actions exposed two defects:
+
+- **`AppRegistry` never read the registry in bundled mode** — it synthesised `enabled: true`,
+  so *Disable* changed `apps.json` and the app kept loading. It now merges the daemon's
+  records (enabled/pinned/blocked) over the bundled index (`Paths.dataDir` supplies the path).
+- **A disabled app left a blank pane.** Panes now render `AppUnavailableHint` with the host's
+  reason via `AppHost.tabStatus(tabId)`: *"Workspaces is not available — disabled in the
+  registry; its files stay on disk."*
+
+Also: each pane gained a dedicated child surface, because the hint had become a sibling in the
+mount target and `children.length` blocked the mount (a one-line bug that made re-enabling look
+broken).
+
+> **Verified live, the whole round trip**: enabled → the workspaces tab renders
+> ("4 Desktops · 8 Windows", Desktop 1 active with chips); `app disable` → restart → the pane
+> explains why it is empty; `app enable` → restart → the tab returns.
+> `make test` exit 0 — 1114 Rust tests, 165 QML suites.

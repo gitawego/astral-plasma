@@ -34,6 +34,10 @@ QtObject {
 
     readonly property bool bundled: registryPath.length === 0 || appsRoot.length === 0
 
+    /// Where the daemon records app state, also in bundled mode: a bundled app can be
+    /// disabled, pinned or have a version blocked, and the host must honour that.
+    property string statePath: ""
+
     /// `[{ id, state, reason }]` for problems found while reading.
     readonly property var errors: collectErrors()
     /// Merged entries, ready for `AppHost.entries`.
@@ -45,8 +49,17 @@ QtObject {
     /// `{ id, enabled, blocked, pinned }`, so everything downstream is one path.
     readonly property var records: {
         if (root.bundled) {
+            const recorded = root.recordedById;
             return root.bundledIndex.map(function (app) {
-                return { id: app.id, enabled: true, blocked: [], pinned: false, dir: app.dir };
+                const record = recorded[app.id];
+                return {
+                    id: app.id,
+                    // A bundled app is enabled unless the user disabled it.
+                    enabled: record ? record.enabled !== false : true,
+                    blocked: record && Array.isArray(record.blocked) ? record.blocked : [],
+                    pinned: record ? !!record.pinned : false,
+                    dir: app.dir
+                };
             });
         }
         try {
@@ -55,6 +68,29 @@ QtObject {
         } catch (error) {
             return [];
         }
+    }
+
+    /// The daemon's records, by id (empty when there is no registry yet).
+    readonly property var recordedById: {
+        const byId = ({});
+        try {
+            const parsed = JSON.parse(stateReader.text());
+            const apps = (parsed && Array.isArray(parsed.apps)) ? parsed.apps : [];
+            for (let index = 0; index < apps.length; index++) {
+                if (apps[index] && typeof apps[index].id === "string") {
+                    byId[apps[index].id] = apps[index];
+                }
+            }
+        } catch (error) {
+            // No registry yet: bundled apps are enabled.
+        }
+        return byId;
+    }
+
+    property FileView stateReader: FileView {
+        path: root.statePath
+        blockLoading: true
+        printErrors: false
     }
 
     readonly property var bundledIndex: {
