@@ -2197,3 +2197,38 @@ Appendix C.6:
    Quickshell plugin, so a module URI would turn all 153 suites red even though
    `quickshell` loads the same code fine. The module URI is therefore a P2
    change, made where the real shell owns the import path.
+
+---
+
+## P2 (first slice) — app contract, policy, registry, `astral app list` (2026-11-08)
+
+The platform now has a contract, and the contract is enforced by code rather than
+prose:
+
+- **Manifest** (`domain/app_manifest.rs`) — one validator, every refusal naming
+  the field: an `entry.root` that escapes the payload, an unknown permission, a
+  community app claiming `embedded`, a hosted app whose root is not `shell.qml`.
+- **Compatibility** (`domain/app_compat.rs`) — `APP_API_LEVEL`/`APP_API_FLOOR`
+  plus `API_LEVEL_HISTORY`, so a warning can say *"needs Astral 0.2.0 or newer
+  (API 2); this is API 1"* while enforcement stays integer-exact.
+- **Policy** (`domain/app_reconcile.rs`) — install/update admission (forward only,
+  a republished digest refused, downgrades behind the `dataSchema` guard) and the
+  whole §8.5.4 platform-move table: auto-update when a compatible version exists,
+  otherwise disable with a recorded reason, core apps take their baseline, and
+  nothing is ever uninstalled.
+- **Registry** (`application/app_service.rs`) — `apps.json` with duplicate-id
+  refusal; a missing file is an empty registry, not an error.
+- **`astral app list [--json]`** — reads that registry through the same policy the
+  host will, and every unimplemented subcommand names the phase it lands in
+  instead of silently doing nothing.
+- **`sdk/examples/hello/`** — the fixture an author copies, validated by the same
+  code that validates an install, so the authoring side cannot drift.
+
+> **Verified**: `make test` exit 0 — 1041 Rust tests (53 new) and 153 QML suites.
+> `astral app list` printed `No apps installed.` on an empty data dir; with a
+> three-app fixture it printed `ready` / `incompatible  needs a newer Astral
+> (API 2); this is API 1` / `disabled`, and `astral app install foo` refused with
+> the phase that will implement it.
+>
+> **Not done**: the QML `AppHost`/`AppRegistry`, the `apps.json` writer, and
+> moving `overview` out as the first app. Those are the rest of P2.

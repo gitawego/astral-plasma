@@ -26,6 +26,9 @@ pub async fn run_cli() -> DynResult<()> {
     }
 
     match args[1].as_str() {
+        "app" => {
+            run_app_command(&args).await?;
+        }
         "doctor" | "check" => {
             use crate::application::doctor_service::DoctorService;
             let service = DoctorService::new();
@@ -2596,6 +2599,116 @@ enum Startup {
     Ready,
     /// The process ended before it ever answered.
     Exited,
+}
+
+/// `astral app ...` — the app-platform command surface.
+///
+/// P2 ships the read-only half (`list`, `available`) so the registry the host uses
+/// and the list a user sees are the same data, read by the same code. Install,
+/// update, pin, and rollback arrive with packaging (P5); until then they say so
+/// instead of pretending.
+async fn run_app_command(args: &[String]) -> DynResult<()> {
+    use crate::application::app_service::{installed_app, read_registry};
+    use crate::domain::app_compat::{check_levels, HostApi};
+
+    let sub = args.get(2).map(String::as_str).unwrap_or("list");
+    let is_json = args.iter().any(|a| a == "--json");
+    let data_dir = branding::data_dir();
+
+    match sub {
+        "list" | "installed" => {
+            let registry = read_registry(&data_dir)?;
+            let host = HostApi::current(running_quickshell_version().as_deref());
+            let rows: Vec<_> = registry
+                .apps
+                .iter()
+                .map(|entry| {
+                    let installed = installed_app(entry, false);
+                    let fit = check_levels(
+                        installed.kernel_api,
+                        installed.min_quickshell.as_deref(),
+                        &host,
+                    );
+                    serde_json::json!({
+                        "id": entry.id,
+                        "version": entry.version,
+                        "kernelApi": entry.kernel_api,
+                        "preinstalled": entry.preinstalled,
+                        "enabled": entry.enabled,
+                        "pinned": entry.pinned,
+                        "autoUpdate": entry.auto_update,
+                        "compatible": fit.is_compatible(),
+                        "reason": fit.issue().map(|issue| issue.to_string()),
+                        "blocked": entry.blocked,
+                    })
+                })
+                .collect();
+
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else if rows.is_empty() {
+                println!("No apps installed.");
+            } else {
+                println!(
+                    "{:<34} {:<10} {:>4}  {:<12} {}",
+                    "ID", "VERSION", "API", "STATE", "NOTE"
+                );
+                for row in &rows {
+                    let state = if !row["enabled"].as_bool().unwrap_or(false) {
+                        "disabled"
+                    } else if row["compatible"].as_bool().unwrap_or(false) {
+                        "ready"
+                    } else {
+                        "incompatible"
+                    };
+                    println!(
+                        "{:<34} {:<10} {:>4}  {:<12} {}",
+                        row["id"].as_str().unwrap_or("-"),
+                        row["version"].as_str().unwrap_or("-"),
+                        row["kernelApi"].as_u64().unwrap_or(0),
+                        state,
+                        row["reason"].as_str().unwrap_or(""),
+                    );
+                }
+            }
+        }
+        "available" => {
+            println!("{}", apps_not_written_yet("available"));
+        }
+        other => {
+            println!("{}", apps_not_written_yet(other));
+        }
+    }
+    Ok(())
+}
+
+/// A refusal that names the phase, because a command that silently does nothing
+/// is indistinguishable from one that worked.
+fn apps_not_written_yet(subcommand: &str) -> String {
+    match subcommand {
+        "available" => "No catalog yet: catalog, install, update, pin, and rollback land with \
+packaging (P5 of docs/APPS-PLATFORM-SPEC.md). Nothing was changed."
+            .to_string(),
+        other => format!(
+            "`astral app {other}` is not implemented yet: packaging and the catalog land in P5 \
+of docs/APPS-PLATFORM-SPEC.md. Nothing was changed."
+        ),
+    }
+}
+
+/// `quickshell --version` as a plain version string, when it answers.
+fn running_quickshell_version() -> Option<String> {
+    let output = std::process::Command::new("quickshell")
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.split_whitespace()
+        .find(|token| token.chars().next().is_some_and(|c| c.is_ascii_digit()))
+        .map(str::to_string)
 }
 
 fn spawn_quickshell(theme_dir: &Path) -> DynResult<tokio::process::Child> {

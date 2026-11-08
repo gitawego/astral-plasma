@@ -1,4 +1,7 @@
+pub mod app_compat;
 pub mod app_identity;
+pub mod app_manifest;
+pub mod app_reconcile;
 pub mod avatar_import;
 pub mod branding;
 pub mod install_record;

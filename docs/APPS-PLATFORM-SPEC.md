@@ -1011,7 +1011,37 @@ palette) all render. Not verified: a before/after pixel diff; the claim is
 **Gate**: `make test` 100%; visually identical dock/dashboard/settings; no
 behavior change.
 
-### P2 — Contract, host, registry (M)
+### P2 — Contract, host, registry (M) — **partially done**
+
+Landed:
+
+- `daemon/src/domain/app_manifest.rs` — manifest schema + validation, with every
+  refusal naming the field (`entry.root` escape, unknown permission, a community
+  app claiming `embedded`, a hosted app whose root is not `shell.qml`, …).
+- `daemon/src/domain/app_compat.rs` — the API window (`APP_API_LEVEL`,
+  `APP_API_FLOOR`, `API_LEVEL_HISTORY` so warnings can say "needs Astral 0.2.0"),
+  reusing `domain::update::{is_version, version_gt}` rather than a second semver.
+- `daemon/src/domain/app_reconcile.rs` — install/update admission (forward only,
+  republished digest refused, downgrade behind the `dataSchema` guard) and the
+  platform-move table from §8.5.4 as pure functions.
+- `daemon/src/application/app_service.rs` — `apps.json` registry (schema,
+  duplicate-id refusal, missing file = empty registry) and the bridge into policy.
+- `astral app list [--json]` — real, reading the same registry the host will;
+  every other `astral app` subcommand names the phase it lands in instead of
+  silently doing nothing.
+- `sdk/examples/hello/` + `daemon/tests/test_app_contract.rs`: the example an
+  author copies is validated by the same code that validates an install, so the
+  authoring side cannot drift from the enforcement side.
+
+Still open in P2:
+
+- `AppRegistry`/`AppHost`/`SurfaceBroker`/`IntentBus` in QML, and moving
+  `overview` out as the first embedded app.
+- `apps.json` writer (staging + atomic rename + registry last).
+- The `Astral.Kernel 1.0` module URI, now that the kernel is in place (needs the
+  Quickshell-dependent singletons split behind ports first — Appendix C.6).
+
+Original scope:
 
 - Manifest schema (including `version`, `kernelApi`, `dataSchema`), catalog
   skeleton, `AppRegistry`, `AppHost`, `SurfaceBroker`, `IntentBus`,

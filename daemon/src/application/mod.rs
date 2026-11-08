@@ -1,3 +1,4 @@
+pub mod app_service;
 pub mod retry;
 pub mod migrations;
 pub mod install_service;

@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "id": "io.github.astral.hello",
+  "name": "Hello Astral",
+  "version": "0.1.0",
+  "kernelApi": 1,
+  "minQuickshell": "0.3.0",
+  "dataSchema": 1,
+  "trust": "community",
+  "runtime": "hosted",
+  "publisher": {
+    "name": "Astral Examples",
+    "key": "minisign:RWSplaceholderKeyForTheExampleOnly"
+  },
+  "entry": {
+    "root": "shell.qml",
+    "surface": {
+      "type": "toplevel",
+      "width": 420,
+      "height": 240
+    }
+  },
+  "requires": {
+    "capabilities": [],
+    "qtModules": []
+  },
+  "permissions": [],
+  "settings": null,
+  "distribution": "store"
+}
