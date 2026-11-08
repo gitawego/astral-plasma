@@ -91,21 +91,16 @@ Item {
     readonly property alias settingsBtnItem: settingsBtn
     readonly property alias tabRepeaterItem: tabRepeater
     readonly property alias tabSlidingIndicatorItem: tabSlidingIndicator
-    /// Injected by UnifiedShell: the app host, for panes that host an app's item.
-    property var appHost: null
-
     readonly property alias tabsRowItem: tabsRow
     readonly property alias tabContentContainerItem: tabContentContainer
     readonly property alias tabSliderItem: tabSlider
     readonly property alias downloadsTabItem: dlTab
-    /// The hosted workspaces app's item, or null while it is not mounted.
-    readonly property Item workspacesTabItem: wsApp.children.length > 0 ? wsApp.children[0] : null
+    readonly property alias workspacesTabItem: wsTab
 
     // Keyboard contract for the shell's layer surface: while a tab captures
     // text (the Downloads add sheet, Workspaces search), UnifiedShell requests
     // compositor keyboard focus. A new text-capturing tab must OR its state in here.
-    readonly property bool textInputActive: dlTab.addDialogOpen
-        || Boolean(workspacesTabItem && workspacesTabItem.searchActive)
+    readonly property bool textInputActive: dlTab.addDialogOpen || Boolean(wsTab && wsTab.searchActive)
 
     x: dropX
     y: 0
@@ -442,35 +437,14 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 4
                     width: tabContentContainer.width
                     height: implicitHeight
-                    // Never collapse to zero: an app with no data yet still has an
-                    // empty state to show, and a 0px pane shows nothing at all.
-                    implicitHeight: wsApp.children.length > 0
-                        ? Math.max(wsApp.children[0].implicitHeight, 320) : 320
+                    implicitHeight: wsTab.implicitHeight
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 4) || tabSlider.isAnimating
 
-                    Item {
-                        id: wsApp
+                    WorkspacesTab {
+                        id: wsTab
                         width: parent.width
                         height: parent.height
-
-                        // A bound property, not `Connections`: a `Connections` whose
-                        // `var` target is assigned later does not reliably deliver the
-                        // signal, and the pane then waits forever.
-                        readonly property int hostReadiness: {
-                            if (!root.appHost) return 0;
-                            return root.appHost.loaderCount * 1000
-                                + Object.keys(root.appHost.tabProviders).length;
-                        }
-                        onHostReadinessChanged: mountApp()
-                        Component.onCompleted: mountApp()
-
-                        function mountApp() {
-                            if (!root.appHost) return;
-                            const provider = root.appHost.providerForTab("workspaces");
-                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (wsApp.children.length === 0) root.appHost.mount(provider, wsApp);
-                        }
                     }
                 }
 

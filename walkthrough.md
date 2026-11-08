@@ -2671,27 +2671,3 @@ Kept and committed from this stretch: AppKit's role-named primitives (GlassCard,
 Icon, GlassButton, SpeakerPlayer, Artwork, RadialVisualiser), the boundary rule forbidding
 `Kernel/theme` + `Kernel/components` in apps, the harness `QML_IMPORT_PATH`, and the
 overview app migrated onto `Astral.AppKit`.
-
----
-
-## P4 — workspaces migrated (fourth attempt), and three live-only defects (2026-11-08)
-
-With the two structural blockers fixed (one import spelling via AppKit; IO-free singletons
-so `qml6` can import the module), the workspaces tab migrated and *stayed* migrated.
-
-> **Verified live**: `dashboard setTab workspaces` renders "Workspaces & Stage ·
-> 4 Desktops · 7 Windows", Desktop 1 Active with window chips (Chrome, Lutris, 网易云音乐,
-> +4), Desktops 2–4 empty, search field and Overview button. Zero load errors.
-> `make test` exit 0 — 1109 Rust tests, 164 QML suites.
-
-Three defects only the live run exposed:
-
-1. `UnifiedShell` had lost its `appHost` property in the earlier revert cycle → the pane's
-   host was null, nothing mounted, and **no error was logged**.
-2. `AppHost.loaderCount` and the copy-on-register fix had been reverted → the pane waited
-   on a signal that never came (0 loaders, 2 planned).
-3. `Connections { target: <var property> }` did not deliver its signal when the target was
-   assigned after creation; the pane now binds a `hostReadiness` property instead.
-
-Plus: a pane must floor its height (`Math.max(child.implicitHeight, 320)`) or an app with
-no data yet leaves a blank gap.

@@ -1722,28 +1722,6 @@ The fix is to make **AppKit's singletons IO-free**:
 * a suite then sees the Material defaults, which is what a layout test asserts against
   anyway; the shell and hosted apps see the real palette.
 
-Fixed and re-verified: `AppPalette` is now data only, `PaletteLoader.qml` (a type) does
-the read and `AppWindow` instantiates it. `import Astral.AppKit 1.0` works under `qml6`,
-and the workspaces tab migrated successfully (see C.15).
-
-### C.15 Workspaces migrated for real (fourth attempt)
-
-With C.13 (one import spelling) and C.14 (IO-free singletons) fixed, the workspaces tab
-migrated and stayed migrated: `Astral.AppKit` only, `session`/`workspaces`/`intents`
-injected, hosted by its dashboard pane.
-
-Live: **4 Desktops · 7 Windows**, Desktop 1 Active with its window chips, Desktops 2–4
-empty, search field, Overview button. Zero load errors.
-
-Three defects were found by doing it live rather than by trusting the diff:
-
-1. **`UnifiedShell` had lost its `appHost` property** during the earlier revert cycle, so
-   the pane's host was null and the app was never mounted — with no error anywhere.
-2. **`AppHost.loaderCount` and the copy-on-register fix had been reverted**, so the pane's
-   wait never completed (0 loaders, 2 planned).
-3. **`Connections { target: varProperty }` did not deliver** its signal when the target was
-   assigned after creation. The pane now waits on a bound `hostReadiness` property, which
-   is deterministic.
-
-Also fixed: a pane must not collapse to `0` height when its app reports none yet —
-`Math.max(child.implicitHeight, 320)` keeps an empty state visible instead of a blank gap.
+Reverted again for now: the workspaces tab stays in `dashboard/tabs/`, the tree is green
+(1109 Rust tests, 164 QML suites), and the AppKit primitives + lint rule + harness
+`QML_IMPORT_PATH` from C.13 are committed and in place.

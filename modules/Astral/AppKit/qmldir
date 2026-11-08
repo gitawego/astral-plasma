@@ -4,13 +4,9 @@ Artwork 1.0 Artwork.qml
 GlassButton 1.0 GlassButton.qml
 GlassCard 1.0 GlassCard.qml
 Icon 1.0 Icon.qml
-OverviewGrid 1.0 OverviewGrid.qml
-PaletteLoader 1.0 PaletteLoader.qml
 Panel 1.0 Panel.qml
-PreviewLoop 1.0 PreviewLoop.qml
 RadialVisualiser 1.0 RadialVisualiser.qml
 SpeakerPlayer 1.0 SpeakerPlayer.qml
-WindowThumbnail 1.0 WindowThumbnail.qml
 singleton AppApi 1.0 AppApi.qml
 singleton AppPalette 1.0 AppPalette.qml
 singleton Colors 1.0 Colors.qml
