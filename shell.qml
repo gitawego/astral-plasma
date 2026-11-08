@@ -16,6 +16,137 @@ import "./assistant"
 ShellRoot {
     id: root
 
+    // The app platform is declared before the surfaces that use it: a pane asks the
+    // host for an app during its own creation, so the host (and its plan) must already
+    // exist. Ordering is the contract here, not a preference.
+    // ---- app platform wiring -------------------------------------------------
+    // The shell owns its state, its window model, and its actions; a surface gets
+    // them injected. An imported singleton would be a copy (spec C.9/C.10).
+    ShellState {
+        id: shellState
+        overviewVisible: Config.overviewVisible
+        commandLauncherVisible: Config.commandLauncherVisible
+        dashboardVisible: Config.dashboardVisible
+        daemonBin: Config.daemonBin
+        iconResolver: function (name) { return Config.iconUrl(name); }
+    }
+
+    SessionPort {
+        id: sessionPort
+        windows: WindowService.windows
+        installedApps: WindowService.installedApps
+        overviewThumbnails: WindowService.overviewThumbnails
+        activeWindowId: WindowService.activeId
+        activateWindowImpl: function (id) { WindowService.activateWindow(id); return true; }
+        closeWindowImpl: function (id) { WindowService.closeWindow(id); return true; }
+        launchAppImpl: function (target, meta) { WindowService.launchApp(target, meta); return true; }
+        reloadInstalledAppsImpl: function () { WindowService.reloadInstalledApps(); return true; }
+        startThumbnailsImpl: function () { WindowService.startOverviewThumbnails(); return true; }
+        stopThumbnailsImpl: function () { WindowService.stopOverviewThumbnails(); return true; }
+        refreshThumbnailsImpl: function () { WindowService.refreshOverviewThumbnails(); return true; }
+    }
+
+    // The now-playing model a media surface may read: filled from the shell's own
+    // MprisMedia, because a Loader-loaded surface would get a stale duplicate.
+    MediaPort {
+        id: mediaPort
+        hasMedia: MprisMedia.hasMedia
+        title: MprisMedia.title
+        artist: MprisMedia.artist
+        album: MprisMedia.album
+        artUrl: MprisMedia.artUrl
+        status: MprisMedia.isAnyPlayerPlaying ? "playing" : (MprisMedia.hasMedia ? "paused" : "stopped")
+        playerName: MprisMedia.identity
+        position: MprisMedia.position
+        length: MprisMedia.length
+        players: (MprisMedia.players || []).map(function (player) {
+            return {
+                id: player.busName || "",
+                name: MprisMedia.playerIdentity(player)
+            };
+        })
+        activePlayerId: MprisMedia.activePlayer ? (MprisMedia.activePlayer.busName || "") : ""
+        toggleImpl: function () {
+            MprisMedia.togglePlay();
+            return true;
+        }
+        nextImpl: function () {
+            MprisMedia.next();
+            return true;
+        }
+        previousImpl: function () {
+            MprisMedia.previous();
+            return true;
+        }
+        seekImpl: function (fraction) {
+            MprisMedia.seekTo(fraction);
+            return true;
+        }
+        selectPlayerImpl: function (id) {
+            const list = MprisMedia.players || [];
+            for (let index = 0; index < list.length; index++) {
+                if ((list[index].busName || "") === id) {
+                    MprisMedia.selectPlayer(list[index]);
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    // Desktops, for surfaces that group windows by workspace. Filled from the shell's
+    // own KWinWorkspaces: a Loader-loaded surface would get its own copy (C.10).
+    WorkspacesPort {
+        id: workspacesPort
+        desktops: KWinWorkspaces.desktops
+        currentId: KWinWorkspaces.currentId
+        switchToImpl: function (id) {
+            KWinWorkspaces.switchTo(id);
+            return true;
+        }
+        createImpl: function (name) {
+            KWinWorkspaces.createDesktop(name);
+            return true;
+        }
+        removeImpl: function (id) {
+            KWinWorkspaces.removeDesktop(id);
+            return true;
+        }
+        refreshImpl: function () {
+            KWinWorkspaces.refresh();
+            return true;
+        }
+        moveWindowImpl: function (windowId, desktopId) {
+            KWinWorkspaces.moveWindow(windowId, desktopId);
+            return true;
+        }
+    }
+
+    IntentBus {
+        id: intents
+    }
+
+    // Bundled apps are data, so `shell.qml` names no feature. The overview stays
+    // alive because the shell shows and hides it.
+    AppRegistry {
+        id: bundledApps
+        bundledRoot: Qt.resolvedUrl("modules/Astral/Apps/").toString().replace(/^file:\/\//, "")
+    }
+
+    AppHost {
+        id: featureHost
+        entries: bundledApps.entries
+        state: shellState
+        intents: intents
+        session: sessionPort
+        media: mediaPort
+        workspaces: workspacesPort
+        host: ({ level: 1, floor: 1 })
+        eager: ["org.astralplasma.overview"]
+        onAppFailed: function (id, reason) { console.error("app failed: " + id + " - " + reason) }
+    }
+
+
     // IPC Handlers for external scripting & shortcuts
     IpcHandler {
         target: "dashboard"
@@ -459,6 +590,7 @@ ShellRoot {
             // The Unified Shell Visual Surface
             UnifiedShell {
                 targetScreen: screenScope.modelData
+                appHost: featureHost
             }
         }
     }
@@ -469,132 +601,6 @@ ShellRoot {
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
 
-    // ---- app platform wiring -------------------------------------------------
-    // The shell owns its state, its window model, and its actions; a surface gets
-    // them injected. An imported singleton would be a copy (spec C.9/C.10).
-    ShellState {
-        id: shellState
-        overviewVisible: Config.overviewVisible
-        commandLauncherVisible: Config.commandLauncherVisible
-        dashboardVisible: Config.dashboardVisible
-        daemonBin: Config.daemonBin
-        iconResolver: function (name) { return Config.iconUrl(name); }
-    }
-
-    SessionPort {
-        id: sessionPort
-        windows: WindowService.windows
-        installedApps: WindowService.installedApps
-        overviewThumbnails: WindowService.overviewThumbnails
-        activeWindowId: WindowService.activeId
-        activateWindowImpl: function (id) { WindowService.activateWindow(id); return true; }
-        closeWindowImpl: function (id) { WindowService.closeWindow(id); return true; }
-        launchAppImpl: function (target, meta) { WindowService.launchApp(target, meta); return true; }
-        reloadInstalledAppsImpl: function () { WindowService.reloadInstalledApps(); return true; }
-        startThumbnailsImpl: function () { WindowService.startOverviewThumbnails(); return true; }
-        stopThumbnailsImpl: function () { WindowService.stopOverviewThumbnails(); return true; }
-        refreshThumbnailsImpl: function () { WindowService.refreshOverviewThumbnails(); return true; }
-    }
-
-    // The now-playing model a media surface may read: filled from the shell's own
-    // MprisMedia, because a Loader-loaded surface would get a stale duplicate.
-    MediaPort {
-        id: mediaPort
-        hasMedia: MprisMedia.hasMedia
-        title: MprisMedia.title
-        artist: MprisMedia.artist
-        album: MprisMedia.album
-        artUrl: MprisMedia.artUrl
-        status: MprisMedia.isAnyPlayerPlaying ? "playing" : (MprisMedia.hasMedia ? "paused" : "stopped")
-        playerName: MprisMedia.identity
-        position: MprisMedia.position
-        length: MprisMedia.length
-        players: (MprisMedia.players || []).map(function (player) {
-            return {
-                id: player.busName || "",
-                name: MprisMedia.playerIdentity(player)
-            };
-        })
-        activePlayerId: MprisMedia.activePlayer ? (MprisMedia.activePlayer.busName || "") : ""
-        toggleImpl: function () {
-            MprisMedia.togglePlay();
-            return true;
-        }
-        nextImpl: function () {
-            MprisMedia.next();
-            return true;
-        }
-        previousImpl: function () {
-            MprisMedia.previous();
-            return true;
-        }
-        seekImpl: function (fraction) {
-            MprisMedia.seekTo(fraction);
-            return true;
-        }
-        selectPlayerImpl: function (id) {
-            const list = MprisMedia.players || [];
-            for (let index = 0; index < list.length; index++) {
-                if ((list[index].busName || "") === id) {
-                    MprisMedia.selectPlayer(list[index]);
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-
-    // Desktops, for surfaces that group windows by workspace. Filled from the shell's
-    // own KWinWorkspaces: a Loader-loaded surface would get its own copy (C.10).
-    WorkspacesPort {
-        id: workspacesPort
-        desktops: KWinWorkspaces.desktops
-        currentId: KWinWorkspaces.currentId
-        switchToImpl: function (id) {
-            KWinWorkspaces.switchTo(id);
-            return true;
-        }
-        createImpl: function (name) {
-            KWinWorkspaces.createDesktop(name);
-            return true;
-        }
-        removeImpl: function (id) {
-            KWinWorkspaces.removeDesktop(id);
-            return true;
-        }
-        refreshImpl: function () {
-            KWinWorkspaces.refresh();
-            return true;
-        }
-        moveWindowImpl: function (windowId, desktopId) {
-            KWinWorkspaces.moveWindow(windowId, desktopId);
-            return true;
-        }
-    }
-
-    IntentBus {
-        id: intents
-    }
-
-    // Bundled apps are data, so `shell.qml` names no feature. The overview stays
-    // alive because the shell shows and hides it.
-    AppRegistry {
-        id: bundledApps
-        bundledRoot: Qt.resolvedUrl("modules/Astral/Apps/").toString().replace(/^file:\/\//, "")
-    }
-
-    AppHost {
-        id: featureHost
-        entries: bundledApps.entries
-        state: shellState
-        intents: intents
-        session: sessionPort
-        media: mediaPort
-        workspaces: workspacesPort
-        host: ({ level: 1, floor: 1 })
-        eager: ["org.astralplasma.overview"]
-        onAppFailed: function (id, reason) { console.error("app failed: " + id + " - " + reason) }
-    }
 
     // Settings GUI Window
     SettingsWindow {
@@ -637,6 +643,10 @@ ShellRoot {
         // one completion block, so nothing about startup is split across objects.
         intents.register("overview.close", function () {
             Config.closeOverview();
+            return intents.applied();
+        });
+        intents.register("overview.toggle", function () {
+            Config.toggleOverview();
             return intents.applied();
         });
         intents.register("launcher.open", function (args) {

@@ -4,13 +4,14 @@ import "../modules/Astral/Kernel/components"
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Workspaces"
 
 Item {
     id: testRoot
     width: 1000
     height: 800
 
-    WorkspacesTab {
+    Main {
         id: wsTab
         visible: true
         anchors.fill: parent

@@ -2616,3 +2616,28 @@ on the host**, so this class of edit cannot ship again.
 > test compares the shell's host calls against the host's members.
 >
 > **Not verified**: nothing new on screen — this slice is host API plus tests.
+
+---
+
+## P4 — the workspaces tab is an app (2026-11-08)
+
+`dashboard/tabs/WorkspacesTab.qml` → `modules/Astral/Apps/Workspaces/Main.qml`, hosted
+by the dashboard pane through `AppHost.mount`. It reads `session.windows`,
+`workspaces.desktops`, `workspaces.currentId`, and asks for `overview.toggle` as an
+intent — zero `WindowService`/`KWinWorkspaces` references, enforced by the boundary
+linter.
+
+> **Verified live**: `dashboard setTab workspaces` renders **4 Desktops · 7 Windows**,
+> Desktop 1 marked Active with its window chips (Chrome, Lutris, 网易云音乐, +4),
+> Desktop 2 empty. Zero load errors, one shell instance. `make test` exit 0 — 1109
+> Rust tests, 163 QML suites.
+
+Two ordering bugs had to be fixed, both now guarded:
+
+1. **The host must exist before the surfaces that use it.** `featureHost` was declared
+   after `UnifiedShell`, so the pane saw `null` at completion. The platform wiring now
+   sits at the top of `ShellRoot`.
+2. **`loaders` must change identity.** The Repeater did `root.loaders = map` on the
+   same object, so `loaderCount` never notified and the pane's retry never fired — the
+   pane mounted nothing and the drawer showed no desktops. It assigns a copy now, and
+   `tst_app_host` asserts `loaderCount === loaded.length`.
