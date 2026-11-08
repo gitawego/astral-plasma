@@ -58,7 +58,7 @@ it a way back.
 | D10 | Staging | Extract into a sibling `package.next` **outside** the watched `-p` path; swap by rename only while the shell is down. |
 | D11 | Refusals | Refuse to apply while the session is locked, a download is active, an AI turn streams, or a voice session is live. Retry automatically on unlock/idle. |
 | D12 | Migrations | Timestamped, idempotent, per-user Rust migrations with markers under `~/.local/state/astral-plasma/migrations/`, run by the supervisor before the shell starts. |
-| D13 | Trust | HTTPS only (an explicit `http://` mirror URL is the only downgrade), size cap, size + SHA-256 verified against the manifest before use. A `signature` is verified with `minisign` against `ASTRAL_PLASMA_MINISIGN_KEY` or the pinned `PINNED_MINISIGN_KEY`; a signature with no key to check it against is refused. `ASTRAL_PLASMA_REQUIRE_SIGNATURE=1` refuses unsigned releases, and is the switch to flip once the key exists (§15). |
+| D13 | Trust | HTTPS only (an explicit `http://` mirror URL is the only downgrade), size cap, size + SHA-256 verified against the manifest before use. A **detached** `latest.json.minisig` is verified **in-process** (`minisign-verify`) against the pinned project key, so a user needs no signing tool. A signature with no key to check it against is refused. `ASTRAL_PLASMA_REQUIRE_SIGNATURE=1` refuses unsigned releases (§15). |
 | D14 | Safety rails | Update lock, free-space precheck computed from the staged size, sleep inhibitor, per-apply transcript. |
 | D15 | Third-party themes | Data only (JSON palette + assets), never QML. Archetypes stay first-party and compiled-in. Non-goal here; recorded as a rule. |
 | D16 | Removal scope | Artifacts only. AI sessions, the Plasma/shortcut backups, download history, caches and settings survive an uninstall; `--purge` removes caches and settings too. |
@@ -369,7 +369,7 @@ restart actually works (§7).
 | **P3 — apply & restart** ✅ | Lock, preflight, download, verify, staging, swap, claim handoff, `execv`, IPC health check, two-attempt retry, rollback, manual revert. | Process-level proof that a staged binary is swapped and executed with the claim intact; live desktop restart still to be observed on a real update. |
 | **P4 — UI** ✅ | Updates page (version, update, notes, maintenance), nav entry, restart curtain (records the shown version as seen). Pending-update dot deferred. | Offscreen suite covers every state; live capture taken. |
 | **P5 — what's new** ✅ | `docs/releases/*.json` compiled into the binary, `astral-plasma changelog`, page rendering, `lastSeenVersion` recorded. Auto-opening the notes once per version deferred to the curtain. | Notes shown match the running version. |
-| **P6 — distribution** ✅ (enforcement pending a key) | AUR `astral-plasma-bin` template, pacman ownership detection, signing script + CI signing when `MINISIGN_SECRET_KEY` exists, `ASTRAL_PLASMA_REQUIRE_SIGNATURE` switch. | Package installs report `package` and offer no apply; a signed manifest is verified, a signature without a pinned key is refused, and unsigned releases are refused once the switch is on. |
+| **P6 — distribution** ✅ (enforcement off by choice) | AUR `astral-plasma-bin`, pacman ownership detection, project release key generated and pinned, detached signature verified in-process, CI signs when the secret exists, `ASTRAL_PLASMA_REQUIRE_SIGNATURE` switch. | Package installs report `package` and offer no apply; a signed manifest verifies and a tampered one is refused; unsigned releases are refused once the switch is on. |
 
 ### What P0 and P1 actually changed
 
@@ -461,34 +461,57 @@ ownership"). The pieces that must not drift:
 
 ## 15. Release signing
 
-The pipeline is wired; only the key is missing, and that is a deliberate,
-reversible state rather than a silent gap.
+The project release key exists, is pinned in the binary, and is used by CI. What
+is deliberately still off is *requiring* a signature, because that decision should
+follow one successful signed release, not precede it.
 
-1. **Create the key pair once** (keep the secret key off the repository):
+**Key material**
 
-   ```bash
-   minisign -G -p packaging/keys/astral-plasma.pub -s ~/.minisign/astral-plasma.key
-   ```
+| Item | Where |
+| :--- | :--- |
+| Public key | `packaging/keys/astral-plasma.pub` (committed) |
+| Key id | `47F66C1650F9EE59` |
+| Pinned in the daemon | `PINNED_MINISIGN_KEY` in `infrastructure/update_source.rs` |
+| Secret key | this machine: `~/.minisign/astral-plasma.key`; CI: repository secret `MINISIGN_SECRET_KEY` |
 
-2. **Publish the public key**: commit `packaging/keys/astral-plasma.pub` and, in
-   the same change, set `PINNED_MINISIGN_KEY` in
-   `daemon/src/infrastructure/update_source.rs` to its contents. From then on a
-   signed release verifies for every user without any environment variable.
+The key pair was generated passwordless (`rsign generate -W`) because CI must sign
+without a prompt. Anyone with the secret key can sign a release, so it lives only
+in the two places above.
 
-3. **Sign in CI**: add the *contents* of the secret key file as the repository
-   secret `MINISIGN_SECRET_KEY`. The publish job then runs
-   `scripts/astral-sign.sh` on `latest.json`, which writes the detached signature
-   back into the manifest's `signature` field. Without the secret the job prints
-   a warning and publishes an unsigned manifest.
+**Flow**
 
-4. **Require it**: set `ASTRAL_PLASMA_REQUIRE_SIGNATURE=1` for the daemon (unit
-   `Environment=` or the session environment). `update check` then refuses an
-   unsigned release with the reason recorded in the Updates page. Do this in a
-   release *after* step 3 has shipped at least one signed manifest, or installed
-   shells would be told no update exists.
+1. `scripts/release.sh` (or the Actions UI) tags a release; CI refuses a tag
+   without `docs/releases/<version>.json`.
+2. The publish job installs `minisign`, writes `latest.json`, and — when
+   `MINISIGN_SECRET_KEY` is set — runs `scripts/astral-sign.sh`, producing
+   `latest.json.minisig` beside it. Both are uploaded as release assets.
+3. An installed shell fetches `latest.json`, then `<that url>.minisig`. The
+   signature is verified **in-process** over the exact bytes that were fetched
+   (`minisign-verify`), so no user needs the `minisign` binary.
+4. A signed file is re-verified from the cache immediately before the artifact is
+   staged, because installation happens minutes later and from disk.
 
-What is enforced today: a manifest that claims a signature must verify, and a
-claimed signature with no pinned/configured key is refused rather than compared
-against the user's own keyring. What is not: refusing *unsigned* releases, which
-depends on steps 1–4 above.
+**Why detached, not a field**
 
+A signature computed over a document cannot be written into that document: doing
+so changes the bytes that were signed. The manifest therefore carries no
+`signature` field; an older release that still has one is ignored (unknown fields
+are accepted).
+
+**Turning enforcement on**
+
+```
+ASTRAL_PLASMA_REQUIRE_SIGNATURE=1     # daemon environment (unit Environment=)
+```
+
+`update check` then refuses an unsigned release, recording the reason for the
+Updates page. Do this only after a release with `latest.json.minisig` has
+published and been observed, otherwise users would be told no update exists.
+
+**Rotation**
+
+1. Generate a new pair (`minisign -G -p packaging/keys/astral-plasma-YYYY.pub -s …`).
+2. Ship one release that pins the new key (`PINNED_MINISIGN_KEY`) *and* keeps the
+   old one trusted for verification, or sign that release with the old key.
+3. Update the CI secret, publish, then remove the old key in the following
+   release.

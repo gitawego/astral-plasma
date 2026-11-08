@@ -355,6 +355,7 @@ jobs:
           PY
 
           if [ -n "${MINISIGN_SECRET_KEY:-}" ]; then
+            sudo apt-get install -y minisign >/dev/null
             key_file="${RUNNER_TEMP}/astral-plasma.minisign.key"
             printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key_file"
             chmod 600 "$key_file"

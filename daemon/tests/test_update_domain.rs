@@ -34,7 +34,6 @@ fn manifest(version: &str, channel: &str) -> ReleaseManifest {
         highlights: vec!["Something changed".to_string()],
         changelog: Some("https://example.invalid/notes".to_string()),
         artifacts,
-        signature: None,
     }
 }
 
@@ -179,10 +178,12 @@ fn manifests_are_validated_before_they_can_offer_anything() {
 #[test]
 fn unknown_manifest_fields_are_ignored_so_a_newer_release_stays_installable() {
     let mut value = serde_json::to_value(manifest("0.2.0", "stable")).unwrap();
-    value["signature"] = serde_json::Value::String("untrusted-blob".into());
+    // A release that still carries the old inline `signature` field - or any
+    // future field - must parse: the signature is a detached asset now.
+    value["signature"] = serde_json::Value::String("stale-inline-signature".into());
     value["future_field"] = serde_json::Value::Bool(true);
     let release = ReleaseManifest::parse(&serde_json::to_vec(&value).unwrap()).unwrap();
-    assert_eq!(release.signature.as_deref(), Some("untrusted-blob"));
+    assert_eq!(release.version, "0.2.0");
 }
 
 #[test]

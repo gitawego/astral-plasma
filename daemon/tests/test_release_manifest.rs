@@ -137,7 +137,7 @@ fn the_installer_and_uninstaller_are_shipped_next_to_the_binary() {
 }
 
 #[test]
-fn signing_is_wired_before_the_key_exists() {
+fn signing_is_wired_end_to_end() {
     let workflow = read(".github/workflows/release.yml");
     assert!(
         workflow.contains("MINISIGN_SECRET_KEY"),
@@ -149,10 +149,17 @@ fn signing_is_wired_before_the_key_exists() {
     );
 
     let script = read("scripts/astral-sign.sh");
-    assert!(script.contains("minisign -Sm"), "signature over the manifest itself");
     assert!(
-        script.contains("\"signature\"") && script.contains("json.dump"),
-        "the signature travels inside the manifest the daemon verifies"
+        script.contains("minisign -Sm") && script.contains("rsign sign"),
+        "signing uses the reference tool, or the compatible Rust one"
+    );
+    assert!(
+        script.contains(".minisig"),
+        "the signature is detached beside the manifest"
+    );
+    assert!(
+        !script.contains("json.dump"),
+        "injecting a signature into the signed document would change the bytes it signed"
     );
 
     let source = read("daemon/src/infrastructure/update_source.rs");
@@ -169,5 +176,10 @@ fn signing_is_wired_before_the_key_exists() {
     assert!(
         service.contains("no publisher key is pinned"),
         "a signature with nothing to check it against must be refused, not trusted"
+    );
+    let adapter = read("daemon/src/infrastructure/update_source.rs");
+    assert!(
+        adapter.contains("minisign_verify") && adapter.contains("verify_signature"),
+        "verification runs in-process: a user needs no signing tool to verify a release"
     );
 }

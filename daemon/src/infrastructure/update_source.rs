@@ -27,12 +27,13 @@ pub const ENV_MANIFEST_URL: &str = "ASTRAL_PLASMA_UPDATE_URL";
 
 /// Public key this build trusts for release signatures.
 ///
-/// `None` until the project key is published (see `scripts/astral-sign.sh`).
-/// Filling this in is what makes a signature check meaningful to a user who has
-/// not set an environment variable; until then a signed release is verified only
-/// when `ASTRAL_PLASMA_MINISIGN_KEY` provides the key, and a signature without a
-/// key is refused rather than checked against the user's own keyring.
-pub const PINNED_MINISIGN_KEY: Option<&str> = None;
+/// This is the project release key (`packaging/keys/astral-plasma.pub`). It is
+/// compiled in so a signed release verifies for every user without an
+/// environment variable; `ASTRAL_PLASMA_MINISIGN_KEY` overrides it for mirrors
+/// and tests. A signature with no key to check it against is refused rather than
+/// compared with the user's own keyring.
+pub const PINNED_MINISIGN_KEY: Option<&str> =
+    Some("RWRZ7vlQFmz2R+Mk9rLAG2YZx1FR2KyCYrRPUYKPnUGYtOlk8GtFDiox");
 
 const CONNECT_TIMEOUT_SECS: u32 = 15;
 const MANIFEST_TIMEOUT_SECS: u32 = 30;
@@ -112,6 +113,39 @@ impl UpdateSourcePort for CurlUpdateSource {
             etag,
             body,
         })
+    }
+
+    fn fetch_signature(&self, manifest_url: &str) -> DynResult<Option<String>> {
+        let url = format!("{manifest_url}.minisig");
+        let output = Command::new("curl")
+            .arg("--silent")
+            .arg("--show-error")
+            .arg("--location")
+            .arg("--proto")
+            .arg(protocols_for(&url))
+            .args(["--connect-timeout", &CONNECT_TIMEOUT_SECS.to_string()])
+            .args(["--max-time", &MANIFEST_TIMEOUT_SECS.to_string()])
+            .arg("--write-out")
+            .arg("%{http_code}")
+            .arg("--output")
+            .arg(crate::domain::branding::tmp_file("update_sig"))
+            .arg(&url)
+            .output()
+            .map_err(|err| format!("cannot run curl to fetch the release signature: {err}"))?;
+
+        let path = crate::domain::branding::tmp_file("update_sig");
+        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let result: DynResult<Option<String>> = match status.as_str() {
+            "200" => match fs::read_to_string(&path) {
+                Ok(body) if !body.trim().is_empty() => Ok(Some(body)),
+                _ => Err("the release signature asset is empty".into()),
+            },
+            // A release published before signing existed has no signature asset.
+            "404" => Ok(None),
+            other => Err(format!("release signature fetch answered HTTP {other}").into()),
+        };
+        let _ = fs::remove_file(&path);
+        result
     }
 
     fn download(&self, url: &str, dest: &Path, max_bytes: u64) -> DynResult<u64> {
@@ -195,34 +229,29 @@ pub fn sha256_file(path: &Path) -> DynResult<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-/// Verify a detached minisign signature when the release carries one.
+/// Verify a detached minisign signature over the manifest bytes.
 ///
-/// Returns `Ok(true)` when a signature was present and verified, `Ok(false)`
-/// when the release is unsigned, and an error when verification fails or the
-/// tool is missing while a signature was claimed.
-pub fn verify_minisign(signed_file: &Path, signature: &str, public_key: Option<&str>) -> DynResult<bool> {
+/// Verification is done in-process with the `minisign-verify` crate rather than
+/// by running the `minisign` binary: a user who installs a signed release has no
+/// reason to have the signing tool on their machine, and a missing tool must not
+/// turn every update into a refusal. Signing still uses the real tool in CI, and
+/// the formats are identical.
+///
+/// Returns `Ok(false)` for an unsigned release, `Ok(true)` when a signature was
+/// present and verified, and an error when it did not verify.
+pub fn verify_signature(manifest: &[u8], signature: &str, public_key: &str) -> DynResult<bool> {
     let signature = signature.trim();
     if signature.is_empty() || signature == "null" {
         return Ok(false);
     }
-    let signature_path = signed_file.with_extension("minisig");
-    fs::write(&signature_path, signature)?;
 
-    let mut command = Command::new("minisign");
-    command.arg("-Vm").arg(signed_file).arg("-x").arg(&signature_path);
-    if let Some(key) = public_key.filter(|k| !k.trim().is_empty()) {
-        command.arg("-P").arg(key);
-    }
-    let output = command
-        .output()
-        .map_err(|err| format!("minisign is required to verify this release: {err}"))?;
-    let _ = fs::remove_file(&signature_path);
-    if !output.status.success() {
-        return Err(format!(
-            "release signature verification failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )
-        .into());
-    }
+    let key = minisign_verify::PublicKey::from_base64(public_key.trim()).map_err(|err| {
+        format!("the pinned release key is not a usable minisign public key: {err}")
+    })?;
+    let signature = minisign_verify::Signature::decode(signature)
+        .map_err(|err| format!("the release signature is malformed: {err}"))?;
+
+    key.verify(manifest, &signature, false)
+        .map_err(|err| format!("release signature verification failed: {err}"))?;
     Ok(true)
 }

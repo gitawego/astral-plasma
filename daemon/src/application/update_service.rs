@@ -40,6 +40,7 @@ pub struct UpdatePaths {
     pub download_dir: PathBuf,
     pub restart_path: PathBuf,
     pub manifest_cache: PathBuf,
+    pub signature_cache: PathBuf,
     pub lock_path: PathBuf,
 }
 
@@ -54,6 +55,7 @@ impl UpdatePaths {
             record_path: branding::install_record_path(),
             restart_path: RestartRequest::path(),
             manifest_cache: branding::state_dir().join("manifest.json"),
+            signature_cache: branding::state_dir().join("manifest.json.minisig"),
             lock_path: branding::state_dir().join("update.lock"),
             download_dir: branding::cache_dir().join("update"),
             data_dir,
@@ -74,6 +76,7 @@ impl UpdatePaths {
             download_dir: root.join("cache").join(branding::CACHE_DIR).join("update"),
             restart_path: state_dir.join("restart-requested.json"),
             manifest_cache: state_dir.join("manifest.json"),
+            signature_cache: state_dir.join("manifest.json.minisig"),
             lock_path: state_dir.join("update.lock"),
             data_dir,
             live_binary,
@@ -238,12 +241,41 @@ impl UpdateService {
         }
 
         let manifest = ReleaseManifest::parse(&fetched.body)?;
-        if self.require_signature && !is_signed(&manifest) {
-            let message = "this build only installs signed releases, and the published                            release is unsigned";
-            state.record_error(message);
-            state.save(&self.paths.state_path)?;
-            return Err(message.into());
+
+        // The signature is a sibling asset, verified over the exact bytes that
+        // were fetched. A signed release with no key to check it against is
+        // refused rather than silently trusted.
+        let signature = self.source.fetch_signature(&self.manifest_url)?;
+        match &signature {
+            Some(signature) => {
+                // A verification failure is a *result* the user must be able to
+                // read, not just a non-zero exit: record it before returning.
+                let outcome = self.signing_key().and_then(|key| {
+                    crate::infrastructure::update_source::verify_signature(
+                        &fetched.body,
+                        signature,
+                        &key,
+                    )
+                });
+                if let Err(err) = outcome {
+                    state.record_error(err.to_string());
+                    state.save(&self.paths.state_path)?;
+                    return Err(err);
+                }
+                self.cache_signature(signature)?;
+            }
+            None => {
+                if self.require_signature {
+                    let message = "this build only installs signed releases, and the published release is unsigned";
+                    state.record_error(message);
+                    state.save(&self.paths.state_path)?;
+                    return Err(message.into());
+                }
+                self.clear_signature_cache();
+            }
         }
+
+
         self.cache_manifest(&fetched.body)?;
 
         let selection = select(
@@ -377,36 +409,57 @@ impl UpdateService {
         })
     }
 
+    /// Re-verify the cached manifest against the cached signature.
+    ///
+    /// Check already verified it, but the artifact is installed minutes later and
+    /// from disk: the bytes that were signed are the bytes that must be staged.
     fn verify_signature(&self) -> DynResult<()> {
-        let Ok(text) = fs::read_to_string(&self.paths.manifest_cache) else {
-            return Err("the release manifest is no longer cached; check again before applying".into());
-        };
-        let manifest: ReleaseManifest = serde_json::from_str(&text)
-            .map_err(|err| format!("cached release manifest is unreadable: {err}"))?;
+        let manifest = fs::read(&self.paths.manifest_cache).map_err(|_| {
+            "the release manifest is no longer cached; check again before applying"
+        })?;
+        let signature = fs::read_to_string(&self.paths.signature_cache).ok();
 
-        if !is_signed(&manifest) {
-            if self.require_signature {
-                return Err("this build only installs signed releases, and this one is unsigned".into());
+        match signature {
+            Some(signature) if !signature.trim().is_empty() => {
+                let key = self.signing_key()?;
+                crate::infrastructure::update_source::verify_signature(
+                    &manifest,
+                    &signature,
+                    &key,
+                )?;
+                Ok(())
             }
-            return Ok(());
+            _ if self.require_signature => Err(
+                "this build only installs signed releases, and this one is unsigned".into(),
+            ),
+            _ => Ok(()),
         }
+    }
 
-        let key = branding::env_value(ENV_MINISIGN_KEY).or_else(|| {
-            crate::infrastructure::update_source::PINNED_MINISIGN_KEY.map(str::to_string)
-        });
-        let key = key.ok_or(
-            "this release is signed, but no publisher key is pinned in this build; \
-             set ASTRAL_PLASMA_MINISIGN_KEY to the published key",
-        )?;
-        let verified = crate::infrastructure::update_source::verify_minisign(
-            &self.paths.manifest_cache,
-            manifest.signature.as_deref().unwrap_or(""),
-            Some(&key),
-        )?;
-        if !verified {
-            return Err("this release is signed but the signature was not verified".into());
+    /// The key a signature is checked against: the pinned project key, or the
+    /// documented override for a mirror or a test.
+    fn signing_key(&self) -> DynResult<String> {
+        branding::env_value(ENV_MINISIGN_KEY)
+            .or_else(|| {
+                crate::infrastructure::update_source::PINNED_MINISIGN_KEY.map(str::to_string)
+            })
+            .ok_or_else(|| {
+                "this release is signed, but no publisher key is pinned in this build; \
+                 set ASTRAL_PLASMA_MINISIGN_KEY to the published key"
+                    .into()
+            })
+    }
+
+    fn cache_signature(&self, signature: &str) -> DynResult<()> {
+        if let Some(parent) = self.paths.signature_cache.parent() {
+            fs::create_dir_all(parent)?;
         }
+        fs::write(&self.paths.signature_cache, signature)?;
         Ok(())
+    }
+
+    fn clear_signature_cache(&self) {
+        let _ = fs::remove_file(&self.paths.signature_cache);
     }
 
     /// Put the previous release back and restart into it.
@@ -592,17 +645,6 @@ fn set_executable(path: &Path) -> DynResult<()> {
     Ok(())
 }
 
-/// Whether a manifest carries a signature this daemon could check.
-fn is_signed(manifest: &ReleaseManifest) -> bool {
-    manifest
-        .signature
-        .as_deref()
-        .map(|signature| {
-            let trimmed = signature.trim();
-            !trimmed.is_empty() && trimmed != "null"
-        })
-        .unwrap_or(false)
-}
 
 /// Package that owns `exe`, when the system package manager says so.
 ///

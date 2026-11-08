@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "version": "0.0.1",
+  "channel": "stable",
+  "published_at": "2026-11-08T00:00:00Z",
+  "min_quickshell": "0.3.0",
+  "highlights": [
+    "Fixture release used to prove signature verification"
+  ],
+  "changelog": null,
+  "artifacts": {
+    "x86_64": {
+      "url": "https://example.invalid/astral-plasma-linux-x86_64",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 1
+    }
+  }
+}

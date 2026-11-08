@@ -310,10 +310,11 @@ and leaves `git pull` to you. Package-manager installs are owned by your package
 manager and offer no apply button: the daemon asks `pacman -Qo` who owns the
 binary, so an AUR install (`packaging/aur`) is never written by the updater.
 
-Releases are SHA-256 verified before staging, and signed manifests are verified
-with `minisign` against the project key (`scripts/astral-sign.sh`,
-[docs/UPDATES.md §15](docs/UPDATES.md)). Once a release key is published, set
-`ASTRAL_PLASMA_REQUIRE_SIGNATURE=1` to refuse unsigned releases entirely.
+Releases are SHA-256 verified before staging, and the detached
+`latest.json.minisig` is verified in-process against the project release key
+(`packaging/keys/astral-plasma.pub`), so verifying needs no tool installed. Set
+`ASTRAL_PLASMA_REQUIRE_SIGNATURE=1` to refuse unsigned releases — the key and the
+CI signing step already exist, see [docs/UPDATES.md §15](docs/UPDATES.md).
 
 If a new release does not come up, the supervisor restarts Quickshell twice and
 then puts the previous binary back, recording the reason where the Updates page

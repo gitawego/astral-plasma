@@ -80,10 +80,10 @@ pub struct ReleaseManifest {
     pub changelog: Option<String>,
     #[serde(default)]
     pub artifacts: BTreeMap<String, Artifact>,
-    /// Reserved: detached signature over the manifest. Present but unverified
-    /// signatures are refused; see `application::update_service`.
-    #[serde(default)]
-    pub signature: Option<String>,
+    // The signature is a *detached* asset (`latest.json.minisig`), not a field:
+    // a signature computed over the document and then written into the document
+    // could never verify. `unknown fields` are ignored, so a release that still
+    // carries a stale `signature` key remains installable.
 }
 
 fn default_channel() -> String {
@@ -315,6 +315,9 @@ pub struct ManifestFetch {
 /// Network access, behind a port so the update rules never need a socket.
 pub trait UpdateSourcePort {
     fn fetch_manifest(&self, url: &str, etag: Option<&str>) -> DynResult<ManifestFetch>;
+    /// Fetch the detached signature that sits beside the manifest
+    /// (`<manifest>.minisig`). `None` means the release is unsigned.
+    fn fetch_signature(&self, manifest_url: &str) -> DynResult<Option<String>>;
     /// Download an artifact to `dest`, refusing to exceed `max_bytes`.
     /// Returns the number of bytes written.
     fn download(&self, url: &str, dest: &std::path::Path, max_bytes: u64) -> DynResult<u64>;

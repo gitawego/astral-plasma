@@ -21,6 +21,7 @@ struct FakeSource {
     payload: Vec<u8>,
     downloads: Mutex<usize>,
     etags_seen: Mutex<Vec<Option<String>>>,
+    signature: Option<String>,
 }
 
 impl FakeSource {
@@ -32,6 +33,7 @@ impl FakeSource {
             payload,
             downloads: Mutex::new(0),
             etags_seen: Mutex::new(Vec::new()),
+            signature: None,
         }
     }
 }
@@ -51,6 +53,10 @@ impl UpdateSourcePort for FakeSource {
             etag: self.etag.lock().unwrap().clone(),
             body: self.manifest.lock().unwrap().clone(),
         })
+    }
+
+    fn fetch_signature(&self, _manifest_url: &str) -> DynResult<Option<String>> {
+        Ok(self.signature.clone())
     }
 
     fn download(&self, _url: &str, dest: &Path, _max_bytes: u64) -> DynResult<u64> {
@@ -95,7 +101,6 @@ fn manifest_for(version: &str, bytes: &[u8]) -> ReleaseManifest {
         highlights: vec!["A real change".to_string()],
         changelog: None,
         artifacts,
-        signature: None,
     }
 }
 
@@ -167,6 +172,7 @@ fn a_not_modified_answer_keeps_the_candidate_and_sends_the_etag() {
         payload: Vec::new(),
         downloads: Mutex::new(0),
         etags_seen: Mutex::new(Vec::new()),
+        signature: None,
     };
     let mut service = UpdateService::with_paths(paths.clone(), Box::new(source));
     service.current_version = "0.1.3".to_string();
@@ -188,6 +194,9 @@ fn a_failed_check_is_recorded_and_does_not_break_status() {
     impl UpdateSourcePort for Failing {
         fn fetch_manifest(&self, _url: &str, _etag: Option<&str>) -> DynResult<ManifestFetch> {
             Err("network is down".into())
+        }
+        fn fetch_signature(&self, _manifest_url: &str) -> DynResult<Option<String>> {
+            Ok(None)
         }
         fn download(&self, _url: &str, _dest: &Path, _max: u64) -> DynResult<u64> {
             Err("network is down".into())
@@ -368,4 +377,39 @@ fn service_without_signature_requirement(root: &Path) -> UpdateService {
     let mut service = service(paths, &manifest_for("0.2.0", &bytes), bytes);
     service.require_signature = false;
     service
+}
+
+#[test]
+fn a_signature_that_does_not_verify_is_recorded_for_the_user() {
+    let root = tempfile::tempdir().unwrap();
+    let paths = seeded(root.path(), InstallMethod::Managed);
+    let bytes = payload();
+
+    // A signed release whose signature is garbage: the check must fail *and*
+    // leave the reason where the Updates page can read it.
+    let source = FakeSource {
+        manifest: Mutex::new(serde_json::to_vec(&manifest_for("0.2.0", &bytes)).unwrap()),
+        etag: Mutex::new(None),
+        not_modified: Mutex::new(false),
+        payload: bytes.clone(),
+        downloads: Mutex::new(0),
+        etags_seen: Mutex::new(Vec::new()),
+        signature: Some("untrusted comment: not a signature\nAAAA\n".to_string()),
+    };
+    let mut service = UpdateService::with_paths(paths.clone(), Box::new(source));
+    service.current_version = "0.1.3".to_string();
+
+    let err = service.check(false).expect_err("a bad signature must be refused");
+    assert!(err.to_string().to_lowercase().contains("signature"), "{err}");
+
+    let status = service.status().unwrap();
+    assert!(status.candidate.is_none());
+    assert!(
+        status
+            .last_error
+            .unwrap_or_default()
+            .to_lowercase()
+            .contains("signature"),
+        "the refusal must be visible in the UI, not only on stderr"
+    );
 }

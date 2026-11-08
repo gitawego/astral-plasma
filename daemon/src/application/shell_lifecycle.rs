@@ -69,10 +69,15 @@ pub fn quit_running_shell() -> bool {
     run(&program, &args)
 }
 
+/// Run a helper without letting its chatter reach our own stdout.
+///
+/// `quit_running_shell` is called by commands that print JSON (`update apply`,
+/// `uninstall`). Inheriting the child's output put "No running instances for …"
+/// on the same stream as the result and made the command's output unparseable.
 fn run(program: &str, args: &[String]) -> bool {
     Command::new(program)
         .args(args)
-        .status()
-        .map(|status| status.success())
+        .output()
+        .map(|output| output.status.success())
         .unwrap_or(false)
 }

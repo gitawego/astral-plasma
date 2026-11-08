@@ -2118,3 +2118,49 @@ cannot report a failing suite as passing.
 >
 > **Not verified**: executing `scripts/astral-sign.sh` end to end - `minisign` is
 > not installed on this machine, so only its syntax and its wiring are proven.
+
+---
+
+## 30. Signing A Document By Writing The Signature Into It Cannot Verify
+
+> [!NOTE]
+> **Issue**: the signing pipeline "worked" as a script but could not verify: the
+> signature was computed over `latest.json` and then written back into a
+> `signature` field of that same file.
+>
+> **Root cause**: a detached-signature tool signs bytes. Adding the signature to
+> the document changes the bytes that were signed, so every signed release would
+> have failed verification at the exact moment it mattered. The first live test of
+> a signed manifest is what exposed it.
+>
+> **Solution**:
+> 1. The signature is a sibling asset (`latest.json.minisig`), verified over the
+>    exact bytes fetched. The manifest no longer has a `signature` field; an old
+>    release that still carries one stays installable (unknown fields are
+>    ignored).
+> 2. Verification happens **in-process** with `minisign-verify`, so an installed
+>    shell needs no signing tool; only CI signs. A signature with no pinned key is
+>    refused rather than checked against the user's own keyring.
+> 3. The project key exists: public half committed
+>    (`packaging/keys/astral-plasma.pub`, key id `47F66C1650F9EE59`), pinned as
+>    `PINNED_MINISIGN_KEY`, secret half in `~/.minisign/astral-plasma.key` and the
+>    repository secret `MINISIGN_SECRET_KEY`; CI installs `minisign` and signs.
+> 4. A verification failure is now recorded in the update state, so the page can
+>    explain it instead of showing a silent "failed".
+> 5. `quit_running_shell` no longer inherits the child's stdout: `update apply`
+>    prints JSON, and "No running instances…" on the same stream made it
+>    unparseable.
+> 6. A signed fixture (`daemon/tests/fixtures/`) pins the contract: the committed
+>    key verifies the committed signature, one changed byte does not, an unsigned
+>    release is reported as unsigned, and garbage is an error.
+>
+> **Verified live** against a local release server: a signed `latest.json` was
+> accepted and staged (sha256 `d5ac868b…`); editing the version after signing made
+> the check fail with "release signature verification failed" and the reason
+> appeared in `update status`; with `ASTRAL_PLASMA_REQUIRE_SIGNATURE=1` a signed
+> release was accepted and an unsigned one refused with "only installs signed
+> releases".
+>
+> **Not verified**: the GitHub Actions signing step itself (it needs a tagged
+> release), and enforcement is deliberately left off until one signed release has
+> shipped.
