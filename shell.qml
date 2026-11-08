@@ -9,6 +9,7 @@ import "./modules/Astral/Kernel/config"
 import "./modules/Astral/Kernel/theme"
 import "./shell"
 import Astral.Kernel.Host 1.0
+import "./modules/Astral/Apps/Workspaces"
 import "./settings_gui"
 import "./modules/Astral/Kernel/services"
 import "./assistant"
@@ -146,8 +147,14 @@ ShellRoot {
         media: mediaPort
         workspaces: workspacesPort
         metrics: SystemService
+        // Shell-declared components share the shell's kernel registration, which is what
+        // makes a migrated app themed (spec C.18).
+        components: ({ "org.astralplasma.workspaces": workspacesApp })
         host: ({ level: 1, floor: 1 })
         onAppFailed: function (id, reason) { console.error("app failed: " + id + " - " + reason) }
+        Component.onCompleted: console.log("COMPDBG keys=" + JSON.stringify(Object.keys(components))
+            + " planned=" + JSON.stringify(loadedIds) + " loaders=" + loaderCount
+            + " providers=" + JSON.stringify(tabProviders))
     }
 
 
@@ -603,6 +610,13 @@ ShellRoot {
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
 
+
+    // Migrated app components, declared here so they resolve imports in the shell's
+    // context (one kernel registration, one palette).
+    Component {
+        id: workspacesApp
+        WorkspacesApp {}
+    }
 
     // Settings GUI Window
     SettingsWindow {

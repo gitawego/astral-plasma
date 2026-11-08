@@ -62,7 +62,16 @@ Item {
     signal appLoaded(string id)
 
     readonly property var plan: build()
+    /// `appId -> Component` for apps the shell declares itself. A component declared in
+    /// the shell's document resolves its imports in the shell's context, so the app shares
+    /// the shell's kernel singletons instead of instantiating a second, unthemed set.
+    property var components: ({})
+
     property var loaders: ({})
+    /// Number of loaders registered: the plan (`loaded`) can update before the
+    /// `Repeater` has created its delegates, so a pane that mounts on plan changes
+    /// alone can arrive one signal too early.
+    readonly property int loaderCount: Object.keys(loaders).length
     /// Ids already reported through `appFailed`, so a loader error that surfaces
     /// twice (status change + activation) is not reported twice.
     property var reported: ({})
@@ -254,7 +263,11 @@ Item {
             id: appLoader
             active: false
             asynchronous: false
-            source: root.sourceFor(modelData)
+
+            // A shell-declared component wins: it shares the shell's kernel registration.
+            readonly property var declared: root.components[modelData.id] || null
+            sourceComponent: declared
+            source: declared === null ? root.sourceFor(modelData) : ""
 
             onStatusChanged: {
                 if (status === Loader.Error) {
@@ -265,7 +278,9 @@ Item {
             }
 
             Component.onCompleted: {
-                const map = root.loaders;
+                // A *copy*: assigning the same object back would not notify, and a pane
+                // waiting for `loaderCount` would wait forever.
+                const map = Object.assign({}, root.loaders);
                 map[modelData.id] = appLoader;
                 root.loaders = map;
             }

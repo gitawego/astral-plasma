@@ -1,4 +1,9 @@
 {
   "schema": 1,
-  "apps": []
+  "apps": [
+    {
+      "dir": "Workspaces",
+      "id": "org.astralplasma.workspaces"
+    }
+  ]
 }
