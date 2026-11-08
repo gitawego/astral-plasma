@@ -5,13 +5,14 @@ import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "../shell"
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Ai"
 
 Item {
     id: testRoot
     width: 1280
     height: 900
 
-    AiTab {
+    AiApp {
         id: aiTab
         visible: false
         anchors.fill: parent

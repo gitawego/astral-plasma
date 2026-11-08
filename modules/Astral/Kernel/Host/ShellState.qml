@@ -30,4 +30,18 @@ QtObject {
     function iconUrl(name) {
         return iconResolver !== null ? iconResolver(name) : "";
     }
+
+    /// Media card artwork override chosen by the user ("" = the track's own art).
+    property string mediaAvatar: ""
+    /// `speaker` or `radial`; the surface renders it, the shell stores it.
+    property string mediaVisualizerStyle: "radial"
+
+    /// Whether the user has AI privacy mode on.
+    property bool aiPrivacyMode: true
+    /// Provider brand icon resolution, supplied by the shell (it knows the assets).
+    property var providerIconResolver: null
+
+    function providerIconUrl(name) {
+        return providerIconResolver !== null ? providerIconResolver(name) : "";
+    }
 }

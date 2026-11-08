@@ -1,12 +1,19 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
-import "../../modules/Astral/Kernel/config"
+import "../../Kernel/theme"
+import "../../Kernel/components"
 
+// AI app (`manifest.entry.dashboardTab` = "ai").
+//
+// Declared as a Component in `shell.qml` (one kernel registration, spec C.18). `ai` is the
+// shell's live AI service, `shellState` carries the privacy setting and icon resolution, and
+// settings writes go through `intents`.
 Item {
     id: root
+
+    property var ai: null
+    property var shellState: null
+    property var intents: null
 
     implicitWidth: 940
     implicitHeight: 310
@@ -16,24 +23,24 @@ Item {
     property string testWarningLevel: "normal"
     property int activeProviderIndex: 0
     property string selectedAccountIdentity: ""
-    property bool privacyMode: (typeof Config !== "undefined" && Config.aiPrivacyMode !== undefined)
-        ? Config.aiPrivacyMode
+    property bool privacyMode: (typeof Config !== "undefined" && (root.shellState ? root.shellState.aiPrivacyMode : true) !== undefined)
+        ? (root.shellState ? root.shellState.aiPrivacyMode : true)
         : false
 
     readonly property var providersList: {
         if (testMode && testProviders !== null) return testProviders;
-        if (typeof AiTokenService !== "undefined" && AiTokenService.providers) return AiTokenService.providers;
+        if (root.ai !== null && root.ai.providers) return root.ai.providers;
         return [];
     }
 
     readonly property string warningLevel: {
         if (testMode) return testWarningLevel;
-        if (typeof AiTokenService !== "undefined" && AiTokenService.warningLevel) return AiTokenService.warningLevel;
+        if (root.ai !== null && root.ai.warningLevel) return root.ai.warningLevel;
         return "normal";
     }
 
     readonly property bool isRefreshing: {
-        if (typeof AiTokenService !== "undefined") return AiTokenService.isRefreshing;
+        if (root.ai !== null) return root.ai.isRefreshing;
         return false;
     }
 
@@ -119,8 +126,8 @@ Item {
 
     function syncActiveTab() {
         if (!root.providersList || root.providersList.length === 0) return;
-        const lastId = (typeof AiTokenService !== "undefined" && AiTokenService.lastActiveProviderId)
-            ? AiTokenService.lastActiveProviderId
+        const lastId = (root.ai !== null && root.ai.lastActiveProviderId)
+            ? root.ai.lastActiveProviderId
             : "";
         if (lastId) {
             for (let i = 0; i < root.providersList.length; i++) {
@@ -145,7 +152,7 @@ Item {
     }
 
     Connections {
-        target: (typeof AiTokenService !== "undefined") ? AiTokenService : null
+        target: root.ai
         function onLastActiveProviderIdChanged() {
             root.syncActiveTab();
         }
@@ -154,8 +161,8 @@ Item {
     Connections {
         target: (typeof Config !== "undefined") ? Config : null
         function onAiPrivacyModeChanged() {
-            if (typeof Config !== "undefined" && Config.aiPrivacyMode !== undefined) {
-                root.privacyMode = Config.aiPrivacyMode;
+            if (root.shellState !== null) {
+                root.privacyMode = root.shellState.aiPrivacyMode;
             }
         }
     }
@@ -166,7 +173,7 @@ Item {
 
     readonly property var activeAccount: {
         if (!currentProvider || !currentProvider.accounts) return null;
-        const activeGemini = (typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail) ? AiTokenService.activeGeminiEmail.toLowerCase() : "";
+        const activeGemini = (root.ai !== null && root.ai.activeGeminiEmail) ? root.ai.activeGeminiEmail.toLowerCase() : "";
         if (activeGemini && (currentProvider.provider_id === "gemini" || currentProvider.provider === "gemini")) {
             for (let i = 0; i < currentProvider.accounts.length; i++) {
                 if (currentProvider.accounts[i].identity.toLowerCase() === activeGemini || currentProvider.accounts[i].id === activeGemini) {
@@ -294,8 +301,8 @@ Item {
                                     spacing: 6
 
                                     ThemedIcon {
-                                        source: (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function")
-                                            ? Config.providerIconUrl(modelData.provider_id || modelData.provider)
+                                        source: root.shellState !== null
+                                            ? root.shellState.providerIconUrl(modelData.provider_id || modelData.provider)
                                             : ""
                                         materialIcon: root.getProviderIcon(modelData)
                                         size: 15
@@ -351,8 +358,8 @@ Item {
                                 onClicked: {
                                     root.activeProviderIndex = index;
                                     const pid = modelData.provider_id || modelData.provider;
-                                    if (typeof AiTokenService !== "undefined" && pid) {
-                                        AiTokenService.lastActiveProviderId = pid;
+                                    if (root.ai !== null && pid) {
+                                        root.ai.lastActiveProviderId = pid;
                                     }
                                 }
                             }
@@ -365,9 +372,9 @@ Item {
 
             // Global Prompt Cache Hit Rate Pill
             ActionPill {
-                visible: (typeof AiTokenService !== "undefined" && AiTokenService.cacheHitRate > 0)
+                visible: (root.ai !== null && root.ai.cacheHitRate > 0)
                 icon: "bolt"
-                text: Math.round((typeof AiTokenService !== "undefined" ? AiTokenService.cacheHitRate : 0)) + "% Cache Hit (" + root.formatTokenCount((typeof AiTokenService !== "undefined" && AiTokenService.totalCachedTokens) ? AiTokenService.totalCachedTokens : 0) + " saved)"
+                text: Math.round((root.ai !== null ? root.ai.cacheHitRate : 0)) + "% Cache Hit (" + root.formatTokenCount((root.ai !== null && root.ai.totalCachedTokens) ? root.ai.totalCachedTokens : 0) + " saved)"
                 variant: "active"
                 pill: true
                 interactive: false
@@ -386,8 +393,8 @@ Item {
                 iconSize: 15
                 elevation: 2
                 onClicked: {
-                    if (typeof AiTokenService !== "undefined") {
-                        AiTokenService.refresh(true);
+                    if (root.ai !== null) {
+                        root.ai.refresh(true);
                     }
                 }
             }
@@ -402,9 +409,9 @@ Item {
                 iconSize: 15
                 elevation: 2
                 onClicked: {
-                    if (typeof Config !== "undefined") {
-                        Config.dashboardVisible = false;
-                        Config.openSettings("ai");
+                    if (root.intents) {
+                        root.intents.request("dashboard.close");
+                        root.intents.request("settings.open", { page: "ai" });
                     }
                 }
             }
@@ -447,8 +454,8 @@ Item {
                         spacing: 10
 
                         ThemedIcon {
-                            source: (typeof Config !== "undefined" && typeof Config.providerIconUrl === "function" && root.currentProvider)
-                                ? Config.providerIconUrl(root.currentProvider.provider_id || root.currentProvider.provider)
+                            source: (root.shellState !== null && root.currentProvider)
+                                ? root.shellState.providerIconUrl(root.currentProvider.provider_id || root.currentProvider.provider)
                                 : ""
                             materialIcon: root.getProviderIcon(root.currentProvider)
                             size: 24
@@ -728,8 +735,8 @@ Item {
                             paddingHorizontal: 8
                             onClicked: {
                                 const nextVal = !root.privacyMode;
-                                if (typeof Config !== "undefined" && typeof Config.setAiPrivacyMode === "function") {
-                                    Config.setAiPrivacyMode(nextVal);
+                                if (root.intents) {
+                                    root.intents.request("ai.privacyMode", { enabled: nextVal });
                                 }
                                 root.privacyMode = nextVal;
                             }
@@ -743,9 +750,9 @@ Item {
                             fixedHeight: 20
                             paddingHorizontal: 8
                             onClicked: {
-                                if (typeof Config !== "undefined") {
-                                    Config.dashboardVisible = false;
-                                    Config.openSettings("ai");
+                                if (root.intents) {
+                                    root.intents.request("dashboard.close");
+                                    root.intents.request("settings.open", { page: "ai" });
                                 }
                             }
                         }
@@ -759,8 +766,8 @@ Item {
                             Layout.fillWidth: true
                             implicitHeight: 38
 
-                            readonly property bool isAccountActive: (typeof AiTokenService !== "undefined" && AiTokenService.activeGeminiEmail)
-                                ? (modelData.identity.toLowerCase() === AiTokenService.activeGeminiEmail.toLowerCase() || modelData.id === AiTokenService.activeGeminiEmail)
+                            readonly property bool isAccountActive: (root.ai !== null && root.ai.activeGeminiEmail)
+                                ? (modelData.identity.toLowerCase() === root.ai.activeGeminiEmail.toLowerCase() || modelData.id === root.ai.activeGeminiEmail)
                                 : modelData.is_active
                             readonly property bool isHovered: accMouse.containsMouse
 
@@ -909,8 +916,8 @@ Item {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     root.selectedAccountIdentity = modelData.identity || modelData.id;
-                                    if (typeof AiTokenService !== "undefined") {
-                                        AiTokenService.switchGeminiAccount(modelData.identity || modelData.id);
+                                    if (root.ai !== null) {
+                                        root.ai.switchGeminiAccount(modelData.identity || modelData.id);
                                     }
                                 }
                             }
@@ -1247,7 +1254,7 @@ Item {
                     paddingHorizontal: 14
                     onClicked: {
                         if (typeof Config !== "undefined") {
-                            Config.openSettings("ai");
+                            root.intents && root.intents.request("settings.open", { page: "ai" });
                         }
                     }
                 }

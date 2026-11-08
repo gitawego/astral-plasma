@@ -2,6 +2,10 @@
   "schema": 1,
   "apps": [
     {
+      "dir": "Ai",
+      "id": "org.astralplasma.ai"
+    },
+    {
       "dir": "Media",
       "id": "org.astralplasma.media"
     },

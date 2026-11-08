@@ -1817,7 +1817,8 @@ badge and readable chips, the **media** tab renders the player's idle state ("No
 Playing · NetEase Cloud Music (Wine)"), transport, progress and artwork, and the
 **performance** tab renders live telemetry (CPU 11%, memory 40%, GPU 33%, speed, temperature,
 processes) — all hosted in their dashboard panes, zero load errors, `make test` 1109 Rust
-tests + 164 QML suites. Three apps are migrated; the pattern is mechanical now.
+tests + 164 QML suites. and the **AI** tab renders live quota data (98% cache hit, per-provider remaining limits,
+three connected accounts). Four apps are migrated; the pattern is mechanical now.
 
 The trade-off is explicit: `shell.qml` names each migrated app once, in a component
 declaration. That is the price of sharing one kernel registration, and it is smaller than

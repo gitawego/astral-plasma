@@ -456,14 +456,30 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 3
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: aiTab.implicitHeight
+                    implicitHeight: aiApp.children.length > 0
+                        ? Math.max(aiApp.children[0].implicitHeight, 320) : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 3) || tabSlider.isAnimating
 
-                    AiTab {
-                        id: aiTab
+                    Item {
+                        id: aiApp
                         width: parent.width
                         height: parent.height
+
+                        readonly property int hostReadiness: {
+                            if (!root.appHost) return 0;
+                            return root.appHost.loaderCount * 1000
+                                + Object.keys(root.appHost.tabProviders).length;
+                        }
+                        onHostReadinessChanged: mountApp()
+                        Component.onCompleted: mountApp()
+
+                        function mountApp() {
+                            if (!root.appHost) return;
+                            const provider = root.appHost.providerForTab("ai");
+                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
+                            if (aiApp.children.length === 0) root.appHost.mount(provider, aiApp);
+                        }
                     }
                 }
 

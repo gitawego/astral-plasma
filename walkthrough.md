@@ -2771,3 +2771,21 @@ write it performs (`perfSelectedDevice`) travels as the `performance.device` int
 Three of eleven apps migrated (workspaces, media, performance); the sequence is now:
 move the file, point imports at `../../Kernel/...`, inject the ports, declare one Component in
 `shell.qml`, mount it from its pane, update the suites.
+
+---
+
+## P4 — the AI tab is an app (2026-11-08)
+
+Fourth migration: `ai` (the shell's live AI service), `shellState` (privacy mode + provider
+icon resolution) and `intents` (`settings.open`, `ai.privacyMode`, `dashboard.close`) injected;
+hosted in its pane; declared as a Component in `shell.qml`.
+
+`ShellState` widened by what the surfaces actually render — `mediaAvatar`,
+`mediaVisualizerStyle`, `aiPrivacyMode`, `providerIconUrl()` — each a deliberate widening, and
+`AppHost` gained the `ai` injection alongside `metrics`.
+
+> **Verified live**: 98% cache hit (2.7B saved), Google AI Pro / OpenCode / MiniMax provider
+> tabs, per-limits with "% used" bars, and three connected profiles with Switch actions, all in
+> the shell palette. Zero load errors. `make test` exit 0 — 1109 Rust tests, 164 QML suites.
+
+Four of eleven apps migrated: workspaces, media, performance, ai.

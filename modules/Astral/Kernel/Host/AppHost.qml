@@ -46,6 +46,8 @@ Item {
     property var workspaces: null
     /// Machine telemetry (`MetricsPort`), injected for performance surfaces.
     property var metrics: null
+    /// The AI quota service, injected for the AI surface (live instance).
+    property var ai: null
 
     /// Loadable entries, in dependency order.
     readonly property var loaded: plan.load
@@ -186,6 +188,11 @@ Item {
             item.metrics = root.metrics;
         } catch (error) {
             // The app does not read telemetry: fine.
+        }
+        try {
+            item.ai = root.ai;
+        } catch (error) {
+            // The app does not read AI state: fine.
         }
     }
 

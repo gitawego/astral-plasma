@@ -12,6 +12,7 @@ import Astral.Kernel.Host 1.0
 import "./modules/Astral/Apps/Workspaces"
 import "./modules/Astral/Apps/Media"
 import "./modules/Astral/Apps/Performance"
+import "./modules/Astral/Apps/Ai"
 import "./settings_gui"
 import "./modules/Astral/Kernel/services"
 import "./assistant"
@@ -32,6 +33,10 @@ ShellRoot {
         dashboardVisible: Config.dashboardVisible
         daemonBin: Config.daemonBin
         iconResolver: function (name) { return Config.iconUrl(name); }
+        mediaAvatar: Config.mediaAvatar
+        mediaVisualizerStyle: Config.mediaVisualizerStyle
+        aiPrivacyMode: Config.aiPrivacyMode
+        providerIconResolver: function (name) { return Config.providerIconUrl(name); }
     }
 
     SessionPort {
@@ -149,12 +154,14 @@ ShellRoot {
         media: mediaPort
         workspaces: workspacesPort
         metrics: SystemService
+        ai: AiTokenService
         // Shell-declared components share the shell's kernel registration, which is what
         // makes a migrated app themed (spec C.18).
         components: ({
             "org.astralplasma.workspaces": workspacesApp,
             "org.astralplasma.media": mediaApp,
-            "org.astralplasma.performance": performanceApp
+            "org.astralplasma.performance": performanceApp,
+            "org.astralplasma.ai": aiApp
         })
         eager: []
         host: ({ level: 1, floor: 1 })
@@ -630,6 +637,10 @@ ShellRoot {
         id: performanceApp
         PerformanceApp {}
     }
+    Component {
+        id: aiApp
+        AiApp {}
+    }
 
     // Settings GUI Window
     SettingsWindow {
@@ -692,6 +703,22 @@ ShellRoot {
                 return intents.invalid("performance.device needs cpu|memory|gpu|battery");
             }
             Config.perfSelectedDevice = device;
+            return intents.applied();
+        });
+        intents.register("dashboard.close", function () {
+            Config.dashboardVisible = false;
+            return intents.applied();
+        });
+        intents.register("settings.open", function (args) {
+            const page = (args && args.page) ? String(args.page) : "";
+            Config.openSettings(page);
+            return intents.applied();
+        });
+        intents.register("ai.privacyMode", function (args) {
+            if (!args || typeof args.enabled !== "boolean") {
+                return intents.invalid("ai.privacyMode needs enabled=true|false");
+            }
+            Config.setAiPrivacyMode(args.enabled);
             return intents.applied();
         });
         intents.register("dashboard.show", function (args) {
