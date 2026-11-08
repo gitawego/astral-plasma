@@ -1201,6 +1201,13 @@ need them are mechanical rather than investigative:
 `MediaPort` is filled by the shell from `MprisMedia`, clamps seeks, and turns every
 operation into a stated failure when the shell cannot do it.
 
+`AppHost.mount(appId, parentItem)` embeds an app's item in a host-owned surface (a
+dashboard pane) without the pane owning the app's code, and mounts the same instance
+twice rather than duplicating it. `tst_app_host` also asserts that every
+`featureHost.<name>` used in `shell.qml` exists on the host — a scripted edit once
+dropped `itemFor` while the shell still called it, and nothing failed until that IPC
+ran.
+
 **Dashboard tabs are offered by apps** (`AppHost.tabProviders`): a manifest declares
 `entry.dashboardTab`, and the host answers "which app provides this tab?" from the
 *plan*, so a disabled or incompatible app offers nothing. `CentralDashboard` still

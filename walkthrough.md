@@ -2597,3 +2597,22 @@ unsupported operation is a stated failure.
 > `WindowService`/`KWinWorkspaces`; the port it needs now exists, and the pane content
 > in `shell/CentralDropdown.qml` is where it will be hosted — the panes themselves
 > stay, because the slider indexes them by position.
+
+---
+
+## P4 — `AppHost.mount`, and a caught wiring bug (2026-11-08)
+
+`mount(appId, parentItem)` embeds an app's item in a host-owned surface — a dashboard
+pane owns layout, the app owns behaviour — and re-mounting moves the same instance.
+
+While adding it I found that an earlier scripted edit had **dropped `itemFor` from
+`AppHost`** while `shell.qml` still called it for `overview search`. Nothing failed at
+load; that IPC would have thrown the first time it ran. It is restored, and
+`tst_app_host` now asserts that **every `featureHost.<name>` used in `shell.qml` exists
+on the host**, so this class of edit cannot ship again.
+
+> **Verified**: `make test` exit 0 — 1109 Rust tests, 163 QML suites; the mount test
+> checks parenting, identity on re-mount, and a null return for an unknown app; the API
+> test compares the shell's host calls against the host's members.
+>
+> **Not verified**: nothing new on screen — this slice is host API plus tests.

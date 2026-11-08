@@ -196,6 +196,54 @@ Item {
         failures = [];
         loadedEvents = [];
 
+        // ---- mounting into a host-owned surface ------------------------------
+        // A dashboard pane embeds an app's item; the pane owns layout, the app owns
+        // behaviour. Mounting twice must move the same item, not duplicate it.
+        appHost = build([entry("io.github.fixture.good")]);
+        const pane = Qt.createQmlObject('import QtQuick; Item { width: 400; height: 300 }', testRoot, "pane");
+        const mounted = appHost.mount("io.github.fixture.good", pane);
+        assert(mounted !== null, "mounting returns the item");
+        assert(mounted.parent === pane, "the item is parented into the pane");
+        const remounted = appHost.mount("io.github.fixture.good", pane);
+        assert(remounted === mounted, "mounting twice moves the same instance");
+        assert(appHost.mount("io.github.fixture.ghost", pane) === null,
+            "mounting an unknown app returns null");
+        pane.destroy();
+        appHost.destroy();
+        failures = [];
+        loadedEvents = [];
+
+        // ---- the shell only uses host API that exists -------------------------
+        // A scripted edit once dropped `itemFor` from AppHost while leaving
+        // `shell.qml` calling it: nothing failed at load, only when that IPC ran. This
+        // asserts every `featureHost.<name>` in the shell exists on the host.
+        const shellSource = (function () {
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", Qt.resolvedUrl("../shell.qml") + "?v=" + Date.now(), false);
+            xhr.send();
+            return xhr.responseText || "";
+        })();
+        assert(shellSource.length > 1000, "shell.qml must be readable");
+
+        appHost = build([entry("io.github.fixture.good")]);
+        const used = [];
+        const pattern = /featureHost\.([A-Za-z_][A-Za-z0-9_]*)/g;
+        let match = pattern.exec(shellSource);
+        while (match !== null) {
+            if (used.indexOf(match[1]) < 0) {
+                used.push(match[1]);
+            }
+            match = pattern.exec(shellSource);
+        }
+        assert(used.length > 0, "the shell must talk to the host");
+        for (const name of used) {
+            assert(typeof appHost[name] !== "undefined",
+                "shell.qml calls featureHost." + name + " but AppHost does not define it");
+        }
+        appHost.destroy();
+        failures = [];
+        loadedEvents = [];
+
         // ---- an empty registry ----------------------------------------------
         appHost = build([]);
         assert(appHost.loaded.length === 0 && appHost.skipped.length === 0,

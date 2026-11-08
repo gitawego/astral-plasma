@@ -173,6 +173,29 @@ Item {
         }
     }
 
+    /// The instantiated item for an app, or null when it is not active.
+    function itemFor(id) {
+        const loader = loaderFor(id);
+        return loader ? loader.item : null;
+    }
+
+    /// Instantiate an app and parent it into `parentItem` — the way a host-owned
+    /// surface (a dashboard pane) embeds an app's item without owning its code.
+    ///
+    /// Returns the item, or null (with `appFailed` emitted). Mounting twice moves the
+    /// same item rather than creating a second instance.
+    function mount(appId, parentItem) {
+        const item = activate(appId);
+        if (!item || !parentItem) {
+            return item;
+        }
+        if (item.parent !== parentItem) {
+            item.parent = parentItem;
+        }
+        item.anchors.fill = parentItem;
+        return item;
+    }
+
     function reportFailure(id, reason) {
         if (reported[id]) {
             return;
