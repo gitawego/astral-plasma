@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Performance"
 import "../modules/Astral/Kernel/theme"
 
 Item {
@@ -16,7 +17,7 @@ Item {
         return xhr.responseText || "";
     }
 
-    PerformanceTab {
+    PerformanceApp {
         id: perfTab
         anchors.fill: parent
         testMode: true
@@ -45,7 +46,7 @@ Item {
             perfTab.openSystemMonitor();
 
             // 2. PerformanceTab Source Audit
-            const perfSrc = readLocalFile("../dashboard/tabs/PerformanceTab.qml");
+            const perfSrc = readLocalFile("../modules/Astral/Apps/Performance/PerformanceApp.qml");
             assert(perfSrc.length > 500, "PerformanceTab.qml source must be readable");
             assert(perfSrc.indexOf("import Quickshell") === -1, "PerformanceTab must not import Quickshell (must remain instantiable under standard qml6)");
             assert(perfSrc.indexOf("Quickshell.execDetached") === -1, "PerformanceTab must not use raw Quickshell.execDetached without service abstraction");

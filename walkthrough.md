@@ -2755,3 +2755,19 @@ Same path as workspaces: kernel primitives (themed through the shell-declared co
 
 Two migrations now share the same mechanism, so the pattern is repeatable: migrate the file,
 declare one `Component` in `shell.qml`, mount it from its pane, point the suites at the app.
+
+---
+
+## P4 — the performance tab is an app (2026-11-08)
+
+Third migration on the same path: kernel primitives, `metrics` (the shell's live
+`SystemService`), `shellState` and `intents` injected, hosted in its pane. The one settings
+write it performs (`perfSelectedDevice`) travels as the `performance.device` intent.
+
+> **Verified live**: live telemetry in the shell's palette — CPU 11% (12th Gen i9-12900HX
+> with its graph), memory 40%, GPU 33%, speed/temperature/processes. Zero load errors.
+> `make test` exit 0 — 1109 Rust tests, 164 QML suites.
+
+Three of eleven apps migrated (workspaces, media, performance); the sequence is now:
+move the file, point imports at `../../Kernel/...`, inject the ports, declare one Component in
+`shell.qml`, mount it from its pane, update the suites.

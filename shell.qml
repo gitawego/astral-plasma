@@ -11,6 +11,7 @@ import "./shell"
 import Astral.Kernel.Host 1.0
 import "./modules/Astral/Apps/Workspaces"
 import "./modules/Astral/Apps/Media"
+import "./modules/Astral/Apps/Performance"
 import "./settings_gui"
 import "./modules/Astral/Kernel/services"
 import "./assistant"
@@ -152,7 +153,8 @@ ShellRoot {
         // makes a migrated app themed (spec C.18).
         components: ({
             "org.astralplasma.workspaces": workspacesApp,
-            "org.astralplasma.media": mediaApp
+            "org.astralplasma.media": mediaApp,
+            "org.astralplasma.performance": performanceApp
         })
         eager: []
         host: ({ level: 1, floor: 1 })
@@ -623,6 +625,10 @@ ShellRoot {
     Component {
         id: mediaApp
         MediaApp {}
+    }
+    Component {
+        id: performanceApp
+        PerformanceApp {}
     }
 
     // Settings GUI Window

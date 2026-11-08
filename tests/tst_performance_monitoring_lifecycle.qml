@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Performance"
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 
@@ -17,13 +18,13 @@ Item {
         return xhr.responseText || "";
     }
 
-    PerformanceTab {
+    PerformanceApp {
         id: hiddenPerfTab
         visible: false
         testMode: false
     }
 
-    PerformanceTab {
+    PerformanceApp {
         id: activePerfTab
         visible: true
         testMode: true

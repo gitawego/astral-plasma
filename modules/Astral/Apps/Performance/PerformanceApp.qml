@@ -1,13 +1,20 @@
 import QtQuick
 import QtQuick.Layouts
-import "../../modules/Astral/Kernel/components/motion"
-import "../../modules/Astral/Kernel/theme"
-import "../../modules/Astral/Kernel/components"
-import "../../modules/Astral/Kernel/services"
-import "../../modules/Astral/Kernel/config"
+import "../../Kernel/components/motion"
+import "../../Kernel/theme"
+import "../../Kernel/components"
 
+// Performance app (`manifest.entry.dashboardTab` = "performance").
+//
+// Declared as a Component in `shell.qml` so it shares the shell's kernel registration and
+// palette (spec C.18). `metrics` is the shell's live telemetry service; `shellState` carries
+// the selected device; writes go through `intents`.
 Item {
     id: root
+
+    property var metrics: null
+    property var shellState: null
+    property var intents: null
 
     implicitWidth: 680
     implicitHeight: 350
@@ -18,13 +25,13 @@ Item {
     readonly property bool isTargetVisible: testMode || (
         visible &&
         ((typeof Config !== "undefined" && Config)
-            ? (Boolean(Config.dashboardVisible) && Config.activeDashboardTab === "performance")
+            ? (Boolean((root.shellState ? root.shellState.dashboardVisible : false)) && (root.shellState && root.shellState.activeDashboardTab === "performance"))
             : true)
     )
 
     onIsTargetVisibleChanged: {
-        if (typeof SystemService !== "undefined" && SystemService && typeof SystemService.registerClient === "function") {
-            SystemService.registerClient(root, root.isTargetVisible);
+        if (root.metrics !== null && root.metrics && typeof root.metrics.registerClient === "function") {
+            root.metrics.registerClient(root, root.isTargetVisible);
         }
         if (root.isTargetVisible) {
             telemetryCanvas.requestPaint();
@@ -32,29 +39,29 @@ Item {
     }
 
     Component.onCompleted: {
-        if (typeof SystemService !== "undefined" && SystemService && typeof SystemService.registerClient === "function") {
-            SystemService.registerClient(root, root.isTargetVisible);
+        if (root.metrics !== null && root.metrics && typeof root.metrics.registerClient === "function") {
+            root.metrics.registerClient(root, root.isTargetVisible);
         }
     }
 
     Component.onDestruction: {
-        if (typeof SystemService !== "undefined" && SystemService && typeof SystemService.unregisterClient === "function") {
-            SystemService.unregisterClient(root);
+        if (root.metrics !== null && root.metrics && typeof root.metrics.unregisterClient === "function") {
+            root.metrics.unregisterClient(root);
         }
     }
 
     // Selected hardware telemetry device: "cpu" | "memory" | "gpu" | "battery"
-    property string selectedDevice: (typeof Config !== "undefined" && Config.perfSelectedDevice) ? Config.perfSelectedDevice : "cpu"
+    property string selectedDevice: (typeof Config !== "undefined" && (root.shellState ? root.shellState.perfSelectedDevice : "")) ? (root.shellState ? root.shellState.perfSelectedDevice : "") : "cpu"
 
-    readonly property int gpuCount: (typeof SystemService !== "undefined" && SystemService.gpus && SystemService.gpus.length > 0)
-        ? SystemService.gpus.length
+    readonly property int gpuCount: (root.metrics !== null && root.metrics.gpus && root.metrics.gpus.length > 0)
+        ? root.metrics.gpus.length
         : 1
 
     Connections {
         target: (typeof Config !== "undefined") ? Config : null
         function onPerfSelectedDeviceChanged() {
-            if (Config.perfSelectedDevice && root.selectedDevice !== Config.perfSelectedDevice) {
-                root.selectedDevice = Config.perfSelectedDevice;
+            if ((root.shellState ? root.shellState.perfSelectedDevice : "") && root.selectedDevice !== (root.shellState ? root.shellState.perfSelectedDevice : "")) {
+                root.selectedDevice = (root.shellState ? root.shellState.perfSelectedDevice : "");
             }
         }
     }
@@ -64,13 +71,13 @@ Item {
             const idx = parseInt(root.selectedDevice.substring(4));
             return isNaN(idx) ? 0 : idx;
         }
-        return (typeof SystemService !== "undefined" && SystemService && SystemService.selectedGpuIndex !== undefined) ? SystemService.selectedGpuIndex : 0;
+        return (root.metrics !== null && root.metrics && root.metrics.selectedGpuIndex !== undefined) ? root.metrics.selectedGpuIndex : 0;
     }
 
     readonly property var currentGpu: {
-        if (typeof SystemService !== "undefined" && SystemService && SystemService.gpus && SystemService.gpus.length > 0) {
-            const idx = Math.min(Math.max(0, root.selectedGpuIndex), SystemService.gpus.length - 1);
-            return SystemService.gpus[idx];
+        if (root.metrics !== null && root.metrics && root.metrics.gpus && root.metrics.gpus.length > 0) {
+            const idx = Math.min(Math.max(0, root.selectedGpuIndex), root.metrics.gpus.length - 1);
+            return root.metrics.gpus[idx];
         }
         return null;
     }
@@ -78,12 +85,15 @@ Item {
     onSelectedDeviceChanged: {
         if (root.selectedDevice.startsWith("gpu:")) {
             const idx = parseInt(root.selectedDevice.substring(4));
-            if (!isNaN(idx) && typeof SystemService !== "undefined" && SystemService) {
-                SystemService.selectedGpuIndex = idx;
+            if (!isNaN(idx) && root.metrics !== null && root.metrics) {
+                root.metrics.selectedGpuIndex = idx;
             }
         }
-        if (typeof Config !== "undefined" && Config.perfSelectedDevice !== selectedDevice) {
-            Config.perfSelectedDevice = selectedDevice;
+        if (root.shellState !== null && root.shellState.perfSelectedDevice !== selectedDevice) {
+            // A settings write is an intent: the shell owns the settings document.
+            if (root.intents) {
+                root.intents.request("performance.device", { device: selectedDevice });
+            }
         }
         // Immediate clean reset when switching hardware device tabs
         slideTween.complete();
@@ -118,8 +128,8 @@ Item {
     readonly property real animatedMainUsage: detailContainer.animatedMainUsage
 
     function formatBytes(bytes) {
-        if (typeof SystemService !== "undefined" && SystemService && typeof SystemService.formatBytes === "function") {
-            return SystemService.formatBytes(bytes);
+        if (root.metrics !== null && root.metrics && typeof root.metrics.formatBytes === "function") {
+            return root.metrics.formatBytes(bytes);
         }
         if (!bytes || bytes <= 0) return "0 B";
         const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -135,8 +145,8 @@ Item {
             WindowService.openSystemMonitor();
             return;
         }
-        if (typeof SystemService !== "undefined" && SystemService && typeof SystemService.openSystemMonitor === "function") {
-            SystemService.openSystemMonitor();
+        if (root.metrics !== null && root.metrics && typeof root.metrics.openSystemMonitor === "function") {
+            root.metrics.openSystemMonitor();
             return;
         }
     }
@@ -144,19 +154,19 @@ Item {
     // Device telemetry active dataset
     readonly property var activeHistory: {
         let hist = [];
-        if (typeof SystemService !== "undefined" && SystemService) {
+        if (root.metrics !== null && root.metrics) {
             if (root.selectedDevice.startsWith("gpu")) {
-                if (typeof SystemService.getGpuHistory === "function") {
-                    hist = SystemService.getGpuHistory(root.selectedGpuIndex);
+                if (typeof root.metrics.getGpuHistory === "function") {
+                    hist = root.metrics.getGpuHistory(root.selectedGpuIndex);
                 } else {
-                    hist = SystemService.gpuHistory;
+                    hist = root.metrics.gpuHistory;
                 }
             } else {
                 switch (root.selectedDevice) {
-                    case "memory": hist = SystemService.ramHistory; break;
-                    case "battery": hist = SystemService.batteryHistory; break;
+                    case "memory": hist = root.metrics.ramHistory; break;
+                    case "battery": hist = root.metrics.batteryHistory; break;
                     case "cpu":
-                    default: hist = SystemService.cpuHistory; break;
+                    default: hist = root.metrics.cpuHistory; break;
                 }
             }
         }
@@ -199,7 +209,7 @@ Item {
         animated: root.isTargetVisible
         duration: Theme.animExpressiveFastSpatial
         bezier: Theme.curveExpressiveFastSpatial
-        target: Math.min(1.0, Math.max(0.0, (typeof SystemService !== "undefined" && SystemService.cpuUsage !== undefined) ? SystemService.cpuUsage : 0.0))
+        target: Math.min(1.0, Math.max(0.0, (root.metrics !== null && root.metrics.cpuUsage !== undefined) ? root.metrics.cpuUsage : 0.0))
     }
 
     MotionValue {
@@ -207,7 +217,7 @@ Item {
         animated: root.isTargetVisible
         duration: Theme.animExpressiveFastSpatial
         bezier: Theme.curveExpressiveFastSpatial
-        target: Math.min(1.0, Math.max(0.0, (typeof SystemService !== "undefined" && SystemService.ramUsage !== undefined) ? SystemService.ramUsage : 0.0))
+        target: Math.min(1.0, Math.max(0.0, (root.metrics !== null && root.metrics.ramUsage !== undefined) ? root.metrics.ramUsage : 0.0))
     }
 
     MotionValue {
@@ -215,7 +225,7 @@ Item {
         animated: root.isTargetVisible
         duration: Theme.animExpressiveFastSpatial
         bezier: Theme.curveExpressiveFastSpatial
-        target: Math.min(1.0, Math.max(0.0, (typeof SystemService !== "undefined" && SystemService.batteryPercentage !== undefined) ? (SystemService.batteryPercentage / 100.0) : 1.0))
+        target: Math.min(1.0, Math.max(0.0, (root.metrics !== null && root.metrics.batteryPercentage !== undefined) ? (root.metrics.batteryPercentage / 100.0) : 1.0))
     }
 
     // The selected device's big readout follows the same policy.
@@ -332,7 +342,7 @@ Item {
                                 const w = width;
                                 const h = height;
                                 ctx.clearRect(0, 0, w, h);
-                                const hist = (typeof SystemService !== "undefined") ? SystemService.cpuHistory : [];
+                                const hist = (root.metrics !== null) ? root.metrics.cpuHistory : [];
                                 if (!hist || hist.length < 2) return;
                                 const col = root.cpuColor;
                                 ctx.beginPath();
@@ -354,13 +364,13 @@ Item {
                                 ctx.fill();
                             }
                             Connections {
-                                target: (typeof SystemService !== "undefined") ? SystemService : null
+                                target: root.metrics
                                 function onCpuHistoryChanged() { if (root.isTargetVisible) cpuSparkline.requestPaint(); }
                             }
                         }
 
                         Text {
-                            text: Math.round(((typeof SystemService !== "undefined" && SystemService.cpuUsage !== undefined) ? SystemService.cpuUsage : 0.0) * 100) + "%"
+                            text: Math.round(((root.metrics !== null && root.metrics.cpuUsage !== undefined) ? root.metrics.cpuUsage : 0.0) * 100) + "%"
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 13
                             font.weight: Font.Bold
@@ -371,8 +381,8 @@ Item {
                     }
 
                     Text {
-                        text: ((typeof SystemService !== "undefined" && SystemService.cpuFreqGhz > 0) ? (SystemService.cpuFreqGhz.toFixed(2) + " GHz") : "3.60 GHz") +
-                              ((typeof SystemService !== "undefined" && SystemService.cpuTemp > 0) ? (" • " + Math.round(SystemService.cpuTemp) + "°C") : "")
+                        text: ((root.metrics !== null && root.metrics.cpuFreqGhz > 0) ? (root.metrics.cpuFreqGhz.toFixed(2) + " GHz") : "3.60 GHz") +
+                              ((root.metrics !== null && root.metrics.cpuTemp > 0) ? (" • " + Math.round(root.metrics.cpuTemp) + "°C") : "")
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                         font.pixelSize: 11
                         color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : Qt.rgba(1, 1, 1, 0.6)
@@ -451,7 +461,7 @@ Item {
                                 const w = width;
                                 const h = height;
                                 ctx.clearRect(0, 0, w, h);
-                                const hist = (typeof SystemService !== "undefined") ? SystemService.ramHistory : [];
+                                const hist = (root.metrics !== null) ? root.metrics.ramHistory : [];
                                 if (!hist || hist.length < 2) return;
                                 const col = root.memoryColor;
                                 ctx.beginPath();
@@ -473,13 +483,13 @@ Item {
                                 ctx.fill();
                             }
                             Connections {
-                                target: (typeof SystemService !== "undefined") ? SystemService : null
+                                target: root.metrics
                                 function onRamHistoryChanged() { if (root.isTargetVisible) memSparkline.requestPaint(); }
                             }
                         }
 
                         Text {
-                            text: Math.round(((typeof SystemService !== "undefined" && SystemService.ramUsage !== undefined) ? SystemService.ramUsage : 0.0) * 100) + "%"
+                            text: Math.round(((root.metrics !== null && root.metrics.ramUsage !== undefined) ? root.metrics.ramUsage : 0.0) * 100) + "%"
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 13
                             font.weight: Font.Bold
@@ -490,8 +500,8 @@ Item {
                     }
 
                     Text {
-                        text: (typeof SystemService !== "undefined" && SystemService.ramTotalBytes > 0)
-                            ? (root.formatBytes(SystemService.ramUsedBytes) + " / " + root.formatBytes(SystemService.ramTotalBytes))
+                        text: (root.metrics !== null && root.metrics.ramTotalBytes > 0)
+                            ? (root.formatBytes(root.metrics.ramUsedBytes) + " / " + root.formatBytes(root.metrics.ramTotalBytes))
                             : "16.0 GiB / 32.0 GiB"
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                         font.pixelSize: 11
@@ -537,19 +547,19 @@ Item {
                     }
 
                     readonly property var gpuData: {
-                        if (typeof SystemService !== "undefined" && SystemService.gpus && SystemService.gpus[index]) {
-                            return SystemService.gpus[index];
+                        if (root.metrics !== null && root.metrics.gpus && root.metrics.gpus[index]) {
+                            return root.metrics.gpus[index];
                         }
                         return {
                             index: index,
                             name: "GPU " + index,
                             model: "Graphics",
                             gpu_type: "discrete",
-                            usage: (typeof SystemService !== "undefined" ? SystemService.gpuUsage : 0.0),
-                            temperature: (typeof SystemService !== "undefined" ? SystemService.gpuTemp : 0.0),
-                            clock_ghz: (typeof SystemService !== "undefined" ? SystemService.gpuClockGhz : 0.0),
-                            memory_used_bytes: (typeof SystemService !== "undefined" ? SystemService.gpuMemoryUsedBytes : 0),
-                            memory_total_bytes: (typeof SystemService !== "undefined" ? SystemService.gpuMemoryTotalBytes : 0)
+                            usage: (root.metrics !== null ? root.metrics.gpuUsage : 0.0),
+                            temperature: (root.metrics !== null ? root.metrics.gpuTemp : 0.0),
+                            clock_ghz: (root.metrics !== null ? root.metrics.gpuClockGhz : 0.0),
+                            memory_used_bytes: (root.metrics !== null ? root.metrics.gpuMemoryUsedBytes : 0),
+                            memory_total_bytes: (root.metrics !== null ? root.metrics.gpuMemoryTotalBytes : 0)
                         };
                     }
 
@@ -610,9 +620,9 @@ Item {
                                     const w = width;
                                     const h = height;
                                     ctx.clearRect(0, 0, w, h);
-                                    const hist = (typeof SystemService !== "undefined" && SystemService && typeof SystemService.getGpuHistory === "function")
-                                        ? SystemService.getGpuHistory(gpuCardDelegate.cardGpuIndex)
-                                        : ((typeof SystemService !== "undefined" && SystemService && SystemService.gpuHistory) ? SystemService.gpuHistory : []);
+                                    const hist = (root.metrics !== null && root.metrics && typeof root.metrics.getGpuHistory === "function")
+                                        ? root.metrics.getGpuHistory(gpuCardDelegate.cardGpuIndex)
+                                        : ((root.metrics !== null && root.metrics && root.metrics.gpuHistory) ? root.metrics.gpuHistory : []);
                                     if (!hist || hist.length < 2) return;
                                     const col = root.gpuColor;
                                     ctx.beginPath();
@@ -634,7 +644,7 @@ Item {
                                     ctx.fill();
                                 }
                                 Connections {
-                                    target: (typeof SystemService !== "undefined") ? SystemService : null
+                                    target: root.metrics
                                     function onGpuHistoriesChanged() { if (root.isTargetVisible) delegateGpuSparkline.requestPaint(); }
                                     function onGpuHistoryChanged() { if (root.isTargetVisible) delegateGpuSparkline.requestPaint(); }
                                 }
@@ -744,7 +754,7 @@ Item {
                                 const w = width;
                                 const h = height;
                                 ctx.clearRect(0, 0, w, h);
-                                const hist = (typeof SystemService !== "undefined") ? SystemService.batteryHistory : [];
+                                const hist = (root.metrics !== null) ? root.metrics.batteryHistory : [];
                                 if (!hist || hist.length < 2) return;
                                 const col = root.batteryColor;
                                 ctx.beginPath();
@@ -766,13 +776,13 @@ Item {
                                 ctx.fill();
                             }
                             Connections {
-                                target: (typeof SystemService !== "undefined") ? SystemService : null
+                                target: root.metrics
                                 function onBatteryHistoryChanged() { if (root.isTargetVisible) batSparkline.requestPaint(); }
                             }
                         }
 
                         Text {
-                            text: ((typeof SystemService !== "undefined" && SystemService.batteryPercentage !== undefined) ? SystemService.batteryPercentage : 100) + "%"
+                            text: ((root.metrics !== null && root.metrics.batteryPercentage !== undefined) ? root.metrics.batteryPercentage : 100) + "%"
                             font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                             font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 13
                             font.weight: Font.Bold
@@ -783,8 +793,8 @@ Item {
                     }
 
                     Text {
-                        text: ((typeof SystemService !== "undefined" && SystemService.batteryWatts > 0) ? (SystemService.batteryWatts.toFixed(1) + " W") : ((typeof SystemService !== "undefined" && SystemService.batteryState) ? SystemService.batteryState : "Full")) +
-                              ((typeof SystemService !== "undefined" && SystemService.powerProfile) ? (" • " + SystemService.powerProfile) : "")
+                        text: ((root.metrics !== null && root.metrics.batteryWatts > 0) ? (root.metrics.batteryWatts.toFixed(1) + " W") : ((root.metrics !== null && root.metrics.batteryState) ? root.metrics.batteryState : "Full")) +
+                              ((root.metrics !== null && root.metrics.powerProfile) ? (" • " + root.metrics.powerProfile) : "")
                         font.family: (typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif"
                         font.pixelSize: 11
                         color: (typeof Colors !== "undefined" && Colors.m3onSurfaceVariant) ? Colors.m3onSurfaceVariant : Qt.rgba(1, 1, 1, 0.6)
@@ -825,16 +835,16 @@ Item {
             readonly property real targetMainUsage: {
                 if (root.selectedDevice.startsWith("gpu")) {
                     const g = root.currentGpu;
-                    return (g && g.usage !== undefined) ? g.usage : ((typeof SystemService !== "undefined") ? SystemService.gpuUsage : 0.0);
+                    return (g && g.usage !== undefined) ? g.usage : ((root.metrics !== null) ? root.metrics.gpuUsage : 0.0);
                 }
                 switch (root.selectedDevice) {
                     case "memory":
-                        return (typeof SystemService !== "undefined" && SystemService.ramUsage !== undefined) ? SystemService.ramUsage : 0.0;
+                        return (root.metrics !== null && root.metrics.ramUsage !== undefined) ? root.metrics.ramUsage : 0.0;
                     case "battery":
-                        return (typeof SystemService !== "undefined" && SystemService.batteryPercentage !== undefined) ? (SystemService.batteryPercentage / 100.0) : 1.0;
+                        return (root.metrics !== null && root.metrics.batteryPercentage !== undefined) ? (root.metrics.batteryPercentage / 100.0) : 1.0;
                     case "cpu":
                     default:
-                        return (typeof SystemService !== "undefined" && SystemService.cpuUsage !== undefined) ? SystemService.cpuUsage : 0.0;
+                        return (root.metrics !== null && root.metrics.cpuUsage !== undefined) ? root.metrics.cpuUsage : 0.0;
                 }
             }
 
@@ -887,20 +897,20 @@ Item {
                                         const slotTag = g.pci_slot ? (" • " + g.pci_slot) : "";
                                         return (g.model || "Graphics") + " (" + typeTag + driverTag + slotTag + ")";
                                     }
-                                    return (typeof SystemService !== "undefined" && SystemService.gpuModel) ? SystemService.gpuModel : "Graphics";
+                                    return (root.metrics !== null && root.metrics.gpuModel) ? root.metrics.gpuModel : "Graphics";
                                 }
                                 switch (root.selectedDevice) {
                                     case "memory":
-                                        return (typeof SystemService !== "undefined" && SystemService.ramTotalBytes > 0)
-                                            ? (root.formatBytes(SystemService.ramTotalBytes) + " DDR5 System Memory")
+                                        return (root.metrics !== null && root.metrics.ramTotalBytes > 0)
+                                            ? (root.formatBytes(root.metrics.ramTotalBytes) + " DDR5 System Memory")
                                              : "32.0 GiB System Memory";
                                     case "battery":
-                                        return ((typeof SystemService !== "undefined" && SystemService.batteryState) ? SystemService.batteryState : "AC") +
-                                               " • " + ((typeof SystemService !== "undefined" && SystemService.powerProfile) ? SystemService.powerProfile : "balanced") + " profile";
+                                        return ((root.metrics !== null && root.metrics.batteryState) ? root.metrics.batteryState : "AC") +
+                                               " • " + ((root.metrics !== null && root.metrics.powerProfile) ? root.metrics.powerProfile : "balanced") + " profile";
                                     case "cpu":
                                     default:
-                                        return (typeof SystemService !== "undefined" && SystemService.cpuModel)
-                                            ? SystemService.cpuModel
+                                        return (root.metrics !== null && root.metrics.cpuModel)
+                                            ? root.metrics.cpuModel
                                             : "Intel Core Processor";
                                 }
                             }
@@ -919,8 +929,8 @@ Item {
                         Repeater {
                             model: root.gpuCount
                             delegate: Rectangle {
-                                readonly property var chipGpuData: (typeof SystemService !== "undefined" && SystemService.gpus && SystemService.gpus[index])
-                                    ? SystemService.gpus[index]
+                                readonly property var chipGpuData: (root.metrics !== null && root.metrics.gpus && root.metrics.gpus[index])
+                                    ? root.metrics.gpus[index]
                                     : null
                                 readonly property int chipIndex: (chipGpuData && chipGpuData.index !== undefined) ? chipGpuData.index : index
 
@@ -1103,30 +1113,30 @@ Item {
                         model: {
                             if (root.selectedDevice === "cpu") {
                                 return [
-                                    { label: "SPEED", val: ((typeof SystemService !== "undefined" && SystemService.cpuFreqGhz > 0) ? (SystemService.cpuFreqGhz.toFixed(2) + " GHz") : "3.60 GHz") },
-                                    { label: "TEMPERATURE", val: ((typeof SystemService !== "undefined" && SystemService.cpuTemp > 0) ? (SystemService.cpuTemp.toFixed(1) + " °C") : "65.0 °C") },
-                                    { label: "PROCESSES", val: "" + ((typeof SystemService !== "undefined" && SystemService.cpuProcesses !== undefined) ? SystemService.cpuProcesses : 605) },
-                                    { label: "THREADS", val: "" + ((typeof SystemService !== "undefined" && SystemService.cpuThreads !== undefined) ? SystemService.cpuThreads : 2650) },
-                                    { label: "LOAD (1M)", val: ((typeof SystemService !== "undefined" && SystemService.cpuLoad1m !== undefined) ? SystemService.cpuLoad1m.toFixed(2) : "3.50") },
-                                    { label: "UPTIME", val: ((typeof SystemService !== "undefined" && SystemService.uptime) ? SystemService.uptime : "up 2 hours") }
+                                    { label: "SPEED", val: ((root.metrics !== null && root.metrics.cpuFreqGhz > 0) ? (root.metrics.cpuFreqGhz.toFixed(2) + " GHz") : "3.60 GHz") },
+                                    { label: "TEMPERATURE", val: ((root.metrics !== null && root.metrics.cpuTemp > 0) ? (root.metrics.cpuTemp.toFixed(1) + " °C") : "65.0 °C") },
+                                    { label: "PROCESSES", val: "" + ((root.metrics !== null && root.metrics.cpuProcesses !== undefined) ? root.metrics.cpuProcesses : 605) },
+                                    { label: "THREADS", val: "" + ((root.metrics !== null && root.metrics.cpuThreads !== undefined) ? root.metrics.cpuThreads : 2650) },
+                                    { label: "LOAD (1M)", val: ((root.metrics !== null && root.metrics.cpuLoad1m !== undefined) ? root.metrics.cpuLoad1m.toFixed(2) : "3.50") },
+                                    { label: "UPTIME", val: ((root.metrics !== null && root.metrics.uptime) ? root.metrics.uptime : "up 2 hours") }
                                 ];
                             } else if (root.selectedDevice === "memory") {
                                 return [
-                                    { label: "IN USE", val: (typeof SystemService !== "undefined" && SystemService.ramUsedBytes !== undefined) ? root.formatBytes(SystemService.ramUsedBytes) : "17.0 GiB" },
-                                    { label: "AVAILABLE", val: (typeof SystemService !== "undefined" && SystemService.ramAvailableBytes !== undefined) ? root.formatBytes(SystemService.ramAvailableBytes) : "15.0 GiB" },
-                                    { label: "CACHED", val: (typeof SystemService !== "undefined" && SystemService.ramCachedBytes !== undefined) ? root.formatBytes(SystemService.ramCachedBytes) : "12.0 GiB" },
-                                    { label: "TOTAL", val: (typeof SystemService !== "undefined" && SystemService.ramTotalBytes !== undefined) ? root.formatBytes(SystemService.ramTotalBytes) : "32.0 GiB" },
-                                    { label: "SWAP USED", val: (typeof SystemService !== "undefined" && SystemService.swapUsedBytes !== undefined) ? root.formatBytes(SystemService.swapUsedBytes) : "380 MiB" },
-                                    { label: "SWAP TOTAL", val: (typeof SystemService !== "undefined" && SystemService.swapTotalBytes !== undefined) ? root.formatBytes(SystemService.swapTotalBytes) : "48.0 GiB" }
+                                    { label: "IN USE", val: (root.metrics !== null && root.metrics.ramUsedBytes !== undefined) ? root.formatBytes(root.metrics.ramUsedBytes) : "17.0 GiB" },
+                                    { label: "AVAILABLE", val: (root.metrics !== null && root.metrics.ramAvailableBytes !== undefined) ? root.formatBytes(root.metrics.ramAvailableBytes) : "15.0 GiB" },
+                                    { label: "CACHED", val: (root.metrics !== null && root.metrics.ramCachedBytes !== undefined) ? root.formatBytes(root.metrics.ramCachedBytes) : "12.0 GiB" },
+                                    { label: "TOTAL", val: (root.metrics !== null && root.metrics.ramTotalBytes !== undefined) ? root.formatBytes(root.metrics.ramTotalBytes) : "32.0 GiB" },
+                                    { label: "SWAP USED", val: (root.metrics !== null && root.metrics.swapUsedBytes !== undefined) ? root.formatBytes(root.metrics.swapUsedBytes) : "380 MiB" },
+                                    { label: "SWAP TOTAL", val: (root.metrics !== null && root.metrics.swapTotalBytes !== undefined) ? root.formatBytes(root.metrics.swapTotalBytes) : "48.0 GiB" }
                                 ];
                             } else if (root.selectedDevice.startsWith("gpu")) {
                                 const curGpu = root.currentGpu;
                                 const isIntegrated = curGpu ? (curGpu.gpu_type === "integrated") : false;
-                                const usageVal = (curGpu && curGpu.usage !== undefined) ? curGpu.usage : ((typeof SystemService !== "undefined") ? SystemService.gpuUsage : 0.0);
-                                const tempVal = (curGpu && curGpu.temperature > 0) ? curGpu.temperature : ((typeof SystemService !== "undefined") ? SystemService.gpuTemp : 0.0);
-                                const clockVal = (curGpu && curGpu.clock_ghz > 0) ? curGpu.clock_ghz : ((typeof SystemService !== "undefined") ? SystemService.gpuClockGhz : 0.0);
-                                const memUsed = (curGpu && curGpu.memory_used_bytes > 0) ? curGpu.memory_used_bytes : ((typeof SystemService !== "undefined") ? SystemService.gpuMemoryUsedBytes : 0);
-                                const memTotal = (curGpu && curGpu.memory_total_bytes > 0) ? curGpu.memory_total_bytes : ((typeof SystemService !== "undefined") ? SystemService.gpuMemoryTotalBytes : 0);
+                                const usageVal = (curGpu && curGpu.usage !== undefined) ? curGpu.usage : ((root.metrics !== null) ? root.metrics.gpuUsage : 0.0);
+                                const tempVal = (curGpu && curGpu.temperature > 0) ? curGpu.temperature : ((root.metrics !== null) ? root.metrics.gpuTemp : 0.0);
+                                const clockVal = (curGpu && curGpu.clock_ghz > 0) ? curGpu.clock_ghz : ((root.metrics !== null) ? root.metrics.gpuClockGhz : 0.0);
+                                const memUsed = (curGpu && curGpu.memory_used_bytes > 0) ? curGpu.memory_used_bytes : ((root.metrics !== null) ? root.metrics.gpuMemoryUsedBytes : 0);
+                                const memTotal = (curGpu && curGpu.memory_total_bytes > 0) ? curGpu.memory_total_bytes : ((root.metrics !== null) ? root.metrics.gpuMemoryTotalBytes : 0);
                                 const typeStr = isIntegrated ? "Integrated GPU" : "Discrete GPU";
                                 const driverStr = (curGpu && curGpu.driver) ? curGpu.driver : "Kernel DRM";
 
@@ -1140,12 +1150,12 @@ Item {
                                 ];
                             } else {
                                 return [
-                                    { label: "STATE", val: (typeof SystemService !== "undefined" && SystemService.batteryState) ? SystemService.batteryState : "Full" },
-                                    { label: "POWER DRAW", val: ((typeof SystemService !== "undefined" && SystemService.batteryWatts > 0) ? (SystemService.batteryWatts.toFixed(1) + " W") : "0.0 W") },
-                                    { label: "VOLTAGE", val: ((typeof SystemService !== "undefined" && SystemService.batteryVoltage > 0) ? (SystemService.batteryVoltage.toFixed(2) + " V") : "12.01 V") },
-                                    { label: "HEALTH", val: ((typeof SystemService !== "undefined" && SystemService.batteryHealth !== undefined) ? SystemService.batteryHealth : 100) + "%" },
-                                    { label: "PROFILE", val: (typeof SystemService !== "undefined" && SystemService.powerProfile) ? SystemService.powerProfile : "balanced" },
-                                    { label: "CHARGING", val: ((typeof SystemService !== "undefined" && SystemService.batteryCharging) ? "Connected" : "Discharging") }
+                                    { label: "STATE", val: (root.metrics !== null && root.metrics.batteryState) ? root.metrics.batteryState : "Full" },
+                                    { label: "POWER DRAW", val: ((root.metrics !== null && root.metrics.batteryWatts > 0) ? (root.metrics.batteryWatts.toFixed(1) + " W") : "0.0 W") },
+                                    { label: "VOLTAGE", val: ((root.metrics !== null && root.metrics.batteryVoltage > 0) ? (root.metrics.batteryVoltage.toFixed(2) + " V") : "12.01 V") },
+                                    { label: "HEALTH", val: ((root.metrics !== null && root.metrics.batteryHealth !== undefined) ? root.metrics.batteryHealth : 100) + "%" },
+                                    { label: "PROFILE", val: (root.metrics !== null && root.metrics.powerProfile) ? root.metrics.powerProfile : "balanced" },
+                                    { label: "CHARGING", val: ((root.metrics !== null && root.metrics.batteryCharging) ? "Connected" : "Discharging") }
                                 ];
                             }
                         }

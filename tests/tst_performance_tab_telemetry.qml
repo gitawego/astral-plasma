@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Performance"
 import "../modules/Astral/Kernel/theme"
 
 Item {
@@ -16,7 +17,7 @@ Item {
         return xhr.responseText || "";
     }
 
-    PerformanceTab {
+    PerformanceApp {
         id: perfTab
         anchors.fill: parent
         // The tab reports `isTargetVisible` true only when the dashboard says it is
@@ -143,7 +144,7 @@ Item {
             assert(perfTab.animatedMainUsage !== undefined && perfTab.animatedMainUsage >= 0.0, "perfTab must expose animatedMainUsage");
             assert(perfTab.waveMorph !== undefined && perfTab.waveMorph >= 0.0 && perfTab.waveMorph <= 1.0, "perfTab must expose waveMorph in [0.0, 1.0]");
 
-            let perfContent = readLocalFile("../dashboard/tabs/PerformanceTab.qml");
+            let perfContent = readLocalFile("../modules/Astral/Apps/Performance/PerformanceApp.qml");
             assert(perfContent.indexOf("model: root.gpuCount") !== -1, "gpuRepeater must use integer model: root.gpuCount to prevent delegate teardown & mouse flash");
             assert(perfContent.indexOf("waveMorph") !== -1, "PerformanceTab must use waveMorph interpolation for smooth charts");
             assert(perfContent.indexOf("animatedMainUsage") !== -1, "PerformanceTab must animate main usage headline number");

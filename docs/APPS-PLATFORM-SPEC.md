@@ -1813,9 +1813,11 @@ enable/disable, dependency order, compatibility and injection all still come fro
 registry.
 
 Verified live: the **workspaces** tab renders dark glass with the accent pill, its 7-window
-badge and readable chips, and the **media** tab renders the player's idle state ("No Media
-Playing · NetEase Cloud Music (Wine)"), transport, progress and artwork — both hosted in their
-dashboard panes, zero load errors, `make test` 1109 Rust tests + 164 QML suites.
+badge and readable chips, the **media** tab renders the player's idle state ("No Media
+Playing · NetEase Cloud Music (Wine)"), transport, progress and artwork, and the
+**performance** tab renders live telemetry (CPU 11%, memory 40%, GPU 33%, speed, temperature,
+processes) — all hosted in their dashboard panes, zero load errors, `make test` 1109 Rust
+tests + 164 QML suites. Three apps are migrated; the pattern is mechanical now.
 
 The trade-off is explicit: `shell.qml` names each migrated app once, in a component
 declaration. That is the price of sharing one kernel registration, and it is smaller than

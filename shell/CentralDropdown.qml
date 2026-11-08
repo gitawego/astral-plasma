@@ -423,14 +423,30 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width * 2
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: perfTab.implicitHeight
+                    implicitHeight: perfApp.children.length > 0
+                        ? Math.max(perfApp.children[0].implicitHeight, 320) : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 2) || tabSlider.isAnimating
 
-                    PerformanceTab {
-                        id: perfTab
+                    Item {
+                        id: perfApp
                         width: parent.width
                         height: parent.height
+
+                        readonly property int hostReadiness: {
+                            if (!root.appHost) return 0;
+                            return root.appHost.loaderCount * 1000
+                                + Object.keys(root.appHost.tabProviders).length;
+                        }
+                        onHostReadinessChanged: mountApp()
+                        Component.onCompleted: mountApp()
+
+                        function mountApp() {
+                            if (!root.appHost) return;
+                            const provider = root.appHost.providerForTab("performance");
+                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
+                            if (perfApp.children.length === 0) root.appHost.mount(provider, perfApp);
+                        }
                     }
                 }
 

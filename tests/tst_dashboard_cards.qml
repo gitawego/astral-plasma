@@ -3,6 +3,7 @@ import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "../modules/Astral/Kernel/components"
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Performance"
 import "../modules/Astral/Apps/Workspaces"
 
 Item {
@@ -15,7 +16,7 @@ Item {
         visible: true
     }
 
-    PerformanceTab {
+    PerformanceApp {
         id: perfTab
         visible: false
     }
