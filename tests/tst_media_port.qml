@@ -63,6 +63,20 @@ Item {
         assert(port.progress === 0, "no length means no progress");
         port.length = 240;
 
+        // ---- player list, loop/shuffle state, and the player's own capabilities ----
+        port.loopState = "playlist";
+        port.shuffle = true;
+        port.canGoNext = false;
+        port.canGoPrevious = true;
+        assert(port.loopState === "playlist", "loop state reaches the surface");
+        assert(port.shuffle === true, "shuffle state reaches the surface");
+        assert(port.canGoNext === false && port.canGoPrevious === true,
+            "the player's skip capabilities are the player's, not the port's");
+
+        assert(port.nameOf("net") === "NetEase Cloud Music", "playerName resolves an id");
+        assert(port.nameOf({ id: "net" }) === "NetEase Cloud Music", "and a player entry");
+        assert(port.nameOf("ghost") === "", "an unknown player has no name");
+
         // ---- unsupported operations say so -----------------------------------
         assert(port.toggle() === false, "toggle is unsupported until the shell fills it");
         assert(failures.length === 1 && failures[0].operation === "toggle", "and the failure names it");
@@ -76,9 +90,11 @@ Item {
         port.nextImpl = function () { skipped++; };
         port.seekImpl = function (fraction) { sought = fraction; };
         port.selectPlayerImpl = function (id) { selected = id; };
+        let shuffled = 0;
+        port.toggleShuffleImpl = function () { shuffled++; };
 
-        assert(port.canToggle && port.canSkip && port.canSeek && port.canSelectPlayer,
-            "capabilities are advertised once supplied");
+        assert(port.canToggle && port.canSkip && port.seekAvailable && port.canSelectPlayer
+            && port.canShuffle, "capabilities are advertised once supplied");
         assert(port.toggle(), "toggle works");
         assert(port.next(), "next works");
         assert(port.seek(0.5), "seek works");
@@ -92,6 +108,8 @@ Item {
         assert(port.seek(-2), "a negative seek is accepted");
         assert(sought === 0, "and clamped to the start, got " + sought);
         assert(selected === "net", "the player id reached the shell");
+        assert(port.toggleShuffle(), "shuffle can be toggled");
+        assert(shuffled === 1, "the shuffle command reached the shell");
 
         // ---- a throwing implementation is contained --------------------------
         port.previousImpl = function () { throw new Error("player vanished"); };

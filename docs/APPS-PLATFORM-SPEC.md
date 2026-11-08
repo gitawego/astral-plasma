@@ -1070,6 +1070,14 @@ Now landed: the pipeline a migrated surface needs.
 | `scripts/check_app_boundaries.py` | CI gate: apps may not import `Kernel/config`, another app, or the kernel module; non-official apps are limited to `Astral.AppKit`. `make test` runs it |
 | `Host/qmldir` | `Astral.Kernel.Host` as a module; `run.sh` exports `QML_IMPORT_PATH` |
 
+**The media tab is now an app** (`modules/Astral/Apps/Media/`), hosted the same way.
+`MediaPort` grew the members the surface actually uses: `loopState`, `shuffle`,
+`canGoNext`/`canGoPrevious` (the *player's* capabilities, distinct from the port's
+`seekAvailable`), and `nameOf(player)` — named that way because a `playerName()`
+function collided with the `playerName` property and the property wins. Settings it
+renders (`mediaAvatar`, `mediaVisualizerStyle`) come from `ShellState`; the two it
+writes travel as intents (`media.visualizerStyle`, `dashboard.show`).
+
 **The workspaces tab is now an app** (`modules/Astral/Apps/Workspaces/`): the
 dashboard pane mounts its item through `AppHost.mount`, and the tab reads
 `session.windows`, `workspaces.desktops`, `workspaces.currentId` and asks for
