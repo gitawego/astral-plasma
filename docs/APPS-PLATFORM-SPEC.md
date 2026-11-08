@@ -1725,3 +1725,35 @@ The fix is to make **AppKit's singletons IO-free**:
 Reverted again for now: the workspaces tab stays in `dashboard/tabs/`, the tree is green
 (1109 Rust tests, 164 QML suites), and the AppKit primitives + lint rule + harness
 `QML_IMPORT_PATH` from C.13 are committed and in place.
+
+### C.16 Finding: an AppKit component must not subclass a kernel component
+
+Reported from the live desktop: the migrated workspaces surface rendered with **light
+grey cards and washed-out text on a dark shell** — the theme was not respected.
+
+Cause: `AppKit/GlassCard.qml` was `LiquidGlassCard {}`, i.e. a subclass of a kernel
+component. Subclassing drags the kernel implementation's *own* imports with it, and inside
+the `Astral.AppKit` module those resolve to a **second registration** of the kernel
+`Colors`/`Theme` singletons. That copy has no palette (the shell populated the first
+registration), so every colour falls back to Material defaults: light cards, pale text,
+no accent.
+
+Reverted: the AppKit primitives, the app migrations that used them, and the lint rule that
+forced apps onto AppKit. The desktop is correct again (dark glass, accent pill, readable
+chips), `make test` exit 0 — 1109 Rust tests, 164 QML suites.
+
+The rule this settles, and it matches §6.4 rather than contradicting it:
+
+| Runtime | What it renders with |
+| :--- | :--- |
+| **Embedded (official)** | the kernel: one registration, the shell's palette, the archetype's radii |
+| **Hosted (community)** | `Astral.AppKit`: its own tokens, read from the exported palette file, because the kernel is not mounted |
+
+So official apps keep importing `Kernel/theme` + `Kernel/components` (that is why the
+earlier migrations were theme-correct), and AppKit is for hosted apps — where there is no
+kernel to conflict with. An AppKit that *is* usable by embedded apps needs its primitives
+implemented against AppKit's own tokens, which remains future work, not a prerequisite.
+
+What this leaves: the tab migrations themselves were green and themed on kernel imports;
+they will be re-applied that way. C.13's duplicate-registration problem applies to
+**services inside suites**, not to colours in production — narrowed accordingly.

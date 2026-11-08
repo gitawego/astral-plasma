@@ -2671,3 +2671,23 @@ Kept and committed from this stretch: AppKit's role-named primitives (GlassCard,
 Icon, GlassButton, SpeakerPlayer, Artwork, RadialVisualiser), the boundary rule forbidding
 `Kernel/theme` + `Kernel/components` in apps, the harness `QML_IMPORT_PATH`, and the
 overview app migrated onto `Astral.AppKit`.
+
+---
+
+## Reverted: AppKit primitives broke the theme (2026-11-08)
+
+Reported from the screen: the workspaces surface showed **light grey cards with washed-out
+text on a dark shell**.
+
+An AppKit component that subclasses a kernel component carries that component's imports
+into the module context, which registers a **second** `Colors`/`Theme` — one with no
+palette. Everything then falls back to Material defaults.
+
+Reverted the AppKit primitives, the migrations that used them, and the lint rule that forced
+apps onto AppKit. Desktop correct again (dark glass, accent pill, readable chips);
+`make test` exit 0 — 1109 Rust tests, 164 QML suites.
+
+Settled rule, matching §6.4: **embedded apps render with the kernel** (one registration, the
+shell's palette); **hosted apps render with AppKit** (its own tokens from the palette file,
+because no kernel is mounted). AppKit usable *by embedded apps* would need primitives built
+on AppKit's tokens — future work, not a prerequisite for migration.
