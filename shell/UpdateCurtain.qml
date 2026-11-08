@@ -44,7 +44,15 @@ PanelWindow {
             easing.bezierCurve: Theme.curveStandard
         }
     }
-    onOpenRequestedChanged: root.fade = root.openRequested ? 1 : 0
+    onOpenRequestedChanged: {
+        root.fade = root.openRequested ? 1 : 0
+        // The curtain is the once-per-version "what's new" moment: the version
+        // it names is recorded as seen, so the shell can tell later whether the
+        // user has already been shown this release.
+        if (root.openRequested && typeof Updates !== "undefined" && Updates.restartPending !== "") {
+            Updates.markSeen(Updates.restartPending);
+        }
+    }
     Component.onCompleted: root.fade = root.openRequested ? 1 : 0
 
     // Swallow pointer input so the desktop underneath cannot be clicked mid-swap.

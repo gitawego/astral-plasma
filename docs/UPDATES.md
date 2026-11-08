@@ -367,7 +367,7 @@ restart actually works (§7).
 | **P1 — layout + migrations** ✅ | Managed layout, `install.json`, one-liner installer, in-shell uninstall, migrations engine, migration 001, unit `ExecStart` fix. | Legacy symlink install migrates; `make test` green. |
 | **P2 — check** ✅ | `update check/status`, curl adapter + ETag, state file, package/checkout detection, daemon-side timer. | Fixture server drives all manifest cases. |
 | **P3 — apply & restart** ✅ | Lock, preflight, download, verify, staging, swap, claim handoff, `execv`, IPC health check, two-attempt retry, rollback, manual revert. | Process-level proof that a staged binary is swapped and executed with the claim intact; live desktop restart still to be observed on a real update. |
-| **P4 — UI** ✅ | Updates page (version, update, notes, maintenance), nav entry, restart curtain. Pending-update dot deferred. | Offscreen suite covers every state; visual capture still required. |
+| **P4 — UI** ✅ | Updates page (version, update, notes, maintenance), nav entry, restart curtain (records the shown version as seen). Pending-update dot deferred. | Offscreen suite covers every state; live capture taken. |
 | **P5 — what's new** ✅ | `docs/releases/*.json` compiled into the binary, `astral-plasma changelog`, page rendering, `lastSeenVersion` recorded. Auto-opening the notes once per version deferred to the curtain. | Notes shown match the running version. |
 | **P6 — distribution** ✅ (signature enforcement pending a key) | AUR `astral-plasma-bin` template, pacman ownership detection, signature verification when present. | Package installs report `package` and offer no apply; signed manifests are verified, unsigned ones are accepted until the key ships. |
 
