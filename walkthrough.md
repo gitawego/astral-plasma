@@ -2717,3 +2717,27 @@ an app's colours (it already carries primary/surface/on_surface/outline/radii/fo
 hosted apps use it by design), or inject a theme object the primitives take as input.
 Recorded as the next unit, with the recommendation being the palette-file route because it
 needs no kernel change and is testable by writing a palette and asserting pixels.
+
+---
+
+## P4 — the theme bridge, measured (2026-11-08)
+
+The probe that settled it: the same app, loaded two ways.
+
+| Loaded as | `Colors` in the app |
+| :--- | :--- |
+| `Loader.source` (registry) | `undefined` — kernel singletons fail to instantiate in a second registration |
+| `Component { App {} }` declared in `shell.qml` | `true`, `#141218`, `#cfbcff` — identical to the shell |
+
+A component compiled in the shell's document resolves imports in the shell's context, so the
+app shares one kernel registration. `AppHost.components` (appId → Component) carries that;
+the plan, enable/disable, ordering, compatibility and injection still come from the registry.
+
+> **Verified live**: the workspaces tab — migrated, kernel primitives, hosted in its
+> dashboard pane — renders dark glass with the accent "Active" pill, its window chips
+> (Dolphin, Lutris, 网易云音乐, +4) and the "4 Desktops · 7 Windows" badge. Zero load errors.
+> `make test` exit 0 — 1109 Rust tests, 164 QML suites.
+
+Trade-off, stated: `shell.qml` names each migrated app once, in a component declaration.
+That is the price of one kernel registration, and cheaper than duplicating theme state into
+every app.

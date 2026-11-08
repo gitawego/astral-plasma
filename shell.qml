@@ -150,11 +150,9 @@ ShellRoot {
         // Shell-declared components share the shell's kernel registration, which is what
         // makes a migrated app themed (spec C.18).
         components: ({ "org.astralplasma.workspaces": workspacesApp })
+        eager: []
         host: ({ level: 1, floor: 1 })
         onAppFailed: function (id, reason) { console.error("app failed: " + id + " - " + reason) }
-        Component.onCompleted: console.log("COMPDBG keys=" + JSON.stringify(Object.keys(components))
-            + " planned=" + JSON.stringify(loadedIds) + " loaders=" + loaderCount
-            + " providers=" + JSON.stringify(tabProviders))
     }
 
 
@@ -600,6 +598,7 @@ ShellRoot {
             // The Unified Shell Visual Surface
             UnifiedShell {
                 targetScreen: screenScope.modelData
+                appHost: featureHost
             }
         }
     }

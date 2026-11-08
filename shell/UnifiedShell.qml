@@ -14,6 +14,9 @@ import "../notifications"
 PanelWindow {
     id: root
 
+    /// The app host, so a dashboard pane can embed an app's item (spec §9.4).
+    property var appHost: null
+
     required property ShellScreen targetScreen
     screen: targetScreen
 
@@ -1453,6 +1456,7 @@ PanelWindow {
     // 3. CENTRAL DROPDOWN DASHBOARD
     CentralDropdown {
         id: dropdownContainer
+        appHost: root.appHost
         dropX: root.dropX
         dropW: root.dropW
     }

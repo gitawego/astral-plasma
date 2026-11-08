@@ -463,7 +463,9 @@ Item {
                             if (!root.appHost) return;
                             const provider = root.appHost.providerForTab("workspaces");
                             if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
-                            if (wsApp.children.length === 0) root.appHost.mount(provider, wsApp);
+                            if (wsApp.children.length === 0) {
+                                root.appHost.mount(provider, wsApp);
+                            }
                         }
                     }
                 }

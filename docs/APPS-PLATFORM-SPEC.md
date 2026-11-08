@@ -1791,3 +1791,31 @@ tests, 164 QML suites). What remains tested and usable for the migration phase: 
 manifest contract, compatibility window, registry + writer, `AppHost` (plan, mount,
 injection, tab providers), `IntentBus`, `ShellState`, and the
 `Session`/`Media`/`Workspaces`/`Metrics` ports.
+
+### C.18 The theme bridge: declare the app's component in the shell document
+
+C.17 left one question: how does a migrated app get the shell's theme at all? A probe
+answered it by measurement, not by reading code:
+
+| How the app is loaded | `Colors.isDarkMode` / `Colors.surface` in the app |
+| :--- | :--- |
+| `Loader.source = <app>/Main.qml` (registry-driven) | `undefined` / `undefined` — its kernel singletons fail to instantiate |
+| `Component { App {} }` declared in `shell.qml` | `true` / `#141218` — identical to the shell |
+
+A component compiled in the shell's document resolves its imports in the shell's *context*,
+so the app shares the shell's kernel registration — and therefore its palette, its archetype
+and its radii. That is the bridge, and it needs no new API for themes.
+
+`AppHost.components` carries the map (`appId -> Component`); the Loader prefers a declared
+component and falls back to `source:` otherwise. `shell.qml` therefore declares one
+`Component` per migrated app — a *component map*, not a `switch` over features: the plan,
+enable/disable, dependency order, compatibility and injection all still come from the
+registry.
+
+Verified live: the workspaces tab (migrated, `Astral.AppKit`-free, kernel primitives)
+renders dark glass with the accent pill, its 7-window badge and readable chips, hosted in
+its dashboard pane — zero load errors, `make test` 1109 Rust tests + 164 QML suites.
+
+The trade-off is explicit: `shell.qml` names each migrated app once, in a component
+declaration. That is the price of sharing one kernel registration, and it is smaller than
+the alternative (duplicating the shell's theme state into every app).
