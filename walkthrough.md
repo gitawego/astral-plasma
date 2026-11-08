@@ -2372,3 +2372,32 @@ The pipeline a migrated surface needs, each piece tested:
 So the remaining blocker is named: a **session port** (windows, thumbnails,
 activation) injected like `ShellState`, then `overview` and the rest. The host,
 the bus, the state, and the gate exist; the data model does not.
+
+---
+
+## P2 — the overview is an app (2026-11-08)
+
+`shell/ActiveAppsOverview.qml` is now `modules/Astral/Apps/Overview/Main.qml`,
+loaded from the generated `modules/Astral/Apps/index.json` through `AppHost`
+(`eager`, because the shell shows and hides it). `shell.qml` no longer names it.
+
+| Reads | Was | Now |
+| :--- | :--- | :--- |
+| open/closed | `Config.overviewVisible` | `shellState.overviewVisible` |
+| windows | `WindowService.windows` | `session.windows` |
+| thumbnails | `WindowService.overviewThumbnails` | `session.overviewThumbnails` |
+| actions | `Config.*` / `WindowService.*` | `intents.request(...)` / `session.*` |
+
+The app has **0** `Config.` and **0** `WindowService.` uses, enforced by
+`scripts/check_app_boundaries.py` inside `make test`.
+
+> **Verified**: `make test` exit 0 — 1063 Rust tests, 160 QML suites, boundary gate
+> clean. Live: `overview toggle` opens the surface (`open=true` in the app's own
+> log), and binding a single stub window to `SessionPort.windows` rendered a
+> **Probe Window** card in the grid — proof that the injected model reaches the UI,
+> not just the port. The stub was removed afterwards.
+>
+> **Not verified**: a populated grid from real windows. The shell's own
+> `WindowService.windows` is empty on this dev box (no claimed Plasma session), and
+> it was empty before the migration too — the same data source, so nothing is lost,
+> but "eleven real windows in a 4-column grid" remains unobserved here.

@@ -8,6 +8,7 @@ import Quickshell.Io
 import "./modules/Astral/Kernel/config"
 import "./modules/Astral/Kernel/theme"
 import "./shell"
+import Astral.Kernel.Host 1.0
 import "./settings_gui"
 import "./modules/Astral/Kernel/services"
 import "./assistant"
@@ -274,7 +275,8 @@ ShellRoot {
         function close(): void { Config.closeOverview(); }
         function search(query: string): void {
             Config.openOverview();
-            if (overviewSurface) overviewSurface.queryText = query;
+            const overview = featureHost.itemFor("org.astralplasma.overview");
+            if (overview) overview.queryText = query;
         }
     }
 
@@ -467,10 +469,53 @@ ShellRoot {
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
 
-    // Active apps overview (bare Meta key -> KWin shortcut -> daemon ShellIpc
-    // -> this IPC): fullscreen overlay with live thumbnails, primary screen.
-    ActiveAppsOverview {
-        id: overviewSurface
+    // ---- app platform wiring -------------------------------------------------
+    // The shell owns its state, its window model, and its actions; a surface gets
+    // them injected. An imported singleton would be a copy (spec C.9/C.10).
+    ShellState {
+        id: shellState
+        overviewVisible: Config.overviewVisible
+        commandLauncherVisible: Config.commandLauncherVisible
+        dashboardVisible: Config.dashboardVisible
+        daemonBin: Config.daemonBin
+        iconResolver: function (name) { return Config.iconUrl(name); }
+    }
+
+    SessionPort {
+        id: sessionPort
+        windows: WindowService.windows
+        installedApps: WindowService.installedApps
+        overviewThumbnails: WindowService.overviewThumbnails
+        activeWindowId: WindowService.activeId
+        activateWindowImpl: function (id) { WindowService.activateWindow(id); return true; }
+        closeWindowImpl: function (id) { WindowService.closeWindow(id); return true; }
+        launchAppImpl: function (target, meta) { WindowService.launchApp(target, meta); return true; }
+        reloadInstalledAppsImpl: function () { WindowService.reloadInstalledApps(); return true; }
+        startThumbnailsImpl: function () { WindowService.startOverviewThumbnails(); return true; }
+        stopThumbnailsImpl: function () { WindowService.stopOverviewThumbnails(); return true; }
+        refreshThumbnailsImpl: function () { WindowService.refreshOverviewThumbnails(); return true; }
+    }
+
+    IntentBus {
+        id: intents
+    }
+
+    // Bundled apps are data, so `shell.qml` names no feature. The overview stays
+    // alive because the shell shows and hides it.
+    AppRegistry {
+        id: bundledApps
+        bundledRoot: Qt.resolvedUrl("modules/Astral/Apps/").toString().replace(/^file:\/\//, "")
+    }
+
+    AppHost {
+        id: featureHost
+        entries: bundledApps.entries
+        state: shellState
+        intents: intents
+        session: sessionPort
+        host: ({ level: 1, floor: 1 })
+        eager: ["org.astralplasma.overview"]
+        onAppFailed: function (id, reason) { console.error("app failed: " + id + " - " + reason) }
     }
 
     // Settings GUI Window
@@ -510,6 +555,25 @@ ShellRoot {
     }
 
     Component.onCompleted: {
+        // Intent handlers live here, next to the rest of the shell's startup wiring:
+        // one completion block, so nothing about startup is split across objects.
+        intents.register("overview.close", function () {
+            Config.closeOverview();
+            return intents.applied();
+        });
+        intents.register("launcher.open", function (args) {
+            const panel = (args && args.panel) ? String(args.panel) : "";
+            if (panel.length === 0) {
+                return intents.invalid("launcher.open needs a panel");
+            }
+            Config.openCommandLauncher(panel, (args && args.arg) ? String(args.arg) : "");
+            return intents.applied();
+        });
+        intents.register("shell.exit", function () {
+            Config.exitShell();
+            return intents.applied();
+        });
+
         // Singletons load lazily: touch the exporter so palette broadcasting
         // (colors.toml / current-palette.json / agent-theme.env) really runs.
         ThemeExportService.scheduleExport();

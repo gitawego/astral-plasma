@@ -38,6 +38,8 @@ Item {
     property var state: null
     /// The intent bus apps use for actions (`IntentBus`).
     property var intents: null
+    /// The window model (`SessionPort`), injected for surfaces that show windows.
+    property var session: null
 
     /// Loadable entries, in dependency order.
     readonly property var loaded: plan.load
@@ -112,7 +114,8 @@ Item {
     /// Assignment is attempted, not required: an app that declares neither property
     /// is still valid (it may be pure presentation), so a missing property is not an
     /// error - a TypeError here would be. This is the only injection point, so the
-    /// contract is one place: `property var shellState`, `property var intents`.
+    /// contract is one place: `property var shellState`, `property var intents`,
+    /// `property var session`.
     function inject(item) {
         if (!item) {
             return;
@@ -126,6 +129,11 @@ Item {
             item.intents = root.intents;
         } catch (error) {
             // The app does not take an intent bus: fine.
+        }
+        try {
+            item.session = root.session;
+        } catch (error) {
+            // The app does not read the session: fine.
         }
     }
 

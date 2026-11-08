@@ -423,8 +423,8 @@ Item {
             "searchResults for 'wallpaper' must include the Wallpaper command");
 
         // ---- 16. Structural verification of ActiveAppsOverview.qml ------------
-        const surface = readLocalFile("../shell/ActiveAppsOverview.qml");
-        assert(surface.length > 1000, "ActiveAppsOverview.qml must be readable");
+        const surface = readLocalFile("../modules/Astral/Apps/Overview/Main.qml");
+        assert(surface.length > 1000, "the overview app must be readable");
         assert(/TextInput/.test(surface),
             "ActiveAppsOverview must contain a TextInput for search input");
         assert(/matchingWindows/.test(surface),
@@ -441,8 +441,8 @@ Item {
             "ActiveAppsOverview must define matchingCommands");
         assert(/executeCommand\(/.test(surface),
             "ActiveAppsOverview must define executeCommand()");
-        assert(/openCommandLauncher/.test(surface),
-            "ActiveAppsOverview must route commands to Config.openCommandLauncher");
+        assert(/intents\.request\("launcher\.open"/.test(surface),
+            "the overview must route commands through the intent bus, not through Config");
 
         console.log("PASS: Active apps overview search tests passed");
         Qt.exit(0);

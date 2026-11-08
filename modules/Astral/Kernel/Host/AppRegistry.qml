@@ -23,10 +23,16 @@ import Quickshell.Io
 QtObject {
     id: root
 
-    /// `~/.local/share/astral-plasma/apps.json` (or the package's, for a preview).
+    /// `~/.local/share/astral-plasma/apps.json`. When empty the bundled index is
+    /// used instead: a checkout or a fresh package has no registry yet, and the
+    /// desktop must still boot with its shipped apps.
     property string registryPath: ""
-    /// Directory holding `<id>/manifest.json` + payloads.
+    /// Directory holding `<id>/manifest.json` + `payload/` (installed apps).
     property string appsRoot: ""
+    /// Directory holding `<dir>/manifest.json` + `index.json` (bundled apps).
+    property string bundledRoot: ""
+
+    readonly property bool bundled: registryPath.length === 0 || appsRoot.length === 0
 
     /// `[{ id, state, reason }]` for problems found while reading.
     readonly property var errors: collectErrors()
@@ -35,7 +41,14 @@ QtObject {
 
     readonly property string registryText: registryReader.text()
 
+    /// Installed records, or one synthetic record per bundled app. Both are
+    /// `{ id, enabled, blocked, pinned }`, so everything downstream is one path.
     readonly property var records: {
+        if (root.bundled) {
+            return root.bundledIndex.map(function (app) {
+                return { id: app.id, enabled: true, blocked: [], pinned: false, dir: app.dir };
+            });
+        }
         try {
             const parsed = JSON.parse(root.registryText);
             return (parsed && Array.isArray(parsed.apps)) ? parsed.apps : [];
@@ -44,9 +57,22 @@ QtObject {
         }
     }
 
+    readonly property var bundledIndex: {
+        try {
+            const parsed = JSON.parse(indexReader.text());
+            return (parsed && Array.isArray(parsed.apps)) ? parsed.apps : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
     function collectErrors() {
         const problems = [];
-        if (registryText.length > 0 && records.length === 0) {
+        if (root.bundled) {
+            if (bundledIndex.length === 0) {
+                problems.push({ id: "", state: "invalid", reason: "the bundled apps index is missing" });
+            }
+        } else if (registryText.length > 0 && records.length === 0) {
             problems.push({ id: "", state: "invalid", reason: "apps.json is not readable JSON" });
         }
         const all = records;
@@ -95,10 +121,25 @@ QtObject {
         return merged;
     }
 
+    function base(dir) {
+        return dir.charAt(dir.length - 1) === "/" ? dir : dir + "/";
+    }
+
+    function dirFor(id) {
+        const all = bundledIndex;
+        for (let index = 0; index < all.length; index++) {
+            if (all[index].id === id) {
+                return all[index].dir;
+            }
+        }
+        return id;
+    }
+
     function payloadDir(id) {
-        const base = root.appsRoot.charAt(root.appsRoot.length - 1) === "/"
-            ? root.appsRoot : root.appsRoot + "/";
-        return base + id + "/payload/";
+        if (root.bundled) {
+            return base(bundledRoot) + dirFor(id) + "/";
+        }
+        return base(root.appsRoot) + id + "/payload/";
     }
 
     /// Manifest text for one app, read synchronously.
@@ -122,13 +163,20 @@ QtObject {
     }
 
     function manifestPath(id) {
-        const base = root.appsRoot.charAt(root.appsRoot.length - 1) === "/"
-            ? root.appsRoot : root.appsRoot + "/";
-        return base + id + "/manifest.json";
+        if (root.bundled) {
+            return base(bundledRoot) + dirFor(id) + "/manifest.json";
+        }
+        return base(root.appsRoot) + id + "/manifest.json";
     }
 
     property var manifestReaders: ({})
     property Component manifestFactory: FileView {
+        blockLoading: true
+        printErrors: false
+    }
+
+    property FileView indexReader: FileView {
+        path: root.bundled ? base(root.bundledRoot) + "index.json" : ""
         blockLoading: true
         printErrors: false
     }

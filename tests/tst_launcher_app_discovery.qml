@@ -121,9 +121,9 @@ Item {
         console.log("RUNNING: Launcher App Discovery Tests");
 
         const launcherCode = readLocalFile("../shell/CommandLauncher.qml");
-        const overviewCode = readLocalFile("../shell/ActiveAppsOverview.qml");
+        const overviewCode = readLocalFile("../modules/Astral/Apps/Overview/Main.qml");
         assert(launcherCode.length > 1000, "CommandLauncher.qml must be readable");
-        assert(overviewCode.length > 1000, "ActiveAppsOverview.qml must be readable");
+        assert(overviewCode.length > 1000, "the overview app must be readable");
 
         // ---- 1. The launcher re-reads its cache on every open ----------------
         assert(/function refreshInstalledApps\s*\(/.test(launcherCode),
@@ -150,10 +150,10 @@ Item {
         const overviewElse = overviewCode.indexOf("} else {", overviewHook);
         assert(overviewElse > overviewHook, "onOverviewVisibleChanged must keep its visible/else branches");
         const overviewOpen = overviewCode.slice(overviewHook, overviewElse);
-        assert(/WindowService\.reloadInstalledApps\(\s*\)/.test(overviewOpen),
-            "Opening the overview must re-read the shared app index");
-        assert(!/installedApps\.length\s*===\s*0\)\s*&&\s*typeof WindowService/.test(overviewCode),
-            "Activating an app must not depend on the index being empty");
+        assert(/session\.reloadInstalledApps\(\s*\)/.test(overviewOpen),
+            "Opening the overview must re-read the shared app index through the session port");
+        assert(!/typeof WindowService/.test(overviewCode),
+            "the overview must not reach for the kernel's WindowService singleton");
 
         // ---- 4. Opening a launcher whose cache is warm still queries ---------
         assert(cache.spawns === 0, "No query has been started yet");

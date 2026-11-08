@@ -1070,6 +1070,24 @@ Now landed: the pipeline a migrated surface needs.
 | `scripts/check_app_boundaries.py` | CI gate: apps may not import `Kernel/config`, another app, or the kernel module; non-official apps are limited to `Astral.AppKit`. `make test` runs it |
 | `Host/qmldir` | `Astral.Kernel.Host` as a module; `run.sh` exports `QML_IMPORT_PATH` |
 
+**The overview is now an app** (`modules/Astral/Apps/Overview/`, loaded from
+`apps/index.json` through `AppHost` with `eager`). `shell.qml` no longer names it:
+the root keeps `ShellState`/`SessionPort`/`IntentBus` and the host.
+
+| Surface reads | Was | Now |
+| :--- | :--- | :--- |
+| open/closed | `Config.overviewVisible` | `shellState.overviewVisible` (injected) |
+| windows | `WindowService.windows` | `session.windows` (injected port) |
+| thumbnails | `WindowService.overviewThumbnails` | `session.overviewThumbnails` |
+| activate / close / launch | `WindowService.*` | `session.*` |
+| close, launcher, exit | `Config.*` | `intents.request(...)` |
+
+Verified live: the surface opens on `overview toggle`, and with a window in the
+port it renders a card (`Probe Window` in the grid). Its grid is empty on this dev
+box because the shell's own `WindowService` is empty without a claimed session —
+the same data the pre-migration surface read, so no behaviour is lost. Four suites
+that pinned the old hops were moved to the new ones rather than re-pinned to a path.
+
 Still open in P2 — with the remaining blocker named precisely:
 
 - **The port layer, before any migration.** Two attempts to move the overview
@@ -1505,3 +1523,26 @@ boundary linter wired into `make test`.
 Conclusion: the app platform's remaining blocker is the **port layer** (§6.3, §9.5),
 not the host. Migrating an embedded app means first exposing what it reads — windows
 today, media and downloads next — as injected ports.
+
+### C.11 Overview migration (third attempt, successful)
+
+| Claim | Result |
+| :--- | :--- |
+| The app loads from `apps/index.json` through the host | **Pass** — zero load errors, `eager` activation |
+| Injected state drives visibility | **Pass** — `open=true` after `overview toggle` |
+| Injected windows reach the UI | **Pass** — a probe window renders as a card in the grid |
+| `shell.qml` names no feature | **Pass** — asserted by `test_apps_bundled::shell_qml_names_no_feature` |
+| The app imports no kernel singleton | **Pass** — `check_app_boundaries.py`: 0 `Config.`/`WindowService.` uses |
+| Window grid is populated on a dev box | **No** — the shell's own `WindowService.windows` is empty without a claimed session; identical data before and after the migration |
+
+Two things this migration cost, both now encoded:
+
+1. **A second `Component.onCompleted` in `shell.qml` breaks a contract test.**
+   `the_shell_claims_its_shortcuts_on_every_start` splits the file on the first
+   occurrence, so registering intents inside the `IntentBus` declaration made the
+   test inspect the wrong block. Intent handlers now live in the root's single
+   completion block, next to the rest of the startup wiring.
+2. **Testing the port path needs a probe, not a daemon.** With no claimed session
+   the grid is legitimately empty, which cannot distinguish "migration broken" from
+   "no windows". The verification that settled it was a single stub window bound to
+   `SessionPort.windows` in a dev run: a card appeared, then the stub was removed.
