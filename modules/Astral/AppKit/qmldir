@@ -1,7 +1,14 @@
 module Astral.AppKit
+AppWindow 1.0 AppWindow.qml
+Artwork 1.0 Artwork.qml
+GlassButton 1.0 GlassButton.qml
+GlassCard 1.0 GlassCard.qml
+Icon 1.0 Icon.qml
+Panel 1.0 Panel.qml
+RadialVisualiser 1.0 RadialVisualiser.qml
+SpeakerPlayer 1.0 SpeakerPlayer.qml
 singleton AppApi 1.0 AppApi.qml
 singleton AppPalette 1.0 AppPalette.qml
-singleton Theme 1.0 Theme.qml
 singleton Colors 1.0 Colors.qml
 singleton Motion 1.0 Motion.qml
-AppWindow 1.0 AppWindow.qml
+singleton Theme 1.0 Theme.qml

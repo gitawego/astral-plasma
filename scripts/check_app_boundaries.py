@@ -63,6 +63,11 @@ def check_file(path: pathlib.Path, app_dir: pathlib.Path, official: bool) -> lis
             normalised = target.replace("\\", "/")
             if "Astral.Kernel" in normalised:
                 problems.append(f"{path}:{number}: imports the private kernel module ({target})")
+            if "Kernel/theme" in normalised or "Kernel/components" in normalised:
+                problems.append(
+                    f"{path}:{number}: imports {target} - apps use Astral.AppKit, so the kernel is "
+                    f"registered once (spec C.13)"
+                )
             if "Kernel/config" in normalised:
                 problems.append(
                     f"{path}:{number}: imports {target} - use the injected shellState"

@@ -11,6 +11,11 @@ export QT_ASSUME_STDERR_HAS_CONSOLE=1
 export QML_XHR_ALLOW_FILE_READ=1
 export QT_QPA_PLATFORM=offscreen
 
+# AppKit and the kernel host are QML modules under modules/. Suites that load a
+# migrated app import \`Astral.AppKit\`, so the runner resolves it the way the shell does.
+DIR_FOR_IMPORTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export QML_IMPORT_PATH="$DIR_FOR_IMPORTS/modules${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
+
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 python3 - "$DIR" << 'EOF'
