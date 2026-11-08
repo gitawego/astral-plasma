@@ -52,9 +52,14 @@ Item {
             "DownloadsWindow must travel its resize limits as size hints");
         assert(/BackgroundEffect\.blurRegion/.test(winSrc),
             "DownloadsWindow must apply compositor blurRegion to its glass card");
-        assert(/DownloadsTab\s*\{/.test(winSrc) && /windowMode:\s*true/.test(winSrc),
-            "DownloadsWindow must host the same DownloadsTab in window mode");
-        assert(/onCloseRequested:\s*Config\.closeDownloadsWindow\(\)/.test(winSrc),
+        // The window hosts the downloads app component (one implementation, one registration)
+        // and switches it into window mode once it is loaded.
+        assert(/sourceComponent:\s*root\.appComponent/.test(winSrc)
+               && /windowMode\s*=\s*true/.test(winSrc),
+            "DownloadsWindow must host the downloads app component in window mode");
+        // The close request arrives from the hosted app and closes the manager.
+        assert(/closeRequested\.connect/.test(winSrc)
+               && /Config\.closeDownloadsWindow\(\)/.test(winSrc),
             "the window close control must close the manager");
 
         // Re-clicking the drawer action while the window is already open must
