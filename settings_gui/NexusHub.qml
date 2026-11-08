@@ -315,6 +315,42 @@ Item {
 
     onActivePageSectionChanged: root.syncSectionToPage()
 
+    /// Nearest ancestor navigation pill that is the active page.
+    function activeNavPill(node) {
+        if (!node || node.children === undefined) return null;
+        if (node.label !== undefined && node.iconText !== undefined && node.active === true) {
+            return node;
+        }
+        for (let i = 0; i < node.children.length; ++i) {
+            const hit = root.activeNavPill(node.children[i]);
+            if (hit) return hit;
+        }
+        return null;
+    }
+
+    /// Bring the active pill fully into view, one event-loop turn after the
+    /// page changed (a just-created delegate has no geometry yet).
+    function revealActiveNavPill() {
+        if (typeof navFlick === "undefined" || !navFlick) return;
+        Qt.callLater(function() {
+            const pill = root.activeNavPill(navCol);
+            if (!pill) return;
+            const top = pill.mapToItem(navCol, 0, 0).y;
+            const bottom = top + pill.height;
+            const viewTop = navFlick.contentY;
+            const viewBottom = viewTop + navFlick.height;
+            const maxY = Math.max(0, navFlick.contentHeight - navFlick.height);
+            if (top < viewTop) {
+                navFlick.contentY = Math.max(0, Math.min(maxY, top - 8));
+            } else if (bottom > viewBottom) {
+                navFlick.contentY = Math.max(0, Math.min(maxY, bottom - navFlick.height + 8));
+            }
+        });
+    }
+
+    onActivePageChanged: root.revealActiveNavPill()
+    Component.onCompleted: root.revealActiveNavPill()
+
     // Categories structure
     readonly property var navigationSections: [
         {
@@ -439,10 +475,17 @@ Item {
                 }
 
                 // Categorized Navigation List
+                //
+                // The rail grows with every page and the window does not, so it
+                // scrolls - and it scrolls to the active page. Without that, a
+                // newly added page can be the one page the reader cannot see in
+                // the rail that is supposed to lead to it.
                 Flickable {
+                    id: navFlick
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     contentHeight: navCol.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
                     clip: true
 
                     Column {

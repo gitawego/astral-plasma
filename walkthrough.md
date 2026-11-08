@@ -2040,3 +2040,47 @@ cannot report a failing suite as passing.
 >
 > **Not verified**: the download path of `install.sh` (needs a published
 > `latest.json`, i.e. the next release) and the CI publish job itself.
+
+---
+
+## 28. The Updates Page Could Not Be Reached, And The Curtain Took The Whole Shell Down
+
+> [!NOTE]
+> **Issue**: adding "Updates & About" to the settings rail produced a page nobody
+> could navigate to, and the restart curtain - loaded by `shell.qml` on every
+> start - made the shell fail to load at all.
+>
+> **Root causes**:
+> 1. `shell/UpdateCurtain.qml` used `MaterialIcon { icon: ... }`; the component's
+>    property is `text`/`iconName`. The type failed to instantiate, and because
+>    `shell.qml` instantiates it eagerly, the whole configuration failed with
+>    "Type UpdateCurtain unavailable". Found by starting the real shell, not by
+>    the test suite.
+> 2. The settings rail is a clipped `Flickable` that never scrolled to the active
+>    page. The rail had exactly enough room for the old list; one more item left
+>    "Updates & About" below the fold, so `settings open updates` showed the page
+>    with no rail entry to explain where it came from.
+> 3. A disabled update action used `variant: "filled"`, which does not encode
+>    inactiveness in its fill, so "Update and restart" looked pressable while the
+>    page said there was nothing to install.
+>
+> **Solution**:
+> 1. `MaterialIcon.text` - and the acceptance that a component which loads on
+>    every start needs a live boot to prove it.
+> 2. The rail scrolls to the active pill (`activeNavPill` + `revealActiveNavPill`,
+>    one event-loop turn after navigation so the delegate has geometry), with
+>    `boundsBehavior: StopAtBounds`.
+> 3. Disabled actions use the tonal variant and drop to 55 % opacity; the apply
+>    and revert handlers also re-check `active`, so a stale click cannot apply an
+>    update the daemon already refused.
+>
+> **Verified live** (real KWin session, shell started with `./run.sh`, browser and
+> editor behind it): `settings open updates` shows Version 0.1.3, "Updated by the
+> shell · channel stable", "This install is up to date", an inert "Update and
+> restart", and the four compiled release notes; the rail scrolled itself to
+> reveal and highlight "Updates & About". Quitting restored plasmashell and the
+> shortcuts (`[✓] Shortcuts restored`, `plasma-plasmashell` active).
+>
+> **Not verified**: the curtain mid-update (it only appears while an apply is
+> running; the swap and rollback are proven in `test_update_supervisor.rs` and in
+> the throwaway-root run against a local HTTP release).

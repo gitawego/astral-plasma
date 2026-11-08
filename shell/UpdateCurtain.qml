@@ -77,7 +77,7 @@ PanelWindow {
                         spacing: Theme.spaceMedium
 
                         MaterialIcon {
-                            icon: "system_update"
+                            text: "system_update"
                             size: 22
                             color: Colors.primary
                         }

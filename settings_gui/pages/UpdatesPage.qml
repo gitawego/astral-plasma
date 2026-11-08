@@ -301,9 +301,14 @@ SettingsPage {
                     label: root.applying ? "Updating…" : "Update and restart"
                     iconText: "system_update"
                     accent: "primary"
-                    variant: "filled"
+                    variant: "tonal"
                     active: root.updateAvailable && root.canApply && !root.applying
-                    onClicked: root.requestApply()
+                    // An unavailable action reads unavailable: the pill keeps its
+                    // place (so the layout does not jump) and loses its emphasis.
+                    opacity: active ? 1.0 : 0.55
+                    onClicked: {
+                        if (active) root.requestApply();
+                    }
                 }
 
                 Item { Layout.fillWidth: true }
@@ -431,7 +436,10 @@ SettingsPage {
                     accent: "warning"
                     variant: "tonal"
                     active: root.installMethod === "managed"
-                    onClicked: root.requestRevert()
+                    opacity: active ? 1.0 : 0.55
+                    onClicked: {
+                        if (active) root.requestRevert();
+                    }
                 }
 
                 Item { Layout.fillWidth: true }
