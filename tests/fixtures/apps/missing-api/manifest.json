@@ -1,0 +1,3 @@
+{"schema":1,"id":"io.github.fixture.noapi","name":"No Api","version":"1.0.0",
+ "trust":"community","runtime":"hosted","publisher":{"name":"Fixture"},
+ "entry":{"root":"Main.qml"}}

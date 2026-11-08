@@ -1,0 +1,158 @@
+import QtQuick
+import "./AppHostPolicy.js" as Policy
+import "./AppManifest.js" as Manifest
+
+// ============================================================================
+// AppHost — instantiate what the policy allows, and nothing else
+// ============================================================================
+// Deliberately plain QtQuick: no Quickshell import, no file I/O. The host receives
+// already-loaded registry entries (identity, version, API window, entry root,
+// payload directory) and:
+//
+//   1. validates each entry as a manifest (`AppManifest.validate`),
+//   2. asks `AppHostPolicy.plan` what is loadable and in what order,
+//   3. keeps one `Loader` per loadable app, **inactive**: a `Loader` that is never
+//      activated costs a URL, not a component tree (P0 measured 11 inactive apps at
+//      +1 ms, 11 instantiated at +65 ms),
+//   4. activates on demand — `activate(id)` — and turns any failure into a
+//      reported skip instead of an exception that reaches the shell.
+//
+// Nothing in this file may throw: a corrupt manifest, a missing payload, or QML
+// that fails to compile are all data the host reports, not errors it propagates.
+Item {
+    id: root
+
+    /// Registry entries: `{ id, version, kernelApi, enabled, blocked, requires,
+    /// payloadDir, entry: { root } }`. Missing fields are refused, not guessed.
+    property var entries: []
+
+    /// The running platform's API window, e.g. `{ level: 1, floor: 1 }`.
+    property var host: ({ level: 1, floor: 1 })
+
+    /// Loadable entries, in dependency order.
+    readonly property var loaded: plan.load
+    /// `[{ id, state, reason }]` for everything that did not load.
+    readonly property var skipped: plan.skipped
+    /// Ids in load order (logs, assertions, the Apps page).
+    readonly property var loadedIds: plan.load.map(function (entry) { return entry.id; })
+
+    signal appFailed(string id, string reason)
+    signal appLoaded(string id)
+
+    readonly property var plan: build()
+    property var loaders: ({})
+    /// Ids already reported through `appFailed`, so a loader error that surfaces
+    /// twice (status change + activation) is not reported twice.
+    property var reported: ({})
+
+    function build() {
+        const accepted = [];
+        const rejected = [];
+        const all = entries || [];
+        for (let index = 0; index < all.length; index++) {
+            const entry = all[index];
+            const verdict = Manifest.validate(entry);
+            if (verdict.ok && entry.runtime === "hosted") {
+                // A hosted app is a separate process, not an item in this scene
+                // graph. Not an error: it is simply not this host's job.
+                rejected.push({
+                    id: entry.id,
+                    state: "hosted",
+                    reason: "run as its own process, not embedded in the shell"
+                });
+            } else if (verdict.ok) {
+                accepted.push(entry);
+            } else {
+                const id = (entry && typeof entry.id === "string") ? entry.id : "";
+                rejected.push({ id: id, state: verdict.state, reason: verdict.reason });
+            }
+        }
+        const decided = Policy.plan(accepted, host);
+        // Validator refusals lead: "this manifest is corrupt" is the more
+        // actionable line than "this app is disabled".
+        return { load: decided.load, skipped: rejected.concat(decided.skipped) };
+    }
+
+    function sourceFor(entry) {
+        const dir = entry && entry.payloadDir ? String(entry.payloadDir) : "";
+        const rel = entry && entry.entry && entry.entry.root ? String(entry.entry.root) : "";
+        if (!dir || !rel) {
+            return "";
+        }
+        const base = dir.charAt(dir.length - 1) === "/" ? dir : dir + "/";
+        return base + rel;
+    }
+
+    function reasonFor(id) {
+        const all = skipped;
+        for (let index = 0; index < all.length; index++) {
+            if (all[index].id === id) {
+                return all[index];
+            }
+        }
+        return null;
+    }
+
+    function loaderFor(id) {
+        return loaders[id] || null;
+    }
+
+    function reportFailure(id, reason) {
+        if (reported[id]) {
+            return;
+        }
+        reported[id] = true;
+        root.appFailed(id, reason);
+    }
+
+    /// Instantiate one app. Returns the item, or null (with `appFailed` emitted).
+    ///
+    /// A surface calls this when it actually needs the app; nothing is instantiated
+    /// at boot, so the shell's startup cost does not grow with the number of
+    /// installed apps.
+    function activate(id) {
+        const loader = loaderFor(id);
+        if (!loader) {
+            reportFailure(id, "not in the load plan");
+            return null;
+        }
+        if (loader.status === Loader.Error) {
+            reportFailure(id, "failed to load " + loader.source);
+            return null;
+        }
+        loader.active = true;
+        if (loader.status === Loader.Error) {
+            reportFailure(id, "failed to load " + loader.source);
+            return null;
+        }
+        if (loader.status === Loader.Ready) {
+            root.appLoaded(id);
+            return loader.item;
+        }
+        // Asynchronous or not ready yet: the surface waits for `appLoaded`.
+        return loader.item;
+    }
+
+    Repeater {
+        model: root.loaded
+
+        delegate: Loader {
+            id: appLoader
+            active: false
+            asynchronous: false
+            source: root.sourceFor(modelData)
+
+            onStatusChanged: {
+                if (status === Loader.Error) {
+                    root.reportFailure(modelData.id, "failed to load " + source);
+                }
+            }
+
+            Component.onCompleted: {
+                const map = root.loaders;
+                map[modelData.id] = appLoader;
+                root.loaders = map;
+            }
+        }
+    }
+}

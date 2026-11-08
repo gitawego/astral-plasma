@@ -1,5 +1,5 @@
 import QtQuick
-import "../modules/Astral/Kernel/host/AppHostPolicy.js" as Policy
+import "../modules/Astral/Kernel/Host/AppHostPolicy.js" as Policy
 
 // ============================================================================
 // App host policy

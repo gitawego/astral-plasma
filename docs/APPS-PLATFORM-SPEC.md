@@ -565,7 +565,7 @@ compatible(app, host)  ⟺
   (oldest API it still loads), and `API_LEVEL_HISTORY` (level → first platform
   release that introduced it, used to phrase warnings as platform versions) live
   in `daemon/src/kernel/app_api.rs`, generated into
-  `modules/Astral/Kernel/host/AppApi.js` by `scripts/gen_app_api.py`. A test
+  `modules/Astral/Kernel/Host/AppApi.js` by `scripts/gen_app_api.py`. A test
   reads both and asserts equality; CI fails when they drift.
 - A manifest's `kernelApi` is the level the app was **built against**, i.e. its
   minimum. Authors never declare a maximum: only the host knows what it still
@@ -1032,7 +1032,7 @@ Landed:
   persisted, and a *corrupt* existing file is never silently clobbered. Plus
   `upsert`, `set_enabled`, `remove`, and `block_version` (capped at 32, so a
   broken catalog cannot grow it without bound).
-- `modules/Astral/Kernel/host/AppHostPolicy.js` — the host's decisions as pure
+- `modules/Astral/Kernel/Host/AppHostPolicy.js` — the host's decisions as pure
   functions: who loads, why the rest do not (`disabled`, `blocked`,
   `incompatible`, `unresolvedDependency`, `invalid`), dependency-ordered and
   deterministic. No app is named anywhere.
@@ -1043,12 +1043,27 @@ Landed:
   author copies is validated by the same code that validates an install, so the
   authoring side cannot drift from the enforcement side.
 
+Also landed: the host itself.
+
+- `modules/Astral/Kernel/Host/` is the `Astral.Kernel.Host` module:
+  `AppManifest.js` (load-time manifest validation), `AppHostPolicy.js` (pure
+  plan), `AppHost.qml` (Loaders + on-demand `activate(id)` + failure reporting),
+  `AppRegistry.qml` (reads `apps.json` and each manifest, merges registry state).
+- The host instantiates **nothing at boot**: `activate(id)` is a call, so startup
+  does not grow with the installed app count (P0: 11 inactive apps +1 ms, 11
+  instantiated +65 ms).
+- A corrupt manifest, a missing payload, and QML that does not compile all become
+  one skipped row with a reason; none of them can throw into the shell.
+- Hosted apps are skipped by `AppHost` with state `hosted` — they are a separate
+  process, not an item in this scene graph.
+- The manifest contract is checked from both sides against shared fixtures
+  (`tests/fixtures/apps/` + `index.json` + `expect.json`): Rust in
+  `test_app_manifest_fixtures.rs`, QML in `tst_app_manifest_validation.qml`.
+
 Still open in P2:
 
-- `AppHost.qml` itself (instantiate the plan behind `LazyLoader`s) and
-  `SurfaceBroker`/`IntentBus`; then moving `overview` out as the first embedded
-  app — the point at which the host stops being a library and starts replacing
-  `shell.qml` wiring.
+- `SurfaceBroker`/`IntentBus`, and moving `overview` through `AppHost` — the point
+  at which the host stops being a library and starts replacing `shell.qml` wiring.
 - The `Astral.Kernel 1.0` module URI (needs the Quickshell-dependent singletons
   split behind ports first — Appendix C.6).
 
@@ -1400,3 +1415,24 @@ Three findings worth keeping:
    kernel-only, so a hosted app would have rendered with the shell's *default*
    shape and type. `ThemeExportService` now exports them, and a test asserts every
    key AppKit reads exists in the exported payload.
+
+### C.8 AppHost (same day)
+
+| Claim | Result |
+| :--- | :--- |
+| Registry → host → instantiated app, live | **Pass** — `PLAN loaded=[io.github.fixture.embedded]` then `EMBEDDED_APP_LOADED` |
+| A corrupt manifest beside good ones | **Pass** — one `invalid` row, the other apps still plan and load |
+| A payload whose QML does not compile | **Pass** — `appFailed`, `activate` returns null, caller continues |
+| A missing payload | **Pass** — reported once, not once per status change |
+| Nothing instantiated at boot | **Pass** — `loader.active === false` for every planned app |
+| QML module name matches the directory | **Fail first** — `Astral.Kernel.Host` needs `Host/`, not `host/`; the directory was renamed to match the module (spec §6.1: PascalCase) |
+
+Two design notes that came out of building it:
+
+1. **`activate(id)` is the API, not `active: true` on a Repeater.** A host that
+   instantiates at boot pays the whole cost immediately; an explicit call lets a
+   screen, tab, or tray request decide when. The tests assert the `active === false`
+   state, so this cannot silently regress into eager loading.
+2. **Failure reporting is deduplicated by id.** A `Loader` reports its error twice
+   (status change and the activation that observes it), which would surface as two
+   warnings for one broken app.

@@ -2235,7 +2235,7 @@ Registry writer, host policy, and the CLI verbs followed in the same phase:
 - **Writer** (`application/app_service.rs`) — `apps.json.tmp` + `sync_all` +
   rename + directory sync; a corrupt existing file is never clobbered, and a
   registry a reader would refuse is never persisted.
-- **Host policy** (`modules/Astral/Kernel/host/AppHostPolicy.js`, 30 assertions in
+- **Host policy** (`modules/Astral/Kernel/Host/AppHostPolicy.js`, 30 assertions in
   `tests/tst_app_host_policy.qml`) — who loads, why the rest do not, dependency
   order, cycles, duplicate ids, and a coherent-window clamp. No app is named.
 - **`astral app enable|disable <id>`** — verified live: `Disabled
@@ -2283,3 +2283,34 @@ so an archetype change reaches community apps without a rebuild.
 >
 > **Not verified**: the sandbox itself (no `bwrap` mount of a real app yet), and
 > the SDK verbs (`new/dev/test/lint/pack`) — P3 remainder.
+
+---
+
+## P2 (second slice) — the host, and the registry that feeds it (2026-11-08)
+
+`modules/Astral/Kernel/Host/` is now the `Astral.Kernel.Host` module:
+
+| File | Job |
+| :--- | :--- |
+| `AppManifest.js` | load-time manifest validation (identity, version, API level, entry root) |
+| `AppHostPolicy.js` | the pure plan: who loads, why the rest do not, dependency order |
+| `AppHost.qml` | one inactive `Loader` per planned app, `activate(id)`, failure reporting |
+| `AppRegistry.qml` | reads `apps.json` + each manifest, merges registry state, reports errors |
+
+> **Verified on the live session**: a temp registry with one embedded fixture app
+> printed `PLAN loaded=[io.github.fixture.embedded] skipped=[] errors=[]` and then
+> `EMBEDDED_APP_LOADED` after `activate()`. QML suites cover the rest: a corrupt
+> manifest beside good ones still plans and loads the good ones; a payload whose
+> QML does not compile reports `appFailed` and `activate` returns null; a missing
+> payload is reported once; every planned loader is `active === false` at boot;
+> and a hosted app is skipped as `hosted` because it is a separate process.
+>
+> The manifest contract is now checked from **both** sides against the same
+> fixtures (`tests/fixtures/apps/`): Rust via `test_app_manifest_fixtures.rs`, QML
+> via `tst_app_manifest_validation.qml`. If either validator drifts, one suite
+> fails.
+>
+> **Verified**: `make test` exit 0 — 1059 Rust tests, 156 QML suites.
+>
+> **Not done**: `SurfaceBroker`/`IntentBus`, and routing `overview` through the
+> host (that is the change that touches `shell.qml`).

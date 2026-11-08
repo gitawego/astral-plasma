@@ -1,0 +1,18 @@
+{
+ "schema": 1,
+ "id": "io.github.fixture.good",
+ "name": "Good",
+ "version": "1.0.0",
+ "kernelApi": 1,
+ "trust": "community",
+ "runtime": "hosted",
+ "publisher": {
+  "name": "Fixture"
+ },
+ "entry": {
+  "root": "shell.qml"
+ },
+ "permissions": [
+  "session.read"
+ ]
+}

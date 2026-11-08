@@ -1,0 +1,15 @@
+{
+ "schema": 1,
+ "id": "io.github.fixture.future",
+ "name": "Future",
+ "version": "1.0.0",
+ "kernelApi": 99,
+ "trust": "community",
+ "runtime": "hosted",
+ "publisher": {
+  "name": "Fixture"
+ },
+ "entry": {
+  "root": "shell.qml"
+ }
+}

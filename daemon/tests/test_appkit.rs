@@ -67,7 +67,7 @@ fn appkit_constants_match_the_daemon() {
 
 #[test]
 fn host_policy_default_host_matches_the_daemon() {
-    let policy = read("modules/Astral/Kernel/host/AppHostPolicy.js");
+    let policy = read("modules/Astral/Kernel/Host/AppHostPolicy.js");
     let line = policy
         .lines()
         .find(|line| line.contains("var DEFAULT_HOST"))

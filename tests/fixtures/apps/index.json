@@ -1,0 +1,8 @@
+[
+  "good",
+  "missing-api",
+  "future-api",
+  "bad-version",
+  "corrupt-json",
+  "escaping-root"
+]
