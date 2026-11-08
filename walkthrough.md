@@ -2741,3 +2741,17 @@ the plan, enable/disable, ordering, compatibility and injection still come from 
 Trade-off, stated: `shell.qml` names each migrated app once, in a component declaration.
 That is the price of one kernel registration, and cheaper than duplicating theme state into
 every app.
+
+---
+
+## P4 — the media tab is an app too (2026-11-08)
+
+Same path as workspaces: kernel primitives (themed through the shell-declared component),
+`media`/`shellState`/`intents` injected, hosted in its pane.
+
+> **Verified live**: the media tab shows "No Media Playing · NetEase Cloud Music (Wine)",
+> the transport controls, 0:00/0:01 and the player's artwork, in the shell's palette. Zero
+> load errors. `make test` exit 0 — 1109 Rust tests, 164 QML suites.
+
+Two migrations now share the same mechanism, so the pattern is repeatable: migrate the file,
+declare one `Component` in `shell.qml`, mount it from its pane, point the suites at the app.

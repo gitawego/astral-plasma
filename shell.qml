@@ -10,6 +10,7 @@ import "./modules/Astral/Kernel/theme"
 import "./shell"
 import Astral.Kernel.Host 1.0
 import "./modules/Astral/Apps/Workspaces"
+import "./modules/Astral/Apps/Media"
 import "./settings_gui"
 import "./modules/Astral/Kernel/services"
 import "./assistant"
@@ -149,7 +150,10 @@ ShellRoot {
         metrics: SystemService
         // Shell-declared components share the shell's kernel registration, which is what
         // makes a migrated app themed (spec C.18).
-        components: ({ "org.astralplasma.workspaces": workspacesApp })
+        components: ({
+            "org.astralplasma.workspaces": workspacesApp,
+            "org.astralplasma.media": mediaApp
+        })
         eager: []
         host: ({ level: 1, floor: 1 })
         onAppFailed: function (id, reason) { console.error("app failed: " + id + " - " + reason) }
@@ -615,6 +619,10 @@ ShellRoot {
     Component {
         id: workspacesApp
         WorkspacesApp {}
+    }
+    Component {
+        id: mediaApp
+        MediaApp {}
     }
 
     // Settings GUI Window

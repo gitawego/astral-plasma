@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "id": "org.astralplasma.media",
+  "name": "Media",
+  "version": "0.1.0",
+  "kernelApi": 1,
+  "dataSchema": 1,
+  "trust": "official",
+  "runtime": "embedded",
+  "publisher": { "name": "Astral Plasma", "key": "minisign:RWSplaceholderReleaseKey" },
+  "entry": { "root": "MediaApp.qml", "dashboardTab": "media" },
+  "requires": { "capabilities": [], "qtModules": [], "apps": [] },
+  "permissions": ["media.read", "media.control"],
+  "distribution": "preinstalled"
+}

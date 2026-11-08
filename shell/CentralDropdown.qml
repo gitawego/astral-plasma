@@ -390,14 +390,30 @@ Item {
                     x: myIndex >= 0 ? myIndex * tabContentContainer.width : tabContentContainer.width
                     width: tabContentContainer.width
                     height: implicitHeight
-                    implicitHeight: mediaTab.implicitHeight
+                    implicitHeight: mediaApp.children.length > 0
+                        ? Math.max(mediaApp.children[0].implicitHeight, 320) : 320
                     clip: true
                     visible: (myIndex >= 0 ? tabContentContainer.activeTabIndex === myIndex : tabContentContainer.activeTabIndex === 1) || tabSlider.isAnimating
 
-                    MediaTab {
-                        id: mediaTab
+                    Item {
+                        id: mediaApp
                         width: parent.width
                         height: parent.height
+
+                        readonly property int hostReadiness: {
+                            if (!root.appHost) return 0;
+                            return root.appHost.loaderCount * 1000
+                                + Object.keys(root.appHost.tabProviders).length;
+                        }
+                        onHostReadinessChanged: mountApp()
+                        Component.onCompleted: mountApp()
+
+                        function mountApp() {
+                            if (!root.appHost) return;
+                            const provider = root.appHost.providerForTab("media");
+                            if (provider.length === 0 || root.appHost.loaderFor(provider) === null) return;
+                            if (mediaApp.children.length === 0) root.appHost.mount(provider, mediaApp);
+                        }
                     }
                 }
 

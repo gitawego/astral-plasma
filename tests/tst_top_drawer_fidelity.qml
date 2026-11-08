@@ -3,6 +3,7 @@ import "../modules/Astral/Kernel/components"
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "../dashboard/tabs"
+import "../modules/Astral/Apps/Media"
 
 Item {
     id: testRoot
@@ -10,7 +11,7 @@ Item {
     height: 800
 
     // Instantiate MediaTab
-    MediaTab {
+    MediaApp {
         id: mediaTab
         visible: false
     }
