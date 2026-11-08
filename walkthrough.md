@@ -2401,3 +2401,37 @@ The app has **0** `Config.` and **0** `WindowService.` uses, enforced by
 > `WindowService.windows` is empty on this dev box (no claimed Plasma session), and
 > it was empty before the migration too — the same data source, so nothing is lost,
 > but "eleven real windows in a 4-column grid" remains unobserved here.
+
+---
+
+## P3 — the author path works end to end (2026-11-08)
+
+```
+astral app new io.github.alice.clock --template surface --dir clock
+  → manifest.json, shell.qml, README.md, tests/
+
+astral app lint clock        → clock: clean
+astral app pack clock        → io.github.alice.clock-0.1.0.astralapp
+                               digest sha256:79e62409…
+                               3 file(s)
+```
+
+| Piece | Where |
+| :--- | :--- |
+| ustar writer/reader, validation, digest | `domain/app_bundle.rs` (10 tests) |
+| templates, lint, pack | `application/app_sdk.rs` (8 tests) |
+| CLI verbs | `astral app new\|lint\|pack\|test` |
+| templates load for real | `daemon/tests/test_app_sdk_templates.rs` — spawns `quickshell` for each template, bounded to 4 s |
+
+`Bundle::validate` refuses a bundle whose `entry.root` is missing from the archive,
+so a truncated `.astralapp` fails at install instead of at launch. Packing is
+offline: no archive dependency, mtime pinned to 0 so the same source packs to the
+same digest.
+
+> **Verified**: `make test` exit 0 — **1082 Rust tests**, 160 QML suites, boundary
+> gate clean. All three templates load under a live `quickshell` (surface,
+> layer-surface, service) with zero load errors, and the surface one was captured
+> rendering its window.
+>
+> **Not verified**: `astral app dev` (the sandbox is P6), install/update (catalog is
+> P5), and signing (needs a private key the daemon must not own).

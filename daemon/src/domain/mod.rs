@@ -1,3 +1,4 @@
+pub mod app_bundle;
 pub mod app_compat;
 pub mod app_identity;
 pub mod app_manifest;

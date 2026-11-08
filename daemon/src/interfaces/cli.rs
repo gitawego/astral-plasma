@@ -2675,6 +2675,134 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
         "available" => {
             println!("{}", apps_not_written_yet("available"));
         }
+        "new" => {
+            use crate::application::app_sdk::{create_app, Template};
+
+            let Some(id) = args.get(3) else {
+                return Err("usage: astral app new <reverse.dns.id> [--template surface|layer-surface|service] [--dir <path>]".into());
+            };
+            let template = args
+                .iter()
+                .position(|arg| arg == "--template")
+                .and_then(|index| args.get(index + 1))
+                .and_then(|name| Template::parse(name))
+                .unwrap_or(Template::Surface);
+            let target = match args.iter().position(|arg| arg == "--dir") {
+                Some(index) => std::path::PathBuf::from(
+                    args.get(index + 1).cloned().unwrap_or_default(),
+                ),
+                None => std::path::PathBuf::from(id.rsplit('.').next().unwrap_or(id)),
+            };
+
+            let created = create_app(id, template, &target)?;
+            println!("Created {} ({}, {})", created.manifest.id, created.manifest.name, template.name());
+            println!("  {}", target.join("manifest.json").display());
+            println!("  {}", target.join("shell.qml").display());
+            println!("  {}", target.join("README.md").display());
+            println!();
+            println!("Next:");
+            println!("  astral app dev {}   # run it (needs the sandbox, P6)", target.display());
+            println!("  astral app test {}", target.display());
+            println!("  astral app pack {}", target.display());
+        }
+        "lint" => {
+            use crate::application::app_sdk::lint_dir;
+
+            let dir = app_dir_arg(args, 3)?;
+            let problems = lint_dir(&dir)?;
+            if problems.is_empty() {
+                println!("{}: clean", dir.display());
+            } else {
+                for problem in &problems {
+                    eprintln!("{problem}");
+                }
+                return Err(format!("{} problem(s) in {}", problems.len(), dir.display()).into());
+            }
+        }
+        "pack" => {
+            use crate::application::app_sdk::pack_dir;
+
+            let dir = app_dir_arg(args, 3)?;
+            let out = args
+                .iter()
+                .position(|arg| arg == "--out")
+                .and_then(|index| args.get(index + 1))
+                .map(std::path::PathBuf::from);
+            let packed = pack_dir(&dir, out.as_deref())?;
+            println!("{}", packed.path.display());
+            println!("  digest sha256:{}", packed.digest);
+            println!("  {} file(s)", packed.files);
+        }
+        "test" => {
+            use crate::application::app_sdk::lint_dir;
+
+            let dir = app_dir_arg(args, 3)?;
+            let problems = lint_dir(&dir)?;
+            if !problems.is_empty() {
+                for problem in &problems {
+                    eprintln!("{problem}");
+                }
+                return Err(format!("{} lint problem(s); not running suites", problems.len()).into());
+            }
+            let tests_dir = dir.join("tests");
+            let mut suites: Vec<std::path::PathBuf> = std::fs::read_dir(&tests_dir)
+                .map(|entries| {
+                    entries
+                        .flatten()
+                        .map(|entry| entry.path())
+                        .filter(|path| {
+                            path.file_name()
+                                .and_then(|name| name.to_str())
+                                .map(|name| name.starts_with("tst_") && name.ends_with(".qml"))
+                                .unwrap_or(false)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            suites.sort();
+            if suites.is_empty() {
+                println!("{}: no suites in tests/", dir.display());
+                return Ok(());
+            }
+            let mut failed = 0;
+            for suite in &suites {
+                let output = std::process::Command::new("qml6")
+                    .arg("-platform")
+                    .arg("offscreen")
+                    .arg(suite)
+                    .env("QT_QPA_PLATFORM", "offscreen")
+                    .env("QML_XHR_ALLOW_FILE_READ", "1")
+                    .env("QT_ASSUME_STDERR_HAS_CONSOLE", "1")
+                    .output();
+                match output {
+                    Ok(result) => {
+                        let log = format!(
+                            "{}{}",
+                            String::from_utf8_lossy(&result.stdout),
+                            String::from_utf8_lossy(&result.stderr)
+                        );
+                        let ok = result.status.success()
+                            && log.contains("PASS")
+                            && !log.contains("FAIL");
+                        println!(
+                            "{} ... {}",
+                            suite.display(),
+                            if ok { "PASSED" } else { "FAILED" }
+                        );
+                        if !ok {
+                            failed += 1;
+                            eprint!("{log}");
+                        }
+                    }
+                    Err(err) => {
+                        println!("{} ... skipped ({err})", suite.display());
+                    }
+                }
+            }
+            if failed > 0 {
+                return Err(format!("{failed} suite(s) failed").into());
+            }
+        }
         "enable" | "disable" => {
             let Some(id) = args.get(3) else {
                 return Err(format!("usage: astral app {sub} <app-id>").into());
@@ -2696,6 +2824,17 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
     Ok(())
 }
 
+fn app_dir_arg(args: &[String], index: usize) -> DynResult<std::path::PathBuf> {
+    let Some(dir) = args.get(index) else {
+        return Err("usage: astral app <lint|pack|test> <app-directory>".into());
+    };
+    let path = std::path::PathBuf::from(dir);
+    if !path.join("manifest.json").is_file() {
+        return Err(format!("{} has no manifest.json; is it an app?", path.display()).into());
+    }
+    Ok(path)
+}
+
 /// A refusal that names the phase, because a command that silently does nothing
 /// is indistinguishable from one that worked.
 fn apps_not_written_yet(subcommand: &str) -> String {
@@ -2704,8 +2843,8 @@ fn apps_not_written_yet(subcommand: &str) -> String {
 packaging (P5 of docs/APPS-PLATFORM-SPEC.md). Nothing was changed."
             .to_string(),
         other => format!(
-            "`astral app {other}` is not implemented yet: packaging and the catalog land in P5 \
-of docs/APPS-PLATFORM-SPEC.md. Nothing was changed."
+            "`astral app {other}` is not implemented yet: install, update, pin and rollback land \
+with the catalog in P5 of docs/APPS-PLATFORM-SPEC.md. Nothing was changed."
         ),
     }
 }

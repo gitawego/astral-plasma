@@ -1138,8 +1138,27 @@ palette keys, qmldir completeness, no kernel import, and a live `quickshell` loa
 that asserts the app painted with *the palette file's* radius and typeface), plus
 `sdk/examples/hello` rendering on the running session.
 
-Still open in P3: `astral app new/dev/test/lint/pack`, templates, and migrating
-`downloads` as the official reference app.
+The SDK verbs are real (P3, partial):
+
+| Command | What it does |
+| :--- | :--- |
+| `astral app new <id> [--template surface\|layer-surface\|service] [--dir .]` | writes `manifest.json`, `shell.qml`, `README.md`, `tests/`; refuses a non-empty target |
+| `astral app lint <dir>` | manifest + entry file + import boundary + `Config.` scan; names file and line |
+| `astral app pack <dir>` | `.astralapp` (POSIX ustar, uncompressed) + SHA-256 + file count; refuses what would not install |
+| `astral app test <dir>` | lint, then the `tests/tst_*.qml` suites under `qml6` |
+
+`.astralapp` is a hand-written ustar writer/reader with no archive dependency, so
+packing works offline; zstd compression and minisign signing stay P5 (a codec
+dependency, and a private key the daemon must not own). `Bundle::validate` refuses
+absolute/escaping paths, symlinks, native libraries, a missing manifest, and a
+manifest whose `entry.root` is not in the archive — the last one is what makes a
+truncated bundle fail at install rather than at launch.
+
+Every template is **load-verified**: `daemon/tests/test_app_sdk_templates.rs`
+creates each one, lints it, packs it, and starts it under a real `quickshell`.
+
+Still open in P3: `astral app dev` (needs the P6 sandbox), install/update (P5
+catalog), and migrating `downloads` as the official reference app.
 
 - `astral app new/dev/test/lint/pack` using the installed package as SDK.
 - Templates and `sdk/examples/hello`.
