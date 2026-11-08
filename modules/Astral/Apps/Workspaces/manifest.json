@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "id": "org.astralplasma.workspaces",
+  "name": "Workspaces",
+  "version": "0.1.0",
+  "kernelApi": 1,
+  "dataSchema": 1,
+  "trust": "official",
+  "runtime": "embedded",
+  "publisher": { "name": "Astral Plasma", "key": "minisign:RWSplaceholderReleaseKey" },
+  "entry": { "root": "WorkspacesApp.qml", "dashboardTab": "workspaces" },
+  "requires": { "capabilities": [], "qtModules": [], "apps": [] },
+  "permissions": ["windows.read", "windows.control", "workspaces.read", "workspaces.control"],
+  "distribution": "preinstalled"
+}

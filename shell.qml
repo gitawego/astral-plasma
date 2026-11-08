@@ -591,6 +591,7 @@ ShellRoot {
             // The Unified Shell Visual Surface
             UnifiedShell {
                 targetScreen: screenScope.modelData
+                appHost: featureHost
             }
         }
     }

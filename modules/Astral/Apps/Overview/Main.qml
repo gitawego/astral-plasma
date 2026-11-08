@@ -451,7 +451,7 @@ PanelWindow {
     }
 
     // Windows opening/closing while the overview is visible re-target the
-    // rotation without restarting it (PreviewCycle re-reads items at wrap).
+    // rotation without restarting it (PreviewLoop re-reads items at wrap).
     Connections {
         target: root.session
         enabled: root.session !== null
@@ -706,7 +706,7 @@ PanelWindow {
         }
     }
 
-    OverviewLayout {
+    OverviewGrid {
         id: layout
     }
 
@@ -835,7 +835,7 @@ PanelWindow {
 
                                 Behavior on border.color { ColorAnimation { duration: Theme.animExpressiveFastEffects } }
 
-                                LiveWindowThumbnail {
+                                WindowThumbnail {
                                     id: thumb
                                     anchors.fill: parent
                                     anchors.margins: 1
@@ -1184,7 +1184,7 @@ PanelWindow {
                                 border.color: isSelected ? Qt.alpha(Colors.primary, 0.45) : Qt.rgba(1, 1, 1, 0.10)
                                 clip: true
 
-                                LiveWindowThumbnail {
+                                WindowThumbnail {
                                     id: rowThumb
                                     anchors.fill: parent
                                     anchors.margins: 1

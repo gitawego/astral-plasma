@@ -31,6 +31,11 @@ PanelWindow {
 
     default property alias content: surface.data
 
+    /// The host palette, read once when the window is created. `AppKit`'s singletons
+    /// hold no IO (spec C.14), so somebody has to do it: the window is the natural
+    /// point, because a surface with no window has nothing to theme.
+    PaletteLoader { visible: false }
+
     color: "transparent"
     implicitWidth: 420
     implicitHeight: 240

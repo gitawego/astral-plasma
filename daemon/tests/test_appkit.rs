@@ -244,10 +244,24 @@ fn the_exported_palette_carries_every_key_appkit_reads() {
             );
         }
     }
-    // Palette itself must read the file the kernel writes, through Quickshell's
-    // FileView - not an XHR the sandbox would have to allow.
-    assert!(palette.contains("FileView"));
-    assert!(!palette.contains("XMLHttpRequest"));
+    // C.14: the palette *singleton* must be IO-free (a module's singletons compile
+    // eagerly, and qml6 has no Quickshell plugin); the read lives in a type.
+    let loader = read("modules/Astral/AppKit/PaletteLoader.qml");
+    // Import lines only: the file's comments explain the rule and therefore name it.
+    let palette_imports: Vec<&str> = palette
+        .lines()
+        .filter(|line| line.trim_start().starts_with("import "))
+        .collect();
+    assert!(
+        palette_imports.iter().all(|line| line.contains("QtQuick")),
+        "AppPalette may import QtQuick only, so `import Astral.AppKit` works under qml6: {palette_imports:?}"
+    );
+    assert!(
+        !palette.contains("FileView {"),
+        "AppPalette must not read files; PaletteLoader does that"
+    );
+    assert!(loader.contains("FileView"), "PaletteLoader reads the file");
+    assert!(!loader.contains("XMLHttpRequest"), "and does it through FileView, not XHR");
 }
 
 fn quickshell_available() -> bool {
@@ -308,13 +322,17 @@ AppWindow {
             color: Colors.primary
         }
     }
-    Component.onCompleted: {
-        console.log("APPKIT_OK api=" + AppApi.level + " floor=" + AppApi.floor
-            + " radius=" + Theme.radiusLarge
-            + " source=" + Theme.source
-            + " font=" + Theme.fontFamily
-            + " surface=#" + Colors.surface.toString().slice(3))
-        Qt.callLater(Qt.quit)
+    // The palette is applied by a child loader, which completes after this root
+    // (ShellRoot creates children last), so the values are read on the first tick.
+    Component.onCompleted: console.log("APPKIT_OK api=" + AppApi.level + " floor=" + AppApi.floor)
+    Timer {
+        interval: 300; running: true; repeat: false
+        onTriggered: {
+            console.log("APPKIT_PALETTE radius=" + Theme.radiusLarge
+                + " source=" + Theme.source
+                + " font=" + Theme.fontFamily)
+            Qt.callLater(Qt.quit)
+        }
     }
     Timer { interval: 4000; running: true; onTriggered: Qt.quit() }
 }
@@ -350,7 +368,7 @@ AppWindow {
     // Tokens must be real values, not empty bindings.
     assert!(!log.contains("api=0"), "AppApi.level resolved to 0:\n{log}");
     assert!(
-        log.contains("source=palette"),
+        log.contains("APPKIT_PALETTE") && log.contains("source=palette"),
         "the app did not read the host's palette file:\n{log}"
     );
     // And the values must be the ones in the file, not the fallbacks.
