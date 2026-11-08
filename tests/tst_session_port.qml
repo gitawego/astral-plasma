@@ -73,6 +73,20 @@ Item {
         assert(launched.target === "code" && launched.meta.desktop === 1,
             "both launch arguments reach the shell");
 
+        // ---- workspaces are part of the model -------------------------------
+        port.workspaces = [{ id: "1", name: "One" }, { id: "2", name: "Two" }];
+        assert(port.workspaces.length === 2, "the workspace list reaches the surface");
+        assert(!port.canMoveToWorkspace, "moving windows is unsupported until supplied");
+
+        let moved = null;
+        port.moveWindowToWorkspaceImpl = function (windowId, workspaceId) {
+            moved = { window: windowId, workspace: workspaceId };
+        };
+        assert(port.canMoveToWorkspace, "the capability is advertised");
+        assert(port.moveWindowToWorkspace("w1", "2"), "moving a window succeeds");
+        assert(moved.window === "w1" && moved.workspace === "2",
+            "both arguments reach the shell");
+
         // ---- a throwing implementation is contained -------------------------
         port.closeWindowImpl = function () { throw new Error("kwin refused"); };
         assert(port.closeWindow("w1") === false, "a throwing implementation returns false");

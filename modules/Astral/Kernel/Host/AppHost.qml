@@ -50,6 +50,10 @@ Item {
     /// Ids in load order (logs, assertions, the Apps page).
     readonly property var loadedIds: plan.load.map(function (entry) { return entry.id; })
 
+    /// `tabId -> appId` for apps that declare `entry.dashboardTab`. The dashboard
+    /// renders what the registry offers instead of a switch over known features.
+    readonly property var tabProviders: collectTabProviders()
+
     signal appFailed(string id, string reason)
     signal appLoaded(string id)
 
@@ -85,6 +89,24 @@ Item {
         // Validator refusals lead: "this manifest is corrupt" is the more
         // actionable line than "this app is disabled".
         return { load: decided.load, skipped: rejected.concat(decided.skipped) };
+    }
+
+    function collectTabProviders() {
+        const providers = ({});
+        const planned = loaded;
+        for (let index = 0; index < planned.length; index++) {
+            const entry = planned[index];
+            const tab = entry.entry ? entry.entry.dashboardTab : "";
+            if (typeof tab === "string" && tab.length > 0) {
+                providers[tab] = entry.id;
+            }
+        }
+        return providers;
+    }
+
+    /// The app id that provides `tabId`, or "" when no installed app does.
+    function providerForTab(tabId) {
+        return tabProviders[tabId] || "";
     }
 
     function sourceFor(entry) {

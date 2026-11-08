@@ -2554,3 +2554,25 @@ know whether the player can seek, only that asking is safe.
 >
 > **Not verified**: a migrated media surface — `MediaTab` still reads `MprisMedia`
 > directly, so the next slice is moving it through this port.
+
+---
+
+## P4 — tabs are offered by apps, not by a switch (2026-11-08)
+
+`AppHost.tabProviders` answers "which app provides this dashboard tab?" from the
+*plan*: a manifest declares `entry.dashboardTab`, and a disabled or incompatible app
+offers nothing. `SessionPort` grew the workspace list and
+`moveWindowToWorkspace`, because grouping windows by desktop is what a workspace
+surface does.
+
+> **Verified**: `make test` exit 0 — 1109 Rust tests, **162** QML suites.
+> `tst_app_host_tabs` asserts the provider lookup from the plan, that an unowned tab
+> has no provider, that a disabled app and an app for a newer platform offer nothing,
+> and that an empty registry offers no tabs.
+>
+> **Reverted, deliberately**: I started moving `WorkspacesTab` into
+> `modules/Astral/Apps/Workspaces/` and stopped when the tab turned out to need six
+> more workspace operations (`currentId`, `switchTo`, `createDesktop`,
+> `removeDesktop`, `refresh`, plus the overview toggle). Bolting those onto
+> `SessionPort` would mix two concerns; it needs a `WorkspacesPort`. The half-moved
+> file was restored, the tree is green, and the mechanism it will use is in place.

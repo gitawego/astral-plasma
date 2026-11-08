@@ -1200,6 +1200,13 @@ need them are mechanical rather than investigative:
 `MediaPort` is filled by the shell from `MprisMedia`, clamps seeks, and turns every
 operation into a stated failure when the shell cannot do it.
 
+**Dashboard tabs are offered by apps** (`AppHost.tabProviders`): a manifest declares
+`entry.dashboardTab`, and the host answers "which app provides this tab?" from the
+*plan*, so a disabled or incompatible app offers nothing. `CentralDashboard` still
+contains its old `switch` while the tabs are migrated one at a time; the provider
+lookup is what replaces it. `SessionPort` also carries the workspace list and
+`moveWindowToWorkspace`, which a workspace surface needs for grouping.
+
 Still open in P3/P5: remote artifact transport and the official inline catalog,
 zstd + minisign *signing*, the Apps page, and the app migrations themselves
 (`media` next, then `downloads`).

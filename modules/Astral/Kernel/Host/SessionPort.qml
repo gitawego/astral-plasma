@@ -28,6 +28,8 @@ QtObject {
     property var overviewThumbnails: ({})
     /// The focused window's id ("" when nothing is focused).
     property string activeWindowId: ""
+    /// Workspaces (virtual desktops): `[{ id, name }]`, in the compositor's order.
+    property var workspaces: []
 
     // ---- operations (supplied by the shell) ---------------------------------
 
@@ -38,11 +40,13 @@ QtObject {
     property var startThumbnailsImpl: null
     property var stopThumbnailsImpl: null
     property var refreshThumbnailsImpl: null
+    property var moveWindowToWorkspaceImpl: null
 
     readonly property bool canActivate: activateWindowImpl !== null
     readonly property bool canClose: closeWindowImpl !== null
     readonly property bool canLaunch: launchAppImpl !== null
     readonly property bool canThumbnail: startThumbnailsImpl !== null
+    readonly property bool canMoveToWorkspace: moveWindowToWorkspaceImpl !== null
 
     /// Reported when an implementation throws or is missing, so a surface can say
     /// why nothing happened.
@@ -93,6 +97,12 @@ QtObject {
     }
 
     /// Thumbnail URL for a window id, or "" when the shell has none.
+    /// Move a window to a workspace. A surface that can show workspaces needs this;
+    /// it is separate from `activateWindow` because it changes the desktop, not focus.
+    function moveWindowToWorkspace(windowId, workspaceId) {
+        return call("moveWindowToWorkspace", moveWindowToWorkspaceImpl, [windowId, workspaceId]);
+    }
+
     function thumbnailFor(windowId) {
         const value = overviewThumbnails[windowId];
         return typeof value === "string" ? value : "";
