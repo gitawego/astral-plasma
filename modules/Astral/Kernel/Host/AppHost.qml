@@ -44,6 +44,8 @@ Item {
     property var media: null
     /// Desktops (`WorkspacesPort`), injected for workspace surfaces.
     property var workspaces: null
+    /// Machine telemetry (`MetricsPort`), injected for performance surfaces.
+    property var metrics: null
 
     /// Loadable entries, in dependency order.
     readonly property var loaded: plan.load
@@ -170,6 +172,11 @@ Item {
             item.workspaces = root.workspaces;
         } catch (error) {
             // The app does not read desktops: fine.
+        }
+        try {
+            item.metrics = root.metrics;
+        } catch (error) {
+            // The app does not read telemetry: fine.
         }
     }
 

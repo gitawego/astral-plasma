@@ -1665,3 +1665,33 @@ instance now.
 **Lesson for the remaining phases**: a file move is a *runtime* change for every
 path-relative lookup, not only for imports. Any phase that relocates a directory
 needs a resolved-path assertion before it is called done.
+
+### C.13 Finding: two import spellings duplicate kernel singletons
+
+Three tab migrations (`workspaces`, `media`, `performance`) were written, worked in
+isolation, and then **reverted** — and the reason is the most useful result of the
+attempt:
+
+* a migrated app imports the kernel as `../../Kernel/...` (relative to its own depth);
+* the unmigrated dashboard tab imports it as `../../modules/Astral/Kernel/...`.
+
+Two spellings of the same directory are **two registrations** of every singleton in
+it. When one document contains both (a suite instantiating the app *and* the tab), the
+second registration can come up un-instantiated, and a name like `MprisMedia` resolves
+to it: `Cannot read property 'length' of undefined` at a line that had worked for
+months.
+
+Consequences, now a P4 prerequisite rather than a note:
+
+1. **Apps must reach the design primitives through one module** (`Astral.AppKit`), not
+   by relative `Kernel/*` paths, so every app shares one spelling and one registration.
+   `AppKit` therefore has to expose what a tab actually uses (`LiquidGlassCard`,
+   `MaterialIcon`, `LevelBar`, `GlassPill`, …), not only Theme/Colors/AppWindow.
+2. **A lint rule must enforce it**: an app file may import `Astral.AppKit` and Qt, and
+   nothing from `Kernel/*`. `check_app_boundaries.py` already forbids `Kernel/config` and
+   `Kernel/services`; it must forbid `Kernel/theme` and `Kernel/components` for apps too.
+
+Until both land, tabs stay where they are. What *did* stay from the attempt: the host
+ordering fix, `AppHost.mount`, `tabProviders`, the `loaderCount` notification fix, and
+the `SessionPort`/`MediaPort`/`WorkspacesPort`/`MetricsPort` + intent wiring — all
+tested, all green (`make test`: 1109 Rust tests, 164 QML suites).

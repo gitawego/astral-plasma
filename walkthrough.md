@@ -2616,3 +2616,32 @@ on the host**, so this class of edit cannot ship again.
 > test compares the shell's host calls against the host's members.
 >
 > **Not verified**: nothing new on screen — this slice is host API plus tests.
+
+---
+
+## P4 — three tab migrations reverted, with the real blocker named (2026-11-08)
+
+`workspaces`, `media` and `performance` were each migrated into
+`modules/Astral/Apps/` and hosted by their dashboard pane. Each worked alone. Together
+with the still-unmigrated tabs they broke, and the cause is structural:
+
+**two import spellings of the same kernel directory are two singleton registrations.**
+The app writes `../../Kernel/...`, the tab writes `../../modules/Astral/Kernel/...`; in
+one QML document the second registration comes up un-instantiated, so `MprisMedia`
+resolves to it and `MprisMedia.artUrl.length` throws at a line that had worked for
+months.
+
+Reverted (both commits), so the tree is green again — `make test` exit 0, 1109 Rust
+tests, 164 QML suites. Kept from the attempt, because each is independently tested:
+
+- the host is declared before the surface tree (a pane asks it during creation);
+- `AppHost.mount` for host-owned panes;
+- `AppHost.tabProviders` + the `loaderCount` notification fix (`loaders` must change
+  identity or a waiting pane never mounts — that was the "no desktops" regression);
+- `SessionPort`/`MediaPort`/`WorkspacesPort`/`MetricsPort` and the intents the migrated
+  surfaces need.
+
+The prerequisite is now written down as spec C.13: apps must reach design primitives
+through `Astral.AppKit` only (so one spelling, one registration), the boundary linter
+must forbid `Kernel/theme` and `Kernel/components` for apps, and only then do the tabs
+move.
