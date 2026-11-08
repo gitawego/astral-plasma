@@ -357,7 +357,8 @@ Item {
             title: "System",
             items: [
                 { id: "time", label: "World Clock", icon: "schedule" },
-                { id: "system", label: "System & Services", icon: "memory" }
+                { id: "system", label: "System & Services", icon: "memory" },
+                { id: "updates", label: "Updates & About", icon: "system_update" }
             ]
         }
     ]
@@ -643,6 +644,7 @@ Item {
                                 case "downloads": return downloadsPageComp;
                                 case "time": return timePageComp;
                                 case "system": return systemPageComp;
+                                case "updates": return updatesPageComp;
                                 default: return wallpaperPageComp;
                             }
                         }
@@ -687,4 +689,5 @@ Item {
     Component { id: downloadsPageComp; DownloadsPage { testMode: root.testMode } }
     Component { id: timePageComp; TimePage { testMode: root.testMode } }
     Component { id: systemPageComp; SystemPage { testMode: root.testMode } }
+    Component { id: updatesPageComp; UpdatesPage { testMode: root.testMode } }
 }

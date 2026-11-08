@@ -63,6 +63,20 @@ impl InstallMethod {
     }
 }
 
+/// Trust level of an installed bundle.
+///
+/// Product installs are always `official` (this build); the variants exist
+/// because the app platform (`docs/APPS-PLATFORM-SPEC.md` §7.1) records the same
+/// struct per app, and a product-only enum would force a second schema later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TrustLevel {
+    Official,
+    Verified,
+    Community,
+    LocalDev,
+}
+
 /// Contents of `install.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstallRecord {
@@ -77,6 +91,24 @@ pub struct InstallRecord {
     /// Package name when `method` is `package` (`astral-plasma-bin`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_package: Option<String>,
+
+    // --- App records -------------------------------------------------------
+    // The app platform writes one of these per app
+    // (`apps/<id>/install.json`, APPS-PLATFORM-SPEC §11.1). The fields are
+    // optional so the product record stays exactly as it is, and so a reader
+    // written today keeps parsing an app record written tomorrow.
+    /// SHA-256 of the installed payload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    /// Publisher trust for an app; absent on the product install.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust: Option<TrustLevel>,
+    /// Publisher signing key (minisign) for an app.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publisher_key: Option<String>,
+    /// Granted permissions, in the manifest's vocabulary.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grants: Vec<String>,
 }
 
 impl InstallRecord {
@@ -93,11 +125,31 @@ impl InstallRecord {
             channel: channel.into(),
             installed_at_unix,
             owner_package: None,
+            digest: None,
+            trust: None,
+            publisher_key: None,
+            grants: Vec::new(),
         }
     }
 
     pub fn with_owner_package(mut self, package: impl Into<String>) -> Self {
         self.owner_package = Some(package.into());
+        self
+    }
+
+    /// Fill the app-record fields (used by the app platform, not by the
+    /// product install).
+    pub fn with_app_details(
+        mut self,
+        digest: impl Into<String>,
+        trust: TrustLevel,
+        publisher_key: Option<String>,
+        grants: Vec<String>,
+    ) -> Self {
+        self.digest = Some(digest.into());
+        self.trust = Some(trust);
+        self.publisher_key = publisher_key;
+        self.grants = grants;
         self
     }
 

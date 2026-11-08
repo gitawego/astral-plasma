@@ -1,6 +1,8 @@
 pub mod retry;
 pub mod migrations;
 pub mod install_service;
+pub mod update_service;
+pub mod restart;
 pub mod uninstall_service;
 pub mod shell_lifecycle;
 pub mod watch_events;

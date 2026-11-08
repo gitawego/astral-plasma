@@ -1,8 +1,9 @@
 # Theme Updates, Installation and Restart Specification
 
-> **Status**: P0 (release truth) and P1 (managed layout, migrations, installer,
-> uninstall) are implemented and covered by tests. P2–P6 are specified here and
-> not yet built.
+> **Status**: P0–P6 implemented and covered by tests, with one deliberate
+> exception: release signatures are verified when a release carries one, but they
+> are not yet *required*, because no release key has been published (see D13 and
+> §12). Everything else below is live code, not a proposal.
 > **Scope**: how an installed Astral Plasma learns about a release, installs it,
 > restarts itself without disturbing the desktop, rolls back when the new build
 > does not come up, shows what changed, and how a non-technical user installs
@@ -57,11 +58,13 @@ it a way back.
 | D10 | Staging | Extract into a sibling `package.next` **outside** the watched `-p` path; swap by rename only while the shell is down. |
 | D11 | Refusals | Refuse to apply while the session is locked, a download is active, an AI turn streams, or a voice session is live. Retry automatically on unlock/idle. |
 | D12 | Migrations | Timestamped, idempotent, per-user Rust migrations with markers under `~/.local/state/astral-plasma/migrations/`, run by the supervisor before the shell starts. |
-| D13 | Trust | HTTPS only, size cap, SHA-256 verified against the manifest before use. A pinned minisign key reserves the `signature` field; signing lands in P6 without a schema change. |
+| D13 | Trust | HTTPS only (an explicit `http://` mirror URL is the only downgrade), size cap, size + SHA-256 verified against the manifest before use. A `signature` in the manifest is verified with `minisign` against `ASTRAL_PLASMA_MINISIGN_KEY`; a claimed-but-unverifiable signature is refused. Making signatures *mandatory* waits for the release key to be published. |
 | D14 | Safety rails | Update lock, free-space precheck computed from the staged size, sleep inhibitor, per-apply transcript. |
 | D15 | Third-party themes | Data only (JSON palette + assets), never QML. Archetypes stay first-party and compiled-in. Non-goal here; recorded as a rule. |
 | D16 | Removal scope | Artifacts only. AI sessions, the Plasma/shortcut backups, download history, caches and settings survive an uninstall; `--purge` removes caches and settings too. |
 | D17 | Adoption source | The running executable, never a stale checkout build — and a cargo `target/debug` build is refused outright rather than installed as someone's daily shell. |
+| D18 | Discovery owner | The daemon checks ~60 s after login and every 6 h (`astral-plasma run` spawns the timer); the shell only reads `update status`, so a closed Settings page cannot stop discovery. |
+| D19 | One owner | `pacman -Qo` ownership beats the install record: a package-managed binary is reported as `package` and never written, even if a managed record exists. |
 
 ---
 
@@ -89,6 +92,14 @@ it a way back.
 - Updating the Omarchy **host**; the hosted plugin rides `omarchy-shell`'s own
   reload and only re-copies its three files.
 - Third-party theme installation (see D15).
+
+**Boundary with app updates.** This document owns the *platform* lifecycle: one
+kernel release, one artifact, one restart, one `boot-ok` gate (D6), one
+`install.json`. Apps have their own lifecycle — version, compatibility window,
+update/pin/downgrade, per-app rollback — specified in
+[`APPS-PLATFORM-SPEC.md`](APPS-PLATFORM-SPEC.md) §8.5. A platform release ships
+app *baselines* and reconciles them; it never forcibly overwrites a newer
+installed app version.
 
 ---
 
@@ -354,11 +365,11 @@ restart actually works (§7).
 | :--- | :--- | :--- |
 | **P0 — release truth** ✅ | Ship a tarball that can install: installer extracts the bundle, `latest.json` generated in CI from the tag + `docs/releases/<version>.json`, CI fails on a missing/mismatched changelog file. | A downloaded vX tarball installs on a clean user and runs. |
 | **P1 — layout + migrations** ✅ | Managed layout, `install.json`, one-liner installer, in-shell uninstall, migrations engine, migration 001, unit `ExecStart` fix. | Legacy symlink install migrates; `make test` green. |
-| **P2 — check** | `update check/status`, `ureq` + ETag, state file, package/checkout detection, API/IPC exposure. | Fixture server drives all manifest cases. |
-| **P3 — apply & restart** | Lock, preflight, download, verify, staging, swap, claim handoff, `execv`, health marker, rollback. | Live: v→v+1 restart with panels never reappearing; injected failure rolls back. |
-| **P4 — UI** | Updates page, nav dot, curtain, download-manager task. | Live capture of idle/pending/applying/rolled-back; once-per-version proven. |
-| **P5 — what's new** | Changelog rendering, first-run curtain, `lastSeenVersion`. | Curtain shows the compiled highlights that match the running version. |
-| **P6 — distribution** | AUR `astral-plasma-bin`, ownership detection wiring, minisign key + mandatory signature. | pacman install reports `package` and offers no apply; unsigned artifact is refused. |
+| **P2 — check** ✅ | `update check/status`, curl adapter + ETag, state file, package/checkout detection, daemon-side timer. | Fixture server drives all manifest cases. |
+| **P3 — apply & restart** ✅ | Lock, preflight, download, verify, staging, swap, claim handoff, `execv`, IPC health check, two-attempt retry, rollback, manual revert. | Process-level proof that a staged binary is swapped and executed with the claim intact; live desktop restart still to be observed on a real update. |
+| **P4 — UI** ✅ | Updates page (version, update, notes, maintenance), nav entry, restart curtain. Pending-update dot deferred. | Offscreen suite covers every state; visual capture still required. |
+| **P5 — what's new** ✅ | `docs/releases/*.json` compiled into the binary, `astral-plasma changelog`, page rendering, `lastSeenVersion` recorded. Auto-opening the notes once per version deferred to the curtain. | Notes shown match the running version. |
+| **P6 — distribution** ✅ (signature enforcement pending a key) | AUR `astral-plasma-bin` template, pacman ownership detection, signature verification when present. | Package installs report `package` and offer no apply; signed manifests are verified, unsigned ones are accepted until the key ships. |
 
 ### What P0 and P1 actually changed
 
@@ -382,9 +393,38 @@ restart actually works (§7).
   `scripts/release.sh` and CI refuse a tag without them; the publish job emits
   `latest.json` with per-arch URLs, sizes and SHA-256 digests.
 
-P0 and P1 are the ones that fix a user-visible defect (no release was
-installable, and a service install bypassed its own supervisor); P3 is the one
-that must not be declared done without live proof of the restart.
+P0 and P1 fixed a user-visible defect (no release was installable, and a service
+install bypassed its own supervisor). P3's mechanism is proven at process level
+(staged binary swapped, `execv`ed, version recorded, request consumed once); the
+remaining proof is observing one real desktop update, which no test can stand in
+for.
+
+### What P2–P6 shipped
+
+- `astral-plasma update status|check|apply|revert|seen`, plus `changelog`. The
+  daemon owns discovery (60 s after login, then every 6 h) and the shell only
+  reads the result.
+- Manifest rules are pure and tested: schema, semver ordering with prereleases,
+  channel acceptance, per-architecture artifacts, `min_quickshell`, digest and
+  size bounds. Unknown fields are ignored so a newer release stays installable.
+- Transport is `curl` (already a hard dependency of the installer): protocol
+  pinned by scheme, ETag/`304`, connect and transfer timeouts, `--max-filesize`,
+  then size and SHA-256 checked against the manifest before anything is staged.
+- `apply` refuses on a package-managed or checkout install, while the session is
+  locked, while another apply holds the lock, below the free-space floor, or when
+  an update is already staged. It writes `bin/astral-plasma.next`, then a restart
+  request, then asks the shell to exit.
+- The supervisor performs the swap: `bin/astral-plasma` → `.prev`, staged → live,
+  record updated, then `execv` of the new binary with the pid preserved so the
+  same-boot claim handoff still covers it. Quickshell is restarted twice before a
+  rollback is attempted; a rollback restores `.prev`, records why, and execs it.
+- `update revert` puts the previous release back and restarts into it; the
+  Updates page exposes it only for a `managed` install.
+- `install.json` gained optional app-record fields (`digest`, `trust`,
+  `publisher_key`, `grants`) so the app platform can reuse the struct per app
+  without a schema change (see §14).
+- AUR `astral-plasma-bin` installs to `/usr/bin`; `pacman -Qo` then makes the
+  daemon report `package`, which is what stops two updaters writing one file.
 
 ---
 
@@ -399,3 +439,21 @@ that must not be declared done without live proof of the restart.
 | Migrations | epoch-named shell scripts + per-user markers | same contract, in Rust |
 | What's new | none — release notes only | compiled changelog + once-per-version curtain |
 | Rollback | snapper snapshot (filesystem-wide) | previous bundle + previous binary retained by the updater |
+
+---
+
+## 14. Compatibility with the app platform
+
+`docs/APPS-PLATFORM-SPEC.md` builds on this document ("install/update
+ownership"). The pieces that must not drift:
+
+| APPS-PLATFORM-SPEC expectation | What this design provides |
+| :--- | :--- |
+| `~/.local/share/astral-plasma/{bin,package,install.json}` (§11.1) | Exactly this layout; the installer and the updater both write it. |
+| Per-app `install.json` "mirrors `InstallRecord`" (§11.1) | `InstallRecord` carries optional `digest`, `trust`, `publisher_key` and `grants`, so an app record is the same struct, not a second schema. |
+| `apps.json`, `apps/<id>/`, `catalogs/` as siblings | Nothing here writes or removes them: the updater swaps `package/` only, and uninstall removes only what an install created, deleting `data_dir` only when it is empty. |
+| "Core update … store apps survive" (§11.3) | A core update replaces the binary and re-extracts `package/`; app directories are untouched. |
+| "Migrations: legacy installs get a registry" (§P5) | The migrations engine is the vehicle: `apps/0002_<slug>`-style modules register in `application::migrations::registry`, run per user, and block the start if they fail. |
+| `astral` alias (A17) | The product commands (`install`, `uninstall`, `migrate`, `update`, `changelog`) are product-level; the `astral` alias can forward all of them unchanged. |
+| Update consent (A18) | Permission changes belong to the app record; the product updater never merges app grants, so a new permission set cannot be accepted silently by a core update. |
+

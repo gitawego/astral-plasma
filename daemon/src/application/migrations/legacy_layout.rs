@@ -55,6 +55,30 @@ impl Migration for LegacyLayoutMigration {
             }
         }
 
+        // A package manager can own the binary this migration is running from.
+        // Adopting it would hand this daemon permission to overwrite pacman's
+        // files, so record the real owner and stop.
+        if let Some(package) = std::env::current_exe()
+            .ok()
+            .and_then(|exe| crate::application::update_service::package_owner(&exe))
+        {
+            let installed_at = record
+                .as_ref()
+                .map(|r| r.installed_at_unix)
+                .unwrap_or_else(install_record::now_unix);
+            InstallRecord::new(
+                InstallMethod::Package,
+                env!("CARGO_PKG_VERSION"),
+                "stable",
+                installed_at,
+            )
+            .with_owner_package(package.clone())
+            .write(&record_path)?;
+            return Ok(MigrationOutcome::Changed(format!(
+                "This install is managed by {package}; the shell will not update its files."
+            )));
+        }
+
         let legacy_link = ctx.config_home.join("quickshell");
         let legacy_source = resolve_legacy_checkout(&legacy_link);
         let unit_path = ctx.systemd_dir.join(branding::SYSTEMD_UNIT);

@@ -479,6 +479,13 @@ ShellRoot {
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     }
 
+    // Update curtain: the short surface shown while an update restarts the
+    // shell, so the desktop never looks like it merely vanished.
+    UpdateCurtain {
+        id: updateCurtain
+        targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+    }
+
     // AI Assistant Copilot Window
     AssistantWindow {
         id: assistantWindow

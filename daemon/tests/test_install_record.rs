@@ -128,3 +128,38 @@ fn install_time_renders_as_iso8601_utc() {
     );
     assert!(install_record::now_unix() > 1_600_000_000);
 }
+
+/// The app platform writes one of these per app (`apps/<id>/install.json`,
+/// APPS-PLATFORM-SPEC §11.1). A product record and an app record must share one
+/// schema today, or the platform's first migration is a rewrite of every install.
+#[test]
+fn an_app_record_extends_the_same_schema() {
+    use astral_plasma::domain::install_record::TrustLevel;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("install.json");
+    InstallRecord::new(InstallMethod::Package, "0.1.0", "stable", 5)
+        .with_owner_package("community-catalog")
+        .with_app_details(
+            "d".repeat(64),
+            TrustLevel::Community,
+            Some("minisign:abc".to_string()),
+            vec!["session.read".to_string()],
+        )
+        .write(&path)
+        .unwrap();
+
+    let read = InstallRecord::read(&path).unwrap().unwrap();
+    assert_eq!(read.digest.as_deref(), Some("d".repeat(64).as_str()));
+    assert_eq!(read.trust, Some(TrustLevel::Community));
+    assert_eq!(read.grants, vec!["session.read".to_string()]);
+
+    // A product record does not grow app fields on disk.
+    let product = dir.path().join("product.json");
+    InstallRecord::new(InstallMethod::Managed, "0.1.3", "stable", 5)
+        .write(&product)
+        .unwrap();
+    let body = std::fs::read_to_string(&product).unwrap();
+    assert!(!body.contains("digest"), "{body}");
+    assert!(!body.contains("grants"), "{body}");
+}

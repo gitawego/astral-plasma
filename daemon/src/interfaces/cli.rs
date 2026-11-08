@@ -102,12 +102,129 @@ pub async fn run_cli() -> DynResult<()> {
             )?;
             println!("{}", serde_json::to_string(&outcome.record)?);
         }
+        "update" => {
+            use crate::application::update_service::UpdateService;
+
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("status");
+            let service = UpdateService::for_user();
+            match sub {
+                "status" => {
+                    println!("{}", serde_json::to_string(&service.status()?)?);
+                }
+                "check" => {
+                    let force = args.iter().any(|a| a == "--force");
+                    match service.check(force) {
+                        Ok(status) => println!("{}", serde_json::to_string(&status)?),
+                        Err(err) => {
+                            eprintln!("[!] Update check failed: {err}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                "apply" => {
+                    let confirmed = args.iter().any(|a| a == "--yes" || a == "-y");
+                    let status = service.status()?;
+                    if !confirmed {
+                        match &status.candidate {
+                            Some(candidate) => {
+                                eprintln!(
+                                    "[{}] Ready to install {} ({} MiB):",
+                                    branding::APP_NAME,
+                                    candidate.version,
+                                    candidate.size / (1024 * 1024)
+                                );
+                                for line in &candidate.highlights {
+                                    eprintln!("  - {line}");
+                                }
+                            }
+                            None => {
+                                eprintln!(
+                                    "[{}] No update is checked. Run `astral-plasma update check` first.",
+                                    branding::APP_NAME
+                                );
+                                std::process::exit(1);
+                            }
+                        }
+                        if let Some(reason) = &status.refuse_reason {
+                            eprintln!("  cannot apply: {reason}");
+                            std::process::exit(1);
+                        }
+                        eprintln!("Nothing was changed. Re-run with --yes to install and restart.");
+                        std::process::exit(2);
+                    }
+
+                    // The shell is asked to exit; the supervisor swaps the
+                    // binary and restarts it with the desktop claim intact.
+                    let outcome = service.apply(|| {
+                        crate::application::shell_lifecycle::quit_running_shell()
+                    })?;
+                    println!("{}", serde_json::to_string(&outcome)?);
+                    if !outcome.restart_requested {
+                        eprintln!(
+                            "[{}] {} is staged. It starts with the next `astral-plasma run`.",
+                            branding::APP_NAME,
+                            outcome.version
+                        );
+                    }
+                }
+                "revert" => {
+                    let confirmed = args.iter().any(|a| a == "--yes" || a == "-y");
+                    if !confirmed {
+                        eprintln!(
+                            "[{}] This goes back to the previous installed release and restarts the shell.",
+                            branding::APP_NAME
+                        );
+                        eprintln!("Nothing was changed. Re-run with --yes to revert.");
+                        std::process::exit(2);
+                    }
+                    let outcome = service.revert(|| {
+                        crate::application::shell_lifecycle::quit_running_shell()
+                    })?;
+                    println!("{}", serde_json::to_string(&outcome)?);
+                }
+                "seen" => {
+                    let version = args
+                        .get(3)
+                        .cloned()
+                        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+                    service.mark_seen(&version)?;
+                    println!("{}", serde_json::to_string(&service.status()?)?);
+                }
+                _ => {
+                    eprintln!("Usage: astral-plasma update <status|check [--force]|apply [--yes]|revert [--yes]|seen <version>>");
+                    std::process::exit(2);
+                }
+            }
+        }
+        "changelog" => {
+            use crate::infrastructure::embedded_changelog;
+
+            if args.iter().any(|a| a == "--json") {
+                println!("{}", serde_json::to_string(&embedded_changelog::all())?);
+            } else {
+                let since = args
+                    .iter()
+                    .position(|a| a == "--since")
+                    .and_then(|index| args.get(index + 1).cloned());
+                for note in embedded_changelog::since(since.as_deref()) {
+                    println!("## {} ({})", note.version, note.date);
+                    for line in &note.highlights {
+                        println!("  - {line}");
+                    }
+                    println!();
+                }
+            }
+        }
         "uninstall" => {
             use crate::application::uninstall_service::{uninstall, UninstallPaths};
 
             let confirmed = args.iter().any(|a| a == "--yes" || a == "-y");
             let keep_settings = !args.iter().any(|a| a == "--purge");
             let force = args.iter().any(|a| a == "--force");
+            // Called from inside the shell: the shell must exit through its own
+            // IPC after the files are gone, so the supervisor can still restore
+            // the desktop. Killing the unit here would strand the panels.
+            let from_shell = args.iter().any(|a| a == "--from-shell");
             let paths = UninstallPaths::for_user();
 
             if !confirmed {
@@ -136,8 +253,10 @@ pub async fn run_cli() -> DynResult<()> {
 
             // Stop the shell before its files disappear, and disable the unit so
             // systemd cannot restart a binary that is about to be deleted.
-            let _ = crate::application::shell_lifecycle::quit_running_shell();
-            if !branding::test_mode() {
+            if !from_shell {
+                let _ = crate::application::shell_lifecycle::quit_running_shell();
+            }
+            if !branding::test_mode() && !from_shell {
                 let _ = std::process::Command::new("systemctl")
                     .args(["--user", "disable", "--now", branding::SYSTEMD_UNIT])
                     .status();
@@ -150,7 +269,8 @@ pub async fn run_cli() -> DynResult<()> {
             }
             eprintln!("[✓] Astral Plasma removed.");
         }
-        "migrate" => {            use crate::application::migrations::{MigrationContext, MigrationRunner};
+        "migrate" => {
+            use crate::application::migrations::{MigrationContext, MigrationRunner};
 
             if args.iter().any(|a| a == "--pending") {
                 let ctx = MigrationContext::for_user();
@@ -2189,6 +2309,8 @@ fn print_usage() {
     eprintln!("  extract [target_dir]    - Extract embedded QML theme bundle");
     eprintln!("  install [--method ...]  - Install this binary and its bundle into the managed layout");
     eprintln!("  migrate [--pending]     - Run one-time repairs for existing installs");
+    eprintln!("  update <status|check|apply|seen> - Check for, stage and apply a release");
+    eprintln!("  changelog [--json] [--since <version>] - Release notes compiled into this build");
     eprintln!("  uninstall [--yes] [--purge] - Remove this install (settings kept unless --purge)");
     eprintln!("  plasma <cmd>            - Plasma panels management: disable, restore, status, watchdog");
     eprintln!("  systemd <cmd>           - User-directed systemd service management: status, install, remove");
@@ -2285,8 +2407,41 @@ async fn run_self_contained_app() -> DynResult<()> {
         let _ = run_api_server(DEFAULT_API_PORT).await;
     });
 
-    // 4. Backup and disable KDE Plasma panels (only under KDE) and bind shortcuts
-    if is_kwin {
+    // Discovery belongs to the daemon: shortly after login, then every six
+    // hours. It never blocks startup, and a failed check only records a reason
+    // the UI can show; a shell that is offline simply stays quiet.
+    if std::env::var("ASTRAL_PLASMA_DISABLE_UPDATE_CHECK").is_err() {
+        tokio::spawn(async {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            loop {
+                let _ = tokio::task::spawn_blocking(|| {
+                    crate::application::update_service::UpdateService::for_user().check(false)
+                })
+                .await;
+                tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
+            }
+        });
+    }
+
+    // 4. Take the desktop claim once, and record that this session holds it.
+    //
+    // An update restarts Quickshell only. `execv` keeps this pid, and the handoff
+    // marker is keyed on it: a restarted shell that found the marker would
+    // otherwise take a second claim on a desktop that is still claimed, and hand
+    // the user's panels back twice.
+    use crate::application::restart::{exec_run, has_previous, install_staged, restore_previous};
+    use crate::domain::install_record::{now_unix, record_version};
+    use crate::domain::update_state::{ClaimHandoff, RestartRequest, UpdateState};
+
+    let paths = crate::application::update_service::UpdatePaths::for_user();
+    let boot_id = crate::application::stale_claim::current_claim_boot_id();
+    let handoff_path = ClaimHandoff::path();
+    let inherited_claim = is_kwin
+        && ClaimHandoff::read(&handoff_path)
+            .map(|marker| marker.covers(boot_id.as_deref(), std::process::id()))
+            .unwrap_or(false);
+
+    if is_kwin && !inherited_claim {
         let _ = crate::infrastructure::preview_capture::install_desktop_entry_with_notification(None, None);
         // A previous boot's claim comes back before this session takes one.
         release_previous_boot_claim();
@@ -2295,43 +2450,237 @@ async fn run_self_contained_app() -> DynResult<()> {
         let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
         use crate::domain::ports::ShortcutControlPort;
         let _ = shortcuts.bind_shortcuts("meta-space");
+        let _ = ClaimHandoff {
+            schema: crate::domain::update_state::STATE_SCHEMA,
+            boot_id: boot_id.clone(),
+            supervisor_pid: std::process::id(),
+            at_unix: now_unix(),
+        }
+        .write(&handoff_path);
+    } else if inherited_claim {
+        eprintln!(
+            "[{}] Restarted with the desktop claim intact; panels and shortcuts stay as they are.",
+            branding::APP_NAME
+        );
     }
 
-    // 5. Launch Quickshell
-    //
+    // 5. Run the shell, restarting it when a verified update is staged.
+    loop {
+        // Apply a staged update before the shell starts, so an update accepted
+        // while no shell was running still lands. The swap happens with
+        // Quickshell down, then this process re-execs the new binary - which is
+        // what makes the new code (not just the new bundle) actually run.
+        if let Some(request) = RestartRequest::read(&paths.restart_path) {
+            // A manual revert already put the previous binary back; only the
+            // exec is left. Swapping again would delete the file it names.
+            if request.already_in_place {
+                RestartRequest::clear(&paths.restart_path);
+                let _ = record_version(&request.target_version, now_unix());
+                eprintln!(
+                    "[{}] Reverted to {}; restarting.",
+                    branding::APP_NAME,
+                    request.target_version
+                );
+                exec_run(&crate::application::restart::exec_target(&paths.live_binary))?;
+            }
+            match install_staged(Path::new(&request.staged_binary), &paths.live_binary) {
+                Ok(previous) => {
+                    RestartRequest::clear(&paths.restart_path);
+                    // Keep the outgoing record so a revert can name the version
+                    // it is going back to.
+                    let _ = std::fs::copy(
+                        &paths.record_path,
+                        paths.record_path.with_extension("json.prev"),
+                    );
+                    let _ = record_version(&request.target_version, now_unix());
+                    eprintln!(
+                        "[{}] Update {} is in place (previous binary kept at {}); restarting.",
+                        branding::APP_NAME,
+                        request.target_version,
+                        previous.display()
+                    );
+                    exec_run(&crate::application::restart::exec_target(&paths.live_binary))?;
+                }
+                Err(err) => {
+                    RestartRequest::clear(&paths.restart_path);
+                    eprintln!("[{}] Could not apply the staged update: {err}", branding::APP_NAME);
+                    let mut state = UpdateState::load(&paths.state_path);
+                    state.record_error(format!("staged update not applied: {err}"));
+                    let _ = state.save(&paths.state_path);
+                }
+            }
+        }
+
+        let mut healthy = false;
+        for attempt in 1..=2 {
+            let mut child = spawn_quickshell(&theme_dir)?;
+            match wait_until_ready(&mut child, &theme_dir).await {
+                Startup::Ready => {
+                    healthy = true;
+                    let mut state = UpdateState::load(&paths.state_path);
+                    if state.failed_starts != 0 {
+                        state.failed_starts = 0;
+                        let _ = state.save(&paths.state_path);
+                    }
+                    wait_for_exit(&mut child).await;
+                    break;
+                }
+                Startup::Exited => {
+                    eprintln!(
+                        "[{}] Quickshell exited before it answered IPC (attempt {attempt}/2).",
+                        branding::APP_NAME
+                    );
+                }
+            }
+        }
+
+        if !healthy {
+            // Two starts that never came up: put the previous binary back rather
+            // than leaving the user with a shell that cannot start at all.
+            if has_previous(&paths.live_binary) {
+                let mut state = UpdateState::load(&paths.state_path);
+                state.failed_starts = state.failed_starts.saturating_add(1);
+                let reason = "the restarted shell did not answer IPC after two attempts".to_string();
+                // Name the release that failed, then put its record back with
+                // its binary: a version claim that no longer matches the file on
+                // disk would make the next update compare against a lie.
+                let failed_version = crate::domain::install_record::current()
+                    .ok()
+                    .flatten()
+                    .map(|record| record.version)
+                    .unwrap_or_else(|| "the new release".to_string());
+                state.rollback = Some(crate::domain::update_state::RollbackInfo {
+                    version: failed_version,
+                    reason: reason.clone(),
+                    at_unix: now_unix(),
+                });
+                let _ = state.save(&paths.state_path);
+                if restore_previous(&paths.live_binary).is_ok() {
+                    if let Ok(Some(previous)) = crate::domain::install_record::InstallRecord::read(
+                        &paths.record_path.with_extension("json.prev"),
+                    ) {
+                        let _ = previous.write(&paths.record_path);
+                    }
+                    eprintln!("[{}] Rolled back: {reason}", branding::APP_NAME);
+                    exec_run(&crate::application::restart::exec_target(&paths.live_binary))?;
+                }
+            }
+            break;
+        }
+
+        // A restart request that arrived while the shell ran is handled at the
+        // top of the loop, which swaps the binary and execs it.
+        if RestartRequest::read(&paths.restart_path).is_none() {
+            break;
+        }
+    }
+
+    // 6. On exit, restore original Plasma panels cleanly (only under KDE), restore shortcuts, and clean up authorization entry
+    if is_kwin {
+        println!("[{}] Quickshell stopped. Restoring original KDE Plasma panels...", branding::APP_NAME);
+        let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
+        let _ = plasma.restore();
+        let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
+        use crate::domain::ports::ShortcutControlPort;
+        let _ = shortcuts.restore_relevant_shortcuts();
+        let _ = crate::infrastructure::preview_capture::remove_desktop_entry(None);
+        ClaimHandoff::clear(&handoff_path);
+    }
+
+    Ok(())
+}
+
+/// How a freshly started Quickshell behaved.
+enum Startup {
+    /// It answered its own IPC: the shell is alive and serving.
+    Ready,
+    /// The process ended before it ever answered.
+    Exited,
+}
+
+fn spawn_quickshell(theme_dir: &Path) -> DynResult<tokio::process::Child> {
     // A stock Quickshell cannot initialise QtWebEngine on its own (QtWebEngine
     // must run before QGuiApplication, and Chromium needs argv[0]). When the
     // user installed the runtime shim, hand it to the shell so the embedded DSH
     // web view works without rebuilding Quickshell. See domain::quickshell_host.
-    let mut quickshell = Command::new("quickshell");
-    quickshell.arg("-p").arg(&theme_dir);
+    let mut command = tokio::process::Command::new("quickshell");
+    command.arg("-p").arg(theme_dir);
     if let Some(preload) = crate::domain::quickshell_host::preload_library() {
         let existing = env::var("LD_PRELOAD").ok();
-        quickshell.env(
+        command.env(
             "LD_PRELOAD",
             crate::domain::quickshell_host::preload_env_value(&preload, existing.as_deref()),
         );
     }
-    let mut child = quickshell.spawn()?;
+    Ok(command.spawn()?)
+}
 
-    // 6. Wait for Quickshell process or signal
+/// Wait until the shell answers its IPC, or ends.
+///
+/// Health is a real answer from the shell, not a sleep: the update design rolls
+/// back on this signal, so a timer that happens to expire would roll back a
+/// working release.
+async fn wait_until_ready(child: &mut tokio::process::Child, theme_dir: &Path) -> Startup {
+    use std::time::Duration;
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        if let Ok(Some(_)) = child.try_wait() {
+            return Startup::Exited;
+        }
+        if shell_answers(theme_dir).await {
+            return Startup::Ready;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            // Still running but silent: not a start we can stand behind.
+            let _ = child.kill().await;
+            return Startup::Exited;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+async fn shell_answers(theme_dir: &Path) -> bool {
+    use std::time::Duration;
+
+    let probe = tokio::process::Command::new("quickshell")
+        .arg("ipc")
+        .arg("-p")
+        .arg(theme_dir)
+        .arg("show")
+        .output();
+    matches!(
+        tokio::time::timeout(Duration::from_secs(3), probe).await,
+        Ok(Ok(output)) if output.status.success()
+    )
+}
+
+/// Wait for the shell to exit, forwarding termination signals to it.
+async fn wait_for_exit(child: &mut tokio::process::Child) {
+    use std::time::Duration;
+
     #[cfg(unix)]
     {
-        use std::time::Duration;
         use tokio::signal::unix::{signal, SignalKind};
-        let mut sigterm = signal(SignalKind::terminate())?;
-        let mut sigint = signal(SignalKind::interrupt())?;
+        let Ok(mut sigterm) = signal(SignalKind::terminate()) else {
+            let _ = child.wait().await;
+            return;
+        };
+        let Ok(mut sigint) = signal(SignalKind::interrupt()) else {
+            let _ = child.wait().await;
+            return;
+        };
 
         loop {
             tokio::select! {
                 _ = sigterm.recv() => {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    let _ = child.kill().await;
+                    let _ = child.wait().await;
                     break;
                 }
                 _ = sigint.recv() => {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    let _ = child.kill().await;
+                    let _ = child.wait().await;
                     break;
                 }
                 _ = tokio::time::sleep(Duration::from_millis(200)) => {
@@ -2344,19 +2693,6 @@ async fn run_self_contained_app() -> DynResult<()> {
     }
     #[cfg(not(unix))]
     {
-        let _ = child.wait();
+        let _ = child.wait().await;
     }
-
-    // 7. On exit, restore original Plasma panels cleanly (only under KDE), restore shortcuts, and clean up authorization entry
-    if is_kwin {
-        println!("[{}] Quickshell stopped. Restoring original KDE Plasma panels...", branding::APP_NAME);
-        let plasma = PlasmaControlUseCase::new(PlasmaAdapter::new());
-        let _ = plasma.restore();
-        let shortcuts = crate::infrastructure::kwin_shortcuts::KWinShortcutsAdapter::new();
-        use crate::domain::ports::ShortcutControlPort;
-        let _ = shortcuts.restore_relevant_shortcuts();
-        let _ = crate::infrastructure::preview_capture::remove_desktop_entry(None);
-    }
-
-    Ok(())
 }

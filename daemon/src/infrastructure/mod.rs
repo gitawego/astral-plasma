@@ -11,6 +11,8 @@ pub mod dsh_web_desktop;
 pub mod plasma_adapter;
 pub mod session_identity;
 pub mod systemd_adapter;
+pub mod update_source;
+pub mod embedded_changelog;
 pub mod embedded_bundle;
 pub mod x11_input;
 pub mod window_icons;

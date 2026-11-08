@@ -1,0 +1,33 @@
+# Maintainer: Astral Plasma <maintainers@astralplasma.invalid>
+#
+# Binary package: the release artifact is the whole shell (the QML lives inside
+# the executable). `astral-plasma run` extracts the bundle into the user's data
+# directory on first start, so nothing here writes to $HOME.
+#
+# Ownership: because pacman owns /usr/bin/astral-plasma, the daemon detects that
+# with `pacman -Qo` and reports "managed by your package manager" instead of
+# offering a self-update. Two updaters never write the same file.
+pkgname=astral-plasma-bin
+pkgver=0.1.3
+pkgrel=1
+pkgdesc="Fluid Quickshell desktop shell for KDE Plasma 6 / KWin"
+arch=('x86_64' 'aarch64')
+url="https://github.com/gitawego/astral-plasma"
+license=('MIT')
+depends=('quickshell>=0.3.0' 'qt6-declarative' 'qt6-wayland')
+optdepends=(
+    'matugen: wallpaper-driven palette extraction'
+    'pipewire: audio visualiser and volume control'
+    'kwin: panel claim, shortcuts and blur integration'
+)
+provides=('astral-plasma')
+conflicts=('astral-plasma')
+options=('!strip')
+source_x86_64=("${url}/releases/download/v${pkgver}/astral-plasma-linux-x86_64")
+source_aarch64=("${url}/releases/download/v${pkgver}/astral-plasma-linux-aarch64")
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/astral-plasma-linux-${CARCH}" "${pkgdir}/usr/bin/astral-plasma"
+}

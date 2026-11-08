@@ -307,7 +307,12 @@ manifest and rollback rules, is in [docs/UPDATES.md](docs/UPDATES.md).
 
 Git checkouts are never updated by the shell; it tells you a newer release exists
 and leaves `git pull` to you. Package-manager installs are owned by your package
-manager and offer no apply button.
+manager and offer no apply button: the daemon asks `pacman -Qo` who owns the
+binary, so an AUR install (`packaging/aur`) is never written by the updater.
+
+If a new release does not come up, the supervisor restarts Quickshell twice and
+then puts the previous binary back, recording the reason where the Updates page
+shows it. **Revert to previous version** in that page does the same on request.
 
 ### 5. Uninstall
 ```bash
@@ -401,6 +406,10 @@ extract [target_dir]         Extract the embedded QML theme bundle
 install [--method ...]       Install this binary + bundle into the managed layout
 uninstall [--yes] [--purge]  Remove this install (settings kept unless --purge)
 migrate [--pending]          Run one-time repairs for existing installs
+update <status|check|apply|revert|seen>
+                             Check for, stage, apply or revert a release
+changelog [--json] [--since <version>]
+                             Release notes compiled into this build
 session snapshot             Query canonical DesktopSessionSnapshot JSON
 omarchy <install|remove|status> Manage hosted Omarchy plugin package
 plasma <disable|restore|status|watchdog>

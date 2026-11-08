@@ -96,6 +96,13 @@ Item {
         testMode: true
     }
 
+    UpdatesPage {
+        id: updatesPage
+        testMode: true
+        testStatus: ({})
+        testChangelog: []
+    }
+
     VoicePage {
         id: voicePage
         testMode: true
@@ -109,6 +116,12 @@ Item {
             source: "../settings_gui/pages/WallpaperAndStylePage.qml",
             page: wallpaperPage,
             zones: ["wallpaper", "palette", "mode", "gallery"]
+        },
+        {
+            name: "UpdatesPage",
+            source: "../settings_gui/pages/UpdatesPage.qml",
+            page: updatesPage,
+            zones: ["version", "update", "notes", "maintenance"]
         },
         {
             name: "ThemePage",
