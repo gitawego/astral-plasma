@@ -1060,20 +1060,26 @@ Also landed: the host itself.
   (`tests/fixtures/apps/` + `index.json` + `expect.json`): Rust in
   `test_app_manifest_fixtures.rs`, QML in `tst_app_manifest_validation.qml`.
 
-Still open in P2 — and now with a measured prerequisite:
+Now landed: the pipeline a migrated surface needs.
 
-- **`IntentBus` + a kernel-state port before any migration.** Attempting to move
-  the overview through `AppHost` failed for a concrete reason: a component loaded
-  through a `Loader` that imports `"../../Kernel/config"` gets a **different
-  `Config` singleton instance** than `shell.qml` does, so `Config.overviewVisible`
-  stayed `false` inside the app while the shell flipped it to `true` (proved with
-  a per-tick log in the app). Every `Config.*` read inside a migrated surface is a
-  stale copy. Migrating an embedded app therefore needs its shell state passed
-  explicitly (§9.3 IntentBus) and a port for the settings it reads — not a relative
-  import.
-- `SurfaceBroker`/`IntentBus`, and then moving `overview` through `AppHost` — the
-  point at which the host stops being a library and starts replacing `shell.qml`
-  wiring.
+| Piece | What it does |
+| :--- | :--- |
+| `Host/IntentBus.qml` | named intents → typed `ActionResult`; unsupported/denied/invalid are answers, and a throwing handler is contained |
+| `Host/ShellState.qml` | a read model with **no kernel imports**; the shell binds its values, so an app sees the live instance |
+| `AppHost.state` / `.intents` / `.eager` | injection point: `property var shellState`, `property var intents`; `eager` activates boot surfaces |
+| `scripts/check_app_boundaries.py` | CI gate: apps may not import `Kernel/config`, another app, or the kernel module; non-official apps are limited to `Astral.AppKit`. `make test` runs it |
+| `Host/qmldir` | `Astral.Kernel.Host` as a module; `run.sh` exports `QML_IMPORT_PATH` |
+
+Still open in P2 — with the remaining blocker named precisely:
+
+- **The port layer, before any migration.** Two attempts to move the overview
+  through the host proved that *every* kernel singleton is per-instance for a
+  Loader-loaded component: `Config` first (C.9), then `WindowService` — the
+  migrated surface opened with an empty preview grid because its `WindowService`
+  had no windows (C.10). So an embedded app cannot read window state through an
+  import either; it needs a **session port** (windows, thumbnails, activation)
+  injected the way `ShellState` is. That is P4 work, not wiring.
+- `SurfaceBroker` for cross-app intents, and then `overview` and the rest.
 - The `Astral.Kernel 1.0` module URI (needs the Quickshell-dependent singletons
   split behind ports first — Appendix C.6).
 
@@ -1472,3 +1478,30 @@ removed. The host library stays — it is tested, and it is what the migration w
 use once the bus exists. The packaging fix that came out of it (ship `modules/`
 as one tree so a package contains AppKit and the host) was kept, because without
 it an installed shell has no SDK.
+
+### C.10 Second migration attempt: the pipeline works, the port does not exist yet
+
+With `IntentBus`, `ShellState`, and injection in place, the overview was migrated
+again: it loaded as an app, opened on `overview toggle`, and was driven by the
+injected state.
+
+| Observation | Meaning |
+| :--- | :--- |
+| `AppHost.activate(...)` → `app loaded`, zero load errors | the module, registry, manifest and injection all work |
+| `overview tick: state=true visible=false` → after `overview toggle` the surface opens | the injected state is the live instance (the C.9 bug is gone) |
+| The surface renders with an **empty preview grid** ("No windows") | its `WindowService` — imported from `Kernel/services` — is a different instance with no windows |
+
+That is the same defect one layer down: **every kernel singleton is per-instance
+for a Loader-loaded component**, so a session port has to be injected too, exactly
+like `ShellState`. A window list is not a setting; it is a data model with signals,
+so the port is a real object (`windows`, `refreshThumbnails()`, `activate(id)`), not
+a value.
+
+Reverted again: the surface is back under `shell/`, driven by `Config` and the
+shell's own `WindowService`. Kept: the intent bus, the read model, injection,
+`eager`, the module `qmldir`, the `QML_IMPORT_PATH` plumbing in `run.sh`, and the
+boundary linter wired into `make test`.
+
+Conclusion: the app platform's remaining blocker is the **port layer** (§6.3, §9.5),
+not the host. Migrating an embedded app means first exposing what it reads — windows
+today, media and downloads next — as injected ports.

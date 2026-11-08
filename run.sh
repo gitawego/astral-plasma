@@ -7,6 +7,10 @@ set -euo pipefail
 # started with - the launched shell must agree with the IPC scripts.
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
+# AppKit and the app host are QML modules under modules/. `Astral.AppKit` must be
+# importable by a hosted app, and `Astral.Kernel.Host` by this shell.
+export QML_IMPORT_PATH="$DIR/modules${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
+
 # Check if an instance is already running and handle IPC commands
 MODE="${1:-}"
 if [ "$MODE" = "wallpaper" ] || [ "$MODE" = "--wallpaper" ] || [ "$MODE" = "-w" ]; then

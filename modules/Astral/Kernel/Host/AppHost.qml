@@ -29,6 +29,16 @@ Item {
     /// The running platform's API window, e.g. `{ level: 1, floor: 1 }`.
     property var host: ({ level: 1, floor: 1 })
 
+    /// Ids to activate at boot: the surfaces the shell owns and shows/hides itself
+    /// (the overview). Everything else stays inactive until a surface asks for it,
+    /// so startup does not grow with the installed app count.
+    property var eager: []
+
+    /// Shell-owned read model injected into every app instance (`ShellState`).
+    property var state: null
+    /// The intent bus apps use for actions (`IntentBus`).
+    property var intents: null
+
     /// Loadable entries, in dependency order.
     readonly property var loaded: plan.load
     /// `[{ id, state, reason }]` for everything that did not load.
@@ -97,6 +107,28 @@ Item {
         return loaders[id] || null;
     }
 
+    /// Hand the shell's state and bus to an instantiated app.
+    ///
+    /// Assignment is attempted, not required: an app that declares neither property
+    /// is still valid (it may be pure presentation), so a missing property is not an
+    /// error - a TypeError here would be. This is the only injection point, so the
+    /// contract is one place: `property var shellState`, `property var intents`.
+    function inject(item) {
+        if (!item) {
+            return;
+        }
+        try {
+            item.shellState = root.state;
+        } catch (error) {
+            // The app does not take a state object: fine.
+        }
+        try {
+            item.intents = root.intents;
+        } catch (error) {
+            // The app does not take an intent bus: fine.
+        }
+    }
+
     function reportFailure(id, reason) {
         if (reported[id]) {
             return;
@@ -126,11 +158,19 @@ Item {
             return null;
         }
         if (loader.status === Loader.Ready) {
+            inject(loader.item);
             root.appLoaded(id);
             return loader.item;
         }
         // Asynchronous or not ready yet: the surface waits for `appLoaded`.
         return loader.item;
+    }
+
+    Component.onCompleted: {
+        const ids = root.eager || [];
+        for (let index = 0; index < ids.length; index++) {
+            root.activate(ids[index]);
+        }
     }
 
     Repeater {
@@ -145,6 +185,8 @@ Item {
             onStatusChanged: {
                 if (status === Loader.Error) {
                     root.reportFailure(modelData.id, "failed to load " + source);
+                } else if (status === Loader.Ready) {
+                    root.inject(item);
                 }
             }
 

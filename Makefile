@@ -45,7 +45,7 @@ debug:
 	install -m 755 $(DAEMON_DIR)/target/debug/astral-plasma $(TARGET)
 	@echo "Built debug: $(TARGET)"
 
-test: test-rust test-qml
+test: test-rust test-qml test-boundaries
 
 # The Rust suite must not reach the live desktop. Port tests write real INI files
 # (kwinrc, kglobalshortcutsrc) and the X11 helpers open $DISPLAY; inheriting the
@@ -68,6 +68,9 @@ test-rust:
 
 test-qml:
 	bash tests/run_qml_tests.sh
+
+test-boundaries:
+	@python3 scripts/check_app_boundaries.py --verbose
 
 changelog:
 	@bash scripts/generate_changelog.sh

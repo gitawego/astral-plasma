@@ -2344,3 +2344,31 @@ tree, or an installed shell has no AppKit and no host).
 Conclusion, now recorded in the spec as a prerequisite: migrating an embedded app
 needs `IntentBus` for shell state and a port for the settings it reads. That is the
 next unit of work, and it is a design change — not a file move.
+
+---
+
+## P2 — IntentBus, ShellState, injection, boundary gate (2026-11-08)
+
+The pipeline a migrated surface needs, each piece tested:
+
+| Piece | Job |
+| :--- | :--- |
+| `Host/IntentBus.qml` | named intents → typed `ActionResult`; unknown = `unsupported`, thrown handler = `invalid` |
+| `Host/ShellState.qml` | read model with **no kernel imports**; the shell binds its values |
+| `AppHost.state/.intents/.eager` | injection contract + boot activation for shell-owned surfaces |
+| `scripts/check_app_boundaries.py` | CI gate in `make test`: no `Kernel/config`, no cross-app imports, AppKit-only for non-official apps |
+
+> **Verified**: `make test` exit 0 — 1059 Rust tests, **159** QML suites (three new:
+> `tst_intent_bus`, `tst_app_host_injection`, `tst_shell_state`), boundary linter
+> clean. The injection suite proves identity, not equality: the app receives *the
+> same* state object the shell mutates, and a later mutation is visible in it.
+>
+> **Also verified, then reverted**: the overview migrated as an app, opened on
+> `overview toggle`, and obeyed the injected state (`overview tick: state=true`).
+> It rendered an **empty preview grid** — its `WindowService`, imported from
+> `Kernel/services`, is a different instance with no windows. Same defect as
+> `Config`, one layer down (spec C.10).
+
+So the remaining blocker is named: a **session port** (windows, thumbnails,
+activation) injected like `ShellState`, then `overview` and the rest. The host,
+the bus, the state, and the gate exist; the data model does not.
