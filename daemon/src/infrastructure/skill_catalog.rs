@@ -75,7 +75,11 @@ pub fn parse_github_repositories(json: &[u8]) -> DynResult<Vec<SearchHit>> {
         .collect())
 }
 
-/// Parse skills.sh's `/api/v1/skills/search` response.
+/// Parse skills.sh's public `/api/search` response.
+///
+/// The endpoint their own CLI uses returns `{ skills: [{ id, name, source, installs }] }` and
+/// needs no token. (The documented `/api/v1/*` family does require a Vercel OIDC token; the
+/// search box does not need to go there.)
 pub fn parse_skills_sh_search(json: &[u8]) -> DynResult<Vec<SearchHit>> {
     let value: serde_json::Value = serde_json::from_slice(json)
         .map_err(|error| format!("skills.sh returned something that is not JSON: {error}"))?;
@@ -87,20 +91,35 @@ pub fn parse_skills_sh_search(json: &[u8]) -> DynResult<Vec<SearchHit>> {
         return Err(format!("skills.sh refused the search ({error}): {message}").into());
     }
     let items = value
-        .get("data")
+        .get("skills")
+        .or_else(|| value.get("data"))
         .and_then(serde_json::Value::as_array)
-        .ok_or("skills.sh returned no data")?;
+        .ok_or("skills.sh returned no results")?;
     Ok(items
         .iter()
         .filter_map(|item| {
-            let source = item.get("source")?.as_str()?;
+            // `source` is `owner/repo`; older rows carry only the composite `id`.
+            let id = item.get("id").and_then(serde_json::Value::as_str).unwrap_or("");
+            let source = item
+                .get("source")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+                .or_else(|| {
+                    let mut parts = id.split('/');
+                    match (parts.next(), parts.next()) {
+                        (Some(owner), Some(repo)) => Some(format!("{owner}/{repo}")),
+                        _ => None,
+                    }
+                })?;
+            let source = source.as_str();
             Some(SearchHit {
                 source: source.to_string(),
                 name: item
                     .get("name")
                     .and_then(serde_json::Value::as_str)
-                    .unwrap_or_else(|| item.get("slug").and_then(serde_json::Value::as_str).unwrap_or(""))
-                    .to_string(),
+                    .or_else(|| item.get("slug").and_then(serde_json::Value::as_str))
+                    .map(str::to_string)
+                    .unwrap_or_else(|| id.rsplit('/').next().unwrap_or("").to_string()),
                 description: item
                     .get("description")
                     .and_then(serde_json::Value::as_str)
@@ -110,8 +129,8 @@ pub fn parse_skills_sh_search(json: &[u8]) -> DynResult<Vec<SearchHit>> {
                 url: item
                     .get("url")
                     .and_then(serde_json::Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("https://skills.sh/{id}")),
                 kind: HitKind::Skill,
                 trust: if item.get("curated").and_then(serde_json::Value::as_bool).unwrap_or(false) {
                     HitTrust::Official
@@ -186,19 +205,14 @@ pub fn github_search(query: &str, token: Option<&str>) -> DynResult<Vec<SearchHi
     parse_github_repositories(&body)
 }
 
-/// Search the skills.sh catalog. Requires a Vercel OIDC token (its API says so with a 401).
-pub fn skills_sh_search(query: &str, token: Option<&str>) -> DynResult<Vec<SearchHit>> {
-    let Some(token) = token.filter(|token| !token.trim().is_empty()) else {
-        return Err(
-            "skills.sh needs a Vercel OIDC token; search GitHub instead, or paste a skills.sh page to install from it"
-                .into(),
-        );
-    };
-    let url = format!(
-        "https://skills.sh/api/v1/skills/search?q={}&limit=20",
-        urlencode(query)
-    );
-    let body = http_get(&url, "application/json", Some(token))?;
+/// Search the skills.sh catalog.
+///
+/// Uses `/api/search`, the endpoint their CLI uses: public, no token. The documented `/api/v1`
+/// family requires a per-team Vercel OIDC token a desktop app cannot mint, which is why this one
+/// matters.
+pub fn skills_sh_search(query: &str) -> DynResult<Vec<SearchHit>> {
+    let url = format!("https://skills.sh/api/search?q={}", urlencode(query));
+    let body = http_get(&url, "application/json", None)?;
     parse_skills_sh_search(&body)
 }
 
@@ -246,30 +260,32 @@ mod tests {
     }
 
     #[test]
-    fn skills_sh_hits_name_one_skill_of_a_repo() {
+    fn skills_sh_hits_use_the_public_search_shape() {
+        // Exactly what https://skills.sh/api/search returns (their CLI's endpoint, no token).
         let json = br#"{
-          "data": [
-            {"id":"expo/skills/react-native","slug":"react-native","name":"React Native","source":"expo/skills","installs":3842,"url":"https://skills.sh/expo/skills/react-native","curated":true}
-          ],
-          "count": 1
+          "skills": [
+            {"id":"vercel-labs/agent-skills/web-design-guidelines","name":"web-design-guidelines","source":"vercel-labs/agent-skills","installs":842309},
+            {"id":"posthog/skills/exploring-llm-costs","name":"exploring-llm-costs","installs":405}
+          ]
         }"#;
         let hits = parse_skills_sh_search(json).unwrap();
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].source, "expo/skills");
-        assert_eq!(hits[0].name, "React Native");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].source, "vercel-labs/agent-skills");
+        assert_eq!(hits[0].name, "web-design-guidelines");
+        assert_eq!(hits[0].installs, 842_309);
         assert_eq!(hits[0].kind, HitKind::Skill);
-        assert_eq!(hits[0].trust, HitTrust::Official);
+        assert_eq!(hits[0].url, "https://skills.sh/vercel-labs/agent-skills/web-design-guidelines");
+        // A row without `source` still resolves from the composite id.
+        assert_eq!(hits[1].source, "posthog/skills");
     }
 
     #[test]
-    fn a_skills_sh_auth_error_keeps_its_explanation() {
-        let json = br#"{"error":"authentication_required","message":"Pass a Vercel OIDC token"}"#;
+    fn a_skills_sh_error_payload_keeps_its_explanation() {
+        let json = br#"{"error":"rate_limited","message":"Slow down"}"#;
         let error = parse_skills_sh_search(json).unwrap_err().to_string();
-        assert!(error.contains("authentication_required"));
-        assert!(error.contains("Vercel OIDC"));
-        // The refusal without a token says what to do instead (D1).
-        let refusal = skills_sh_search("design", None).unwrap_err().to_string();
-        assert!(refusal.contains("GitHub"), "got: {refusal}");
+        assert!(error.contains("rate_limited"));
+        assert!(error.contains("Slow down"));
+        assert!(parse_skills_sh_search(b"{}").is_err(), "no results key is an error");
     }
 
     #[test]

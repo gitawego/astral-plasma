@@ -3736,11 +3736,8 @@ fn run_skills_command(args: &[String]) -> DynResult<()> {
             let query = skills_positional(args, 3).ok_or("usage: skills search <query>")?;
             let source = skills_flag(args, "--source").unwrap_or_else(|| "github".to_string());
             let hits = match source.as_str() {
-                "skills.sh" | "skillssh" => {
-                    let token = skills_flag(args, "--token")
-                        .or_else(|| std::env::var("VERCEL_OIDC_TOKEN").ok());
-                    catalog::skills_sh_search(&query, token.as_deref())?
-                }
+                // The catalog's own search endpoint is public (their CLI uses it); no token.
+                "skills.sh" | "skillssh" => catalog::skills_sh_search(&query)?,
                 _ => {
                     let token = skills_flag(args, "--token").or_else(|| {
                         crate::infrastructure::skill_secrets::ambient_token("github.com")

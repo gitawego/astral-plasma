@@ -72,7 +72,7 @@ Singleton {
         searchProc.running = true;
     }
 
-    /// `github` (default, works anonymously) or `skills.sh` (needs a token).
+    /// `github` (repository search) or `skills.sh` (the catalog's own public search).
     property string searchSource: "github"
 
     function setSearchSource(source) {

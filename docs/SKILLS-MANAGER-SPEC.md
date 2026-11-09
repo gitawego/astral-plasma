@@ -320,19 +320,17 @@ is not broken by an expired token); `skills auth test <id>` re-checks on demand.
 | --- | --- | --- | --- |
 | **Git** (`owner/repo[#ref]`, any git URL, `git@…`, local path) | shallow clone at `ref`, walk for `SKILL.md` (stop at a root `SKILL.md` unless `deep: true`) | copy subtree into the store | always |
 | **GitHub search** | `GET /search/repositories?q=…+topic:agent-skills`, `GET /search/code?q=filename:SKILL.md` (code search needs a token) | resolves to Git | anonymous, rate-limited; a token (settings or `gh auth token`) raises limits |
-| **skills.sh** | `GET /api/v1/skills/search?q=…`, `/curated`, `/skills/{source}/{skill}` (file tree), `/skills/audit/…` | resolves to `source` = `owner/repo` → Git | **requires a Vercel OIDC token**; adapter is off by default with that explanation, and a pasted `skills.sh/...` URL still resolves through GitHub |
+| **skills.sh** | `GET /api/search?q=…` — public, the endpoint their CLI uses; the richer `/api/v1/*` family (audits, file trees, curated) requires a Vercel OIDC token and is optional | resolves to `source` = `owner/repo` → Git | **no token** for search; the authenticated extras stay unused |
 | **Local path** | walk a directory | copy into the store | always |
 
-Honest constraint: skills.sh's documented API authenticates with a Vercel OIDC token (per-team,
-short-lived) — a desktop app cannot mint one. Three supported answers, in this order:
+How skills.sh is searched: **the public `/api/search` endpoint** (`{ skills: [{ id, name,
+   source, installs }] }`), which is what the official CLI calls and which returns results without
+   any credential. The *documented* `/api/v1/*` family — file trees, audits, the curated set —
+   authenticates with a per-team Vercel OIDC token a desktop app cannot mint, so those extras are
+   optional and unused; search itself never asks the user for anything.
 
-1. **GitHub-first discovery.** Skills live in git repositories, and skills.sh entries carry
-   `source: owner/repo`; searching GitHub finds the same content. skills.sh becomes a
-   *reference resolver* (paste a URL → we install from the repo it names).
-2. **Opt-in token.** If the user supplies a Vercel OIDC token (or runs `vercel env pull`), the
-   skills.sh adapter turns on with its search, curated set and audit results.
-3. **CLI bridge (optional).** If `npx` exists, `skills find --json` is used for discovery only —
-   never for installation, which is the part this manager exists to replace.
+Because every hit carries `source: owner/repo`, installation is always git: the catalog is a
+discovery surface, and the repository is the thing we verify and pin.
 
 ## 9. Consent and trust
 
@@ -488,7 +486,7 @@ Appendix B.
 | **P0** (½ d) ✅ | Verify the unknowns: skills.sh API auth from a desktop client (D1), GitHub search without a token, pasted-URL resolution, **Secret Service availability and a private-repo clone through `gh`/a stored token** (D6/D7), and this machine's real agent directories (D9). | Findings recorded in Appendix A, one real repo (public and private) resolved end to end, and the detected target list printed. |
 | **P1** (1 d) ✅ | Domain: target table, discovery model, ledger, `plan_*`, `FsProbe`, journal. | Full plan-matrix suite green; idempotence and crash-resume asserted. |
 | **P2** (1 d) ✅ | Git source + credentials (§8.2) + install/enable/disable/remove/update/doctor through the CLI, global default and project scope, plus `import` (D4, dry-run first). | Live: install a 6-skill repo, disable one, disable the repo, remove the repo; `find -xtype l` empty; doctor clean; a **private** repo installs with a stored token and the token appears in no file, log or argv. |
-| **P3** (½ d) ✅ | GitHub search adapter (+ optional token) as the default source, skills.sh adapter behind its OIDC token (off by default, D1), consent payload. | Search returns a repo and installs from it; without a token skills.sh says exactly why and a pasted skills.sh URL still installs. |
+| **P3** (½ d) ✅ | GitHub repository search and skills.sh's public `/api/search` (both tokenless), consent payload. | Search returns a repo and installs from it from either source; a pasted skills.sh URL resolves through GitHub. |
 | **P4** (1 d) ✅ | The app: Settings → Skills page, daemon socket, grouping, toggles, doctor. | Live screenshots of search, install, repo toggle, doctor; QML suites green. |
 | **P5** (½ d) ✅ | Update diff/report, ref pinning UI, one-deep rollback (D11), trash/restore. | Update a pinned repo, see the per-skill diff, roll back one ref, restore a removed repo from trash. |
 
@@ -498,7 +496,7 @@ Settled here so implementation has no open questions. Each is reversible; each s
 
 | # | Decision | Why |
 | --- | --- | --- |
-| **D1** | **Search is GitHub-first.** The skills.sh adapter ships but is *off* until a Vercel OIDC token is supplied; a pasted `skills.sh/...` URL always resolves through GitHub. No `npx skills` bridge. | skills.sh's API cannot be authenticated from a desktop app (per-team OIDC), while the skills it indexes live in public git repos. A node dependency for discovery would be a dependency the product cannot debug. A pasted URL is the honest fallback. |
+| **D1** | **Both catalogs are searched, neither needs a token.** GitHub uses `/search/repositories`; skills.sh uses `/api/search` — the endpoint its own CLI calls, which is public. A pasted `skills.sh/...` URL also resolves through GitHub. No `npx skills` bridge. | The documented `/api/v1/*` family requires a per-team Vercel OIDC token, which sent the first implementation to a GitHub-only fallback. Their CLI's own search proved there is a public endpoint; using it is simpler for the user and removes a refusal that should never have existed. |
 | **D2** | **Global scope by default**; project scope available as `--scope project:PATH`. | A shell is not inside a repository: the GUI has no cwd, so "install for this project" has no referent there. Globals are the manager's inventory; project scope stays a CLI affordance for terminal-in-repo work. |
 | **D3** | **One management surface: Settings → Skills.** No dock popover in v1; the page carries a paste-URL install box. | The dock item is already a quota surface, and a second, smaller manager would be a second set of states to keep true. A URL box covers the "just install this one" case without one. |
 | **D4** | **Adopt existing installs** (`skills import --from npx-skills`), dry-run by default, entries recorded as `Origin::Adopted`. | Users already have farms built by `npx skills`. Starting clean would strand them or, worse, duplicate every skill. Adoption hashes what is on disk and only ever unlinks what it recorded. |
@@ -518,7 +516,7 @@ Settled here so implementation has no open questions. Each is reversible; each s
 | Question | Result |
 | --- | --- |
 | GitHub repository search without a token | **works** (`/search/repositories`, 2 855 hits for `agent skills SKILL.md`), anonymous and rate-limited; a token raises it |
-| skills.sh API without a token | **401** `authentication_required` — message names the Vercel OIDC token, confirming D1 |
+| skills.sh API without a token | `/api/v1/*` → **401** `authentication_required` (Vercel OIDC); **`/api/search?q=…` → 200** with `{ skills: [{ id, name, source, installs }] }`, the endpoint the official CLI uses — the public path D1 now takes |
 | `gh auth token` | present (`gho_…`) → the zero-setup credential path (D6) is real |
 | Secret Service | `secret-tool store`/`lookup` round-trip works → keyring storage (D7) is available |
 | git | 2.56.0 |
@@ -562,5 +560,7 @@ links, an absolute link into a checkout, one dangling link) was the acceptance m
 | --- | --- | --- |
 | The AI dock item stayed hidden while the app was **enabled** | the dock imported the `Host` directory relatively to ask `AppStates.integrationEnabled(...)`, which is a second singleton registration with no data (C.13) | the dock reads the pushed boolean `AiTokenService.appEnabled`; the shell derives it from `isEnabled(app) && integrationEnabled("dockItem","ai")`, so the declaration still decides and there is one instance |
 | A private repository failed with "could not read Username" although `gh` was authenticated | `SkillContext::auth` consulted only the keyring and the environment, not the machine's `gh` token — D6 says prove the machine first | ambient credentials (`GH_TOKEN`/`ASTRAL_SKILLS_TOKEN`, then `gh auth token`) are tried before the keyring; verified against a real private repository (46 skills discovered, nothing installed) |
+
+| skills.sh search was refused as "needs a Vercel OIDC token" | only the documented `/api/v1/*` family was tested; the CLI's own `find` calls a different, public endpoint | `/api/search?q=…` is used, no credential asked for; the wrong refusal is now a regression test (`skills_sh_search_does_not_ask_for_a_token`) |
 
 `--copy-target` is wired end to end as well: it flips the named targets to `LinkStyle::Copy`, the planner emits copy operations for them, disabling moves a copy to the trash instead of deleting it, and a test asserts that the canonical target still links while the copy target holds real files.

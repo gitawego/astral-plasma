@@ -151,15 +151,17 @@ fn the_doctor_reports_an_unmanaged_farm_and_the_cli_can_adopt_it() {
 }
 
 #[test]
-fn search_explains_why_skills_sh_needs_a_token() {
+fn skills_sh_search_does_not_ask_for_a_token() {
+    // The catalog's `/api/search` is public (their own CLI uses it). This test is network
+    // independent: an offline machine may fail, but never for want of a token — the regression
+    // this guards is the refusal that shipped when only the authenticated `/api/v1` family was
+    // known.
     let sandbox = Sandbox::new();
-    let (ok, stdout, stderr) = sandbox.run(&["skills", "search", "design", "--source", "skills.sh"]);
-    assert!(!ok, "a refusal exits non-zero so a script can notice");
-    let combined = format!("{stdout}{stderr}");
-    assert!(
-        combined.to_lowercase().contains("token") || combined.to_lowercase().contains("github"),
-        "the message says what to do instead: {combined}"
-    );
+    let (_, stdout, stderr) = sandbox.run(&["skills", "search", "web design", "--source", "skills.sh"]);
+    let combined = format!("{stdout}{stderr}").to_lowercase();
+    assert!(!combined.contains("vercel oidc"), "no OIDC token is required: {combined}");
+    assert!(!combined.contains("needs a vercel"), "{combined}");
+    assert!(!combined.contains("search github instead"), "{combined}");
 }
 
 #[test]
