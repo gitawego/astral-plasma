@@ -56,7 +56,10 @@ app platform already treats the app registry.
 | Term | Meaning |
 | --- | --- |
 | **Skill** | A directory containing `SKILL.md` with YAML frontmatter (`name`, `description`) and optional `scripts/`, `references/`, `assets/`. Identity is `(source, ref, subpath)`. |
-| **Source** | Where a skill comes from: `owner/repo[#ref]`, a git URL, a local path, or a skills.sh slug that resolves to one of those. |
+| **Source** | Where a skill comes from: a **catalog hit** (GitHub/skills.sh search), an **added source** — a local folder or any git remote — or a one-off URL. |
+| **Added source** | A source the user registered by hand (`skills source add …`): a folder on disk (`~/my-skills`) or a git remote (`git@gitlab.corp:team/skills.git#v2`). It is listed, refreshed, and installed from like a catalog hit, and it survives restarts. |
+| **Origin** | Where a skill's bytes live: `Store{ref, sha}` for git sources (copied, immutable) or `Local{path}` for a local folder (linked in place, editable). |
+| **Credential** | An opaque handle to *how* a private git remote authenticates (git config / SSH agent / `gh` token / a stored GitHub token). The value never enters the ledger, the settings document, a URL, or a log line. |
 | **Repository install** | One source at one ref, installed at one scope for a set of targets. The unit of grouping, updating and removal. |
 | **Store** | Astral's write-once content directory. The only place skill bytes live. |
 | **Link farm** | The agent directories that point into the store. |
@@ -94,8 +97,25 @@ pub struct SkillMeta { id: SkillId, description: String, subpath: String,
                        hash: String, files: u32, bytes: u64 }
 
 // domain/skill_source.rs
-pub enum SourceSpec { Git { url: String, ref: String }, Local { path: PathBuf } }
+pub enum SourceSpec {
+    Git  { url: String, ref: Option<String>, subpath: Option<String>, auth: GitAuth },
+    Local { path: PathBuf, watch: bool },
+}
+/// How a remote authenticates. Only `Credential` names a secret, and only by id.
+pub enum GitAuth { Configured, SshAgent, Credential(CredentialId), Insecure } // never a stored secret
+pub struct Credential { id: CredentialId, label: String, kind: CredentialKind,
+                        host: String, // github.com — a token is scoped to a host
+                        created: Timestamp, last_ok: Option<Timestamp> }
+pub enum CredentialKind { GitHubToken, SshKey }
 pub struct RepositoryKey { source: SourceSpec, scope: Scope, targets: Vec<TargetId> }
+
+/// A source the user added by hand. `id` is a stable slug derived from the URL/path,
+/// so `skills install --source mine` keeps working when the path moves.
+pub struct AddedSource { id: SourceId, label: String, spec: SourceSpec,
+                         added: Timestamp, last_seen: Option<Timestamp> }
+
+/// Bytes live either in the immutable store or in a folder the user owns.
+pub enum Origin { Store { ref_name: String, sha: String }, Local { path: PathBuf } }
 
 // domain/skill_targets.rs  (data, not code)
 pub struct Target { id: TargetId, label: String,
@@ -105,6 +125,7 @@ pub struct Target { id: TargetId, label: String,
 // domain/skill_install.rs  (pure)
 pub struct LinkRecord { link: PathBuf, target: String, target_id: TargetId,
                         repo: RepositoryKey, skill: SkillId, hash: String,
+                        origin: Origin,        // store copy, or the user's own folder
                         state: LinkState }     // Linked | Disabled
 pub struct Ledger { entries: Vec<LinkRecord>, schema: u32 }
 
@@ -212,6 +233,82 @@ ledger row's `state`, so the UI and the CLI never disagree about why something i
 
 ## 8. Sources
 
+Two ways a source enters the manager:
+
+1. **Found** — a catalog hit from the adapters below (GitHub search, skills.sh, local scan).
+2. **Added** — the user registers a source explicitly. This is a first-class flow, not a
+   fallback: *Add source → Local folder…* / *Add source → Git remote…*, and
+   `skills source add` on the CLI. Added sources are persisted (`sources.json`), listed in the
+   UI with their last-seen time and skill count, and usable by name (`--source mine`).
+
+### 8.1 Added sources
+
+| Kind | Input | Discovery | Install means |
+| --- | --- | --- | --- |
+| **Local folder** | any directory (`~/my-skills`, a mounted share, a worktree) | walk for `SKILL.md` (depth limit, ignores `.git`, `node_modules`, `.venv`) | **link in place**: the skill's real bytes stay in the folder; the target link points at `origin/path/<skill>` recorded as `Origin::Local`. Editing the folder is instantly live — this is the development loop. Optionally `--copy` to snapshot into the store instead. |
+| **Git remote** | any URL git understands: `https://`, `git@host:team/repo.git`, `ssh://`, `git://`, `file://`, a bare repo, GitLab/Codeberg/self-hosted, plus `owner/repo` shorthand — **public or private** (§8.2) | shallow clone at `ref` (branch, tag or full SHA), then walk | copy into the immutable store as `Origin::Store`, pinned to the resolved SHA |
+
+Both accept `--ref`, `--subpath` (monorepos: `packages/skills/ui`), and `--watch`
+(local: re-scan on change and relink; git: only on explicit `update`).
+
+**Authentication reuses what the machine already has** — the SSH agent, `~/.gitconfig`
+credential helpers, or `GH_TOKEN` — and can also hold a GitHub token you give it (§8.2). The
+manager never stores a secret in a place it does not own, never prompts for one in a hidden way,
+and on failure prints git's own message plus the URL that failed (a private repo refusing is not
+a bug to hide).
+
+**Why local sources link instead of copy.** Copying a folder under active edit would make the
+manager a stale mirror of the truth and turn every save into a manual "update" step. Linking in
+place keeps one author of the bytes, so the agent sees the edit immediately. The trade-off is
+recorded, not hidden: local skills have no pinned hash, so the UI marks them `local · live`
+and the doctor re-checks the path on every pass; a missing folder is a `dangling` finding, and
+`--copy` exists for anyone who wants reproducibility instead.
+
+### 8.2 Private repositories and credentials
+
+A private GitHub repo is a supported source, not a special case. Authentication is chosen per
+source, and the choice is recorded as a **handle**, never as a value.
+
+| Mode | What happens | When it is the right choice |
+| --- | --- | --- |
+| `Configured` (default) | git is left to its own devices: `~/.gitconfig` credential helper, `gh auth setup-git`, SSH agent for `git@` URLs | the machine is already set up for this host |
+| `Credential(id)` | the manager injects a stored **GitHub fine-grained token** (contents: read) for that host | per-account tokens, CI-like machines, or several GitHub identities |
+| `SshAgent` + optional key | `GIT_SSH_COMMAND` pinned to one key (`--ssh-key ~/.ssh/id_work`) | multiple GitHub accounts over SSH |
+
+**Where the token lives.** In the OS keyring through Secret Service (`libsecret`), keyed
+`astral-plasma/skills/<host>/<credential-id>`; on this machine `secret-tool` and a running
+keyring are present, so that is the default. Only if no keyring is reachable does the manager
+offer a `0600` file under `$XDG_STATE_HOME/astral-plasma/skills/credentials/` — and it says so
+on screen, because a token on disk without encryption is a choice the user must see. The token is
+**never** written to `ledger.json`, `sources.json`, `settings.json`, the journal, a log line, a
+`--json` payload, or a git URL.
+
+**How it is passed to git.** Not in the clone URL (it can leak into `.git/config`, `ps`, error
+output and reflog). Instead:
+
+```
+GIT_CONFIG_COUNT=1
+GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+GIT_CONFIG_VALUE_0=Authorization: Basic base64(x-access-token:<token>)
+```
+
+passed through the child's environment only, cleared for the next command, and redacted from
+any captured stderr before it reaches the UI. Shallow clone uses `--filter=blob:none` where
+supported; private content is copied into the store like any other and never transmitted
+anywhere (no telemetry, no skills.sh upload).
+
+**Access check before install.** Adding a source performs `GET /repos/{owner}/{repo}` with the
+chosen credential and reports one of four distinct outcomes — *ok*, *token expired*, *no access
+to this repo*, *repo not found* (which is also what a private repo looks like without a token).
+The dialog shows the result as a line under the URL field, so access is proven **before** the
+user commits to installing anything.
+
+**Expiry and revocation.** A `401/403` during a later `update` flips the source to
+`needs-auth` with that same sentence and leaves the installed content untouched (a working skill
+is not broken by an expired token); `skills auth test <id>` re-checks on demand.
+
+### 8.3 Catalog adapters
+
 `SkillSourcePort` with adapters, all configured by data (`sources.json`), all optional:
 
 | Adapter | Discovery | Install | Availability |
@@ -248,7 +345,16 @@ exists for scripts, and the GUI reuses the app-platform consent card.
 ## 10. CLI
 
 ```
-astral-plasma skills search <query> [--source github|skills.sh|local] [--limit N] [--json]
+astral-plasma skills source add <path|url> [--ref R] [--subpath P] [--watch] [--copy] [--json]
+astral-plasma skills source list [--json]
+astral-plasma skills source refresh <id> [--json]     # re-scan / re-resolve the remote
+astral-plasma skills source remove <id> [--keep-skills]  # forget the source; refuse while it has
+                                                        # installed skills unless --keep-skills
+astral-plasma skills auth add github --token-stdin [--host github.com] [--label work] [--json]
+astral-plasma skills auth list [--json]                 # handles and hosts, never values
+astral-plasma skills auth test <id> [--json]             # ok / expired / no-access / not-found
+astral-plasma skills auth forget <id>                    # remove the keyring entry
+astral-plasma skills search <query> [--source github|skills.sh|local|<added-id>] [--limit N] [--json]
 astral-plasma skills inspect <owner/repo[#ref]> [--json]        # discovery + hashes, installs nothing
 astral-plasma skills install <source> [--skill NAME|--all] [--target claude-code,codex]
                                      [--scope global|project:PATH] [--accept] [--json]
@@ -269,17 +375,22 @@ mutation prints the plan it applied plus the ledger rows it touched.
 A new platform app, `org.astralplasma.skills`, with `integrations: [{ "kind": "settingsPage",
 "id": "skills" }]`. It renders through the existing design system — nothing new is invented.
 
+### 11.1 The page
+
 ```
 ┌─ Skills ───────────────────────────────────────────────────────────────┐
-│ ⌕ find a skill…                    [ GitHub ] [ skills.sh ] [ Local ]  │
-│                                       scope: [ Global ⌄ ]  targets: 3   │
+│ ⌕ find a skill…          [ GitHub ] [ skills.sh ] [ mine ] [ + Add ]   │
+│                                    scope: Global ⌄   targets: 3        │
 ├────────────────────────────────────────────────────────────────────────┤
 │ owner/repo · 12 skills · ★ 2.4k installs        [ Install all ]        │
-│  ├ web-design-guidelines   Design review for UI work      [ Install ]   │
-│  ├ secure-llm-apps         OWASP LLM audit checklist      [ Install ]   │
+│  ├ web-design-guidelines   Design review for UI work      [ Install ]  │
 │  └…                                                                    │
+├─ Sources ──────────────────────────────────────────────────────────────┤
+│ ▾ mine            ~/my-skills              local · live    12 skills   │
+│   work            git@github.com:team/…    main@a91f3c2 · ok          │
+│   old             git@github.com:team/…    needs-auth · token expired  │
 ├─ Installed ────────────────────────────────────────────────────────────┤
-│ ▾ build-with-ai-hq/agent-skills · main@a91f3c2   [on]  ⋯ update/remove  │
+│ ▾ build-with-ai-hq/agent-skills · main@a91f3c2   [on]  ⋯ update/remove │
 │    web-design-guidelines     linked → .agents/.claude   [on]           │
 │    secure-llm-apps           disabled                     [off]        │
 │ ▸ vercel-labs/skills · main                      [on]  ⋯               │
@@ -288,14 +399,38 @@ A new platform app, `org.astralplasma.skills`, with `integrations: [{ "kind": "s
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Repo cards** carry the master toggle and the group actions; skill rows carry per-skill
-  toggles and a link-health chip (`linked`, `disabled`, `conflict`, `missing`).
+### 11.2 Adding a source
+
+```
+┌─ Add source ──────────────────────────────────────────────────────────┐
+│ ○ Local folder   ~/my-skills                        [ choose… ]       │
+│ ● Git remote     git@github.com:team/private-skills.git               │
+│   auth   [ Stored GitHub token · work ⌄ ]   or   [ Use git / SSH ]     │
+│   ref    main (default)        subpath  (optional)                     │
+│   ✓ access ok · 12 skills found · 4 installed already                  │
+│                                                [ Cancel ]  [ Add ]     │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+- Access is proven **in the dialog** (`ok`, `token expired`, `no access`, `not found`) and `Add`
+  is disabled until it is `ok`, so a private repo is never a failed install that the user has to
+  decode from a git error.
+- The same dialog serves public repos; the auth selector simply stays on *Use git / SSH*.
+- `Local folder` has a *Link live* switch (default on) with a one-line explanation that edits are
+  picked up immediately, and a `Copy into store` alternative.
+
+### 11.3 Behaviour
+
+- **Repo/source cards** carry the master toggle and group actions; skill rows carry per-skill
+  toggles and a link-health chip (`linked`, `disabled`, `conflict`, `missing`, `local · live`).
 - Toggling is optimistic in the *UI only* — the row shows a pending state until the daemon's
   ledger write returns, then settles from truth. A failure never leaves a green toggle.
-- Install progress is real: `resolve → clone → discover → verify → copy → link` as labelled
-  steps (the app-platform rule: no fabricated progress).
-- Motion uses `Motion` tokens; the repo card expands with the expressive spatial curve, toggles
-  use the capsule indicator. Doctor rows are the only place that uses warning colour.
+- Install progress is real: `resolve → auth → clone → discover → verify → copy → link` as
+  labelled steps (the app-platform rule: no fabricated progress).
+- Motion uses `Motion` tokens; the card expands with the expressive spatial curve, toggles use
+  the capsule indicator. Doctor rows are the only place that uses warning colour.
+- Nothing secret is ever rendered: `auth` rows show a label and a host, never a token, and the
+  token field is write-only (`••••`, paste and forget).
 
 ## 12. Failure modes the design answers
 
@@ -308,6 +443,10 @@ A new platform app, `org.astralplasma.skills`, with `integrations: [{ "kind": "s
 | Agent moved its directory (config change) | target table is data; `skills doctor` reports links in the old place and offers migration |
 | Same skill name from two sources | both installs exist under distinct repo keys; a target cannot hold both, so the planner refuses the second with a named conflict |
 | Repo deleted upstream | update reports "source unreachable", keeps the installed content (a working skill is not broken by a dead URL) |
+| Private repo, token expired | source marked `needs-auth` with the exact sentence; installed skills keep working |
+| Private repo, wrong identity | the access check names it before install (`no access to this repo`), instead of a git error the user must decode |
+| Keyring locked at login | source reports `needs-auth · keyring locked`; nothing is installed silently, no token is written to disk as a "fix" |
+| Token pasted into a URL | refused by the URL validator; the field says to use the auth selector so the token cannot reach `.git/config` |
 
 ## 13. Tests (TDD, per repo rules)
 
@@ -333,9 +472,9 @@ listing the skill; a removed repo must leave no link behind (`find … -xtype l`
 
 | Phase | Content | Gate |
 | --- | --- | --- |
-| **P0** (½ d) | Verify the unknowns: skills.sh API auth from a desktop client, `npx skills find` behaviour, GitHub search without a token, and this machine's real agent directories. | Findings recorded in Appendix A, one real repo resolved end to end. |
+| **P0** (½ d) | Verify the unknowns: skills.sh API auth from a desktop client, `npx skills find` behaviour, GitHub search without a token, **Secret Service availability and a private-repo clone through `gh`/a stored token**, and this machine's real agent directories. | Findings recorded in Appendix A, one real repo (public and private) resolved end to end. |
 | **P1** (1 d) | Domain: target table, discovery model, ledger, `plan_*`, `FsProbe`, journal. | Full plan-matrix suite green; idempotence and crash-resume asserted. |
-| **P2** (1 d) | Git source + install/enable/disable/remove/update/doctor through the CLI, both scopes. | Live: install a 6-skill repo, disable one, disable the repo, remove the repo; `find -xtype l` empty; doctor clean. |
+| **P2** (1 d) | Git source + credentials (§8.2) + install/enable/disable/remove/update/doctor through the CLI, both scopes. | Live: install a 6-skill repo, disable one, disable the repo, remove the repo; `find -xtype l` empty; doctor clean; a **private** repo installs with a stored token and the token appears in no file, log or argv. |
 | **P3** (½ d) | GitHub search adapter (+ optional token), skills.sh adapter behind its token, consent payload. | Search returns a repo and installs from it; without a token skills.sh says exactly why. |
 | **P4** (1 d) | The app: Settings → Skills page, daemon socket, grouping, toggles, doctor. | Live screenshots of search, install, repo toggle, doctor; QML suites green. |
 | **P5** (½ d) | Update diff/report, ref pinning UI, import from `skills-lock.json`, trash/restore. | Update a pinned repo, see the per-skill diff, restore a removed repo from trash. |
@@ -352,3 +491,9 @@ listing the skill; a removed repo must leave no link behind (`find … -xtype l`
    (matching their lock's hashes) instead of starting clean? Recommended yes, dry-run first.
 5. **Copy fallback** — keep symlink-only, or allow a per-target `Copy` style for agents that do
    not follow links (documented as a target setting either way)?
+6. **Credential default for private repos** — rely on `gh auth token` / the SSH agent when they
+   exist (zero setup, nothing stored), or always ask for a fine-grained token on first add?
+7. **No-keyring fallback** — offer an encrypted-at-rest `0600` file, or refuse and tell the user
+   to unlock a keyring? (Proposed: offer, with the warning on screen.)
+8. **Local sources: link in place (proposed) or always copy?** Linking makes edits live and
+   keeps one author of the bytes; copying makes them reproducible and hash-pinned.
