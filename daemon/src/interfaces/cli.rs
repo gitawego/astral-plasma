@@ -2664,6 +2664,11 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
                         "enabled": entry.enabled,
                         "pinned": entry.pinned,
                         "autoUpdate": entry.auto_update,
+                        // Trust and grants are what the consent UI renders: the user must be
+                        // able to see who published an app and what it was allowed to do.
+                        "trust": entry.trust,
+                        "granted": entry.granted,
+                        "dbusNames": entry.dbus_names,
                         "compatible": fit.is_compatible(),
                         "reason": fit.issue().map(|issue| issue.to_string()),
                         "blocked": entry.blocked,
@@ -2677,8 +2682,8 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
                 println!("No apps installed.");
             } else {
                 println!(
-                    "{:<34} {:<10} {:>4}  {:<12} {}",
-                    "ID", "VERSION", "API", "STATE", "NOTE"
+                    "{:<34} {:<10} {:>4}  {:<12} {:<10} {}",
+                    "ID", "VERSION", "API", "STATE", "TRUST", "NOTE"
                 );
                 for row in &rows {
                     let state = if !row["enabled"].as_bool().unwrap_or(false) {
@@ -2689,11 +2694,12 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
                         "incompatible"
                     };
                     println!(
-                        "{:<34} {:<10} {:>4}  {:<12} {}",
+                        "{:<34} {:<10} {:>4}  {:<12} {:<10} {}",
                         row["id"].as_str().unwrap_or("-"),
                         row["version"].as_str().unwrap_or("-"),
                         row["kernelApi"].as_u64().unwrap_or(0),
                         state,
+                        row["trust"].as_str().unwrap_or("-"),
                         row["reason"].as_str().unwrap_or(""),
                     );
                 }
@@ -3007,6 +3013,76 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
                 println!("wrote {} and {}", docs.display(), fixture.display());
             } else {
                 print!("{snapshot}");
+            }
+        }
+        "inspect" => {
+            use crate::application::app_inspect::{inspect, permission_summary};
+
+            let Some(target) = args.get(3) else {
+                return Err("usage: astral app inspect <file.astralapp|app-id>".into());
+            };
+            // An installed id is inspected where it lives; a file is inspected as bytes,
+            // so the description matches what is about to be installed.
+            let path = if std::path::Path::new(target).is_file() {
+                std::path::PathBuf::from(target)
+            } else {
+                return Err(format!(
+                    "'{target}' is not a file; inspect reads an artifact before installing it"
+                )
+                .into());
+            };
+            let inspection = inspect(&path)?;
+            let manifest = &inspection.manifest;
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                "id": manifest.id,
+                "name": manifest.name,
+                "version": manifest.version,
+                "kernelApi": manifest.kernel_api,
+                "minQuickshell": manifest.min_quickshell,
+                "trust": manifest.trust,
+                "runtime": manifest.runtime,
+                "publisher": manifest.publisher.name,
+                "size": inspection.size,
+                "nativeFiles": inspection.has_native_files,
+                "permissions": manifest.permissions,
+                "dbusNames": manifest.requires.dbus_names,
+                "summaries": manifest.permissions
+                    .iter()
+                    .map(|permission| permission_summary(permission))
+                    .collect::<Vec<_>>(),
+            }))?);
+        }
+        "publish" => {
+            use crate::application::app_publish::{entry_json, publish};
+
+            let dir = app_dir_arg(args, 3)?;
+            let flag = |name: &str| {
+                args.iter()
+                    .position(|arg| arg == name)
+                    .and_then(|index| args.get(index + 1))
+                    .map(std::path::PathBuf::from)
+            };
+            let url_base = args
+                .iter()
+                .position(|arg| arg == "--url-base")
+                .and_then(|index| args.get(index + 1).cloned());
+
+            let published = publish(
+                &dir,
+                flag("--artifact").as_deref(),
+                flag("--catalog").as_deref(),
+                url_base.as_deref(),
+            )?;
+
+            println!("{}", serde_json::to_string_pretty(&entry_json(&published.entry))?);
+            if let Some(path) = &published.catalog_path {
+                println!(
+                    "{} {}",
+                    if published.replaced { "replaced in" } else { "added to" },
+                    path.display()
+                );
+            } else {
+                println!("entry printed only; pass --catalog <file> to record it");
             }
         }
         "dev" => {

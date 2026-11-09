@@ -39,6 +39,10 @@ pub struct RegistryEntry {
     pub pinned: bool,
     #[serde(default, rename = "autoUpdate")]
     pub auto_update: bool,
+    /// Trust tier recorded at install. The consent UI renders this, and a manifest edit
+    /// after install cannot change it — the same rule as grants.
+    #[serde(default)]
+    pub trust: String,
     /// Layout version of the app's data on disk.
     #[serde(default, rename = "dataSchema")]
     pub data_schema: Option<u32>,
@@ -281,6 +285,7 @@ pub fn entry_for(manifest: &Manifest, digest: &str) -> RegistryEntry {
         preinstalled: manifest.distribution().is_preinstalled(),
         pinned: false,
         auto_update: manifest.is_official(),
+        trust: manifest.trust.clone(),
         data_schema: manifest.data_schema,
         digest: digest.to_string(),
         payload_digest: String::new(),
@@ -367,6 +372,7 @@ mod tests {
                     preinstalled: true,
                     pinned: false,
                     auto_update: true,
+                    trust: "community".to_string(),
                     data_schema: Some(1),
                     digest: "sha256:a".to_string(),
                     payload_digest: String::new(),
@@ -384,6 +390,7 @@ mod tests {
                     preinstalled: false,
                     pinned: false,
                     auto_update: false,
+                    trust: "community".to_string(),
                     data_schema: None,
                     digest: "sha256:b".to_string(),
                     payload_digest: String::new(),
@@ -491,6 +498,7 @@ mod tests {
             preinstalled: false,
             pinned: false,
             auto_update: false,
+                    trust: "community".to_string(),
             data_schema: None,
             digest: format!("sha256:{version}"),
             payload_digest: String::new(),

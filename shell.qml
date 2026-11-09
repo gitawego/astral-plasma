@@ -268,6 +268,18 @@ ShellRoot {
         function scroll(y: real): void {
             settingsWindow.scrollTo(y);
         }
+        // A downloaded artifact can hand itself to the consent card (a browser's "open
+        // with", or a file manager). Nothing is installed: this only inspects.
+        function inspectApp(file: string): void {
+            Config.openSettings("apps");
+            AppsService.inspect(file);
+        }
+        // Installing is a separate call on purpose: an artifact may only be *inspected* by
+        // arriving, and the install happens when a person confirms it.
+        function installApp(file: string): void {
+            Config.openSettings("apps");
+            AppsService.install(file);
+        }
     }
 
     IpcHandler {

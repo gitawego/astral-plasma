@@ -67,6 +67,12 @@ pub fn reconcile_preinstalled(data_dir: &Path, bundled_apps_dir: &Path) -> DynRe
                 existing.name = manifest.name.clone();
                 changed = true;
             }
+            // Trust is metadata too: a record written before the field existed would
+            // otherwise show no badge, which reads as "unknown publisher".
+            if existing.trust.is_empty() && !manifest.trust.is_empty() {
+                existing.trust = manifest.trust.clone();
+                changed = true;
+            }
             continue;
         }
 
@@ -170,6 +176,24 @@ mod tests {
         assert_eq!(outcome.added, vec!["org.astralplasma.dock".to_string()]);
         assert_eq!(outcome.skipped.len(), 1, "the broken one is reported, not fatal");
         assert!(read_registry(&data).unwrap().apps.len() == 1);
+    }
+
+    #[test]
+    fn a_record_without_a_trust_tier_gets_the_bundled_one() {
+        // Existing installs predate the field; an empty badge would misreport the publisher.
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let bundled = dir.path().join("bundled");
+        write_app(&bundled, "org.astralplasma.media", "0.1.0");
+
+        reconcile_preinstalled(&data, &bundled).unwrap();
+        let mut registry = crate::application::app_service::read_registry(&data).unwrap();
+        registry.apps[0].trust = String::new();
+        crate::application::app_service::write_registry(&data, &registry).unwrap();
+
+        reconcile_preinstalled(&data, &bundled).unwrap();
+        let registry = crate::application::app_service::read_registry(&data).unwrap();
+        assert_eq!(registry.apps[0].trust, "official", "the tier is filled in");
     }
 
     #[test]

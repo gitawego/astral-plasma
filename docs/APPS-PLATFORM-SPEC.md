@@ -171,6 +171,7 @@ app owns ordinary compositor windows.
 | A26 | Data compatibility | `dataSchema` integer in the manifest, recorded at install, re-checked at launch; a build that cannot read the recorded schema never runs. |
 | A27 | Compatibility constants | One Rust constant pair generated into QML; drift fails CI; no semver range parser. |
 | A28 | Core app failure | A core app that fails to load is reverted to its baseline, the failure is recorded, and the failed version is blocked instead of retried. |
+| A35 | Consent before install | Installing needs a user decision on information from the artifact: `app inspect` describes the file, the Apps page renders it as a consent card, and `--accept-permissions` is passed only because that click happened. `app publish` is the authoring counterpart and the daemon never holds a signing key. |
 | A34 | One rule, one reader | App linters read the manifest's trust tier rather than encoding the rule twice; an official app may use kernel services, a community app may not. `astral app test` runs the app's declared `testSuites`, so "individually testable" is checked rather than asserted. |
 | A32 | Sandbox and broker boundaries | Mounts are planned from the registry (never from the manifest), only `Astral/AppKit` is exposed as an SDK, and every broker method maps to exactly one permission read from the registry. Declaring a permission is asking; granting is consent. Each launch gets one socket, one one-shot token and its own audit line. |
 | A33 | Payload integrity is re-checked at launch | The registry records a digest of the extracted payload (distinct from the artifact digest); a launch recomputes it and refuses on mismatch, so an edited payload never runs under the user's earlier consent. |
@@ -2160,3 +2161,34 @@ cannot say which app broke).
 Verified per app, all green: Workspaces 2, Media 8, Downloads 7, Dashboard 4,
 Performance 3, Ai 8, Assistant 2, Launcher 3 — 37 suites, each runnable on its own with
 `astral app test`.
+
+### C.30 Consent is a card, and installing is a separate call
+
+Spec P5 asked for a consent UI; the Apps page showed grants but offered no way to install,
+so consent was recorded by `--accept-permissions` on a command line — a flag, not a decision.
+
+Three pieces close that:
+
+* `astral-plasma app inspect <file>` reads an **artifact** (not a manifest on disk) and
+  reports identity, publisher, version, API level, permissions with plain-language
+  summaries, DBus names and whether native libraries ship. Truncated or invalid archives are
+  refused before anyone is asked to agree to them.
+* The Apps page renders that as a card: trust tier and publisher first, then every
+  permission in words, then what the sandbox confines regardless of grants. `Install` and
+  `Cancel` are the only two actions.
+* `AppsService.install` passes `--accept-permissions` because the user just consented on
+  screen; nothing else in the platform installs silently. `settings inspectApp <file>` opens
+  the card (a browser's "open with" can hand over a download); `installApp` is a separate
+  call on purpose.
+
+Verified live: inspecting a real `.astralapp` rendered `Community · Astral Examples · 0.1.0 ·
+API 1` and *"It will be allowed to see your open windows and their titles. It may talk to
+org.freedesktop.Notifications through a filtered bus. It runs sandboxed: no access to your
+files, home or network unless granted above."*; confirming it installed the app (the list
+went from `8 installed · 8 enabled` to `9 installed · 9 enabled`), and
+`astral-plasma app remove --purge` took it back to eight with no payload left behind.
+
+Also new: `astral-plasma app publish <dir> [--artifact] [--catalog] [--url-base]` produces the
+catalog entry (digest computed from the artifact bytes, never from a manifest), merges it into
+a catalog replacing the same id, and writes atomically so a half-written catalog can never
+list a wrong digest.

@@ -31,12 +31,16 @@ ApplicationWindow {
 
     readonly property var fixtures: [
         { id: "org.astralplasma.dock", name: "Dock", version: "0.1.0", kernelApi: 1,
-          preinstalled: true, enabled: true, compatible: true, reason: null },
+          preinstalled: true, enabled: true, compatible: true, reason: null,
+          trust: "official", granted: ["session.read"], dbusNames: [] },
         { id: "org.astralplasma.media", name: "Media", version: "0.2.1", kernelApi: 1,
-          preinstalled: true, enabled: false, compatible: true, reason: null },
+          preinstalled: true, enabled: false, compatible: true, reason: null,
+          trust: "official", granted: ["media.read", "media.control"],
+          dbusNames: ["org.mpris.MediaPlayer2"] },
         { id: "io.github.alice.clock", name: "World Clock", version: "1.4.0", kernelApi: 9,
           preinstalled: false, enabled: true, compatible: false,
-          reason: "needs a newer Astral (API 9); this is API 1" }
+          reason: "needs a newer Astral (API 9); this is API 1",
+          trust: "community", granted: [], dbusNames: [] }
     ]
 
     AppsPage {
@@ -44,6 +48,13 @@ ApplicationWindow {
         anchors.fill: parent
         testMode: true
         testApps: testRoot.fixtures
+        testPendingInstall: ({
+            id: "io.github.alice.timer", name: "Timer", version: "0.3.0", kernelApi: 1,
+            trust: "community", publisher: "Alice", permissions: ["windows.read", "network"],
+            summaries: ["see your open windows and their titles", "reach the network"],
+            dbusNames: ["org.freedesktop.Notifications"], nativeFiles: false,
+            path: "/tmp/timer.astralapp"
+        })
     }
 
     Component.onCompleted: {
@@ -53,6 +64,43 @@ ApplicationWindow {
         assert(page.stateLabel(page.apps[1]) === "Disabled", "a disabled app reads Disabled");
         assert(page.stateLabel(page.apps[2]) === "Incompatible", "an incompatible app says so");
 
+        // ---- the consent record: who published it, and what it may do -------
+        assert(page.trustLabel(page.apps[0]) === "Official", "a bundled app reads Official");
+        assert(page.trustLabel(page.apps[2]) === "Community", "an installed app names its tier");
+        assert(page.trustLabel({}) === "Unknown publisher",
+            "a record without a tier says so rather than guessing");
+        assert(page.permissionsLabel(page.apps[0]) === "session.read",
+            "grants are listed as given");
+        assert(page.permissionsLabel(page.apps[1])
+                === "media.read, media.control, 1 DBus service",
+            "DBus names are summarised, not hidden");
+        assert(page.permissionsLabel(page.apps[2]) === "Asks for nothing",
+            "an app with no grants says exactly that");
+
+        // ---- the consent copy ------------------------------------------------
+        // Installing is a decision: the card must say who published it, what it may do,
+        // and what the sandbox confines regardless.
+        const consent = page.consentSummary(page.pendingInstall);
+        assert(consent.indexOf("see your open windows") >= 0,
+            "a permission is spelled out in words, not as a key");
+        assert(consent.indexOf("reach the network") >= 0, "every permission is listed");
+        assert(consent.indexOf("org.freedesktop.Notifications") >= 0,
+            "DBus services are named, not hidden");
+        assert(consent.indexOf("no access to your files") >= 0,
+            "the card states what the sandbox confines regardless of grants");
+        assert(page.consentSummary(null) === "", "no pending install, no sentence");
+        assert(page.consentSummary({ permissions: [], summaries: [], dbusNames: [] })
+                .indexOf("asks for no permissions") >= 0,
+            "an app that asks for nothing says so");
+
+        const consentSource = readLocalFile("../settings_gui/pages/AppsPage.qml");
+        assert(consentSource.indexOf("AppsService.inspect(") >= 0,
+            "the card is fed by an inspection of the artifact");
+        assert(readLocalFile("../modules/Astral/Kernel/services/AppsService.qml")
+                .indexOf("--accept-permissions") >= 0,
+            "consent must be explicit when installing");
+        assert(consentSource.indexOf("FileDialog") >= 0, "the user picks the artifact");
+
         // ---- the page is data-driven and action-bearing ---------------------
         const source = readLocalFile("../settings_gui/pages/AppsPage.qml");
         assert(source.length > 1000, "the page must be readable");
@@ -61,6 +109,9 @@ ApplicationWindow {
         assert(source.indexOf("remove(") >= 0, "the page must offer remove");
         assert(source.indexOf("modelData.version") >= 0, "each row shows its version");
         assert(source.indexOf("modelData.kernelApi") >= 0, "each row shows its API level");
+        assert(source.indexOf("trustLabel(modelData)") >= 0, "each row shows its trust tier");
+        assert(source.indexOf("permissionsLabel(modelData)") >= 0,
+            "each row shows what the app was granted");
         assert(source.indexOf("Config.") === -1,
             "the page must not read Config directly; the service owns the daemon call");
 

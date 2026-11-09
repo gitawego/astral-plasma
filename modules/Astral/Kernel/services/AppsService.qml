@@ -14,6 +14,8 @@ import "../config"
 //   `astral-plasma app list --json`       -> [{ id, name, version, kernelApi,
 //                                             preinstalled, enabled, pinned,
 //                                             compatible, reason }]
+//   `app inspect <file>`                  -> what installing a file would grant
+//   `app install <file> --accept-permissions` -> staging, verify, record
 //   `app enable|disable <id>`             -> registry, written atomically
 //   `app remove <id> [--purge]`           -> payload + record
 //
@@ -62,6 +64,29 @@ Singleton {
         actionProc.running = true;
     }
 
+    /// The consent card's data: what installing `path` would mean, read from the artifact.
+    /// Nothing is installed and nothing is trusted until `install` is called.
+    function inspect(path) {
+        root.lastError = "";
+        root.pendingInstall = null;
+        inspectProc.pendingPath = String(path);
+        inspectProc.command = [root.daemonBin, "app", "inspect", String(path)];
+        inspectProc.running = false;
+        inspectProc.running = true;
+    }
+
+    /// Install a file the user has just consented to.
+    function install(path) {
+        root.lastError = "";
+        actionProc.command = [root.daemonBin, "app", "install", String(path), "--accept-permissions"];
+        actionProc.running = false;
+        actionProc.running = true;
+        root.pendingInstall = null;
+    }
+
+    /// What `inspect` found, or null while nothing has been inspected.
+    property var pendingInstall: null
+
     function appById(appId) {
         for (let index = 0; index < apps.length; index++) {
             if (apps[index].id === appId) return apps[index];
@@ -84,6 +109,31 @@ Singleton {
                 } catch (error) {
                     root.lastError = "could not read the app list: " + error;
                 }
+            }
+        }
+    }
+
+    Process {
+        id: inspectProc
+        property string pendingPath: ""
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+                if (text.length === 0) return;
+                try {
+                    const found = JSON.parse(text);
+                    found.path = inspectProc.pendingPath;
+                    root.pendingInstall = found;
+                } catch (error) {
+                    root.lastError = "could not read the artifact: " + error;
+                }
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+                if (text.length > 0) root.lastError = text.split("\n").pop();
             }
         }
     }
