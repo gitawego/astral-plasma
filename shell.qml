@@ -197,6 +197,25 @@ ShellRoot {
         statePath: Paths.appsRegistryPath
     }
 
+    Connections {
+        target: bundledApps
+        // The registry is the truth for every surface, including the ones that are the
+        // shell's own (the dock's AI pill, an app-owned drawer).
+        function onRecordsChanged() {
+            AppStates.adopt(bundledApps.records);
+        }
+    }
+
+    Connections {
+        target: bundledApps
+        // A drawer whose app was just disabled must not stay on screen: it would keep
+        // serving a feature the user turned off.
+        function onRecordsChanged() {
+            if (!Config.bottomPopoutVisible || Config.bottomPopoutMode !== "ai") return;
+            if (!bundledApps.isEnabled("org.astralplasma.ai")) Config.closeBottomPopout();
+        }
+    }
+
     AppHost {
         id: featureHost
         entries: bundledApps.entries
@@ -339,12 +358,16 @@ ShellRoot {
                 AiTokenService.lastActiveProviderId = providerId;
             }
         }
-        function openPopout(y: real): void { Config.openBottomPopout("ai", (y !== undefined && y > 0) ? y : 1450); }
+        function openPopout(y: real): void {
+            // The drawer belongs to the AI Quotas app: a disabled app opens nothing.
+            if (!bundledApps.isEnabled("org.astralplasma.ai")) return;
+            Config.openBottomPopout("ai", (y !== undefined && y > 0) ? y : 1450);
+        }
         function closePopout(): void { Config.closeBottomPopout(); }
         function togglePopout(): void {
             if (Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai") {
                 Config.closeBottomPopout();
-            } else {
+            } else if (bundledApps.isEnabled("org.astralplasma.ai")) {
                 Config.openBottomPopout("ai", 1450);
             }
         }
@@ -769,6 +792,8 @@ ShellRoot {
     }
 
     Component.onCompleted: {
+        AppStates.adopt(bundledApps.records);
+
         // Intent handlers live here, next to the rest of the shell's startup wiring:
         // one completion block, so nothing about startup is split across objects.
         intents.register("overview.close", function () {

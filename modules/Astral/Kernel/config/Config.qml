@@ -1244,6 +1244,9 @@ Singleton {
         // A retired mode has no section: opening it would slide out an empty
         // glass card, and re-targeting an open drawer would blank it.
         if (PopoutModes.isRetired(mode)) return;
+        // A drawer that belongs to an app is the caller's business: the shell refuses it
+        // through the same registry instance that decides what mounts (`AppRegistry`),
+        // because a settings singleton cannot see the app platform (spec C.33).
         popoutCloseTimer.stop();
         if (targetY !== undefined && targetY > 0) {
             popoutTargetY = targetY;

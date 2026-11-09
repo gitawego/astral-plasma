@@ -171,6 +171,7 @@ app owns ordinary compositor windows.
 | A26 | Data compatibility | `dataSchema` integer in the manifest, recorded at install, re-checked at launch; a build that cannot read the recorded schema never runs. |
 | A27 | Compatibility constants | One Rust constant pair generated into QML; drift fails CI; no semver range parser. |
 | A28 | Core app failure | A core app that fails to load is reverted to its baseline, the failure is recorded, and the failed version is blocked instead of retried. |
+| A38 | A disabled app owns nothing on screen | Any shell surface that represents an app (a dock pill, a drawer, a shortcut) asks the registry whether that app is enabled: `PopoutModes.appForMode` names the owner, `AppRegistry.isEnabled` answers for shell instances, and `AppStates` — fed by the shell, Quickshell-free — answers for singletons. Disabling closes what is open and refuses to reopen. |
 | A36 | Ports are checked, not trusted | An injected port is one more contract: `check_app_boundaries.py` verifies that every member an app reads is declared by that port, that every intent it requests is registered in `shell.qml`, and that every `ShellState` property is populated. Silent `undefined` is the failure mode this platform keeps producing, so it is now a test failure instead. |
 | A37 | Bundled apps are disabled, not removed | A `preinstalled` app ships with the platform and is reconciled on every read, so removing it would either break the shell or be undone; `remove_app` refuses it in the domain and the Apps page does not offer the action. Disable is the control, the user's disabled state survives reconcile, and removing a *user-installed* app still deletes payload and record while keeping its settings unless `--purge`. |
 | A35 | Consent before install | Installing needs a user decision on information from the artifact: `app inspect` describes the file, the Apps page renders it as a consent card, and `--accept-permissions` is passed only because that click happened. `app publish` is the authoring counterpart and the daemon never holds a signing key. |
@@ -2285,3 +2286,37 @@ freshly installed app shows Remove and `app remove` removes it; disabling Assist
 CLI updated the page to `9 installed · 8 enabled` with the row reading `Disabled [Enable]`
 without a restart; and `app remove org.astralplasma.media` refuses with the sentence above.
 
+
+### C.33 Disabling an app did nothing to the surfaces the shell owns
+
+Reported: *"the disable of an app does nothing — if I disable AI Quotas, I still see its icon
+at the left bottom edge and its quotas drawer still opens."*
+
+True, and the reason is structural. `disable` changes the registry, and `AppHost` builds its
+load plan from the registry — but **the AI pill and the AI drawer are shell surfaces**, not
+the app's own items. The pill came from `AiTokenService.shouldShowPill`, which only knew
+`Config.aiEnabled` (the *feature* switch), and `Config.openBottomPopout("ai")` had no notion
+of an owning app at all. So "disabled" meant "not mounted in the dashboard", while the dock
+kept advertising the feature.
+
+The rule now: **a shell surface that represents an app asks the registry whether that app is
+on.** Three pieces:
+
+* `PopoutModes.appForMode(mode)` names the app that owns a drawer (`ai → org.astralplasma.ai`),
+  so ownership is data, not an `if (mode === "ai")` in a drawer.
+* `AppRegistry.isEnabled(id)` answers from the same records the load plan is built from.
+  `shell.qml` refuses to open an app-owned drawer through it and closes one if the app is
+  disabled while it is open.
+* `AppStates` is a narrow read model for **singletons** (services such as `AiTokenService`)
+  that cannot reach a shell instance. It holds no file handle: the shell feeds it from
+  `AppRegistry.records`, which keeps it importable by the offscreen test runner (C.14) and
+  avoids the two-spelling singleton trap (a module-URI import and a relative import are two
+  registrations, C.13 — the first attempt wired a resolver on one instance and the gate read
+  the other).
+
+Verified live, with the drawer open: disabling AI Quotas closed it (729 288 px of change in
+the drawer area), removed its pill from the dock strip, and a subsequent `ai openPopout`
+produced a screen identical to the disabled one (0 px of difference — the request was
+refused, nothing flashed). Re-enabling restored both. `tests/tst_app_states.qml` pins the
+parser (including corrupt documents, which fail *open* so a broken registry cannot disable
+every app) and the drawer→app map.

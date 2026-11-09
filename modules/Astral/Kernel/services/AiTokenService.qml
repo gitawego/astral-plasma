@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../config"
+import "../Host"
 
 Singleton {
     id: root
@@ -96,11 +97,28 @@ Singleton {
 
     readonly property bool shouldShowPill: {
         if (typeof Config === "undefined" || !Config.aiEnabled) return false;
+        // The pill is this app's dock surface: disabling AI Quotas in Settings → Apps must
+        // take it away, exactly like turning the feature off.
+        if (typeof AppStates !== "undefined" && AppStates && !AppStates.isEnabled("org.astralplasma.ai")) return false;
         if (Config.aiDockPillMode === "always") return true;
         if (Config.aiDockPillMode === "never") return false;
         // "dynamic" mode: show if any model is in warning/critical state, or if valid providers exist
         return (root.warningLevel === "warning" || root.warningLevel === "critical" || root.providers.length > 0);
     }
+
+    // A drawer cannot stay open once its app is disabled.
+    Connections {
+        target: (typeof AppStates !== "undefined") ? AppStates : null
+        function onRevisionChanged() {
+            if (typeof Config === "undefined") return;
+            if (typeof AppStates === "undefined" || !AppStates) return;
+            if (AppStates.isEnabled("org.astralplasma.ai")) return;
+            if (Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai") {
+                Config.closeBottomPopout();
+            }
+        }
+    }
+
 
     readonly property bool isUiActive: (typeof Config !== "undefined")
         ? ((Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai") ||

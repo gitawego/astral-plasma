@@ -7,3 +7,4 @@ MetricsPort 1.0 MetricsPort.qml
 SessionPort 1.0 SessionPort.qml
 ShellState 1.0 ShellState.qml
 WorkspacesPort 1.0 WorkspacesPort.qml
+singleton AppStates 1.0 AppStates.qml

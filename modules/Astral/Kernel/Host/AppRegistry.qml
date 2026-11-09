@@ -161,6 +161,16 @@ QtObject {
         return problems;
     }
 
+    /// Is this app on? The same records the plan is built from, so a shell surface that
+    /// represents an app can ask without a second parser or a second singleton.
+    function isEnabled(appId) {
+        const all = root.records;
+        for (let index = 0; index < all.length; index++) {
+            if (all[index] && all[index].id === appId) return all[index].enabled !== false;
+        }
+        return false;
+    }
+
     function collectEntries() {
         const merged = [];
         const all = records;

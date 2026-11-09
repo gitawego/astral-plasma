@@ -13,6 +13,18 @@
 // Kept as a pure module so the rule is unit-testable without instantiating the
 // Quickshell `Config` singleton.
 
+/// Drawer modes that belong to a platform app. Disabling the app must close the drawer and
+/// refuse to open it: a drawer whose section is gone would slide out empty, and a drawer
+/// that still works while its app is disabled makes "disable" a lie.
+var APP_MODES = { ai: "org.astralplasma.ai" };
+
+/// The app that provides `mode`, or "" when the shell owns it.
+function appForMode(mode) {
+    if (!mode) return "";
+    const key = String(mode).trim().toLowerCase();
+    return APP_MODES[key] ? APP_MODES[key] : "";
+}
+
 /// Retired drawer modes, in the order they were removed.
 var RETIRED = ["audio", "brightness"];
 
