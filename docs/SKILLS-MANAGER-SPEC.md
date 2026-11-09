@@ -507,3 +507,24 @@ Settled here so implementation has no open questions. Each is reversible; each s
 | **D10** | **Keep the ecosystem's canonical layout**: `.agents/skills` remains the canonical link farm, `.claude/skills` links into it, and content is addressed by hash the same way `skills-lock.json` does. | Users run both tools and several agents read those paths. Interop is worth more than a private layout, and matching their hash function lets us adopt and compare installs. |
 | **D11** | **One-deep rollback**: an update keeps the previous store ref until the next successful update. | Updating a skill should be recoverable for a day without a full version-history store. Two refs per repository is a bounded cost. |
 | **D12** | **No telemetry, no uploads.** | Skills are user content; nothing about them leaves the machine. |
+
+---
+
+## Appendix A — P0 findings (measured on this machine, 2026-11-09)
+
+| Question | Result |
+| --- | --- |
+| GitHub repository search without a token | **works** (`/search/repositories`, 2 855 hits for `agent skills SKILL.md`), anonymous and rate-limited; a token raises it |
+| skills.sh API without a token | **401** `authentication_required` — message names the Vercel OIDC token, confirming D1 |
+| `gh auth token` | present (`gho_…`) → the zero-setup credential path (D6) is real |
+| Secret Service | `secret-tool store`/`lookup` round-trip works → keyring storage (D7) is available |
+| git | 2.56.0 |
+| Agent directories present | `~/.claude/skills`, `~/.agents/skills`, `~/.config/opencode/skills`, `~/.copilot/skills`, `~/.pi/agent/skills`, `~/.codex/skills`; `~/.gemini/skills` and `~/.cursor/skills` absent (D9 detection has something to detect) |
+| Private repo reachable through `gh` | yes (`relay-ssh`, `PRIVATE`) → the P2 private-repo gate is testable |
+| Existing farm | `~/.agents/skills` holds **real directories** plus **absolute-path symlinks into a working checkout**; `~/.claude/skills` mixes a **real directory** (`agents-sdk/`) with symlinks into `.agents`; one **dangling link** (`~/.claude/skills/od-contribute`); `~/.agents/.skill-lock.json` exists (20 KB) |
+
+The last row is the design's problem statement, on disk, today: two ownership models in one
+tree, a link that outlived its target, and a canonical directory that is sometimes real content
+and sometimes a link elsewhere. It is also the acceptance material for `skills import` (D4):
+mixed real/link farms, absolute and relative links, and a dangling entry are the cases the
+importer and the doctor must classify — not tidy fixtures.
