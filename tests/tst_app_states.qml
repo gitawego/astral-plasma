@@ -75,8 +75,14 @@ Item {
             "the dashboard strip is filtered by the declarations, not by a list of app names");
 
         const dock = readLocalFile("../dock/components/DockStatusIcons.qml");
-        assert(dock.indexOf('AppStates.integrationEnabled("dockItem", "ai")') >= 0,
-            "the dock item exists only while an enabled app declares that location");
+        // The dock cannot ask the host itself: a relative import of `Host` is a second singleton
+        // registration with no data (C.13), which is exactly what hid the icon while the app was
+        // enabled. It reads a boolean the shell pushes, and the shell owns the declaration check.
+        assert(dock.indexOf("AiTokenService.appEnabled") >= 0,
+            "the dock item reads the pushed flag");
+        assert(dock.indexOf("Kernel/Host") === -1, "and never imports the host itself");
+        assert(shell.indexOf('AppStates.integrationEnabled("dockItem", "ai")') >= 0,
+            "the shell derives that flag from the integration declaration");
         assert(dock.indexOf("AiActivityService.isActive") >= 0,
             "agent activity is still shown when the app is enabled");
 

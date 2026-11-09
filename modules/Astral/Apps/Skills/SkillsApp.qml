@@ -429,6 +429,16 @@ Item {
                             }
 
                             ActionPill {
+                                // Reversible update: the previous commit is still in the store.
+                                text: "Roll back"
+                                fixedHeight: 26
+                                paddingHorizontal: 10
+                                fontPixelSize: 10
+                                variant: "secondary"
+                                onClicked: if (root.skills) root.skills.rollbackSource(modelData.id)
+                            }
+
+                            ActionPill {
                                 text: "Remove"
                                 fixedHeight: 26
                                 paddingHorizontal: 10
@@ -476,6 +486,58 @@ Item {
                                     onClicked: root.toggleSkill(sourceCard.modelData, modelData)
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- trash -----------------------------------------------------------
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spaceSmall
+            visible: (root.skills ? root.skills.trash.length : 0) > 0
+
+            Text {
+                Layout.topMargin: Theme.spaceSmall
+                text: "Recently removed"
+                color: Colors.textOnSurface
+                font.family: Theme.fontFamily
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
+            }
+
+            Repeater {
+                model: root.skills ? root.skills.trash : []
+                delegate: GlassCard {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    implicitHeight: trashRow.implicitHeight + Theme.padSmall * 2
+                    radius: Theme.radiusMedium
+
+                    RowLayout {
+                        id: trashRow
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.margins: Theme.padSmall
+                        spacing: Theme.spaceSmall
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.name
+                            color: Colors.textOnSurface
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                        ActionPill {
+                            text: "Restore"
+                            fixedHeight: 22
+                            paddingHorizontal: 9
+                            fontPixelSize: 9
+                            variant: "secondary"
+                            onClicked: if (root.skills) root.skills.restoreTrash(modelData.name)
                         }
                     }
                 }

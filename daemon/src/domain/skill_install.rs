@@ -148,13 +148,13 @@ impl Selector {
 /// `now` stamps new records; the caller supplies it so tests and the CLI agree.
 pub fn plan_install(
     desired: &[DesiredSkill],
-    targets: &[&Target],
+    targets: &[Target],
     ledger: &Ledger,
     probe: &dyn FsProbe,
     now: u64,
 ) -> Plan {
     let mut plan = Plan::default();
-    let canonical = targets.iter().copied().find(|target| target.canonical);
+    let canonical = targets.iter().find(|target| target.canonical);
 
     for want in desired {
         let Some(content) = want.origin.content_path() else {
@@ -178,6 +178,7 @@ pub fn plan_install(
         }
 
         let canonical_link = canonical.map(|target| target.dir_for(&want.scope).join(want.skill.id.as_str()));
+
 
         for target in targets {
             let dir = target.dir_for(&want.scope);
@@ -576,8 +577,8 @@ mod tests {
         }
     }
 
-    fn targets(ids: &[&str]) -> Vec<&'static Target> {
-        ids.iter().map(|id| target_by_id(id).unwrap()).collect()
+    fn targets(ids: &[&str]) -> Vec<Target> {
+        ids.iter().map(|id| target_by_id(id).unwrap().clone()).collect()
     }
 
     fn link(dir: &str, id: &str) -> String {
@@ -887,7 +888,7 @@ mod tests {
             style: LinkStyle::Copy,
         };
         let mut fs = FakeFs::default().with("/store/gh/owner/repo@main/skill-a", Probe::Directory);
-        let plan = plan_install(&[desired("skill-a")], &[&copy_target], &Ledger::default(), &fs, 1);
+        let plan = plan_install(&[desired("skill-a")], &[copy_target.clone()], &Ledger::default(), &fs, 1);
         assert!(matches!(plan.ops[0], LinkOp::Copy { .. }), "{:?}", plan.ops);
         fs.apply(&plan);
         let mut ledger = Ledger::default();
@@ -896,14 +897,14 @@ mod tests {
                 ledger.upsert(row.clone());
             }
         }
-        let again = plan_install(&[desired("skill-a")], &[&copy_target], &ledger, &fs, 2);
+        let again = plan_install(&[desired("skill-a")], &[copy_target], &ledger, &fs, 2);
         assert!(again.is_empty(), "an unchanged copy is not rewritten: {:?}", again.describe());
     }
 
     #[test]
     fn every_target_in_the_table_resolves_to_a_link_under_its_own_directory() {
         let fs = FakeFs::default().with("/store/gh/owner/repo@main/skill-a", Probe::Directory);
-        let all: Vec<&'static Target> = TARGETS.iter().collect();
+        let all: Vec<Target> = TARGETS.to_vec();
         let plan = plan_install(&[desired("skill-a")], &all, &Ledger::default(), &fs, 1);
         assert_eq!(plan.ops.len(), TARGETS.len());
         for (op, target) in plan.ops.iter().zip(TARGETS.iter()) {

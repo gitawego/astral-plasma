@@ -175,3 +175,51 @@ fn adding_a_source_proves_access_without_installing() {
     assert_eq!(sources[0]["id"], "local-my-skills");
     assert_eq!(sources[0]["enabled"], true);
 }
+
+#[test]
+fn update_rollback_and_trash_are_reachable_from_the_cli() {
+    let sandbox = Sandbox::new();
+    // A git remote served from the sandbox, at two commits.
+    let repo = sandbox.dir.path().join("repo");
+    std::fs::create_dir_all(repo.join("alpha")).unwrap();
+    std::fs::write(repo.join("alpha/SKILL.md"), "---\nname: alpha\ndescription: one\n---\n").unwrap();
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .current_dir(&repo)
+            .args(["-c", "user.email=t@e", "-c", "user.name=t", "-c", "init.defaultBranch=main", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git {args:?}");
+    };
+    git(&["init", "-q"]);
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "one"]);
+
+    let url = format!("file://{}", repo.display());
+    let (ok, _, stderr) = sandbox.run(&["skills", "install", &url, "--accept", "--target", "codex"]);
+    assert!(ok, "{stderr}");
+
+    std::fs::write(repo.join("alpha/SKILL.md"), "---\nname: alpha\ndescription: two\n---\n").unwrap();
+    git(&["commit", "-qam", "two"]);
+    let (ok, stdout, stderr) = sandbox.run(&["skills", "update"]);
+    assert!(ok, "{stderr}");
+    assert!(stdout.contains("1 changed"), "{stdout}");
+
+    let source_id = {
+        let (_, stdout, _) = sandbox.run(&["skills", "source", "--json"]);
+        let sources: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        sources[0]["id"].as_str().unwrap().to_string()
+    };
+    let (ok, stdout, stderr) = sandbox.run(&["skills", "rollback", "--source", &source_id]);
+    assert!(ok, "{stderr}");
+    assert!(stdout.contains("Rolled back"), "{stdout}");
+    let content = std::fs::read_to_string(sandbox.home().join(".agents/skills/alpha/SKILL.md")).unwrap();
+    assert!(content.contains("one"), "the previous version is live again: {content}");
+
+    // The trash is a listing plus a restore, not a black hole.
+    let (ok, stdout, _) = sandbox.run(&["skills", "trash", "--json"]);
+    assert!(ok);
+    let items: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(items.is_array());
+}

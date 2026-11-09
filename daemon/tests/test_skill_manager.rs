@@ -480,3 +480,74 @@ fn a_disabled_skill_is_not_a_doctor_finding() {
         "{findings:?}"
     );
 }
+
+#[test]
+fn an_update_can_be_rolled_back_one_commit() {
+    let fixture = Fixture::new();
+    let repo = GitRepo::new(&[("alpha", "first version")]);
+    manager::install(&fixture.ctx, &repo.url(), None, &fixture.scope(), true).unwrap();
+    let source_id = read_ledger(&fixture.ctx.paths.ledger).unwrap().sources[0].id.clone();
+    let before = std::fs::read_to_string(fixture.link(".agents/skills", "alpha").join("SKILL.md")).unwrap();
+    assert!(before.contains("first version"));
+
+    std::fs::write(repo.dir.path().join("alpha/SKILL.md"), "---\nname: alpha\ndescription: second version\n---\n").unwrap();
+    repo.commit("second");
+    let update = manager::update(&fixture.ctx, &source_id).unwrap();
+    assert_eq!(update.changed, vec!["alpha"]);
+    let after = std::fs::read_to_string(fixture.link(".agents/skills", "alpha").join("SKILL.md")).unwrap();
+    assert!(after.contains("second version"));
+
+    let rollback = manager::rollback(&fixture.ctx, &source_id).unwrap();
+    assert_eq!(rollback.changed, vec!["alpha"], "{:?}", rollback);
+    assert!(rollback.conflicts.is_empty(), "{:?}", rollback.conflicts);
+    let reverted = std::fs::read_to_string(fixture.link(".agents/skills", "alpha").join("SKILL.md")).unwrap();
+    assert!(reverted.contains("first version"), "the previous content is back: {reverted}");
+
+    // A second rollback swaps back, so the operation is not a trap.
+    let again = manager::rollback(&fixture.ctx, &source_id).unwrap();
+    assert_eq!(again.changed, vec!["alpha"]);
+    let forward = std::fs::read_to_string(fixture.link(".agents/skills", "alpha").join("SKILL.md")).unwrap();
+    assert!(forward.contains("second version"), "and rolling back twice returns: {forward}");
+}
+
+#[test]
+fn a_rollback_without_a_previous_version_says_so() {
+    let fixture = Fixture::new();
+    let repo = GitRepo::new(&[("alpha", "a")]);
+    manager::install(&fixture.ctx, &repo.url(), None, &fixture.scope(), true).unwrap();
+    let source_id = read_ledger(&fixture.ctx.paths.ledger).unwrap().sources[0].id.clone();
+    let error = manager::rollback(&fixture.ctx, &source_id).unwrap_err();
+    assert!(error.to_string().contains("no previous version"), "got: {error}");
+}
+
+#[test]
+fn a_copy_target_receives_files_where_the_others_receive_links() {
+    let fixture = Fixture::new();
+    let source = fixture.local_source("mine", &[("alpha", "a")]);
+    // D5: copying is the per-target exception, chosen by the user.
+    let ctx = fixture
+        .ctx
+        .clone()
+        .with_copy_targets(vec!["claude-code".to_string()]);
+    manager::install(&ctx, source.to_str().unwrap(), None, &fixture.scope(), true).unwrap();
+
+    let canonical = fixture.link(".agents/skills", "alpha");
+    let copied = fixture.link(".claude/skills", "alpha");
+    assert!(canonical.is_symlink(), "the canonical target still links");
+    assert!(!copied.is_symlink() && copied.is_dir(), "the copy target holds real files");
+    assert!(copied.join("SKILL.md").is_file());
+
+    let ledger = read_ledger(&ctx.paths.ledger).unwrap();
+    let row = ledger.row_for(&copied).expect("the copy is recorded too");
+    assert!(row.target.starts_with("copy:"), "the record says it is a copy: {}", row.target);
+
+    // Disabling a copy moves it to the trash rather than deleting it in place.
+    let selector = astral_plasma::domain::skill_install::Selector::Skill {
+        source_id: "local-mine".to_string(),
+        skill: "alpha".to_string(),
+    };
+    manager::set_enabled(&ctx, &selector, false).unwrap();
+    assert!(!copied.exists(), "the copy is gone from the farm");
+    let items = astral_plasma::infrastructure::skill_fs::trash_list(&ctx.paths).unwrap();
+    assert!(items.iter().any(|item| item.name == "alpha"), "and recoverable: {items:?}");
+}

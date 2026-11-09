@@ -141,6 +141,31 @@ Singleton {
         actionProc.running = true;
     }
 
+    /// Put a source back one commit (the store keeps the previous version, D11).
+    function rollbackSource(sourceId) {
+        root.lastError = "";
+        actionProc.command = [root.bin, "skills", "rollback", "--source", String(sourceId), "--json"];
+        root.busy = true;
+        actionProc.running = false;
+        actionProc.running = true;
+    }
+
+    /// Items recoverable from the trash (replaced copies, adopted farms).
+    property var trash: []
+
+    function refreshTrash() {
+        trashProc.running = false;
+        trashProc.running = true;
+    }
+
+    function restoreTrash(name) {
+        root.lastError = "";
+        actionProc.command = [root.bin, "skills", "trash", "restore", String(name)];
+        root.busy = true;
+        actionProc.running = false;
+        actionProc.running = true;
+    }
+
     function runDoctor() {
         doctorProc.running = false;
         doctorProc.running = true;
@@ -239,6 +264,25 @@ Singleton {
     }
 
     Process {
+        id: trashProc
+        command: [root.bin, "skills", "trash", "--json"]
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+                root.trash = [];
+                if (text.length === 0) return;
+                try {
+                    const parsed = JSON.parse(text);
+                    root.trash = Array.isArray(parsed) ? parsed : [];
+                } catch (error) {
+                    root.trash = [];
+                }
+            }
+        }
+    }
+
+    Process {
         id: actionProc
 
         stdout: StdioCollector {
@@ -246,6 +290,7 @@ Singleton {
                 root.results = [];
                 root.refresh();
                 root.runDoctor();
+                root.refreshTrash();
             }
         }
         stderr: StdioCollector {

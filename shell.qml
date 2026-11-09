@@ -214,7 +214,9 @@ ShellRoot {
         function onRecordsChanged() {
             AppStates.adopt(bundledApps.entries);
 
-            AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai");
+            // One boolean for a singleton: the app is on *and* it declares this dock location.
+        AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai")
+            && AppStates.integrationEnabled("dockItem", "ai");
         }
     }
 
@@ -815,12 +817,9 @@ ShellRoot {
 
     Component.onCompleted: {
         AppStates.adopt(bundledApps.entries);
-        AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai");
-        console.log("DBGSKILL entries", (bundledApps.entries || []).length,
-            "hasSkills", (bundledApps.entries || []).some(function (e) { return e.id === "org.astralplasma.skills"; }),
-            "skillsIntegrations", JSON.stringify((bundledApps.entries || []).filter(function (e) { return e.id === "org.astralplasma.skills"; }).map(function (e) { return e.integrations; })),
-            "keys", JSON.stringify(Object.keys(AppStates.integrations)));
-
+        // One boolean for a singleton: the app is on *and* it declares this dock location.
+        AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai")
+            && AppStates.integrationEnabled("dockItem", "ai");
         // Intent handlers live here, next to the rest of the shell's startup wiring:
         // one completion block, so nothing about startup is split across objects.
         intents.register("overview.close", function () {

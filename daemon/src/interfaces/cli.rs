@@ -3581,9 +3581,13 @@ fn skills_context(args: &[String]) -> crate::application::skill_manager::SkillCo
     use crate::infrastructure::skill_fs::SkillPaths;
 
     let targets = skills_flag(args, "--target");
+    let copy_targets: Vec<String> = skills_flag(args, "--copy-target")
+        .map(|list| list.split(',').map(|id| id.trim().to_string()).filter(|id| !id.is_empty()).collect())
+        .unwrap_or_default();
     let ssh_key = skills_flag(args, "--ssh-key").map(std::path::PathBuf::from);
     SkillContext::new(SkillPaths::from_env(), now_ms())
         .with_targets(targets)
+        .with_copy_targets(copy_targets)
         .with_ssh_key(ssh_key)
 }
 
@@ -3969,6 +3973,84 @@ fn run_skills_command(args: &[String]) -> DynResult<()> {
                 }
             }
         }
+        "rollback" => {
+            let id = skills_flag(args, "--source")
+                .or_else(|| skills_positional(args, 3))
+                .ok_or("usage: skills rollback --source <id>")?;
+            let report = manager::rollback(&ctx, &id)?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "Rolled back {}: {} skill(s) restored ({} link(s))",
+                    id,
+                    report.changed.len(),
+                    report.created + report.replaced
+                );
+                for conflict in &report.conflicts {
+                    eprintln!("conflict {conflict}");
+                }
+            }
+        }
+        "trash" => match skills_positional(args, 3).as_deref() {
+            Some("restore") => {
+                let name = skills_positional(args, 4).ok_or("usage: skills trash restore <name>")?;
+                let item = crate::infrastructure::skill_fs::trash_restore(&ctx.paths, &name)?;
+                println!("Restored {} to {}", item.name, item.original.display());
+            }
+            _ => {
+                let items = crate::infrastructure::skill_fs::trash_list(&ctx.paths)?;
+                if is_json {
+                    println!("{}", serde_json::to_string_pretty(&items)?);
+                } else if items.is_empty() {
+                    println!("The trash is empty.");
+                } else {
+                    for item in &items {
+                        println!("{:<28} <- {}", item.name, item.original.display());
+                    }
+                    println!("\nRestore with: astral-plasma skills trash restore <name>");
+                }
+            }
+        },
+        "rollback" => {
+            let id = skills_flag(args, "--source")
+                .or_else(|| skills_positional(args, 3))
+                .ok_or("usage: skills rollback --source <id>")?;
+            let report = manager::rollback(&ctx, &id)?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "Rolled back {}: {} skill(s) restored ({} link(s))",
+                    id,
+                    report.changed.len(),
+                    report.created + report.replaced
+                );
+                for conflict in &report.conflicts {
+                    eprintln!("conflict {conflict}");
+                }
+            }
+        }
+        "trash" => match skills_positional(args, 3).as_deref() {
+            Some("restore") => {
+                let name = skills_positional(args, 4).ok_or("usage: skills trash restore <name>")?;
+                let item = crate::infrastructure::skill_fs::trash_restore(&ctx.paths, &name)?;
+                println!("Restored {} to {}", item.name, item.original.display());
+            }
+            _ => {
+                let items = crate::infrastructure::skill_fs::trash_list(&ctx.paths)?;
+                if is_json {
+                    println!("{}", serde_json::to_string_pretty(&items)?);
+                } else if items.is_empty() {
+                    println!("The trash is empty.");
+                } else {
+                    for item in &items {
+                        println!("{:<28} <- {}", item.name, item.original.display());
+                    }
+                    println!("\nRestore with: astral-plasma skills trash restore <name>");
+                }
+            }
+        },
         "doctor" | "check" => {
             let findings = manager::doctor(&ctx)?;
             if is_json {

@@ -298,6 +298,12 @@ pub struct AddedSource {
     pub enabled: bool,
     pub added_at: u64,
     pub last_seen: Option<u64>,
+    /// The commit this source was at before its last update: one-deep rollback (D11).
+    #[serde(default, rename = "previousSha")]
+    pub previous_sha: Option<String>,
+    /// The ref that commit came from.
+    #[serde(default, rename = "previousRef")]
+    pub previous_ref: Option<String>,
 }
 
 fn default_true() -> bool {

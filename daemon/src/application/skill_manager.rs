@@ -29,6 +29,8 @@ pub struct SkillContext {
     pub now: u64,
     /// Overrides the detected targets (`--target`), when given.
     pub targets: Option<String>,
+    /// Target ids that receive copies instead of links (`--copy-target`), D5.
+    pub copy_targets: Vec<String>,
     pub ssh_key: Option<PathBuf>,
 }
 
@@ -42,12 +44,18 @@ impl SkillContext {
             home,
             now,
             targets: None,
+            copy_targets: Vec::new(),
             ssh_key: None,
         }
     }
 
     pub fn with_targets(mut self, targets: Option<String>) -> Self {
         self.targets = targets;
+        self
+    }
+
+    pub fn with_copy_targets(mut self, targets: Vec<String>) -> Self {
+        self.copy_targets = targets;
         self
     }
 
@@ -59,15 +67,13 @@ impl SkillContext {
     fn auth(&self, spec: &SourceSpec) -> FetchAuth {
         let host = host_of(spec);
         let token = match spec {
-            SourceSpec::Git(git) if git.auth == GitAuth::Configured => {
-                // Only a host that needs it: public repos work anonymously.
-                skill_secrets::stored_token(&host).or_else(|| {
-                    std::env::var("ASTRAL_SKILLS_TOKEN").ok().filter(|t| !t.is_empty()).map(|token| {
-                        skill_secrets::Credential { token, source: skill_secrets::TokenSource::Environment }
-                    })
-                })
+            // D6: prove the machine first — an environment token or `gh auth token` that is
+            // already there — and only then a token the user stored for this host. Without the
+            // ambient step a private repository failed with "could not read Username" even
+            // though `gh` was authenticated.
+            SourceSpec::Git(git) if git.auth != GitAuth::SshAgent => {
+                skill_secrets::ambient_token(&host).or_else(|| skill_secrets::stored_token(&host))
             }
-            SourceSpec::Git(git) if git.auth == GitAuth::Credential => skill_secrets::stored_token(&host),
             _ => None,
         };
         FetchAuth {
@@ -382,6 +388,8 @@ pub fn add_source(
         enabled: true,
         added_at: ctx.now,
         last_seen: Some(ctx.now),
+        previous_sha: None,
+        previous_ref: None,
     };
     let mut ledger = read_ledger(&ctx.paths.ledger)?;
     ledger.upsert_source(source.clone());
@@ -444,7 +452,15 @@ pub fn install(
     }
 
     // Materialise content and build the desired state.
-    let targets = resolve_targets(ctx.targets.as_deref(), &ctx.home).map_err(|error| error.to_string())?;
+    let mut targets = resolve_targets(ctx.targets.as_deref(), &ctx.home).map_err(|error| error.to_string())?;
+    // D5: copying is the per-target exception for an agent that does not follow links.
+    if !ctx.copy_targets.is_empty() {
+        for target in targets.iter_mut() {
+            if ctx.copy_targets.iter().any(|id| id == target.id) {
+                target.style = crate::domain::skill_targets::LinkStyle::Copy;
+            }
+        }
+    }
     if targets.is_empty() {
         return Err(
             "no agent targets were detected; pass --target (claude-code, codex, …) to install anyway"
@@ -494,6 +510,8 @@ pub fn install(
             enabled: true,
             added_at: ctx.now,
             last_seen: None,
+            previous_sha: None,
+            previous_ref: None,
         });
         source.last_seen = Some(ctx.now);
         source.enabled = true;
@@ -672,12 +690,12 @@ pub fn update(ctx: &SkillContext, source_id: &str) -> DynResult<UpdateReport> {
             continue;
         }
         let origin = materialise(ctx, &spec, skill, sha.as_deref(), &ref_label)?;
-        let targets: Vec<&'static Target> = rows
+        let targets: Vec<Target> = rows
             .iter()
             .filter_map(|row| crate::domain::skill_targets::target_by_id(&row.target_id))
-            .fold(Vec::new(), |mut acc, target| {
-                if !acc.iter().any(|existing: &&Target| existing.id == target.id) {
-                    acc.push(target);
+            .fold(Vec::new(), |mut acc: Vec<Target>, target| {
+                if !acc.iter().any(|existing| existing.id == target.id) {
+                    acc.push(target.clone());
                 }
                 acc
             });
@@ -700,14 +718,142 @@ pub fn update(ctx: &SkillContext, source_id: &str) -> DynResult<UpdateReport> {
         changed.push(skill.id.as_str().to_string());
     }
 
-    // Refresh the source's last-seen stamp.
+    // Refresh the source's stamps: the commit it was at becomes the rollback target (D11).
     let mut after = read_ledger(&ctx.paths.ledger)?;
     if let Some(mut entry) = after.source(source_id).cloned() {
         entry.last_seen = Some(ctx.now);
+        if !changed.is_empty() {
+            if let Some((previous_sha, previous_ref)) = previous_origin(&ledger, source_id) {
+                entry.previous_sha = Some(previous_sha);
+                entry.previous_ref = Some(previous_ref);
+            }
+        }
         after.upsert_source(entry);
         skill_fs::write_ledger(&ctx.paths.ledger, &after)?;
     }
 
+    Ok(UpdateReport {
+        source: source_id.to_string(),
+        changed,
+        unchanged,
+        created,
+        replaced,
+        conflicts,
+    })
+}
+
+/// The commit a source's rows currently point at.
+fn previous_origin(ledger: &crate::domain::skill_ledger::Ledger, source_id: &str) -> Option<(String, String)> {
+    for row in ledger.for_source(source_id) {
+        if let Origin::Store { ref_name, sha, .. } = &row.origin {
+            return Some((sha.clone(), ref_name.clone()));
+        }
+    }
+    None
+}
+
+/// `<…>/<ref>@<sha12>/<skill>` -> the same skill at another commit (D11).
+///
+/// The store names a version `<ref-slug>@<sha12>`; splitting on `-` would have cut a ref like
+/// `feature-x` in half, which is why the separator matters and is asserted in the tests.
+fn store_path_with_sha(path: &Path, sha: &str) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    let skill = path.file_name()?;
+    let name = parent.file_name()?.to_str()?;
+    let (ref_part, _) = name.rsplit_once('@')?;
+    let short = &sha[..sha.len().min(12)];
+    // The version directory *and* the skill inside it: the origin path points at the skill
+    // (`…/<ref>@<sha>/<skill>`), and dropping that last component links a farm at the version.
+    Some(parent.with_file_name(format!("{ref_part}@{short}")).join(skill))
+}
+
+/// Put a source back to the commit it had before its last update (one-deep rollback, D11).
+///
+/// The store keeps the previous ref until the next successful update, so this is a relink, not a
+/// fetch: it works offline and cannot change what the previous version contained.
+pub fn rollback(ctx: &SkillContext, source_id: &str) -> DynResult<UpdateReport> {
+    let ledger = read_ledger(&ctx.paths.ledger)?;
+    let source = ledger
+        .source(source_id)
+        .ok_or_else(|| format!("no source '{source_id}'"))?;
+    let Some(previous_sha) = source.previous_sha.clone() else {
+        return Err(format!("'{source_id}' has no previous version recorded (nothing to roll back to)").into());
+    };
+    let previous_ref = source.previous_ref.clone().unwrap_or_else(|| "main".to_string());
+    // What the rows point at *now* becomes the next rollback target, so rolling back twice
+    // returns to where it started instead of bouncing between the same pair forever.
+    let current_origin = previous_origin(&ledger, source_id);
+
+    let mut changed = Vec::new();
+    let mut unchanged = Vec::new();
+    let mut conflicts = Vec::new();
+    let mut created = 0usize;
+    let mut replaced = 0usize;
+
+    for row in ledger.for_source(source_id) {
+        let Origin::Store { path, .. } = &row.origin else {
+            unchanged.push(row.skill.as_str().to_string());
+            continue;
+        };
+        let Some(old_path) = store_path_with_sha(path, &previous_sha) else {
+            conflicts.push(format!("cannot locate the previous content for '{}'", row.skill));
+            continue;
+        };
+        if !old_path.is_dir() {
+            conflicts.push(format!(
+                "the previous version of '{}' is no longer in the store ({})",
+                row.skill,
+                old_path.display()
+            ));
+            continue;
+        }
+        let files = read_local_tree(&old_path)?;
+        let meta = crate::domain::skill::SkillMeta {
+            id: row.skill.clone(),
+            description: String::new(),
+            subpath: String::new(),
+            hash: crate::domain::skill::hash_files(&files),
+            files: files.len() as u32,
+            bytes: files.iter().map(|(_, bytes)| bytes.len() as u64).sum(),
+            version: None,
+        };
+        let desired = DesiredSkill {
+            source_id: source_id.to_string(),
+            skill: meta,
+            origin: Origin::Store {
+                ref_name: previous_ref.clone(),
+                sha: previous_sha.clone(),
+                path: old_path,
+            },
+            scope: row.scope.clone(),
+        };
+        let Some(target) = crate::domain::skill_targets::target_by_id(&row.target_id) else {
+            continue;
+        };
+        let plan = plan_install(&[desired], &[target.clone()], &ledger, &RealFs, ctx.now);
+        if plan.is_blocked() {
+            conflicts.extend(conflict_lines(&plan.conflicts));
+            continue;
+        }
+        let applied = skill_fs::apply(&ctx.paths, &plan, ctx.now)?;
+        created += applied.created;
+        replaced += applied.replaced;
+        changed.push(row.skill.as_str().to_string());
+    }
+
+    // Swap the stamps so the rollback is reversible (in both directions).
+    let mut after = read_ledger(&ctx.paths.ledger)?;
+    if let Some(mut entry) = after.source(source_id).cloned() {
+        if let Some((current_sha, current_ref)) = current_origin {
+            entry.previous_sha = Some(current_sha);
+            entry.previous_ref = Some(current_ref);
+        }
+        after.upsert_source(entry);
+        skill_fs::write_ledger(&ctx.paths.ledger, &after)?;
+    }
+
+    changed.sort();
+    changed.dedup();
     Ok(UpdateReport {
         source: source_id.to_string(),
         changed,
@@ -788,7 +934,7 @@ pub fn doctor(ctx: &SkillContext) -> DynResult<Vec<Finding>> {
     for row in &ledger.links {
         if let Some(target) = crate::domain::skill_targets::target_by_id(&row.target_id) {
             if !targets.iter().any(|known| known.id == target.id) {
-                targets.push(target);
+                targets.push(target.clone());
             }
         }
     }
@@ -895,6 +1041,8 @@ pub fn import_npx(ctx: &SkillContext, apply: bool) -> DynResult<ImportReport> {
                     enabled: true,
                     added_at: ctx.now,
                     last_seen: Some(ctx.now),
+        previous_sha: None,
+        previous_ref: None,
                 });
                 ledger.upsert(crate::domain::skill_ledger::LinkRecord {
                     link: entry.clone(),

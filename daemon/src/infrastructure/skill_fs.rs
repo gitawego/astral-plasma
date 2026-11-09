@@ -336,14 +336,31 @@ fn move_to_trash(paths: &SkillPaths, transaction: &str, link: &Path) -> DynResul
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "item".to_string());
-            let destination = paths.trash.join(transaction).join(name);
-            if let Some(parent) = destination.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
+            let directory = paths.trash.join(transaction);
+            let destination = directory.join(&name);
+            std::fs::create_dir_all(&directory)?;
             std::fs::rename(link, &destination)?;
+            record_trash(&directory, transaction, &name, link)?;
             Ok(())
         }
     }
+}
+
+/// Append an item to a transaction's trash manifest (idempotent per name).
+fn record_trash(directory: &Path, transaction: &str, name: &str, original: &Path) -> DynResult<()> {
+    let manifest = directory.join(".astral-trash.json");
+    let mut items: Vec<TrashItem> = std::fs::read(&manifest)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    items.retain(|item| item.name != name);
+    items.push(TrashItem {
+        name: name.to_string(),
+        original: original.to_path_buf(),
+        transaction: transaction.to_string(),
+    });
+    std::fs::write(&manifest, serde_json::to_vec_pretty(&items)?)?;
+    Ok(())
 }
 
 /// Copy a directory tree, preserving the executable bit (skills ship scripts).
@@ -479,8 +496,8 @@ mod tests {
                 scope: Scope::Project { root: root.to_path_buf() },
             };
             let targets = vec![
-                target_by_id("codex").unwrap(),
-                target_by_id("claude-code").unwrap(),
+                target_by_id("codex").unwrap().clone(),
+                target_by_id("claude-code").unwrap().clone(),
             ];
             let ledger = read_ledger(&self.paths.ledger).unwrap();
             plan_install(&[desired], &targets, &ledger, &RealFs, 1)
@@ -639,5 +656,115 @@ mod tests {
             other => panic!("expected a dangling symlink, got {other:?}"),
         }
         assert_eq!(RealFs.probe(&fixture.dir.path().join("missing")), Probe::Missing);
+    }
+}
+
+/// One entry in the trash: what it was called and where it belonged.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct TrashItem {
+    pub name: String,
+    pub original: PathBuf,
+    pub transaction: String,
+}
+
+/// Everything currently recoverable, newest transaction last.
+pub fn trash_list(paths: &SkillPaths) -> DynResult<Vec<TrashItem>> {
+    let mut items = Vec::new();
+    let Ok(transactions) = std::fs::read_dir(&paths.trash) else {
+        return Ok(items);
+    };
+    let mut dirs: Vec<PathBuf> = transactions.flatten().map(|entry| entry.path()).collect();
+    dirs.sort();
+    for dir in dirs {
+        let manifest = dir.join(".astral-trash.json");
+        let Ok(bytes) = std::fs::read(&manifest) else { continue };
+        let Ok(parsed) = serde_json::from_slice::<Vec<TrashItem>>(&bytes) else { continue };
+        for item in parsed {
+            if dir.join(&item.name).exists() {
+                items.push(item);
+            }
+        }
+    }
+    Ok(items)
+}
+
+/// Put a trashed item back where it came from, refusing to overwrite anything.
+pub fn trash_restore(paths: &SkillPaths, name: &str) -> DynResult<TrashItem> {
+    let items = trash_list(paths)?;
+    let item = items
+        .into_iter()
+        .find(|candidate| candidate.name == name)
+        .ok_or_else(|| format!("nothing called '{name}' is in the trash"))?;
+    let source = paths.trash.join(&item.transaction).join(&item.name);
+    if std::fs::symlink_metadata(&item.original).is_ok() {
+        return Err(format!(
+            "{} is occupied again; move it aside before restoring",
+            item.original.display()
+        )
+        .into());
+    }
+    if let Some(parent) = item.original.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(&source, &item.original)?;
+    Ok(item)
+}
+
+#[cfg(test)]
+mod trash_tests {
+    use super::*;
+
+    fn paths() -> (tempfile::TempDir, SkillPaths) {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = SkillPaths::new(
+            dir.path().join("data"),
+            dir.path().join("state"),
+            dir.path().join("cache"),
+        );
+        paths.ensure().unwrap();
+        (dir, paths)
+    }
+
+    #[test]
+    fn a_trashed_copy_can_be_listed_and_restored() {
+        let (dir, paths) = paths();
+        let original = dir.path().join("farm/.agents/skills/alpha");
+        std::fs::create_dir_all(&original).unwrap();
+        std::fs::write(original.join("SKILL.md"), "---\nname: alpha\n---\n").unwrap();
+
+        move_to_trash(&paths, "tx1", &original).unwrap();
+        assert!(!original.exists());
+        let items = trash_list(&paths).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "alpha");
+        assert_eq!(items[0].original, original);
+
+        let restored = trash_restore(&paths, "alpha").unwrap();
+        assert_eq!(restored.original, original);
+        assert!(original.join("SKILL.md").is_file(), "the content is back in place");
+        assert!(trash_list(&paths).unwrap().is_empty(), "and it is no longer in the trash");
+    }
+
+    #[test]
+    fn restoring_never_overwrites_something_that_came_back() {
+        let (dir, paths) = paths();
+        let original = dir.path().join("farm/alpha");
+        std::fs::create_dir_all(&original).unwrap();
+        std::fs::write(original.join("SKILL.md"), "one").unwrap();
+        move_to_trash(&paths, "tx1", &original).unwrap();
+        // Something new appeared at the same path.
+        std::fs::create_dir_all(&original).unwrap();
+        std::fs::write(original.join("SKILL.md"), "two").unwrap();
+
+        let error = trash_restore(&paths, "alpha").unwrap_err();
+        assert!(error.to_string().contains("occupied"), "got: {error}");
+        assert_eq!(std::fs::read_to_string(original.join("SKILL.md")).unwrap(), "two");
+    }
+
+    #[test]
+    fn an_unknown_name_is_an_error_not_a_silent_success() {
+        let (_dir, paths) = paths();
+        let error = trash_restore(&paths, "ghost").unwrap_err();
+        assert!(error.to_string().contains("ghost"), "got: {error}");
     }
 }

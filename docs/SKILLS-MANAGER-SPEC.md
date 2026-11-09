@@ -74,7 +74,7 @@ app platform already treats the app registry.
 
 ```
 $XDG_DATA_HOME/astral-plasma/skills/
-  store/<host>/<owner>/<repo>@<ref>/<skill>/…      # content, write-once, hash-verified
+  store/<host>/<owner>/<repo>/<ref>@<sha12>/<skill>/…   # content, write-once, hash-verified
   repos/<host>/<owner>/<repo>@<ref>.json           # discovery result: skills + hashes
 
 $XDG_STATE_HOME/astral-plasma/skills/
@@ -480,14 +480,17 @@ listing the skill; a removed repo must leave no link behind (`find … -xtype l`
 
 ## 14. Phases
 
+Status: **P0–P5 implemented**, each with the tests named in §13 and the live checks recorded in
+Appendix B.
+
 | Phase | Content | Gate |
 | --- | --- | --- |
-| **P0** (½ d) | Verify the unknowns: skills.sh API auth from a desktop client (D1), GitHub search without a token, pasted-URL resolution, **Secret Service availability and a private-repo clone through `gh`/a stored token** (D6/D7), and this machine's real agent directories (D9). | Findings recorded in Appendix A, one real repo (public and private) resolved end to end, and the detected target list printed. |
-| **P1** (1 d) | Domain: target table, discovery model, ledger, `plan_*`, `FsProbe`, journal. | Full plan-matrix suite green; idempotence and crash-resume asserted. |
-| **P2** (1 d) | Git source + credentials (§8.2) + install/enable/disable/remove/update/doctor through the CLI, global default and project scope, plus `import` (D4, dry-run first). | Live: install a 6-skill repo, disable one, disable the repo, remove the repo; `find -xtype l` empty; doctor clean; a **private** repo installs with a stored token and the token appears in no file, log or argv. |
-| **P3** (½ d) | GitHub search adapter (+ optional token) as the default source, skills.sh adapter behind its OIDC token (off by default, D1), consent payload. | Search returns a repo and installs from it; without a token skills.sh says exactly why and a pasted skills.sh URL still installs. |
-| **P4** (1 d) | The app: Settings → Skills page, daemon socket, grouping, toggles, doctor. | Live screenshots of search, install, repo toggle, doctor; QML suites green. |
-| **P5** (½ d) | Update diff/report, ref pinning UI, one-deep rollback (D11), trash/restore. | Update a pinned repo, see the per-skill diff, roll back one ref, restore a removed repo from trash. |
+| **P0** (½ d) ✅ | Verify the unknowns: skills.sh API auth from a desktop client (D1), GitHub search without a token, pasted-URL resolution, **Secret Service availability and a private-repo clone through `gh`/a stored token** (D6/D7), and this machine's real agent directories (D9). | Findings recorded in Appendix A, one real repo (public and private) resolved end to end, and the detected target list printed. |
+| **P1** (1 d) ✅ | Domain: target table, discovery model, ledger, `plan_*`, `FsProbe`, journal. | Full plan-matrix suite green; idempotence and crash-resume asserted. |
+| **P2** (1 d) ✅ | Git source + credentials (§8.2) + install/enable/disable/remove/update/doctor through the CLI, global default and project scope, plus `import` (D4, dry-run first). | Live: install a 6-skill repo, disable one, disable the repo, remove the repo; `find -xtype l` empty; doctor clean; a **private** repo installs with a stored token and the token appears in no file, log or argv. |
+| **P3** (½ d) ✅ | GitHub search adapter (+ optional token) as the default source, skills.sh adapter behind its OIDC token (off by default, D1), consent payload. | Search returns a repo and installs from it; without a token skills.sh says exactly why and a pasted skills.sh URL still installs. |
+| **P4** (1 d) ✅ | The app: Settings → Skills page, daemon socket, grouping, toggles, doctor. | Live screenshots of search, install, repo toggle, doctor; QML suites green. |
+| **P5** (½ d) ✅ | Update diff/report, ref pinning UI, one-deep rollback (D11), trash/restore. | Update a pinned repo, see the per-skill diff, roll back one ref, restore a removed repo from trash. |
 
 ## 15. Decisions
 
@@ -528,3 +531,36 @@ tree, a link that outlived its target, and a canonical directory that is sometim
 and sometimes a link elsewhere. It is also the acceptance material for `skills import` (D4):
 mixed real/link farms, absolute and relative links, and a dangling entry are the cases the
 importer and the doctor must classify — not tidy fixtures.
+
+---
+
+## Appendix B — What the implementation found
+
+Bugs the tests caught, in the order they appeared. Each one was a design assumption that the
+filesystem disagreed with.
+
+| Finding | Why it existed | What it changed |
+| --- | --- | --- |
+| The ledger was written to `~/.local/state/skills` | `SkillPaths::from_env` appended `skills/…` to the XDG root without the product directory | paths now include `astral-plasma`; the shell's `Paths.skillsLedgerPath` and the daemon agree, so the page's file watch actually fires |
+| `skills remove --source <id>` removed nothing | the positional parser took the flag's *value* as a skill name | one parser that skips value flags, pinned by `test_skill_cli.rs` |
+| A disabled skill was reported as `missing` by the doctor | a disabled row has no link by design | the doctor respects the recorded state |
+| An adopted farm read as `replaced` | a real directory is the correct state for an adopted skill | `Origin::Adopted` is understood by the planner and the doctor (content hash instead), and disabling moves it to the trash |
+| Rollback linked a farm at the version directory | the store path ends in the skill (`…@sha/skill`), and the helper dropped the last component | the previous version is `<ref>@<prev12>/<skill>` |
+| Rolling back twice bounced between the same pair | the swap recorded the *new* current instead of the one just left | the pre-rollback origin becomes the next target |
+| A repository row read `0 of 0 enabled` | `Array.isArray` is false for a QML list proxy | `listOf()` normalises both shapes |
+| The settings page could not see `AppStates` | a relative import and a module import are two singleton registrations (C.13), and the offscreen runner cannot resolve the module at all | the shell passes `integrations` down as data; no settings file imports the host |
+| Every offscreen suite broke when a `qmldir` appeared in `Kernel/services` | a directory import becomes a module import, which instantiates Quickshell singletons eagerly | the directory stays `qmldir`-free; only `Host` is a module |
+| A local source remembered `--copy` only if typed again | `install` re-parsed the input instead of the recorded source | an already-added source's spec (copy, watch, ref) is reused |
+
+Appendix A's observation that the machine already had a **mixed** farm (real directories, relative
+links, an absolute link into a checkout, one dangling link) was the acceptance material for
+`import`: adoption classifies and records all four shapes without rewriting any of them.
+
+### B.2 Two follow-ups found while finishing the settings surface
+
+| Finding | Why | Fix |
+| --- | --- | --- |
+| The AI dock item stayed hidden while the app was **enabled** | the dock imported the `Host` directory relatively to ask `AppStates.integrationEnabled(...)`, which is a second singleton registration with no data (C.13) | the dock reads the pushed boolean `AiTokenService.appEnabled`; the shell derives it from `isEnabled(app) && integrationEnabled("dockItem","ai")`, so the declaration still decides and there is one instance |
+| A private repository failed with "could not read Username" although `gh` was authenticated | `SkillContext::auth` consulted only the keyring and the environment, not the machine's `gh` token — D6 says prove the machine first | ambient credentials (`GH_TOKEN`/`ASTRAL_SKILLS_TOKEN`, then `gh auth token`) are tried before the keyring; verified against a real private repository (46 skills discovered, nothing installed) |
+
+`--copy-target` is wired end to end as well: it flips the named targets to `LinkStyle::Copy`, the planner emits copy operations for them, disabling moves a copy to the trash instead of deleting it, and a test asserts that the canonical target still links while the copy target holds real files.

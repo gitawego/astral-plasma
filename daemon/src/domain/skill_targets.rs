@@ -193,19 +193,20 @@ pub fn detected(home: &Path) -> Vec<&'static Target> {
 /// Resolve a comma-separated target list (`claude-code,codex`), or everything detected.
 ///
 /// An unknown id is an error naming the known ones: silently installing nowhere is the failure
-/// mode this function exists to prevent.
-pub fn resolve_targets(list: Option<&str>, home: &Path) -> Result<Vec<&'static Target>, String> {
+/// mode this function exists to prevent. Targets are returned by value so a caller can override
+/// one target's link style without touching the table (D5: the Copy escape hatch).
+pub fn resolve_targets(list: Option<&str>, home: &Path) -> Result<Vec<Target>, String> {
     let Some(list) = list.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(detected(home));
+        return Ok(detected(home).into_iter().cloned().collect());
     };
-    let mut chosen: Vec<&'static Target> = Vec::new();
+    let mut chosen: Vec<Target> = Vec::new();
     for part in list.split(',') {
         let part = part.trim();
         if part.is_empty() {
             continue;
         }
         if part == "*" || part == "all" {
-            return Ok(TARGETS.iter().collect());
+            return Ok(TARGETS.to_vec());
         }
         let target = target_by_id(part).ok_or_else(|| {
             format!(
@@ -214,7 +215,7 @@ pub fn resolve_targets(list: Option<&str>, home: &Path) -> Result<Vec<&'static T
             )
         })?;
         if !chosen.iter().any(|existing| existing.id == target.id) {
-            chosen.push(target);
+            chosen.push(target.clone());
         }
     }
     Ok(chosen)
