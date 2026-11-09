@@ -27,15 +27,15 @@ Rectangle {
 
     readonly property int pad: 22
 
-    readonly property string dir: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsDir : ""))
+    readonly property string dir: sheet.shellState ? sheet.shellState.downloadsDir : ""
         ? (sheet.shellState ? sheet.shellState.downloadsDir : "") : ""
-    readonly property int splitParts: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsSplit : false))
+    readonly property int splitParts: sheet.shellState ? sheet.shellState.downloadsSplit : 1
         ? (sheet.shellState ? sheet.shellState.downloadsSplit : false) : 4
-    readonly property int parallelDownloads: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsMaxConcurrent : 3))
+    readonly property int parallelDownloads: sheet.shellState ? sheet.shellState.downloadsMaxConcurrent : 3
         ? (sheet.shellState ? sheet.shellState.downloadsMaxConcurrent : 3) : 5
-    readonly property int speedLimitKbps: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsSpeedLimit : 0) !== undefined)
+    readonly property int speedLimitKbps: sheet.shellState ? sheet.shellState.downloadsSpeedLimit : 0
         ? (sheet.shellState ? sheet.shellState.downloadsSpeedLimit : 0) : 0
-    readonly property bool borderEffect: (typeof Config !== "undefined" && (sheet.shellState ? sheet.shellState.downloadsBorderEffect : true) !== undefined)
+    readonly property bool borderEffect: sheet.shellState ? sheet.shellState.downloadsBorderEffect !== false : true
         ? (sheet.shellState ? sheet.shellState.downloadsBorderEffect : true) : true
 
     readonly property int capacity: SettingsMath.capacity(sheet.parallelDownloads, sheet.splitParts)

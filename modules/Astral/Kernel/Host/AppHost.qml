@@ -142,7 +142,14 @@ Item {
                 };
             }
         }
-        return { id: "", available: false, reason: "no app provides this tab" };
+        // The app is not installed at all, so there is no manifest to explain it. Say what
+        // happened and where it can be undone: the removal was a choice, and choices are
+        // revisitable in Settings → Apps.
+        return {
+            id: "",
+            available: false,
+            reason: "the " + tabId + " app is not installed; restore it in Settings → Apps"
+        };
     }
 
     /// The app id that provides `tabId`, or "" when no installed app does.

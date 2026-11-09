@@ -27,9 +27,25 @@ Item {
     readonly property real maxBarHeight: 32
 
     // Audio reactivity
-    readonly property bool isVisualizerActive: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true)
-    readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayEnergy : 0.0
-    readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayBeat : 0.0
+    //
+    // Supplied by the caller when it has a port to read from (a migrated app cannot see
+    // the `AudioVisualizer` singleton), otherwise read from the singleton directly (the
+    // shell's own surfaces). `undefined` means "not supplied".
+    property var audioSource: null
+    readonly property bool isVisualizerActive: root.audioSource
+        ? root.audioSource.audioActive === true
+        : (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true)
+    readonly property real sourceEnergy: root.audioSource
+        ? Number(root.audioSource.audioEnergy || 0)
+        : ((typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.displayEnergy : 0)
+    readonly property real sourceBeat: root.audioSource
+        ? Number(root.audioSource.audioBeat || 0)
+        : ((typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.displayBeat : 0)
+    readonly property var sourceBands: root.audioSource
+        ? (root.audioSource.audioBands || [])
+        : ((typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.displayBands : [])
+    readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? sourceEnergy : 0.0
+    readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? sourceBeat : 0.0
 
     // Clock pacer for smooth continuous bar interpolation when active audio flows.
     // Capped at Theme.decorativeMaxFps so full-screen surfaces stay idle-capable.
@@ -59,13 +75,13 @@ Item {
     }
 
     function getBarValue(idx) {
-        if (!root.isPlaying || !root.isVisualizerActive || !AudioVisualizer.displayBands || AudioVisualizer.displayBands.length === 0) {
+        if (!root.isPlaying || !root.isVisualizerActive || !root.sourceBands || root.sourceBands.length === 0) {
             return 0.0;
         }
 
         // Map 48 bars into 16 bands symmetrically (bass at sides/bottom, highs across)
         let bandIdx = Math.floor((idx / root.barsCount) * 16);
-        let raw = AudioVisualizer.displayBands[bandIdx] || 0.0;
+        let raw = root.sourceBands[bandIdx] || 0.0;
         let boosted = raw * (0.8 + root.audioEnergy * 0.5 + (root.audioBeat > 0.05 ? root.audioBeat * 0.3 : 0.0));
         return Math.max(0.0, Math.min(1.0, boosted));
     }

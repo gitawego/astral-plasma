@@ -44,7 +44,7 @@ Item {
     }
 
     /// Durable avatar for the system-host card ("" = bundled default art).
-    readonly property string hostAvatarSource: root.resolveAvatarSource((typeof Config !== "undefined") ? (root.shellState ? root.shellState.hostAvatar : "") : "")
+    readonly property string hostAvatarSource: root.resolveAvatarSource(root.shellState ? root.shellState.hostAvatar : "")
     property alias hostAvatarImageItem: hostAvatarImg
     property alias hostAvatarCircle: avatarCircle
     property alias hostAvatarMaskItem: avatarMask
@@ -53,10 +53,11 @@ Item {
 
     // Circle background: configurable color + transparency (Config defaults
     // are white @ 0.2; literals keep the inert-harness case identical).
-    readonly property string hostAvatarBgColor: (typeof Config !== "undefined" && (root.shellState ? root.shellState.hostAvatarBg : "")) ? (root.shellState ? root.shellState.hostAvatarBg : "") : "#ffffff"
-    readonly property real hostAvatarBgOpacity: (typeof Config !== "undefined" && (root.shellState ? root.shellState.hostAvatarBgOpacity : 0.2) !== undefined && !isNaN((root.shellState ? root.shellState.hostAvatarBgOpacity : 0.2))) ? Number((root.shellState ? root.shellState.hostAvatarBgOpacity : 0.2)) : 0.2
+    readonly property string hostAvatarBgColor: (root.shellState && root.shellState.hostAvatarBg) ? root.shellState.hostAvatarBg : "#ffffff"
+    readonly property real hostAvatarBgOpacity: (root.shellState && !isNaN(Number(root.shellState.hostAvatarBgOpacity)))
+        ? Number(root.shellState.hostAvatarBgOpacity) : 0.2
     readonly property color hostAvatarBackgroundColor: root.resolveAvatarBg(hostAvatarBgColor, hostAvatarBgOpacity)
-    readonly property bool hostAvatarBorderVisible: (typeof Config !== "undefined" && (root.shellState ? root.shellState.hostAvatarBorder : false) !== undefined) ? Boolean((root.shellState ? root.shellState.hostAvatarBorder : false)) : true
+    readonly property bool hostAvatarBorderVisible: root.shellState ? Boolean(root.shellState.hostAvatarBorder !== false) : true
 
     /// "" -> bundled default art (relative to this file, so it resolves in
     /// the shell and in the offscreen test harness alike); absolute path ->
@@ -93,7 +94,7 @@ Item {
     // computation and the dateClicked signal remain fully testable.
     property bool testMode: false
 
-    readonly property bool isTargetVisible: testMode || ((typeof Config !== "undefined" ? (root.shellState ? root.shellState.dashboardVisible : false) : true) && visible)
+    readonly property bool isTargetVisible: testMode || (root.shellState !== null && visible)
 
     property var currentDate: new Date()
     Timer {
@@ -644,8 +645,8 @@ Item {
             radius: Theme.radiusGlassCard
             clip: true
 
-            readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
-                ((root.shellState ? root.shellState.mediaVisualizerStyle : "radial") === "speaker" || (root.shellState ? root.shellState.mediaVisualizerStyle : "radial") === "heatmap")
+            readonly property string style: root.shellState ? root.shellState.mediaVisualizerStyle : "radial"
+            readonly property bool isSpeakerStyle: style === "speaker" || style === "heatmap"
             readonly property bool isCyberpunk: (typeof Theme !== "undefined" && Theme.isCyberpunk)
             readonly property bool showOrbitalRing: (typeof Theme !== "undefined" ? Theme.mediaOrbitalRing : true)
             readonly property bool isCircularCover: (typeof Theme !== "undefined" ? Theme.mediaCircularCover : true)
@@ -695,7 +696,7 @@ Item {
                         innerRadius: 38
                         outerRadius: 46
                         visible: mediaCard.showOrbitalRing && mediaCard.isSpeakerStyle && !mediaCard.isCyberpunk
-                        isTargetVisible: (typeof Config !== "undefined") ? ((root.shellState ? root.shellState.dashboardVisible : false) && (root.shellState ? root.shellState.activeDashboardTab : "dashboard") === "dashboard" && visible) : false
+                        isTargetVisible: root.isTargetVisible && visible
                     }
 
                     // 2. Radial Audio Spectrum Halo Ring (Radial Style or Cyberpunk)
@@ -703,7 +704,7 @@ Item {
                         anchors.centerIn: parent
                         innerRadius: 42
                         visible: mediaCard.showOrbitalRing && (!mediaCard.isSpeakerStyle || mediaCard.isCyberpunk)
-                        isTargetVisible: (typeof Config !== "undefined") ? ((root.shellState ? root.shellState.dashboardVisible : false) && (root.shellState ? root.shellState.activeDashboardTab : "dashboard") === "dashboard" && visible) : false
+                        isTargetVisible: root.isTargetVisible && visible
                     }
 
                     // Circular Progress ring (Only in non-cyberpunk orbital ring mode)
@@ -792,14 +793,19 @@ Item {
 
                         MotionValue {
                             id: beatBounce
-                            animated: root.isTargetVisible && (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active)
+                            // The beat comes from the media port, not from the kernel
+                            // singleton: an app cannot import `AudioVisualizer`, and the
+                            // `typeof` guard made this silently `undefined` (spec C.31).
+                            readonly property bool audioLive: root.media !== null
+                                && root.media.audioActive === true
+                                && Number(root.media.audioBeat || 0) > 0.05
+                            animated: root.isTargetVisible && audioLive
                             duration: 80
                             bezier: Theme.curveExpressiveFastEffects
-                            target: (typeof AudioVisualizer !== "undefined" && AudioVisualizer.active
-                                     && (root.shellState ? root.shellState.dashboardVisible : false) && (root.shellState ? root.shellState.activeDashboardTab : "dashboard") === "dashboard"
-                                     && AudioVisualizer.displayBeat > 0.05)
-                                    ? (1.0 + Math.min(mediaCard.isCyberpunk ? 0.04 : 0.12, AudioVisualizer.displayBeat * (mediaCard.isCyberpunk ? 0.04 : 0.10)))
-                                    : 1.0
+                            target: audioLive && root.isTargetVisible
+                                ? (1.0 + Math.min(mediaCard.isCyberpunk ? 0.04 : 0.12,
+                                                 Number(root.media.audioBeat || 0) * (mediaCard.isCyberpunk ? 0.04 : 0.10)))
+                                : 1.0
                         }
 
                         // Mask geometry (circle in liquid/nordic, square in cyberpunk)
@@ -1054,7 +1060,7 @@ Item {
                         paddingHorizontal: 8
                         paddingVertical: 8
                         elevation: 6
-                        onClicked: root.media.togglePlay()
+                        onClicked: root.media.toggle()
                     }
                     LiquidGlassButton {
                         id: mediaNextBtn

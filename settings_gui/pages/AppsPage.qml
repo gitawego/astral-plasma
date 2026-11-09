@@ -35,10 +35,25 @@ SettingsPage {
     /// What installing a file would mean. Nothing is installed until the user consents.
     readonly property var pendingInstall: testMode ? testPendingInstall : AppsService.pendingInstall
 
+    /// Bundled apps the user removed: a removal is a decision, and decisions are revisitable.
+    property var testRemoved: []
+    readonly property var removedApps: testMode ? testRemoved : AppsService.removed
+
+    function appName(appId) {
+        // A removed app has no record in the list, so fall back to the id's last segment.
+        const parts = String(appId).split(".");
+        const last = parts[parts.length - 1];
+        return last.charAt(0).toUpperCase() + last.slice(1);
+    }
+
     readonly property var apps: testMode ? testApps : AppsService.apps
     readonly property string lastError: testMode ? "" : AppsService.lastError
 
     Component.onCompleted: if (!testMode) AppsService.refresh()
+    // A page that is re-shown is not a page that has just been read: an app installed or
+    // removed from anywhere else (a terminal, a file manager's "open with") must show up
+    // when the user comes back to this list.
+    onVisibleChanged: if (visible && !testMode) AppsService.refresh()
 
     function stateLabel(app) {
         if (!app.enabled) return "Disabled";
@@ -213,6 +228,55 @@ SettingsPage {
                             if (root.testMode) return;
                             AppsService.pendingInstall = null;
                         }
+                    }
+                }
+            }
+        }
+
+        // ---- removed apps ---------------------------------------------------
+        // Restoring is one click, because removing was one click. Without this the only way
+        // back to a bundled app is a terminal.
+        GlassCard {
+            id: removedCard
+            Layout.fillWidth: true
+            implicitHeight: removedRow.implicitHeight + Theme.padMedium * 2
+            radius: Theme.radiusMedium
+            visible: root.removedApps.length > 0
+
+            RowLayout {
+                id: removedRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.margins: Theme.padMedium
+                spacing: Theme.spaceSmall
+
+                Text {
+                    text: root.removedApps.length === 1 ? "1 removed app" : root.removedApps.length + " removed apps"
+                    color: Colors.textOnSurface
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: root.removedApps.map(function (id) { return root.appName(id); }).join(", ")
+                        + " — bundled with Astral, restored from the package"
+                    color: Colors.textOnSurfaceVariant
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                }
+                Repeater {
+                    model: root.removedApps
+                    delegate: ActionPill {
+                        required property var modelData
+                        // The card already names the app; the button stays short so it
+                        // cannot be clipped into "Restore Me…".
+                        text: "Restore"
+                        fixedHeight: 26
+                        paddingHorizontal: 10
+                        fontPixelSize: 10
+                        onClicked: if (!root.testMode) AppsService.restore(modelData)
                     }
                 }
             }

@@ -23,9 +23,9 @@ Item {
     property string testWarningLevel: "normal"
     property int activeProviderIndex: 0
     property string selectedAccountIdentity: ""
-    property bool privacyMode: (typeof Config !== "undefined" && (root.shellState ? root.shellState.aiPrivacyMode : true) !== undefined)
-        ? (root.shellState ? root.shellState.aiPrivacyMode : true)
-        : false
+    // The port is the only source: an app cannot see `Config`, and the old
+    // `typeof Config` guard made this permanently false.
+    property bool privacyMode: root.shellState ? root.shellState.aiPrivacyMode !== false : true
 
     readonly property var providersList: {
         if (testMode && testProviders !== null) return testProviders;
@@ -159,7 +159,7 @@ Item {
     }
 
     Connections {
-        target: (typeof Config !== "undefined") ? Config : null
+        target: root.shellState
         function onAiPrivacyModeChanged() {
             if (root.shellState !== null) {
                 root.privacyMode = root.shellState.aiPrivacyMode;
@@ -1253,9 +1253,7 @@ Item {
                     fixedHeight: 26
                     paddingHorizontal: 14
                     onClicked: {
-                        if (typeof Config !== "undefined") {
-                            root.intents && root.intents.request("settings.open", { page: "ai" });
-                        }
+                        root.intents && root.intents.request("settings.open", { page: "ai" });
                     }
                 }
             }

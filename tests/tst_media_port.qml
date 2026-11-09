@@ -77,19 +77,30 @@ Item {
         port.seekImpl = function (fraction) { sought = fraction; };
         port.selectPlayerImpl = function (id) { selected = id; };
 
+        // The playing flag is a first-class member: a surface that reads `media.isPlaying`
+        // got `undefined` before this existed, which silently killed the transport glyph
+        // and the audio visualiser (spec C.31).
+        port.status = "stopped";
+        assert(port.isPlaying === false, "a stopped port is not playing");
+        port.status = "playing";
+        assert(port.isPlaying === true, "status drives isPlaying");
+        port.status = "stopped";
+        assert(port.audioActive === false && port.audioBands.length === 0,
+            "audio reactivity starts silent, not fabricated");
+
         assert(port.canToggle && port.canSkip && port.canSeek && port.canSelectPlayer,
             "capabilities are advertised once supplied");
         assert(port.toggle(), "toggle works");
         assert(port.next(), "next works");
-        assert(port.seek(0.5), "seek works");
+        assert(port.seekTo(0.5), "seek works");
         assert(port.selectPlayer("net"), "player selection works");
         assert(toggled === 1 && skipped === 1, "the shell received the commands");
         assert(Math.abs(sought - 0.5) < 1e-6, "seek passed the fraction");
 
         // Out-of-range seeks are clamped, so a surface cannot ask for 340%.
-        assert(port.seek(3.4), "an overshooting seek is accepted");
+        assert(port.seekTo(3.4), "an overshooting seek is accepted");
         assert(sought === 1, "and clamped to the end, got " + sought);
-        assert(port.seek(-2), "a negative seek is accepted");
+        assert(port.seekTo(-2), "a negative seek is accepted");
         assert(sought === 0, "and clamped to the start, got " + sought);
         assert(selected === "net", "the player id reached the shell");
 

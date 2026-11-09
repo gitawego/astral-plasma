@@ -26,11 +26,31 @@ Item {
     readonly property real innerSpeakerRadius: speakerRadius - (rimThickness / 2) - 2
 
     // Real-time audio reactive variables
-    readonly property bool isVisualizerActive: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true)
-    readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayEnergy : 0.0
-    readonly property real audioBass: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayBass : 0.0
-    readonly property real audioTreble: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayTreble : 0.0
-    readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? AudioVisualizer.displayBeat : 0.0
+    /// Supplied by a caller that has a port to read from; `null` means "read the
+    /// singleton" (the shell's own surfaces). A migrated app cannot import it.
+    property var audioSource: null
+    readonly property bool isVisualizerActive: root.audioSource
+        ? root.audioSource.audioActive === true
+        : (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.active === true)
+    readonly property real sourceEnergy: root.audioSource
+        ? Number(root.audioSource.audioEnergy || 0)
+        : ((typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.displayEnergy : 0)
+    readonly property real sourceBass: root.audioSource
+        ? Number(root.audioSource.audioBass || 0)
+        : ((typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.displayBass : 0)
+    readonly property real sourceTreble: root.audioSource
+        ? Number(root.audioSource.audioTreble || 0)
+        : ((typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.displayTreble : 0)
+    readonly property real sourceBeat: root.audioSource
+        ? Number(root.audioSource.audioBeat || 0)
+        : ((typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.displayBeat : 0)
+    readonly property var sourceBands: root.audioSource
+        ? (root.audioSource.audioBands || [])
+        : ((typeof AudioVisualizer !== "undefined" && AudioVisualizer) ? AudioVisualizer.displayBands : [])
+    readonly property real audioEnergy: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? root.sourceEnergy : 0.0
+    readonly property real audioBass: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? root.sourceBass : 0.0
+    readonly property real audioTreble: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? root.sourceTreble : 0.0
+    readonly property real audioBeat: (isVisualizerActive && root.isTargetVisible && root.isPlaying) ? root.sourceBeat : 0.0
 
     // Animation timer for gentle orbital float (capped at Theme.decorativeMaxFps).
     MotionPacer {
@@ -103,8 +123,8 @@ Item {
                 required property int index
 
                 readonly property real rad: (modelData.angle * Math.PI / 180)
-                readonly property real bandAmp: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && AudioVisualizer.displayBands && AudioVisualizer.displayBands[modelData.bandIdx] !== undefined)
-                    ? AudioVisualizer.displayBands[modelData.bandIdx]
+                readonly property real bandAmp: (typeof AudioVisualizer !== "undefined" && AudioVisualizer && root.sourceBands && root.sourceBands[modelData.bandIdx] !== undefined)
+                    ? root.sourceBands[modelData.bandIdx]
                     : 0.0
 
                 // DYNAMIC BEAT JUMP: strictly driven by physical beat transient flux

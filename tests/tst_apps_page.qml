@@ -48,6 +48,7 @@ ApplicationWindow {
         anchors.fill: parent
         testMode: true
         testApps: testRoot.fixtures
+        testRemoved: ["org.astralplasma.media"]
         testPendingInstall: ({
             id: "io.github.alice.timer", name: "Timer", version: "0.3.0", kernelApi: 1,
             trust: "community", publisher: "Alice", permissions: ["windows.read", "network"],
@@ -100,6 +101,17 @@ ApplicationWindow {
                 .indexOf("--accept-permissions") >= 0,
             "consent must be explicit when installing");
         assert(consentSource.indexOf("FileDialog") >= 0, "the user picks the artifact");
+
+        // ---- a removal can be undone from the page --------------------------
+        assert(page.removedApps.length === 1, "removed bundled apps are offered for restore");
+        assert(page.appName("org.astralplasma.media") === "Media",
+            "a removed app still has a readable name");
+        assert(readLocalFile("../modules/Astral/Kernel/services/AppsService.qml")
+                .indexOf('"app", "restore"') >= 0,
+            "restoring goes through the daemon, not the page");
+        assert(readLocalFile("../modules/Astral/Kernel/services/AppsService.qml")
+                .indexOf('"app", "removed", "--json"') >= 0,
+            "the removed list is the daemon's");
 
         // ---- the page is data-driven and action-bearing ---------------------
         const source = readLocalFile("../settings_gui/pages/AppsPage.qml");

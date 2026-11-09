@@ -187,22 +187,32 @@ pub fn remove_app(
     }
 
     let app_dir = apps_root.join(id);
-    let removed_files = app_dir.exists();
-    if removed_files {
+    let payload = app_dir.join("payload");
+    let manifest_path = app_dir.join("manifest.json");
+    let removed_files = payload.exists() || manifest_path.exists();
+
+    // The payload and the manifest go; the app's own `config/` and `cache/` stay unless the
+    // user asked for a purge. Deleting the whole directory made `--purge` meaningless and
+    // silently destroyed settings on a plain removal.
+    if payload.exists() {
+        std::fs::remove_dir_all(&payload)?;
+    }
+    if manifest_path.exists() {
+        std::fs::remove_file(&manifest_path)?;
+    }
+    let kept_data = !purge && (app_dir.join("config").exists() || app_dir.join("cache").exists());
+    if purge && app_dir.exists() {
         std::fs::remove_dir_all(&app_dir)?;
     }
 
-    // Settings and data live beside the app under `config/` and `data/`; they are
-    // preserved unless the user asked for a purge.
-    let data_path = app_dir.join("data");
-    let kept_data = data_path.exists() && !purge;
-    if purge && data_path.exists() {
-        std::fs::remove_dir_all(&data_path)?;
-    }
-
-    let mut registry = std::mem::take(&mut registry);
     let before = registry.apps.len();
     registry.apps.retain(|entry| entry.id != id);
+    // A tombstone, because bundled apps are reconciled on read: without it the next
+    // `app list` reinstalls what the user just removed.
+    if !registry.removed.iter().any(|removed| removed == id) {
+        registry.removed.push(id.to_string());
+        registry.removed.sort();
+    }
     if registry.apps.len() != before {
         write_registry(data_dir, &registry)?;
     }
@@ -435,11 +445,18 @@ mod tests {
 
         let removed = remove_app(&fixture.data(), &fixture.apps(), "io.github.alice.clock", false).unwrap();
         assert!(removed.removed_files);
-        assert!(!fixture.apps().join("io.github.alice.clock").exists());
-        assert!(read_registry(&fixture.data())
-            .unwrap()
-            .get("io.github.alice.clock")
-            .is_none());
+        let app_dir = fixture.apps().join("io.github.alice.clock");
+        // The payload and the manifest go; the app's own settings stay unless purged, so
+        // the directory itself may remain.
+        assert!(!app_dir.join("payload").exists());
+        assert!(!app_dir.join("manifest.json").exists());
+        let registry = read_registry(&fixture.data()).unwrap();
+        assert!(registry.get("io.github.alice.clock").is_none(), "the record is gone");
+        assert_eq!(
+            registry.removed,
+            vec!["io.github.alice.clock".to_string()],
+            "and it is remembered, so a bundled copy cannot resurrect it"
+        );
     }
 
     #[test]

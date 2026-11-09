@@ -102,6 +102,20 @@ function requiresOf(entry) {
 /// Returns `{ load: [entry...], skipped: [{ id, state, reason }] }`.
 /// `load` is dependency-ordered; ties break by id so two boots of the same
 /// registry produce the same scene graph in the same order.
+/// Drop the apps the user removed from a bundled index.
+///
+/// A bundled app with no registry record is offered by the platform (that is how a fresh
+/// install gets its apps), so a removal needs to be stated somewhere the host can see it.
+/// Keying on the id — not the directory name — is the whole point: `/Apps/Media` ships
+/// `org.astralplasma.media`.
+function withoutRemoved(apps, removedIds) {
+    const removed = Array.isArray(removedIds) ? removedIds : [];
+    const list = Array.isArray(apps) ? apps : [];
+    return list.filter(function (app) {
+        return !!app && typeof app.id === "string" && removed.indexOf(app.id) === -1;
+    });
+}
+
 function plan(entries, host) {
     const window = normalizeHost(host);
     const skipped = [];

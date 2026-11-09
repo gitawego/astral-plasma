@@ -22,12 +22,11 @@ Item {
     // Lifecycle & Visibility Tracking (zero offscreen rendering)
     property bool testMode: false
 
-    readonly property bool isTargetVisible: testMode || (
-        visible &&
-        ((typeof Config !== "undefined" && Config)
-            ? (Boolean((root.shellState ? root.shellState.dashboardVisible : false)) && (root.shellState && root.shellState.activeDashboardTab === "performance"))
-            : true)
-    )
+    // Visible in the dashboard's performance pane, or anywhere the surface is shown on its
+    // own (`testMode`). The old `typeof Config` guard was permanently false inside an app,
+    // so this was always `true`.
+    readonly property bool isTargetVisible: testMode || (visible && root.shellState !== null
+        && root.shellState.activeDashboardTab === "performance")
 
     onIsTargetVisibleChanged: {
         if (root.metrics !== null && root.metrics && typeof root.metrics.registerClient === "function") {
@@ -51,14 +50,14 @@ Item {
     }
 
     // Selected hardware telemetry device: "cpu" | "memory" | "gpu" | "battery"
-    property string selectedDevice: (typeof Config !== "undefined" && (root.shellState ? root.shellState.perfSelectedDevice : "")) ? (root.shellState ? root.shellState.perfSelectedDevice : "") : "cpu"
+    property string selectedDevice: (root.shellState && root.shellState.perfSelectedDevice) ? root.shellState.perfSelectedDevice : "cpu"
 
     readonly property int gpuCount: (root.metrics !== null && root.metrics.gpus && root.metrics.gpus.length > 0)
         ? root.metrics.gpus.length
         : 1
 
     Connections {
-        target: (typeof Config !== "undefined") ? Config : null
+        target: root.shellState
         function onPerfSelectedDeviceChanged() {
             if ((root.shellState ? root.shellState.perfSelectedDevice : "") && root.selectedDevice !== (root.shellState ? root.shellState.perfSelectedDevice : "")) {
                 root.selectedDevice = (root.shellState ? root.shellState.perfSelectedDevice : "");

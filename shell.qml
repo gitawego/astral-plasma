@@ -40,6 +40,7 @@ ShellRoot {
         dashboardVisible: Config.dashboardVisible
         dashboardWidth: Config.dashboardWidth
         dashboardTabs: Config.dashboardTabs
+        perfSelectedDevice: Config.perfSelectedDevice
         activeDashboardTab: Config.activeDashboardTab
         hostAvatar: Config.hostAvatar
         hostAvatarBg: Config.hostAvatarBg
@@ -75,6 +76,7 @@ ShellRoot {
         startThumbnailsImpl: function () { WindowService.startOverviewThumbnails(); return true; }
         stopThumbnailsImpl: function () { WindowService.stopOverviewThumbnails(); return true; }
         refreshThumbnailsImpl: function () { WindowService.refreshOverviewThumbnails(); return true; }
+        openCalendarImpl: function (isoDate) { WindowService.openCalendar(isoDate); return true; }
     }
 
     // The now-playing model a media surface may read: filled from the shell's own
@@ -90,6 +92,15 @@ ShellRoot {
         playerName: MprisMedia.identity
         position: MprisMedia.position
         length: MprisMedia.length
+        // Sampled from the visualiser singleton here, at the shell boundary: the values
+        // cross to apps as plain properties instead of as an import they cannot make.
+        audioActive: AudioVisualizer.active
+        audioEnergy: AudioVisualizer.displayEnergy
+        audioBass: AudioVisualizer.displayBass
+        audioMid: AudioVisualizer.displayMid
+        audioTreble: AudioVisualizer.displayTreble
+        audioBeat: AudioVisualizer.displayBeat
+        audioBands: AudioVisualizer.displayBands
         loopState: MprisMedia.loopState || "enabled"
         shuffle: Boolean(MprisMedia.shuffle)
         canGoNext: Boolean(MprisMedia.canGoNext)
@@ -115,6 +126,14 @@ ShellRoot {
         }
         seekImpl: function (fraction) {
             MprisMedia.seekTo(fraction);
+            return true;
+        }
+        cyclePlayerImpl: function () {
+            MprisMedia.cyclePlayer();
+            return true;
+        }
+        cycleLoopImpl: function () {
+            MprisMedia.cycleLoop();
             return true;
         }
         toggleShuffleImpl: function () {
@@ -228,6 +247,15 @@ ShellRoot {
 
     IpcHandler {
         target: "media"
+        // The same call the visualiser-style button makes, so a script (or a verification
+        // run) can exercise the exact path without a pointer.
+        function setVisualizerStyle(style: string): void {
+            if (style !== "radial" && style !== "speaker") {
+                console.log("media.setVisualizerStyle: style must be radial or speaker");
+                return;
+            }
+            Config.setMediaVisualizerStyle(style);
+        }
         function cyclePlayer(): void { MprisMedia.cyclePlayer(); }
         function selectPlayer(busName: string): void {
             let p = MprisMedia.findMatchingPlayer(busName);
@@ -279,6 +307,15 @@ ShellRoot {
         function installApp(file: string): void {
             Config.openSettings("apps");
             AppsService.install(file);
+        }
+        // The same two calls the Apps page's buttons make, for scripts and verification.
+        function removeApp(id: string): void {
+            Config.openSettings("apps");
+            AppsService.remove(id, false);
+        }
+        function restoreApp(id: string): void {
+            Config.openSettings("apps");
+            AppsService.restore(id);
         }
     }
 

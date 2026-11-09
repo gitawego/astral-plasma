@@ -45,6 +45,7 @@ pub fn reconcile_preinstalled(data_dir: &Path, bundled_apps_dir: &Path) -> DynRe
         if !manifest_path.is_file() {
             continue;
         }
+
         let id = dir
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
@@ -59,6 +60,13 @@ pub fn reconcile_preinstalled(data_dir: &Path, bundled_apps_dir: &Path) -> DynRe
                 continue;
             }
         };
+        // A bundled app the user removed stays removed until they restore or reinstall it.
+        // The tombstone records the *id*: a bundled directory is named for humans (`Media`)
+        // while the id is reverse-DNS, so keying on the directory silently missed.
+        if registry.removed.iter().any(|removed| removed == &manifest.id) {
+            continue;
+        }
+
         if let Some(existing) = registry.apps.iter_mut().find(|entry| entry.id == manifest.id) {
             // The user's state wins (version, pin, grants, blocked). Only *metadata* the
             // record does not have yet is filled in, so a record written before a field
@@ -97,6 +105,66 @@ pub fn reconcile_preinstalled(data_dir: &Path, bundled_apps_dir: &Path) -> DynRe
         write_registry(data_dir, &registry)?;
     }
     Ok(outcome)
+}
+
+/// The bundled directory that ships `id`, found through its manifest rather than by name.
+pub fn bundled_dir_for(bundled_apps_dir: &Path, id: &str) -> Option<std::path::PathBuf> {
+    let entries = std::fs::read_dir(bundled_apps_dir).ok()?;
+    let mut dirs: Vec<std::path::PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
+    dirs.sort();
+    dirs.into_iter().find(|dir| {
+        std::fs::read(dir.join("manifest.json"))
+            .ok()
+            .and_then(|bytes| Manifest::parse(&bytes).ok())
+            .is_some_and(|manifest| manifest.id == id)
+    })
+}
+
+/// Restore a bundled app the user removed: clear its tombstone, then reconcile it back.
+///
+/// A bundled app's payload *is* the package's copy (embedded apps are loaded from it), so
+/// restoring restores the record that made the app part of the desktop; the files were
+/// never removed from the package.
+pub fn restore_bundled(
+    data_dir: &Path,
+    bundled_apps_dir: &Path,
+    id: &str,
+) -> DynResult<String> {
+    if bundled_dir_for(bundled_apps_dir, id).is_none() {
+        return Err(format!("'{id}' is not a bundled app").into());
+    }
+
+    let mut registry = read_registry(data_dir)?;
+    let tombstoned = registry.removed.iter().any(|removed| removed == id);
+    let present = registry.get(id).is_some();
+    if !tombstoned && present {
+        return Err(format!("'{id}' is already installed").into());
+    }
+
+    registry.removed.retain(|removed| removed != id);
+    write_registry(data_dir, &registry)?;
+    reconcile_preinstalled(data_dir, bundled_apps_dir)?;
+
+    let registry = read_registry(data_dir)?;
+    if registry.get(id).is_none() {
+        return Err(format!("'{id}' could not be restored from the bundled apps directory").into());
+    }
+    Ok(id.to_string())
+}
+
+/// Bundled apps that were removed and can be restored, in a stable order.
+///
+/// This is what the Apps page offers: a removed app is not a missing feature, it is a
+/// decision the user can revisit.
+pub fn restorable(registry: &crate::application::app_service::Registry, bundled_apps_dir: &Path) -> Vec<String> {
+    let mut ids: Vec<String> = registry
+        .removed
+        .iter()
+        .filter(|id| bundled_dir_for(bundled_apps_dir, id).is_some() && registry.get(id).is_none())
+        .cloned()
+        .collect();
+    ids.sort();
+    ids
 }
 
 #[cfg(test)]

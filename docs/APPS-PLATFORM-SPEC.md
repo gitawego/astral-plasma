@@ -171,6 +171,8 @@ app owns ordinary compositor windows.
 | A26 | Data compatibility | `dataSchema` integer in the manifest, recorded at install, re-checked at launch; a build that cannot read the recorded schema never runs. |
 | A27 | Compatibility constants | One Rust constant pair generated into QML; drift fails CI; no semver range parser. |
 | A28 | Core app failure | A core app that fails to load is reverted to its baseline, the failure is recorded, and the failed version is blocked instead of retried. |
+| A36 | Ports are checked, not trusted | An injected port is one more contract: `check_app_boundaries.py` verifies that every member an app reads is declared by that port, that every intent it requests is registered in `shell.qml`, and that every `ShellState` property is populated. Silent `undefined` is the failure mode this platform keeps producing, so it is now a test failure instead. |
+| A37 | A removal is a decision, not a deletion | Removing an app writes a tombstone in the registry; reconcile and the host respect it, installing or restoring clears it, and the Apps page offers the way back. Bundled apps can be removed and restored from the UI, and their settings survive unless `--purge`. |
 | A35 | Consent before install | Installing needs a user decision on information from the artifact: `app inspect` describes the file, the Apps page renders it as a consent card, and `--accept-permissions` is passed only because that click happened. `app publish` is the authoring counterpart and the daemon never holds a signing key. |
 | A34 | One rule, one reader | App linters read the manifest's trust tier rather than encoding the rule twice; an official app may use kernel services, a community app may not. `astral app test` runs the app's declared `testSuites`, so "individually testable" is checked rather than asserted. |
 | A32 | Sandbox and broker boundaries | Mounts are planned from the registry (never from the manifest), only `Astral/AppKit` is exposed as an SDK, and every broker method maps to exactly one permission read from the registry. Declaring a permission is asking; granting is consent. Each launch gets one socket, one one-shot token and its own audit line. |
@@ -2192,3 +2194,83 @@ Also new: `astral-plasma app publish <dir> [--artifact] [--catalog] [--url-base]
 catalog entry (digest computed from the artifact bytes, never from a manifest), merges it into
 a catalog replacing the same id, and writes atomically so a half-written catalog can never
 list a wrong digest.
+
+### C.31 The media tab was dead for a week and every test passed
+
+Reported symptom: *"music is playing, but no status"* — and then *"it's totally broken, it
+doesn't even show the status of the player"*. Both were true, and the cause was the app
+migration itself.
+
+`MediaApp`/`DashboardTab` read three things that do not exist in an app's world:
+
+| Read | Reality | Effect |
+| --- | --- | --- |
+| `media.isPlaying` | `MediaPort` only had `status` | the transport glyph read "paused" while music played |
+| `AudioVisualizer.*` | an app cannot import the kernel | the visualiser and the beat pulse never ran |
+| `typeof Config !== "undefined" && …` | an app never imports `Config`, so this is **always false** | style switching, download settings, AI privacy and the performance device all silently took the fallback |
+
+`undefined` is falsy, so every one of these degraded into "nothing is happening" *without an
+error*. The migration was verified with screenshots taken while playback was **paused**, and
+a still visualiser is the correct rendering of silence — the proof could not distinguish
+working from broken (the §4c lesson, again).
+
+What changed:
+
+* `MediaPort` carries `isPlaying` and the audio data (`audioActive`, `audioEnergy`, `audioBass`,
+  `audioMid`, `audioTreble`, `audioBeat`, `audioBands`) sampled by the shell from
+  `AudioVisualizer`. The app reads the port; the boundary holds.
+* `RadialCoverVisualiser`/`HeatmapSpeakerPlayer` accept an `audioSource` (the port) and fall
+  back to the singleton only when none is supplied, so shell surfaces and apps share one
+  component.
+* The visibility gate uses the surface's own `visible`, not `Config.dashboardVisible` (which
+  records the *toggle* and is false while the dashboard is hover-shown).
+* `SessionPort.openCalendar`, `MediaPort.cyclePlayer`/`cycleLoop`/`seekTo` exist and are wired,
+  because three apps were calling them through `typeof` guards that always failed.
+
+**Three checks now make this class impossible to ship quietly** (`scripts/check_app_boundaries.py`,
+part of `make test`):
+
+1. **Port parity** — every `shellState|media|session|workspaces|metrics.X` an app reads must be
+   declared by that port.
+2. **Intent parity** — every `intents.request("x")` must be registered in `shell.qml`. This one
+   caught itself within minutes: a careless rename turned `media.visualizerStyle` into
+   `shellState.mediaVisualizerStyle`, and the style button stopped responding.
+3. **Populated state** — every `ShellState` property must be assigned by the shell, because a
+   declared-but-unpopulated port member is the same bug from the other side.
+
+Each check was verified to *fire* on a synthetic violation before being trusted.
+
+Verified live after the fix: with music playing, the pane shows the pause glyph, the progress
+advances, the spectrum spikes move, and `media toggleVisualizer` switches between the radial
+halo and the heatmap speaker (16 351 px of difference between the two styles' renders).
+
+### C.32 Removing a bundled app has to mean something
+
+Reported symptom: *"built-in apps can't be removed"* — the button printed "Removed" and the
+row came straight back.
+
+Root cause: `app list` reconciles bundled apps on every read ("first-boot semantics: every
+bundled app is installed"), so a removal that left nothing behind was undone by the refresh
+that follows the removal. Two further defects surfaced while fixing it:
+
+* `remove_app` deleted the whole app directory, so `--purge` was meaningless and a plain
+  removal destroyed the app's own settings — while printing "kept app data" only when that was
+  impossible.
+* `AppRegistry` synthesised a record for every bundled app regardless of the registry, so
+  even a tombstone would not have stopped the surface from mounting (the removal would have
+  been cosmetic).
+
+The fix is a **tombstone** in the registry (`removed: [id]`), consulted by reconcile and by
+`AppRegistry` (through `AppHostPolicy.withoutRemoved`, keyed on the **id** — the package
+directory is named `Media`, which is exactly the mismatch that would have hidden a
+name-keyed filter). Removal now deletes the payload and manifest, keeps `config/`/`cache/`
+unless `--purge`, and installing or restoring clears the tombstone. `app removed` lists what
+can come back and `app restore <id|--all>` brings it back; the Apps page shows a "removed"
+row with a Restore button, because removing was one click and restoring must be too.
+
+Verified live: `app remove org.astralplasma.media` took the list 8 → 7 and the dashboard's
+media tab degraded to *"the media app is not installed; restore it in Settings → Apps"*;
+`app restore` returned it to 8 and the tab rendered again; the Apps page showed
+`7 installed · 7 enabled` with `1 removed app — Media … [Restore]` without a restart, because
+`AppRegistry` now watches `apps.json` (and calls `reload()` — `fileChanged` only announces,
+it does not re-read).

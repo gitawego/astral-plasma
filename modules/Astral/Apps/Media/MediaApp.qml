@@ -17,14 +17,20 @@ Item {
     property var intents: null
 
     readonly property bool hasPlayer: media !== null && media.hasMedia
-    readonly property bool isDashboardMediaTab: shellState !== null
-        && shellState.dashboardVisible && shellState.activeDashboardTab === "media"
+    /// Whether this surface is actually on screen. `dashboardVisible` records the *toggle*,
+    /// not the truth: the dashboard is also shown on hover, and a stale flag gated the
+    /// audio visualiser off while the pane was plainly visible.
+    readonly property bool isDashboardMediaTab: root.visible
+        && shellState !== null
+        && shellState.activeDashboardTab === "media"
 
     implicitWidth: 680
     implicitHeight: 260
     clip: true
 
     readonly property alias vizSwitchBtn: vizSwitchBtn
+
+
 
     Item {
         anchors.fill: parent
@@ -45,8 +51,8 @@ Item {
                 Layout.preferredHeight: 240
                 Layout.alignment: Qt.AlignVCenter
 
-                readonly property bool isSpeakerStyle: (typeof Config !== "undefined") &&
-                    ((root.shellState ? root.shellState.mediaVisualizerStyle : "radial") === "speaker" || (root.shellState ? root.shellState.mediaVisualizerStyle : "radial") === "heatmap")
+                readonly property string style: root.shellState ? root.shellState.mediaVisualizerStyle : "radial"
+                readonly property bool isSpeakerStyle: style === "speaker" || style === "heatmap"
                 readonly property bool isCyberpunk: (typeof Theme !== "undefined" && Theme.isCyberpunk)
 
                 // Radial Visualizer (Spectrum halo around circular album art - Cyberpunk or Radial style)
@@ -56,11 +62,12 @@ Item {
                     width: 240
                     height: 240
                     visible: visualizerSlot.isCyberpunk || !visualizerSlot.isSpeakerStyle
-                    isPlaying: (root.media && root.media.isPlaying)
+                    isPlaying: root.media ? root.media.isPlaying === true : false
                     artUrl: (root.media && root.media.artUrl)
                     title: (root.media && root.media.title)
                     artist: (root.media && root.media.artist)
                     isTargetVisible: root.isDashboardMediaTab && visible
+                    audioSource: root.media
                 }
 
                 // Original Heatmap Speaker Player (Pulsing speaker cone with orbiting rainbow notes & beads)
@@ -70,11 +77,12 @@ Item {
                     width: 240
                     height: 240
                     visible: !visualizerSlot.isCyberpunk && visualizerSlot.isSpeakerStyle
-                    isPlaying: (root.media && root.media.isPlaying)
+                    isPlaying: root.media ? root.media.isPlaying === true : false
                     artUrl: (root.media && root.media.artUrl)
                     title: (root.media && root.media.title)
                     artist: (root.media && root.media.artist)
                     isTargetVisible: root.isDashboardMediaTab && visible
+                    audioSource: root.media
                 }
 
                 // Visualizer Switcher Pill Button (Floating subtle toggle - hidden in Cyberpunk)
@@ -299,7 +307,7 @@ Item {
                             if (isDragging) {
                                 isDragging = false;
                                 let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                root.media && root.media.seek(frac);
+                                root.media && root.media.seekTo(frac);
                             }
                         }
                         onCanceled: {
@@ -308,7 +316,7 @@ Item {
                         onClicked: mouse => {
                             if (!enabled) return;
                             let frac = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                            root.media && root.media.seek(frac);
+                            root.media && root.media.seekTo(frac);
                         }
                     }
                 }
@@ -422,7 +430,7 @@ Item {
                             }
 
                             Text {
-                                text: (root.media && root.media.identity) || "Media Player"
+                                text: (root.media && root.media.playerName) || "Media Player"
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontLabelSmall
                                 font.weight: Font.Medium
@@ -506,7 +514,7 @@ Item {
                     id: mediaAvatar
                     anchors.fill: parent
                     source: (root.shellState ? root.shellState.mediaAvatar : "")
-                    isPlaying: (root.media && root.media.isPlaying)
+                    isPlaying: root.media ? root.media.isPlaying === true : false
                 }
             }
         }

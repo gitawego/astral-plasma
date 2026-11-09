@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "AppHostPolicy.js" as Policy
 
 // ============================================================================
 // AppRegistry — read what is installed, and merge it with each app's manifest
@@ -45,12 +46,37 @@ QtObject {
 
     readonly property string registryText: registryReader.text()
 
+    /// The parsed registry, refreshed when the file changes (never parsed inside a
+    /// binding: reading and re-reading it there produced a binding loop the moment the
+    /// watcher existed).
+    property var stateSnapshot: ({})
+
+    Component.onCompleted: root.adoptState()
+
+    function adoptState() {
+        try {
+            const parsed = JSON.parse(stateReader.text());
+            root.stateSnapshot = (parsed && typeof parsed === "object") ? parsed : ({});
+        } catch (error) {
+            root.stateSnapshot = ({});
+        }
+    }
+
+    /// Apps the user removed on purpose. A bundled app is synthesised into the plan when
+    /// it has no record, so without this a removal would be cosmetic: the row disappeared
+    /// from Settings while the surface kept mounting.
+    readonly property var removedIds: {
+        const removed = root.stateSnapshot ? root.stateSnapshot.removed : null;
+        return Array.isArray(removed) ? removed : [];
+    }
+
     /// Installed records, or one synthetic record per bundled app. Both are
     /// `{ id, enabled, blocked, pinned }`, so everything downstream is one path.
     readonly property var records: {
         if (root.bundled) {
             const recorded = root.recordedById;
-            return root.bundledIndex.map(function (app) {
+            const removed = root.removedIds;
+            return Policy.withoutRemoved(root.bundledIndex, removed).map(function (app) {
                 const record = recorded[app.id];
                 return {
                     id: app.id,
@@ -62,27 +88,21 @@ QtObject {
                 };
             });
         }
-        try {
-            const parsed = JSON.parse(root.registryText);
-            return (parsed && Array.isArray(parsed.apps)) ? parsed.apps : [];
-        } catch (error) {
-            return [];
-        }
+        // Same snapshot as the bundled path, so a live registry change reaches the plan
+        // whichever way the app list is sourced.
+        const parsed = root.stateSnapshot;
+        return (parsed && Array.isArray(parsed.apps)) ? parsed.apps : [];
     }
 
     /// The daemon's records, by id (empty when there is no registry yet).
     readonly property var recordedById: {
         const byId = ({});
-        try {
-            const parsed = JSON.parse(stateReader.text());
-            const apps = (parsed && Array.isArray(parsed.apps)) ? parsed.apps : [];
-            for (let index = 0; index < apps.length; index++) {
-                if (apps[index] && typeof apps[index].id === "string") {
-                    byId[apps[index].id] = apps[index];
-                }
+        const parsed = root.stateSnapshot;
+        const apps = (parsed && Array.isArray(parsed.apps)) ? parsed.apps : [];
+        for (let index = 0; index < apps.length; index++) {
+            if (apps[index] && typeof apps[index].id === "string") {
+                byId[apps[index].id] = apps[index];
             }
-        } catch (error) {
-            // No registry yet: bundled apps are enabled.
         }
         return byId;
     }
@@ -91,7 +111,19 @@ QtObject {
         path: root.statePath
         blockLoading: true
         printErrors: false
+        // Enabling, disabling or removing an app rewrites this file. Without a watch the
+        // plan kept the state it read at startup, so a removal only took effect after a
+        // restart — which reads exactly like "the button does nothing".
+        watchChanges: true
+        // `fileChanged` only announces the change: `text()` still returns the old contents
+        // until `reload()` re-reads them, and only then does `loaded` fire. Enabling,
+        // disabling or removing an app rewrote this file while nothing upstream re-read it,
+        // so the plan kept its startup state and a removal looked like a dead button.
+        onFileChanged: stateReader.reload()
+        onLoaded: root.adoptState()
     }
+
+
 
     readonly property var bundledIndex: {
         try {

@@ -151,6 +151,25 @@ Item {
         result = Policy.plan([entry("a.one")], { level: 1, floor: 9, quickshell: "" });
         assert(result.load.length === 1, "an incoherent host window is clamped, not fatal");
 
+        // ---- removal tombstones --------------------------------------------
+        // A bundled app with no record is offered by the platform. Removing it must stop
+        // the offer, and the key is the id: the package directory is named `Media`.
+        const bundled = [
+            { id: "org.astralplasma.media", dir: "Media" },
+            { id: "org.astralplasma.workspaces", dir: "Workspaces" }
+        ];
+        let kept = Policy.withoutRemoved(bundled, ["org.astralplasma.media"]);
+        assert(kept.length === 1 && kept[0].id === "org.astralplasma.workspaces",
+            "a removed bundled app is dropped by id");
+        kept = Policy.withoutRemoved(bundled, ["Media"]);
+        assert(kept.length === 2,
+            "a directory name is not an id: keying on it would silently keep the app");
+        assert(Policy.withoutRemoved(bundled, []).length === 2, "nothing removed, nothing dropped");
+        assert(Policy.withoutRemoved(bundled, null).length === 2, "no registry yet changes nothing");
+        assert(Policy.withoutRemoved(null, ["x"]).length === 0, "no index, no apps");
+        assert(Policy.withoutRemoved([null, { id: "a.b" }], []).length === 1,
+            "a malformed entry is dropped rather than trusted");
+
         console.log("PASS: All app host policy tests passed!");
         Qt.exit(0);
     }

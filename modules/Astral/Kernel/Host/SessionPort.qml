@@ -41,6 +41,7 @@ QtObject {
     property var stopThumbnailsImpl: null
     property var refreshThumbnailsImpl: null
     property var moveWindowToWorkspaceImpl: null
+    property var openCalendarImpl: null
 
     readonly property bool canActivate: activateWindowImpl !== null
     readonly property bool canClose: closeWindowImpl !== null
@@ -78,6 +79,12 @@ QtObject {
 
     function launchApp(target, meta) {
         return call("launchApp", launchAppImpl, [target, meta]);
+    }
+
+    /// Open the desktop's calendar for `isoDate` (YYYY-MM-DD). The port exists because the
+    /// app may not touch the kernel service that implements it.
+    function openCalendar(isoDate) {
+        return call("openCalendar", openCalendarImpl, [isoDate]);
     }
 
     function reloadInstalledApps() {

@@ -34,6 +34,8 @@ QtObject {
     property real dashboardWidth: 980
     /// Which tabs the user enabled, in order.
     property var dashboardTabs: []
+    /// Which device the performance surface shows (`cpu`, `gpu`, …).
+    property string perfSelectedDevice: "cpu"
     /// The tab the user last selected.
     property string activeDashboardTab: "dashboard"
     /// The daemon binary an app may call for its own IPC (absolute path).

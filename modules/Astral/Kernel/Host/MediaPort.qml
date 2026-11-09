@@ -40,6 +40,25 @@ QtObject {
     property real length: 0
     readonly property real progress: length > 0 ? Math.min(1, Math.max(0, position / length)) : 0
 
+    /// Playing, as a boolean, because that is what every surface actually asks. The port
+    /// carries it explicitly: an app cannot read `MprisMedia`, and deriving it in each app
+    /// from `status` invited a silent `undefined` (spec C.31) that gated playback state,
+    /// the visualiser and the transport glyph all at once.
+    readonly property bool isPlaying: status === "playing"
+
+    // ---- audio reactivity ---------------------------------------------------
+    // The visualiser's ground truth is the daemon's DSP stream. A migrated app cannot
+    // import the `AudioVisualizer` singleton (the kernel is not mounted for apps), so the
+    // shell samples it here and the app animates from what it is given. All zero when
+    // nothing is playing: motion is never synthesised.
+    property bool audioActive: false
+    property real audioEnergy: 0
+    property real audioBass: 0
+    property real audioMid: 0
+    property real audioTreble: 0
+    property real audioBeat: 0
+    property var audioBands: []
+
     /// Other players the user may switch to: `[{ id, name }]`.
     property var players: []
     /// The elected player's id, as listed in `players`.
@@ -53,12 +72,16 @@ QtObject {
     property var seekImpl: null
     property var selectPlayerImpl: null
     property var toggleShuffleImpl: null
+    property var cyclePlayerImpl: null
+    property var cycleLoopImpl: null
 
     readonly property bool canToggle: toggleImpl !== null
     readonly property bool canSkip: nextImpl !== null
     readonly property bool canSeek: seekImpl !== null
     readonly property bool canSelectPlayer: selectPlayerImpl !== null
     readonly property bool canShuffle: toggleShuffleImpl !== null
+    readonly property bool canCyclePlayer: cyclePlayerImpl !== null
+    readonly property bool canCycleLoop: cycleLoopImpl !== null
 
     signal operationFailed(string operation, string reason)
 
@@ -92,9 +115,9 @@ QtObject {
 
     /// Seek to a fraction of the track, clamped: a surface should not need to know
     /// whether the player can seek, only that asking is safe.
-    function seek(fraction) {
+    function seekTo(fraction) {
         const value = Math.min(1, Math.max(0, Number(fraction) || 0));
-        return call("seek", seekImpl, [value]);
+        return call("seekTo", seekImpl, [value]);
     }
 
     function selectPlayer(playerOrId) {
@@ -122,6 +145,16 @@ QtObject {
             }
         }
         return "";
+    }
+
+    /// Move to the next player the desktop knows (nothing when there is only one).
+    function cyclePlayer() {
+        return call("cyclePlayer", cyclePlayerImpl, []);
+    }
+
+    /// Cycle the elected player's loop mode (none → track → playlist).
+    function cycleLoop() {
+        return call("cycleLoop", cycleLoopImpl, []);
     }
 
     function toggleShuffle() {
