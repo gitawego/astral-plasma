@@ -95,11 +95,18 @@ Singleton {
         }
     }
 
+    /// Whether the AI Quotas app is enabled, pushed by the shell from the registry.
+    ///
+    /// A boolean, not a lookup: this service is a singleton, and a singleton that reaches
+    /// for another singleton crosses a registration boundary (the shell's import and this
+    /// file's import are two instances, spec C.13), so the answer arrives as data.
+    property bool appEnabled: true
+
     readonly property bool shouldShowPill: {
         if (typeof Config === "undefined" || !Config.aiEnabled) return false;
         // The pill is this app's dock surface: disabling AI Quotas in Settings → Apps must
         // take it away, exactly like turning the feature off.
-        if (typeof AppStates !== "undefined" && AppStates && !AppStates.isEnabled("org.astralplasma.ai")) return false;
+        if (!root.appEnabled) return false;
         if (Config.aiDockPillMode === "always") return true;
         if (Config.aiDockPillMode === "never") return false;
         // "dynamic" mode: show if any model is in warning/critical state, or if valid providers exist
@@ -107,15 +114,11 @@ Singleton {
     }
 
     // A drawer cannot stay open once its app is disabled.
-    Connections {
-        target: (typeof AppStates !== "undefined") ? AppStates : null
-        function onRevisionChanged() {
-            if (typeof Config === "undefined") return;
-            if (typeof AppStates === "undefined" || !AppStates) return;
-            if (AppStates.isEnabled("org.astralplasma.ai")) return;
-            if (Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai") {
-                Config.closeBottomPopout();
-            }
+    onAppEnabledChanged: {
+        if (root.appEnabled) return;
+        if (typeof Config === "undefined") return;
+        if (Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai") {
+            Config.closeBottomPopout();
         }
     }
 

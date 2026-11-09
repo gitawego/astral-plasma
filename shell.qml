@@ -203,16 +203,7 @@ ShellRoot {
         // shell's own (the dock's AI pill, an app-owned drawer).
         function onRecordsChanged() {
             AppStates.adopt(bundledApps.records);
-        }
-    }
-
-    Connections {
-        target: bundledApps
-        // A drawer whose app was just disabled must not stay on screen: it would keep
-        // serving a feature the user turned off.
-        function onRecordsChanged() {
-            if (!Config.bottomPopoutVisible || Config.bottomPopoutMode !== "ai") return;
-            if (!bundledApps.isEnabled("org.astralplasma.ai")) Config.closeBottomPopout();
+            AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai");
         }
     }
 
@@ -793,6 +784,7 @@ ShellRoot {
 
     Component.onCompleted: {
         AppStates.adopt(bundledApps.records);
+        AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai");
 
         // Intent handlers live here, next to the rest of the shell's startup wiring:
         // one completion block, so nothing about startup is split across objects.

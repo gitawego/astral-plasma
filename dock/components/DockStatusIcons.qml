@@ -374,8 +374,12 @@ LiquidGlassCard {
         // 4. AI Token Quota Pill (Dynamic & Activity-Aware)
         Item {
             id: aiItem
-            visible: (typeof AiTokenService !== "undefined" && AiTokenService.shouldShowPill)
-                     || (typeof AiActivityService !== "undefined" && AiActivityService.isActive)
+            // The whole item belongs to the AI Quotas app: quotas *and* agent activity are
+            // its surfaces, so a disabled app shows neither. Gating only `shouldShowPill`
+            // left the icon on the dock whenever an agent CLI was running.
+            visible: (typeof AiTokenService !== "undefined" && AiTokenService.appEnabled)
+                     && ((typeof AiTokenService !== "undefined" && AiTokenService.shouldShowPill)
+                         || (typeof AiActivityService !== "undefined" && AiActivityService.isActive))
             implicitWidth: visible ? root.btnSize : 0
             implicitHeight: visible ? root.btnSize : 0
             width: implicitWidth

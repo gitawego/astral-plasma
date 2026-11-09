@@ -67,14 +67,22 @@ Item {
 
         // ---- the wiring that uses them --------------------------------------
         const service = readLocalFile("../modules/Astral/Kernel/services/AiTokenService.qml");
-        assert(service.indexOf("AppStates.isEnabled(\"org.astralplasma.ai\")") >= 0,
-            "the pill asks whether its app is enabled");
-        assert(service.indexOf("Config.closeBottomPopout()") >= 0,
-            "an open drawer closes when the app is disabled");
+        assert(service.indexOf("if (!root.appEnabled) return false;") >= 0,
+            "the pill hides when its app is disabled");
+        assert(service.indexOf("onAppEnabledChanged") >= 0,
+            "and an open drawer closes when that happens");
 
         const shell = readLocalFile("../shell.qml");
+        assert(shell.indexOf("AiTokenService.appEnabled = bundledApps.isEnabled") >= 0,
+            "the shell pushes the answer, because a singleton must not reach another");
         assert(shell.indexOf("bundledApps.isEnabled(\"org.astralplasma.ai\")") >= 0,
             "the drawer opener refuses a disabled app, through the registry the shell mounts from");
+
+        const dock = readLocalFile("../dock/components/DockStatusIcons.qml");
+        assert(dock.indexOf("AiTokenService.appEnabled") >= 0,
+            "the dock item is gated by the app, not only by the quota pill");
+        assert(dock.indexOf("AiActivityService.isActive") >= 0,
+            "agent activity is still shown when the app is enabled");
 
         const registry = readLocalFile("../modules/Astral/Kernel/Host/AppRegistry.qml");
         assert(registry.indexOf("function isEnabled(") >= 0,
