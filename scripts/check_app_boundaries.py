@@ -66,6 +66,9 @@ PORTS = {
     # The shell injects its live metrics service, not `MetricsPort` (which exists for
     # hosts that do not have one). Check the type apps actually receive.
     "services/SystemService.qml": "metrics",
+    # Injected as `skills` into the Skills app (a service instance is the port here, as
+    # `SystemService` is for metrics).
+    "services/SkillsService.qml": "skills",
 }
 #: Members inherited from QML's own objects/arrays; never declared by a port.
 BUILTIN_MEMBERS = {

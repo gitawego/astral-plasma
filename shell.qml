@@ -350,6 +350,23 @@ ShellRoot {
     }
 
     IpcHandler {
+        // The same calls the Skills page makes, for scripts and verification.
+        target: "skills"
+        function refresh(): void { SkillsService.refresh(); }
+        function search(query: string): void { SkillsService.search(query); }
+        function setSource(source: string): void { SkillsService.setSearchSource(source); }
+        function install(source: string): void { SkillsService.install(source, []); }
+        function addSource(input: string, ref: string): void { SkillsService.addSource(input, ref); }
+        function enable(sourceId: string, skill: string): void {
+            SkillsService.setSkillEnabled(sourceId, skill, true);
+        }
+        function disable(sourceId: string, skill: string): void {
+            SkillsService.setSkillEnabled(sourceId, skill, false);
+        }
+        function doctor(): void { SkillsService.runDoctor(); }
+    }
+
+    IpcHandler {
         target: "ai"
         function refresh(): void { AiTokenService.refresh(true); }
         function switchGemini(account: string): void { AiTokenService.switchGeminiAccount(account); }
@@ -757,6 +774,9 @@ ShellRoot {
     SettingsWindow {
         id: settingsWindow
         targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+        // Which app owns which surface, from the registry — the settings rail hides a page whose
+        // app is disabled (spec C.35).
+        integrations: AppStates.integrations
     }
 
     // Update curtain: the short surface shown while an update restarts the
@@ -796,6 +816,10 @@ ShellRoot {
     Component.onCompleted: {
         AppStates.adopt(bundledApps.entries);
         AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai");
+        console.log("DBGSKILL entries", (bundledApps.entries || []).length,
+            "hasSkills", (bundledApps.entries || []).some(function (e) { return e.id === "org.astralplasma.skills"; }),
+            "skillsIntegrations", JSON.stringify((bundledApps.entries || []).filter(function (e) { return e.id === "org.astralplasma.skills"; }).map(function (e) { return e.integrations; })),
+            "keys", JSON.stringify(Object.keys(AppStates.integrations)));
 
         // Intent handlers live here, next to the rest of the shell's startup wiring:
         // one completion block, so nothing about startup is split across objects.

@@ -30,6 +30,10 @@
       "id": "org.astralplasma.performance"
     },
     {
+      "dir": "Skills",
+      "id": "org.astralplasma.skills"
+    },
+    {
       "dir": "Workspaces",
       "id": "org.astralplasma.workspaces"
     }

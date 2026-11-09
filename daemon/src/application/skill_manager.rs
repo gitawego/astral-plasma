@@ -723,6 +723,10 @@ pub fn doctor(ctx: &SkillContext) -> DynResult<Vec<Finding>> {
     let ledger = read_ledger(&ctx.paths.ledger)?;
     let mut findings = Vec::new();
     for row in &ledger.links {
+        // A disabled row has no link on purpose: that is the recorded state, not drift.
+        if row.state == LinkState::Disabled && RealFs.probe(&row.link) == crate::domain::skill_install::Probe::Missing {
+            continue;
+        }
         match RealFs.probe(&row.link) {
             crate::domain::skill_install::Probe::Missing => findings.push(Finding {
                 kind: "missing".to_string(),
@@ -751,13 +755,28 @@ pub fn doctor(ctx: &SkillContext) -> DynResult<Vec<Finding>> {
                 }
             }
             crate::domain::skill_install::Probe::Directory | crate::domain::skill_install::Probe::File => {
-                findings.push(Finding {
-                    kind: "replaced".to_string(),
-                    path: row.link.display().to_string(),
-                    detail: "the managed link was replaced by a real file or directory".to_string(),
-                    skill: row.skill.as_str().to_string(),
-                    source: row.source_id.clone(),
-                });
+                // An adopted farm *is* a real directory; only a change since adoption is a finding.
+                if matches!(row.origin, Origin::Adopted { .. }) {
+                    let files = read_local_tree(&row.link).unwrap_or_default();
+                    let current = crate::domain::skill::hash_files(&files);
+                    if current != row.hash {
+                        findings.push(Finding {
+                            kind: "modified".to_string(),
+                            path: row.link.display().to_string(),
+                            detail: "content changed since it was adopted; review it again".to_string(),
+                            skill: row.skill.as_str().to_string(),
+                            source: row.source_id.clone(),
+                        });
+                    }
+                } else {
+                    findings.push(Finding {
+                        kind: "replaced".to_string(),
+                        path: row.link.display().to_string(),
+                        detail: "the managed link was replaced by a real file or directory".to_string(),
+                        skill: row.skill.as_str().to_string(),
+                        source: row.source_id.clone(),
+                    });
+                }
             }
         }
     }

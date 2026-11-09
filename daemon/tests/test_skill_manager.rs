@@ -423,3 +423,60 @@ impl SourceSpecHelper {
         }
     }
 }
+
+#[test]
+fn an_adopted_skill_can_be_disabled_and_removed_without_deleting_it_in_place() {
+    let fixture = Fixture::new();
+    let farm = fixture.dir.path().join("home/.agents/skills/legacy");
+    std::fs::create_dir_all(&farm).unwrap();
+    std::fs::write(farm.join("SKILL.md"), "---\nname: legacy\n---\n").unwrap();
+    manager::import_npx(&fixture.ctx, true).unwrap();
+
+    // A real directory that we adopted is not "replaced": the doctor stays quiet.
+    assert!(manager::doctor(&fixture.ctx).unwrap().is_empty(), "{:?}", manager::doctor(&fixture.ctx));
+
+    let selector = astral_plasma::domain::skill_install::Selector::Skill {
+        source_id: "adopted-".to_string() + &astral_plasma::domain::skill_source::slug(&farm.display().to_string()),
+        skill: "legacy".to_string(),
+    };
+    manager::set_enabled(&fixture.ctx, &selector, false).unwrap();
+    assert!(!farm.exists(), "disabling an adopted farm moves it aside");
+    let trashed = fixture
+        .ctx
+        .paths
+        .trash
+        .read_dir()
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path().join("legacy"))
+        .find(|path| path.is_dir())
+        .expect("the adopted skill is recoverable from the trash");
+    assert!(trashed.join("SKILL.md").is_file(), "and its content survived: {}", trashed.display());
+
+    // Modifying adopted content is reported rather than silently accepted.
+    let other = fixture.dir.path().join("home/.agents/skills/other");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(other.join("SKILL.md"), "---\nname: other\n---\n").unwrap();
+    manager::import_npx(&fixture.ctx, true).unwrap();
+    std::fs::write(other.join("SKILL.md"), "---\nname: other\n# changed\n---\n").unwrap();
+    let findings = manager::doctor(&fixture.ctx).unwrap();
+    assert!(findings.iter().any(|finding| finding.kind == "modified"), "{findings:?}");
+}
+
+#[test]
+fn a_disabled_skill_is_not_a_doctor_finding() {
+    let fixture = Fixture::new();
+    let source = fixture.local_source("mine", &[("alpha", "a")]);
+    manager::install(&fixture.ctx, source.to_str().unwrap(), None, &fixture.scope(), true).unwrap();
+    let selector = astral_plasma::domain::skill_install::Selector::Skill {
+        source_id: "local-mine".to_string(),
+        skill: "alpha".to_string(),
+    };
+    manager::set_enabled(&fixture.ctx, &selector, false).unwrap();
+    // Disabled on purpose: no link, no complaint. Only the unmanaged farm is reported, if any.
+    let findings = manager::doctor(&fixture.ctx).unwrap();
+    assert!(
+        !findings.iter().any(|finding| finding.kind == "missing" || finding.kind == "dangling"),
+        "{findings:?}"
+    );
+}

@@ -19,6 +19,9 @@ import "../modules/Astral/Kernel/config"
 FloatingWindow {
     id: root
 
+    /// `{ "kind:id": appId }` for enabled apps, fed by the shell (spec C.35).
+    property var integrations: ({})
+
     property ShellScreen targetScreen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
     screen: targetScreen
 
@@ -183,6 +186,7 @@ FloatingWindow {
         // The Modular Nexus Settings Hub
         NexusHub {
             id: nexusHub
+            integrations: root.integrations
             anchors.fill: parent
             onCloseRequested: Config.settingsVisible = false
         }

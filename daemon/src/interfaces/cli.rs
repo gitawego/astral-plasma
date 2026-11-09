@@ -1126,7 +1126,7 @@ pub async fn run_cli() -> DynResult<()> {
                 }
             }
         }
-        "skill" | "skills" => {
+        "skill" => {
             use crate::application::skill_service::SkillService;
             let sub = if args.len() >= 3 { args[2].as_str() } else { "status" };
             let skill_name = args.get(3).map(|s| s.as_str()).unwrap_or("astral-desktop-tools");
@@ -1152,6 +1152,12 @@ pub async fn run_cli() -> DynResult<()> {
                     std::process::exit(1);
                 }
             }
+        }
+
+        // The skills manager (docs/SKILLS-MANAGER-SPEC.md). `skill` (singular) above is the
+        // bundled desktop-tools skill; `skills` (plural) manages installed agent skills.
+        "skills" => {
+            return run_skills_command(&args);
         }
 
         "metrics" => {
@@ -3561,4 +3567,484 @@ async fn wait_for_exit(child: &mut tokio::process::Child) {
     {
         let _ = child.wait().await;
     }
+}
+
+// ============================================================================
+// skills — the agent-skills manager (docs/SKILLS-MANAGER-SPEC.md)
+// ============================================================================
+//
+// One client of `application::skill_manager`: every subcommand is `--json`-capable so the GUI is
+// a second renderer of the same data, not a second implementation.
+
+fn skills_context(args: &[String]) -> crate::application::skill_manager::SkillContext {
+    use crate::application::skill_manager::SkillContext;
+    use crate::infrastructure::skill_fs::SkillPaths;
+
+    let targets = skills_flag(args, "--target");
+    let ssh_key = skills_flag(args, "--ssh-key").map(std::path::PathBuf::from);
+    SkillContext::new(SkillPaths::from_env(), now_ms())
+        .with_targets(targets)
+        .with_ssh_key(ssh_key)
+}
+
+/// `--flag value`, or `--flag=value`.
+fn skills_flag(args: &[String], name: &str) -> Option<String> {
+    if let Some(index) = args.iter().position(|arg| arg == name) {
+        return args.get(index + 1).cloned();
+    }
+    args.iter().find_map(|arg| {
+        arg.strip_prefix(&format!("{name}="))
+            .map(|value| value.to_string())
+    })
+}
+
+/// Flags whose value must not be mistaken for a positional argument.
+const SKILLS_VALUE_FLAGS: [&str; 12] = [
+    "--source", "--skill", "--target", "--scope", "--ref", "--subpath",
+    "--ssh-key", "--host", "--label", "--token", "--limit", "--copy-target",
+];
+
+/// The positional arguments from `start` onwards, with flag *values* skipped.
+///
+/// Without this, `skills remove --source local-mine` read "local-mine" as the skill name and
+/// removed nothing (found by `test_skill_cli.rs`).
+fn skills_positionals(args: &[String], start: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut index = start;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg.starts_with("--") && arg.contains('=') {
+            index += 1;
+            continue;
+        }
+        if SKILLS_VALUE_FLAGS.contains(&arg.as_str()) {
+            index += 2;
+            continue;
+        }
+        if arg.starts_with('-') {
+            index += 1;
+            continue;
+        }
+        out.push(arg.clone());
+        index += 1;
+    }
+    out
+}
+
+fn skills_positional(args: &[String], index: usize) -> Option<String> {
+    // `index` is an absolute argument index; positionals are counted from 3 (after the
+    // subcommand), so `skills_positional(args, 4)` is the second positional.
+    let positionals = skills_positionals(args, 3);
+    positionals.get(index.saturating_sub(3)).cloned()
+}
+
+fn skills_scope(args: &[String]) -> crate::domain::skill_targets::Scope {
+    let raw = skills_flag(args, "--scope");
+    raw.as_deref()
+        .and_then(crate::domain::skill_targets::Scope::parse)
+        .unwrap_or(crate::domain::skill_targets::Scope::Global)
+}
+
+/// `<skill>[@source]` → a selector, resolving the source when it is unambiguous.
+fn skills_selector(
+    ctx: &crate::application::skill_manager::SkillContext,
+    args: &[String],
+    explicit: Option<String>,
+) -> DynResult<crate::domain::skill_install::Selector> {
+    use crate::domain::skill_install::Selector;
+
+    if let Some(source_id) = explicit {
+        let skill = skills_positional(args, 3).ok_or("which skill? pass <skill> or --source <id>")?;
+        return Ok(Selector::Skill { source_id, skill });
+    }
+    let target = skills_positional(args, 3).ok_or("usage: skills <enable|disable|remove> <skill>[@source] | --source <id>")?;
+    let (skill, source) = match target.split_once('@') {
+        Some((skill, source)) => (skill.to_string(), Some(source.to_string())),
+        None => (target, None),
+    };
+    if let Some(source_id) = source {
+        return Ok(Selector::Skill { source_id, skill });
+    }
+    let ledger = crate::infrastructure::skill_fs::read_ledger(&ctx.paths.ledger)?;
+    let matches: Vec<String> = ledger
+        .sources
+        .iter()
+        .filter(|source| ledger.skills_of(&source.id).iter().any(|id| id.as_str() == skill))
+        .map(|source| source.id.clone())
+        .collect();
+    match matches.len() {
+        1 => Ok(Selector::Skill { source_id: matches[0].clone(), skill }),
+        0 => Err(format!("no installed source provides the skill '{skill}'").into()),
+        _ => Err(format!(
+            "'{skill}' exists in several sources ({}); name one with {skill}@<source> or --source <id>",
+            matches.join(", ")
+        )
+        .into()),
+    }
+}
+
+fn run_skills_command(args: &[String]) -> DynResult<()> {
+    use crate::application::skill_manager as manager;
+
+    let sub = args.get(2).map(String::as_str).unwrap_or("list");
+    let is_json = args.iter().any(|arg| arg == "--json");
+    let ctx = skills_context(args);
+    manager::recover(&ctx).ok();
+
+    let print = |value: &serde_json::Value| -> DynResult<()> {
+        println!("{}", serde_json::to_string_pretty(value)?);
+        Ok(())
+    };
+
+    match sub {
+        "list" | "installed" => {
+            let sources = manager::list(&ctx)?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&sources)?);
+            } else if sources.is_empty() {
+                println!("No skills installed. Try: astral-plasma skills search <query>");
+            } else {
+                for source in &sources {
+                    println!(
+                        "{} {}  ({}/{} enabled)",
+                        if source.enabled { "●" } else { "○" },
+                        source.id,
+                        source.enabled_count,
+                        source.skills.len()
+                    );
+                    for skill in &source.skills {
+                        println!(
+                            "  {:<28} {:<9} {}",
+                            skill.id,
+                            match skill.state {
+                                crate::domain::skill_ledger::LinkState::Linked => "linked",
+                                crate::domain::skill_ledger::LinkState::Disabled => "disabled",
+                            },
+                            skill.origin
+                        );
+                    }
+                }
+            }
+        }
+        "search" | "find" => {
+            use crate::infrastructure::skill_catalog as catalog;
+
+            let query = skills_positional(args, 3).ok_or("usage: skills search <query>")?;
+            let source = skills_flag(args, "--source").unwrap_or_else(|| "github".to_string());
+            let hits = match source.as_str() {
+                "skills.sh" | "skillssh" => {
+                    let token = skills_flag(args, "--token")
+                        .or_else(|| std::env::var("VERCEL_OIDC_TOKEN").ok());
+                    catalog::skills_sh_search(&query, token.as_deref())?
+                }
+                _ => {
+                    let token = skills_flag(args, "--token").or_else(|| {
+                        crate::infrastructure::skill_secrets::ambient_token("github.com")
+                            .map(|credential| credential.token)
+                    });
+                    catalog::github_search(&query, token.as_deref())?
+                }
+            };
+            if is_json {
+                let rows: Vec<serde_json::Value> = hits
+                    .iter()
+                    .map(|hit| {
+                        serde_json::json!({
+                            "source": hit.source,
+                            "name": hit.name,
+                            "description": hit.description,
+                            "installs": hit.installs,
+                            "url": hit.url,
+                            "kind": match hit.kind { catalog::HitKind::Repository => "repository", catalog::HitKind::Skill => "skill" },
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else if hits.is_empty() {
+                println!("No skills found for '{query}'.");
+            } else {
+                for hit in &hits {
+                    println!("{:<40} {:>7}  {}", hit.source, hit.installs, hit.name);
+                    if !hit.description.is_empty() {
+                        println!("    {}", hit.description);
+                    }
+                }
+                println!("\nInstall with: astral-plasma skills install <source> --accept");
+            }
+        }
+        "inspect" => {
+            let source = skills_positional(args, 3).ok_or("usage: skills inspect <source>")?;
+            let inspection = manager::inspect(&ctx, &source)?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&inspection)?);
+            } else {
+                println!("{} ({})", inspection.source, inspection.id);
+                if let Some(sha) = &inspection.sha {
+                    println!("  commit {} on {}", &sha[..sha.len().min(12)], inspection.ref_name.clone().unwrap_or_default());
+                }
+                println!("  {} skill(s)", inspection.skills.len());
+                for skill in &inspection.skills {
+                    println!(
+                        "  {:<28} {:<10} {}  {}",
+                        skill.id,
+                        if skill.installed { "installed" } else { "" },
+                        skill.files,
+                        skill.description
+                    );
+                }
+            }
+        }
+        "source" | "sources" => match skills_positional(args, 3).as_deref() {
+            Some("add") => {
+                let input = skills_positional(args, 4).ok_or("usage: skills source add <path|url> [--ref R] [--subpath P]")?;
+                let source = manager::add_source(
+                    &ctx,
+                    &input,
+                    skills_flag(args, "--ref").as_deref(),
+                    skills_flag(args, "--subpath").as_deref(),
+                    !args.iter().any(|arg| arg == "--no-watch"),
+                    args.iter().any(|arg| arg == "--copy"),
+                )?;
+                if is_json {
+                    println!("{}", serde_json::to_string_pretty(&source)?);
+                } else {
+                    println!("Added source {} ({})", source.id, source.spec.display());
+                    println!("Install its skills with: astral-plasma skills install {} --accept", source.id);
+                }
+            }
+            Some("remove") | Some("rm") => {
+                let id = skills_positional(args, 4).ok_or("usage: skills source remove <id>")?;
+                let ledger = crate::infrastructure::skill_fs::read_ledger(&ctx.paths.ledger)?;
+                if !ledger.for_source(&id).is_empty() && !args.iter().any(|arg| arg == "--force") {
+                    return Err(format!(
+                        "'{id}' still has installed skills; remove them with `skills remove --source {id}` or pass --force"
+                    )
+                    .into());
+                }
+                let mut ledger = ledger;
+                let removed = ledger.remove_source(&id);
+                crate::infrastructure::skill_fs::write_ledger(&ctx.paths.ledger, &ledger)?;
+                println!("{} {}", if removed { "Removed" } else { "No such source:" }, id);
+            }
+            Some("refresh") => {
+                let id = skills_positional(args, 4).ok_or("usage: skills source refresh <id>")?;
+                let report = manager::update(&ctx, &id)?;
+                if is_json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    println!("Refreshed {}: {} changed, {} unchanged", id, report.changed.len(), report.unchanged.len());
+                }
+            }
+            _ => {
+                let ledger = crate::infrastructure::skill_fs::read_ledger(&ctx.paths.ledger)?;
+                if is_json {
+                    println!("{}", serde_json::to_string_pretty(&ledger.sources)?);
+                } else if ledger.sources.is_empty() {
+                    println!("No sources added. Try: astral-plasma skills source add ~/my-skills");
+                } else {
+                    for source in &ledger.sources {
+                        println!(
+                            "{} {:<28} {}",
+                            if source.enabled { "●" } else { "○" },
+                            source.id,
+                            source.spec.display()
+                        );
+                    }
+                }
+            }
+        },
+        "install" | "add" | "i" => {
+            let source = skills_positional(args, 3).ok_or("usage: skills install <source> [--skill NAME] [--accept]")?;
+            let only: Vec<String> = args
+                .windows(2)
+                .filter(|window| window[0] == "--skill" || window[0] == "-s")
+                .map(|window| window[1].clone())
+                .collect();
+            let report = manager::install(
+                &ctx,
+                &source,
+                if only.is_empty() { None } else { Some(only) },
+                &skills_scope(args),
+                args.iter().any(|arg| arg == "--accept" || arg == "-y"),
+            )?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                if report.installed.is_empty() {
+                    println!("Nothing installed from {}.", report.source);
+                } else {
+                    println!(
+                        "{}: installed {} ({} link(s) created, {} replaced)",
+                        report.source,
+                        report.installed.join(", "),
+                        report.created,
+                        report.replaced
+                    );
+                }
+                for conflict in &report.conflicts {
+                    eprintln!("conflict {conflict}");
+                }
+            }
+        }
+        "enable" | "disable" => {
+            let explicit = skills_flag(args, "--source");
+            let selector = if let Some(source_id) = explicit.clone().filter(|_| args.iter().any(|arg| arg == "--all" || arg == "--repo")) {
+                crate::domain::skill_install::Selector::Source { source_id }
+            } else if let Some(source_id) = explicit.clone().filter(|_| skills_positional(args, 3).is_none()) {
+                crate::domain::skill_install::Selector::Source { source_id }
+            } else {
+                skills_selector(&ctx, args, explicit)?
+            };
+            let enabled = sub == "enable";
+            let report = manager::set_enabled(&ctx, &selector, enabled)?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                    "state": if enabled { "enabled" } else { "disabled" },
+                    "linksChanged": report.created + report.replaced + report.removed,
+                    "conflicts": report.conflicts.iter().map(|c| format!("{}: {}", c.link.display(), c.detail)).collect::<Vec<_>>(),
+                }))?);
+            } else {
+                println!(
+                    "{}: {} link(s) {}",
+                    if enabled { "Enabled" } else { "Disabled" },
+                    report.created + report.replaced + report.removed,
+                    if enabled { "created" } else { "removed" }
+                );
+                for conflict in &report.conflicts {
+                    eprintln!("conflict {}: {}", conflict.link.display(), conflict.detail);
+                }
+            }
+        }
+        "remove" | "rm" | "uninstall" => {
+            let explicit = skills_flag(args, "--source");
+            let selector = match (&explicit, args.iter().any(|arg| arg == "--all" || arg == "--repo")) {
+                (Some(source_id), true) => crate::domain::skill_install::Selector::Source { source_id: source_id.clone() },
+                (Some(source_id), false) => match skills_positional(args, 3) {
+                    Some(skill) => crate::domain::skill_install::Selector::Skill { source_id: source_id.clone(), skill },
+                    None => crate::domain::skill_install::Selector::Source { source_id: source_id.clone() },
+                },
+                (None, _) => skills_selector(&ctx, args, None)?,
+            };
+            let report = manager::remove(&ctx, &selector, args.iter().any(|arg| arg == "--purge"))?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                    "removed": report.removed,
+                    "conflicts": report.conflicts.iter().map(|c| format!("{}: {}", c.link.display(), c.detail)).collect::<Vec<_>>(),
+                }))?);
+            } else {
+                println!("Removed {} link(s)", report.removed);
+                for conflict in &report.conflicts {
+                    eprintln!("conflict {}: {}", conflict.link.display(), conflict.detail);
+                }
+            }
+        }
+        "update" | "upgrade" => {
+            let ledger = crate::infrastructure::skill_fs::read_ledger(&ctx.paths.ledger)?;
+            let ids: Vec<String> = match skills_flag(args, "--source") {
+                Some(id) => vec![id],
+                None => ledger.sources.iter().map(|source| source.id.clone()).collect(),
+            };
+            if ids.is_empty() {
+                println!("Nothing to update.");
+                return Ok(());
+            }
+            let mut reports = Vec::new();
+            for id in ids {
+                reports.push(manager::update(&ctx, &id)?);
+            }
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&reports)?);
+            } else {
+                for report in &reports {
+                    println!(
+                        "{}: {} changed ({}), {} unchanged",
+                        report.source,
+                        report.changed.len(),
+                        report.changed.join(", "),
+                        report.unchanged.len()
+                    );
+                    for conflict in &report.conflicts {
+                        eprintln!("conflict {conflict}");
+                    }
+                }
+            }
+        }
+        "doctor" | "check" => {
+            let findings = manager::doctor(&ctx)?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&findings)?);
+            } else if findings.is_empty() {
+                println!("No problems found.");
+            } else {
+                for finding in &findings {
+                    println!("{:<10} {}  {}", finding.kind, finding.path, finding.detail);
+                }
+            }
+        }
+        "import" | "adopt" => {
+            let apply = args.iter().any(|arg| arg == "--apply");
+            let report = manager::import_npx(&ctx, apply)?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                if report.adopted.is_empty() {
+                    println!("Nothing to adopt.");
+                } else {
+                    for entry in &report.adopted {
+                        println!("{:<8} {:<24} {}", if apply { "adopted" } else { "would" }, entry.skill, entry.link);
+                    }
+                    if !apply {
+                        println!("\nRe-run with --apply to record them (nothing is rewritten either way).");
+                    }
+                }
+            }
+        }
+        "auth" => match skills_positional(args, 3).as_deref() {
+            Some("add") => {
+                use std::io::Read;
+                let host = skills_flag(args, "--host").unwrap_or_else(|| "github.com".to_string());
+                let label = skills_flag(args, "--label").unwrap_or_else(|| host.clone());
+                let mut token = String::new();
+                if args.iter().any(|arg| arg == "--token-stdin") {
+                    std::io::stdin().read_to_string(&mut token)?;
+                } else {
+                    return Err("pass --token-stdin (a token on the command line would be visible in `ps`)".into());
+                }
+                crate::infrastructure::skill_secrets::store_token(&host, &label, token.trim())?;
+                println!("Stored a token for {host} in the keyring");
+            }
+            Some("list") => {
+                let host = skills_flag(args, "--host").unwrap_or_else(|| "github.com".to_string());
+                let stored = crate::infrastructure::skill_secrets::stored_token(&host).is_some();
+                let ambient = crate::infrastructure::skill_secrets::ambient_token(&host);
+                print(&serde_json::json!({
+                    "host": host,
+                    "keyring": stored,
+                    "ambient": ambient.map(|credential| credential.source.label()),
+                }))?;
+            }
+            Some("forget") => {
+                let host = skills_flag(args, "--host").unwrap_or_else(|| "github.com".to_string());
+                let removed = crate::infrastructure::skill_secrets::forget_token(&host)?;
+                println!("{} {}", if removed { "Forgot" } else { "Nothing stored for" }, host);
+            }
+            Some("test") => {
+                let host = skills_flag(args, "--host").unwrap_or_else(|| "github.com".to_string());
+                match crate::infrastructure::skill_secrets::resolve_token(&host) {
+                    Some(credential) => println!("ok · token from {}", credential.source.label()),
+                    None => println!("no token for {host}; private repos will use git's own credentials"),
+                }
+            }
+            _ => {
+                return Err("usage: skills auth <add --token-stdin|list|test|forget> [--host github.com]".into());
+            }
+        },
+        _ => {
+            return Err(
+                "usage: astral-plasma skills <list|search|inspect|install|enable|disable|remove|update|doctor|import|source|auth>"
+                    .into(),
+            );
+        }
+    }
+    Ok(())
 }

@@ -53,6 +53,18 @@ QtObject {
     /// The app registry the daemon writes and the host reads.
     readonly property string appsRegistryPath: dataDir + "/apps.json"
 
+    /// `$XDG_STATE_HOME/astral-plasma` (or `~/.local/state/astral-plasma`): the skills ledger
+    /// and its journal live here (spec §4) — state, not data, because it records decisions.
+    readonly property string stateDir: {
+        const xdg = Quickshell.env("XDG_STATE_HOME");
+        const home = Quickshell.env("HOME");
+        const base = (xdg && xdg.length > 0) ? xdg : ((home || "") + "/.local/state");
+        return base + "/astral-plasma";
+    }
+
+    /// The skills ledger: the single record of which links Astral created.
+    readonly property string skillsLedgerPath: stateDir + "/skills/ledger.json"
+
     /// `scripts/` beside the binary, for the shell scripts the UI invokes.
     readonly property string scriptsDir: root + "/scripts"
 }

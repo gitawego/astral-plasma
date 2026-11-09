@@ -12,6 +12,10 @@ Item {
     id: root
 
     property bool testMode: false
+    /// `{ "kind:id": appId }` for enabled apps, pushed by the shell. Passed as data rather than
+    /// imported: a settings file importing the host module would be a second singleton
+    /// registration (spec C.13), and the offscreen runner cannot resolve it at all.
+    property var integrations: ({})
     property string activePage: (typeof Config !== "undefined" && Config.activeSettingsPage) ? Config.activeSettingsPage : "wallpaper"
     property var pageHistory: []
 
@@ -353,6 +357,22 @@ Item {
     Component.onCompleted: root.revealActiveNavPill()
 
     // Categories structure
+    /// The rail, minus the entries whose owning app is disabled (spec C.35: an app declares
+    /// its integration points, and disabling it removes all of them).
+    readonly property var visibleSections: {
+        const provided = root.integrations || ({});
+        const sections = [];
+        for (let section = 0; section < root.navigationSections.length; section++) {
+            const entry = root.navigationSections[section];
+            const items = (entry.items || []).filter(function (item) {
+                if (!item.requires) return true;
+                return !!provided[item.requires.kind + ":" + item.requires.id];
+            });
+            if (items.length > 0) sections.push({ title: entry.title, items: items });
+        }
+        return sections;
+    }
+
     readonly property var navigationSections: [
         {
             title: "Personalization",
@@ -388,6 +408,8 @@ Item {
                 { id: "status", label: "Status Icons", icon: "tune" },
                 { id: "dashboard", label: "Dashboard Tabs", icon: "calendar_month" },
                 { id: "downloads", label: "Downloads", icon: "download" },
+                { id: "skills", label: "Skills", icon: "school",
+                  requires: { kind: "settingsPage", id: "skills" } },
                 { id: "apps", label: "Apps", icon: "apps" }
             ]
         },
@@ -497,7 +519,7 @@ Item {
                         spacing: 12
 
                         Repeater {
-                            model: root.navigationSections
+                            model: root.visibleSections
                             delegate: Column {
                                 required property var modelData
                                 width: parent.width
@@ -695,6 +717,7 @@ Item {
                                 case "status": return statusPageComp;
                                 case "dashboard": return dashPageComp;
                                 case "downloads": return downloadsPageComp;
+                                case "skills": return skillsPageComp;
                                 case "apps": return appsPageComp;
                                 case "time": return timePageComp;
                                 case "system": return systemPageComp;
@@ -741,6 +764,10 @@ Item {
     Component { id: statusPageComp; StatusIconsPage {} }
     Component { id: dashPageComp; DashboardPage { testMode: root.testMode } }
     Component { id: downloadsPageComp; DownloadsPage { testMode: root.testMode } }
+    Component {
+        id: skillsPageComp
+        SkillsPage { testMode: root.testMode; integrations: root.integrations }
+    }
     Component { id: appsPageComp; AppsPage { testMode: root.testMode } }
     Component { id: timePageComp; TimePage { testMode: root.testMode } }
     Component { id: systemPageComp; SystemPage { testMode: root.testMode } }

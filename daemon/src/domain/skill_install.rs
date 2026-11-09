@@ -221,6 +221,16 @@ pub fn plan_install(
                     });
                     plan.ledger.push(LedgerOp::Upsert(record_for(want, target, &link, &target_text, LinkState::Linked, now)));
                 }
+                // An adopted farm holds real directories; adopting it again is a no-op unless the
+                // content changed.
+                (Probe::Directory, Some(row)) if matches!(row.origin, Origin::Adopted { .. }) => {
+                    if row.hash != want.skill.hash {
+                        plan.notes.push(format!(
+                            "'{}' was adopted and its content changed; review it, then re-adopt",
+                            want.skill.id
+                        ));
+                    }
+                }
                 (Probe::Directory, Some(row)) if target.style == crate::domain::skill_targets::LinkStyle::Copy => {
                     // A copy that is already ours: rewrite it only when the content changed.
                     if row.hash != want.skill.hash || row.origin != want.origin {
@@ -321,6 +331,12 @@ pub fn plan_set_state(
             (false, _, Probe::Missing) => {
                 plan.ledger.push(LedgerOp::Upsert(LinkRecord { state: desired_state, ..row.clone() }));
             }
+            // An adopted farm is a real directory: disabling it moves it to the trash, which is
+            // recoverable and leaves nothing for an agent to load.
+            (false, _, Probe::Directory) if matches!(row.origin, Origin::Adopted { .. }) => {
+                plan.ops.push(LinkOp::RemoveCopy { link: row.link.clone() });
+                plan.ledger.push(LedgerOp::Upsert(LinkRecord { state: desired_state, ..row.clone() }));
+            }
             // Disabling must not delete a real file or directory, even if it is where our link was.
             (false, _, Probe::Directory) | (false, _, Probe::File) => {
                 plan.conflicts.push(Conflict {
@@ -403,7 +419,7 @@ pub fn plan_remove(ledger: &Ledger, selector: &Selector, probe: &dyn FsProbe) ->
                     expected: row.target.clone(),
                 });
             }
-            Probe::Directory if row.target.starts_with("copy:") => {
+            Probe::Directory if row.target.starts_with("copy:") || matches!(row.origin, Origin::Adopted { .. }) => {
                 plan.ops.push(LinkOp::RemoveCopy { link: row.link.clone() });
             }
             Probe::Directory | Probe::File => {

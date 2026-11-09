@@ -84,7 +84,11 @@ impl SkillPaths {
         }
     }
 
-    /// The default locations, honouring `XDG_DATA_HOME` / `XDG_STATE_HOME` / `XDG_CACHE_HOME`.
+    /// The default locations: `<xdg>/astral-plasma/skills/…` (spec §4).
+    ///
+    /// The product name is part of the path. Without it the ledger landed in
+    /// `~/.local/state/skills`, which is somebody else's directory and — worse — not the path the
+    /// shell watches, so the page never noticed a change made by the CLI.
     pub fn from_env() -> Self {
         let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
         let data = std::env::var_os("XDG_DATA_HOME")
@@ -96,7 +100,11 @@ impl SkillPaths {
         let cache = std::env::var_os("XDG_CACHE_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join(".cache"));
-        Self::new(data, state, cache)
+        Self::new(
+            data.join("astral-plasma"),
+            state.join("astral-plasma"),
+            cache.join("astral-plasma"),
+        )
     }
 
     pub fn ensure(&self) -> DynResult<()> {
