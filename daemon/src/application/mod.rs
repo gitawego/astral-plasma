@@ -1,5 +1,7 @@
 pub mod app_catalog_service;
 pub mod app_install;
+pub mod app_launch;
+pub mod broker_service;
 pub mod preinstalled;
 pub mod app_sdk;
 pub mod app_service;

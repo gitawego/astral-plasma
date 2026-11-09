@@ -237,6 +237,7 @@ mod tests {
             requires: Default::default(),
             permissions: Vec::new(),
             settings: None,
+        test_suites: Vec::new(),
             distribution: None,
         }
     }

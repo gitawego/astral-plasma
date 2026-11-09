@@ -17,7 +17,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::application::app_install::{install_file, Installed};
-use crate::domain::app_catalog::{load_local, Catalog, CatalogEntry};
+use crate::domain::app_catalog::{CatalogBinding, load_local, Catalog, CatalogEntry};
 use crate::domain::app_compat::HostApi;
 use crate::domain::ports::DynResult;
 
@@ -68,13 +68,60 @@ impl CatalogSource {
     }
 }
 
+/// Fetch a URL over HTTP(S). `curl` is the transport because it is already a session
+/// dependency (the wallpaper engine uses it) and it handles TLS, proxies and redirects
+/// without vendoring a second TLS stack into a shell.
+pub fn fetch(url: &str, limit: usize) -> DynResult<Vec<u8>> {
+    let output = std::process::Command::new("curl")
+        .args([
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--proto",
+            "=https,http",
+            "--max-time",
+            "60",
+            "--max-filesize",
+            &limit.to_string(),
+            "--output",
+            "-",
+            url,
+        ])
+        .output()
+        .map_err(|error| format!("cannot run curl for {url}: {error}"))?;
+    if !output.status.success() {
+        let reason = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("cannot fetch {url}: {}", reason.trim()).into());
+    }
+    if output.stdout.len() > limit {
+        return Err(format!("{url} is larger than the {limit}-byte limit").into());
+    }
+    Ok(output.stdout)
+}
+
+/// The largest artifact the transport will accept (compressed bytes).
+pub const ARTIFACT_LIMIT: usize = 64 * 1024 * 1024;
+/// The largest catalog the transport will accept.
+pub const CATALOG_LIMIT: usize = 4 * 1024 * 1024;
+
 pub fn load(source: &CatalogSource) -> DynResult<Catalog> {
+    Ok(load_binding(source)?.catalog)
+}
+
+/// Load a catalog and report whether its signature was verified.
+pub fn load_binding(source: &CatalogSource) -> DynResult<CatalogBinding> {
     match source {
-        CatalogSource::File(path) => Ok(load_local(path)?.catalog),
-        CatalogSource::Url(_) => Err(
-            "remote catalogs need the artifact transport (curl + pinned key); use a local catalog for now"
-                .into(),
-        ),
+        CatalogSource::File(path) => load_local(path),
+        CatalogSource::Url(url) => {
+            let bytes = fetch(url, CATALOG_LIMIT)?;
+            // The signature lives beside the catalog, the way a local one does.
+            let signature = fetch(&format!("{url}.minisig"), 64 * 1024).ok();
+            crate::domain::app_catalog::load_remote(
+                &bytes,
+                signature.as_deref().map(|bytes| String::from_utf8_lossy(bytes).into_owned()).as_deref(),
+            )
+        }
     }
 }
 
@@ -96,34 +143,51 @@ pub fn install_from_catalog(
         return Err(Box::new(CatalogRefusal::Revoked { id: id.to_string() }));
     }
 
-    let artifact = resolve_artifact(entry, source)?;
-    let bytes = std::fs::read(&artifact)
-        .map_err(|err| format!("cannot read {}: {err}", artifact.display()))?;
+    let bytes = artifact_bytes(entry, source)?;
     let actual = crate::domain::app_bundle::sha256_hex(&bytes);
     let expected = entry.digest_hex();
     if actual != expected {
         return Err(Box::new(CatalogRefusal::DigestMismatch { expected, actual }));
     }
 
-    install_file(
+    // `install_file` reads a path, so a fetched artifact is staged inside the app root
+    // (same filesystem, removed immediately) rather than in a shared temp directory.
+    std::fs::create_dir_all(apps_root)?;
+    let staged = apps_root.join(format!(".download-{}.astralapp", entry.id));
+    std::fs::write(&staged, &bytes)?;
+    let outcome = install_file(
         data_dir,
         apps_root,
-        &artifact,
+        &staged,
         host,
         accept_permissions,
         allow_downgrade,
-    )
+    );
+    let _ = std::fs::remove_file(&staged);
+    outcome
+}
+
+/// The artifact's bytes: from disk when it is a path, over the network when it is a URL.
+///
+/// A remote artifact is verified by digest *before* it is written anywhere, so a tampered
+/// download never reaches the installer's staging directory.
+fn artifact_bytes(entry: &CatalogEntry, source: &CatalogSource) -> DynResult<Vec<u8>> {
+    let artifact = entry.artifact.trim();
+    if artifact.starts_with("http://") || artifact.starts_with("https://") {
+        let bytes = fetch(artifact, ARTIFACT_LIMIT)?;
+        let actual = crate::domain::app_bundle::sha256_hex(&bytes);
+        let expected = entry.digest_hex();
+        if actual != expected {
+            return Err(Box::new(CatalogRefusal::DigestMismatch { expected, actual }));
+        }
+        return Ok(bytes);
+    }
+    let path = resolve_artifact(entry, source)?;
+    Ok(std::fs::read(&path).map_err(|err| format!("cannot read {}: {err}", path.display()))?)
 }
 
 fn resolve_artifact(entry: &CatalogEntry, source: &CatalogSource) -> DynResult<PathBuf> {
     let artifact = entry.artifact.trim();
-    if artifact.starts_with("http://") || artifact.starts_with("https://") {
-        return Err(format!(
-            "'{}' is a URL; remote artifact transport is P5 remainder (the digest check already exists)",
-            entry.artifact
-        )
-        .into());
-    }
     let candidate = match source {
         CatalogSource::File(path) => path
             .parent()
@@ -327,10 +391,38 @@ mod tests {
     }
 
     #[test]
-    fn a_remote_catalog_is_refused_with_the_phase_it_needs() {
-        let fixture = Fixture::new();
+    fn a_remote_catalog_without_a_publisher_key_is_refused() {
+        let catalog = br#"{"schema":1,"apps":[]}"#;
+        let error = crate::domain::app_catalog::load_remote(catalog, Some("sig")).unwrap_err();
+        assert!(error.to_string().contains("publisherKey"), "got: {error}");
+    }
+
+    #[test]
+    fn a_remote_catalog_without_a_signature_is_refused() {
+        // A key alone proves nothing: without the detached signature anyone could serve
+        // their own catalog, digests included.
+        let catalog = br#"{"schema":1,"publisherKey":"RWQplaceholderKeyForTheExampleOnly","apps":[]}"#;
+        let error = crate::domain::app_catalog::load_remote(catalog, None).unwrap_err();
+        assert!(error.to_string().contains("minisig"), "got: {error}");
+    }
+
+    #[test]
+    fn a_bad_remote_signature_is_refused_rather_than_trusted() {
+        let catalog = br#"{"schema":1,"publisherKey":"RWQplaceholderKeyForTheExampleOnly","apps":[]}"#;
+        let error =
+            crate::domain::app_catalog::load_remote(catalog, Some("untrusted comment: nope\n"))
+                .unwrap_err();
+        assert!(!error.to_string().is_empty());
+    }
+
+    #[test]
+    fn a_url_catalog_goes_to_the_transport() {
+        // `.invalid` never resolves, so this exercises the transport without depending on
+        // the network: whatever the failure mode (DNS, TLS, missing curl), it names the URL
+        // and not "use a local catalog".
         let error = load(&CatalogSource::parse("https://example.invalid/catalog.json")).unwrap_err();
-        assert!(error.to_string().contains("local catalog"), "got: {error}");
-        assert!(!fixture.catalog_path().exists());
+        let text = error.to_string();
+        assert!(text.contains("example.invalid"), "got: {text}");
+        assert!(!text.contains("local catalog"), "got: {text}");
     }
 }

@@ -1,4 +1,7 @@
 pub mod app_bundle;
+pub mod appkit_api;
+pub mod broker;
+pub mod sandbox;
 pub mod app_catalog;
 pub mod app_compat;
 pub mod app_identity;

@@ -80,7 +80,8 @@ pub fn reconcile_preinstalled(data_dir: &Path, bundled_apps_dir: &Path) -> DynRe
             Err(_) => String::new(),
         };
 
-        let entry = entry_for(&manifest, &digest);
+        let mut entry = entry_for(&manifest, &digest);
+        entry.payload_digest = crate::domain::app_bundle::payload_digest(&dir).unwrap_or_default();
         upsert_entry(&mut registry, entry);
         outcome.added.push(manifest.id);
         changed = true;

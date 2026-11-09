@@ -147,7 +147,8 @@ pub fn install_file(
     }
 
     // ---- record last -------------------------------------------------------
-    let entry = entry_for(&manifest, &digest);
+    let mut entry = entry_for(&manifest, &digest);
+    entry.payload_digest = crate::domain::app_bundle::payload_digest(&target.join("payload"))?;
     upsert_entry(&mut registry, entry);
     write_registry(data_dir, &registry)?;
 

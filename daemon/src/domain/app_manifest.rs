@@ -25,6 +25,21 @@ pub const MANIFEST_SCHEMA: u32 = 1;
 pub const TRUST_LEVELS: [&str; 4] = ["official", "verified", "community", "local-dev"];
 pub const RUNTIMES: [&str; 2] = ["embedded", "hosted"];
 
+/// A well-known DBus name: dotted, at least two segments, no wildcards.
+///
+/// The launcher passes each of these to `xdg-dbus-proxy --talk=`, which is a per-name
+/// allow-list; a malformed entry would silently open nothing, so it is refused here.
+fn is_dbus_name(name: &str) -> bool {
+    let segments: Vec<&str> = name.split('.').collect();
+    segments.len() >= 2
+        && segments.iter().all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+}
+
 /// Capabilities a manifest may declare.
 ///
 /// P2 set: enough for the official app migration, and closed — an unknown
@@ -94,6 +109,11 @@ pub struct Requires {
     /// App ids this app needs at boot, resolved in dependency order.
     #[serde(default)]
     pub apps: Vec<String>,
+    /// Well-known DBus names the app wants to talk to. Declaring them is asking; the
+    /// registry records the consent and the launcher gives the app a proxy that can reach
+    /// exactly these names and nothing else.
+    #[serde(default, rename = "dbusNames")]
+    pub dbus_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,6 +156,12 @@ pub struct Manifest {
     pub permissions: Vec<String>,
     #[serde(default)]
     pub settings: Option<SettingsSpec>,
+    /// Test suites that cover this app, relative to the app directory or to the
+    /// repository's `tests/` directory. Declared so `astral app test` can run exactly the
+    /// suites that cover one app: that is what "individually testable" means for a feature
+    /// whose suites live beside its siblings.
+    #[serde(default, rename = "testSuites")]
+    pub test_suites: Vec<String>,
     /// `preinstalled` | `store`. Registry metadata; the manifest may omit it
     /// (the catalog decides) and the registry then records what it observed.
     #[serde(default)]
@@ -156,6 +182,10 @@ pub enum ManifestError {
     /// Trust decides integration: only official apps may run embedded.
     TrustCannotEmbed { trust: String, runtime: String },
     EmptyRoot,
+    UnknownSurfaceKind { kind: String },
+    InvalidDbusName { name: String },
+    InvalidTestSuite { suite: String },
+    SurfaceWithoutGeometry { root: String },
     AbsoluteRoot { root: String },
     EscapingRoot { root: String },
     RootNotQml { root: String },
@@ -205,6 +235,23 @@ impl fmt::Display for ManifestError {
                 "a {trust} app cannot declare runtime '{runtime}': only official apps may run embedded"
             ),
             Self::EmptyRoot => write!(f, "entry.root is empty"),
+            Self::InvalidTestSuite { suite } => write!(
+                f,
+                "testSuites entry '{suite}' must be a .qml file inside the app or the repo tests/ directory"
+            ),
+            Self::InvalidDbusName { name } => write!(
+                f,
+                "requires.dbusNames entry '{name}' is not a well-known DBus name \
+                 (reverse-DNS, e.g. org.freedesktop.Notifications)"
+            ),
+            Self::UnknownSurfaceKind { kind } => write!(
+                f,
+                "entry.surface.type '{kind}' is not a surface kind (toplevel or layer-shell)"
+            ),
+            Self::SurfaceWithoutGeometry { root } => write!(
+                f,
+                "entry.surface for '{root}' is a toplevel with no width or height"
+            ),
             Self::AbsoluteRoot { root } => {
                 write!(f, "entry.root '{root}' must be relative to the payload")
             }
@@ -380,6 +427,35 @@ impl Manifest {
                 root: root.to_string(),
             });
         }
+        // The surface kind is a closed set: a typo here would otherwise produce an app
+        // whose window never appears, with nothing in any log to say why.
+        for suite in &self.test_suites {
+            if !suite.ends_with(".qml") || suite.split('/').any(|segment| segment == "..") {
+                return Err(ManifestError::InvalidTestSuite { suite: suite.clone() });
+            }
+        }
+        for name in &self.requires.dbus_names {
+            if !is_dbus_name(name) {
+                return Err(ManifestError::InvalidDbusName { name: name.clone() });
+            }
+        }
+        if let Some(surface) = &self.entry.surface {
+            match surface.kind.as_str() {
+                "toplevel" | "layer-shell" => {}
+                other => {
+                    return Err(ManifestError::UnknownSurfaceKind {
+                        kind: other.to_string(),
+                    })
+                }
+            }
+            if surface.kind == "toplevel"
+                && (surface.width.unwrap_or(0) == 0 || surface.height.unwrap_or(0) == 0)
+            {
+                return Err(ManifestError::SurfaceWithoutGeometry {
+                    root: root.to_string(),
+                });
+            }
+        }
         Ok(())
     }
 
@@ -441,6 +517,7 @@ mod tests {
             requires: Requires::default(),
             permissions: vec!["session.read".to_string()],
             settings: None,
+            test_suites: Vec::new(),
             distribution: Some("store".to_string()),
         }
     }
@@ -551,6 +628,49 @@ mod tests {
         .unwrap();
         let error = Manifest::parse(&broken).unwrap_err().to_string();
         assert!(error.contains("version 'nope'"), "got: {error}");
+    }
+
+    #[test]
+    fn a_surface_kind_must_be_one_the_host_knows() {
+        let mut manifest = fixture();
+        manifest.entry.surface = Some(SurfaceSpec {
+            kind: "floating-popover".to_string(),
+            width: Some(300),
+            height: Some(200),
+            layer: None,
+            anchor: None,
+        });
+        let error = manifest.validate().unwrap_err().to_string();
+        assert!(error.contains("floating-popover"), "got: {error}");
+        assert!(error.contains("toplevel or layer-shell"), "got: {error}");
+    }
+
+    #[test]
+    fn a_toplevel_needs_geometry() {
+        let mut manifest = fixture();
+        manifest.entry.surface = Some(SurfaceSpec {
+            kind: "toplevel".to_string(),
+            width: None,
+            height: None,
+            layer: None,
+            anchor: None,
+        });
+        let error = manifest.validate().unwrap_err().to_string();
+        assert!(error.contains("no width or height"), "got: {error}");
+    }
+
+    #[test]
+    fn a_layer_shell_surface_needs_no_geometry() {
+        // A panel is anchored, not sized: requiring width/height would be wrong here.
+        let mut manifest = fixture();
+        manifest.entry.surface = Some(SurfaceSpec {
+            kind: "layer-shell".to_string(),
+            width: None,
+            height: None,
+            layer: Some("top".to_string()),
+            anchor: Some(vec!["top".to_string(), "left".to_string()]),
+        });
+        manifest.validate().expect("an anchored panel is valid");
     }
 
     #[test]

@@ -42,9 +42,16 @@ pub struct RegistryEntry {
     /// Layout version of the app's data on disk.
     #[serde(default, rename = "dataSchema")]
     pub data_schema: Option<u32>,
-    /// Payload digest this entry was verified against.
+    /// Digest of the artifact (the `.astralapp` the user installed).
     #[serde(default)]
     pub digest: String,
+    /// Digest of the extracted files, re-checked before every launch.
+    #[serde(default, rename = "payloadDigest")]
+    pub payload_digest: String,
+    /// DBus names the user consented to. The launcher opens exactly these through the
+    /// proxy; a manifest edit after install cannot widen them.
+    #[serde(default, rename = "dbusNames")]
+    pub dbus_names: Vec<String>,
     /// Versions that must never be retried (a failed core-app update).
     #[serde(default)]
     pub blocked: Vec<String>,
@@ -276,9 +283,11 @@ pub fn entry_for(manifest: &Manifest, digest: &str) -> RegistryEntry {
         auto_update: manifest.is_official(),
         data_schema: manifest.data_schema,
         digest: digest.to_string(),
+        payload_digest: String::new(),
         blocked: Vec::new(),
         installed_at: None,
         granted: manifest.permissions.clone(),
+        dbus_names: manifest.requires.dbus_names.clone(),
     }
 }
 
@@ -325,6 +334,7 @@ mod tests {
             requires: Default::default(),
             permissions: vec!["session.read".to_string()],
             settings: None,
+        test_suites: Vec::new(),
             distribution: distribution.map(str::to_string),
         }
     }
@@ -359,6 +369,8 @@ mod tests {
                     auto_update: true,
                     data_schema: Some(1),
                     digest: "sha256:a".to_string(),
+                    payload_digest: String::new(),
+                    dbus_names: Vec::new(),
                     blocked: Vec::new(),
                     installed_at: None,
                     granted: Vec::new(),
@@ -374,6 +386,8 @@ mod tests {
                     auto_update: false,
                     data_schema: None,
                     digest: "sha256:b".to_string(),
+                    payload_digest: String::new(),
+                    dbus_names: Vec::new(),
                     blocked: vec!["1.1.0".to_string()],
                     installed_at: None,
                     granted: vec!["session.read".to_string()],
@@ -479,6 +493,8 @@ mod tests {
             auto_update: false,
             data_schema: None,
             digest: format!("sha256:{version}"),
+            payload_digest: String::new(),
+                    dbus_names: Vec::new(),
             blocked: Vec::new(),
             installed_at: None,
             granted: Vec::new(),

@@ -144,9 +144,24 @@ pub fn lint_dir(root: &Path) -> DynResult<Vec<String>> {
                         number + 1
                     ));
                 }
-                if target.contains("Kernel/config") || target.contains("Kernel/services") {
+                if target.contains("Kernel/config") {
                     problems.push(format!(
                         "{relative}:{}: imports {target} - an app cannot reach the kernel's singletons",
+                        number + 1
+                    ));
+                }
+                // Kernel *services* are a trust question, not a style question: an official
+                // embedded app is trusted with the kernel's ports (that is how a session
+                // surface reads windows), a community app is not. This must agree with
+                // scripts/check_app_boundaries.py, which is why both read the manifest's
+                // trust tier rather than hardcoding the rule.
+                let official = manifest
+                    .as_ref()
+                    .map(|manifest| manifest.is_official())
+                    .unwrap_or(false);
+                if target.contains("Kernel/services") && !official {
+                    problems.push(format!(
+                        "{relative}:{}: a non-official app may not import {target} (Astral.AppKit only)",
                         number + 1
                     ));
                 }
@@ -240,8 +255,14 @@ fn manifest_template(id: &str, template: Template) -> String {
     // The entry object is built separately: a surface needs geometry, a service does
     // not, and string-splicing JSON is how manifests end up with a missing comma.
     let entry = match template {
-        Template::Surface | Template::LayerSurface => {
+        Template::Surface => {
             r#"{ "root": "shell.qml", "surface": { "type": "toplevel", "width": 420, "height": 260 } }"#
+        }
+        // A panel is anchored to an edge and owns no geometry: saying `toplevel` here
+        // produced a layer-shell window described as a floating one, which the host would
+        // have sized incorrectly.
+        Template::LayerSurface => {
+            r#"{ "root": "shell.qml", "surface": { "type": "layer-shell", "layer": "top", "anchor": ["top", "left", "right"] } }"#
         }
         Template::Service => r#"{ "root": "shell.qml" }"#,
     };
@@ -502,6 +523,54 @@ mod tests {
             );
             pack_dir(&target, Some(dir.path()))
                 .unwrap_or_else(|err| panic!("{} must pack: {err}", template.name()));
+        }
+    }
+
+    #[test]
+    fn a_panel_template_declares_a_panel_and_not_a_floating_window() {
+        // The template's manifest and its QML must agree, or the host sizes the window
+        // from the wrong description and the panel renders at 420x260.
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("tide");
+        create_app("io.github.alice.tide", Template::LayerSurface, &target).unwrap();
+        let manifest = std::fs::read_to_string(target.join("manifest.json")).unwrap();
+        assert!(manifest.contains(r#""type": "layer-shell""#), "got: {manifest}");
+        assert!(!manifest.contains(r#""type": "toplevel""#));
+        let shell = std::fs::read_to_string(target.join("shell.qml")).unwrap();
+        assert!(shell.contains("WlrLayershell"));
+
+        let surface = std::fs::read_to_string(target.join("shell.qml")).unwrap();
+        assert!(surface.contains("WlrLayershell.layer"));
+    }
+
+    #[test]
+    fn kernel_services_are_allowed_only_for_official_apps() {
+        // The two linters (this one and scripts/check_app_boundaries.py) previously
+        // disagreed here, so `astral app test` refused a dashboard that `make test`
+        // accepted. Trust tier, read from the manifest, is the single rule.
+        for (trust, expected) in [("community", true), ("official", false)] {
+            let dir = tempfile::tempdir().unwrap();
+            let target = dir.path().join("app");
+            create_app("io.github.alice.clock", Template::Surface, &target).unwrap();
+            let manifest = std::fs::read_to_string(target.join("manifest.json"))
+                .unwrap()
+                .replace("\"trust\": \"community\"", &format!("\"trust\": \"{trust}\""));
+            std::fs::write(target.join("manifest.json"), manifest).unwrap();
+            std::fs::write(
+                target.join("ports.qml"),
+                "import QtQuick\nimport \"../../Kernel/services/WindowService.qml\"\nItem { }\n",
+            )
+            .unwrap();
+
+            let problems = lint_dir(&target).unwrap();
+            let mentions_services = problems
+                .iter()
+                .any(|problem| problem.contains("Kernel/services"));
+            assert_eq!(
+                mentions_services, expected,
+                "{trust} app: services import must be {}; got {problems:?}",
+                if expected { "refused" } else { "allowed" }
+            );
         }
     }
 

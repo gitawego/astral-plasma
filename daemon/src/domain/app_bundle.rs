@@ -187,6 +187,37 @@ impl Bundle {
     }
 }
 
+/// SHA-256 over an extracted payload: sorted relative paths plus their bytes.
+///
+/// The artifact digest covers the archive the user consented to; this covers what is on
+/// disk afterwards, which is what a launch actually executes. Install records it, launch
+/// re-checks it (spec §7.3).
+pub fn payload_digest(root: &Path) -> DynResult<String> {
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        for entry in std::fs::read_dir(&current)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+
+    let mut hasher = Sha256::new();
+    for file in files {
+        let relative = file.strip_prefix(root).unwrap_or(&file);
+        hasher.update(relative.to_string_lossy().replace('\\', "/").as_bytes());
+        hasher.update([0u8]);
+        hasher.update(std::fs::read(&file)?);
+        hasher.update([0u8]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
 pub fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);

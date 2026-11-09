@@ -2847,6 +2847,168 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
                 println!("  kept app data (--purge removes it)");
             }
         }
+        "launch" => {
+            use crate::application::app_launch::{prepare, runtime_socket};
+            use crate::application::broker_service::{serve, BrokerConfig};
+            use crate::domain::app_compat::HostApi;
+
+            let Some(id) = args.get(3) else {
+                return Err("usage: astral app launch <app-id> [--print-command]".into());
+            };
+            let print_only = args.iter().any(|arg| arg == "--print-command");
+
+            let data_dir = branding::data_dir();
+            let apps_root = data_dir.join("apps");
+            let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+            let host = HostApi::current(running_quickshell_version().as_deref());
+            let socket = runtime_socket(&runtime_dir, id);
+
+            let token = crate::application::app_launch::mint_token(id, now_ms());
+            // Bind the broker first: the plan refuses a socket nobody listens on.
+            let registry = read_registry(&data_dir)?;
+            let granted = registry
+                .get(id)
+                .map(|entry| entry.granted.iter().cloned().collect())
+                .unwrap_or_default();
+            let _broker = serve(
+                &socket,
+                BrokerConfig {
+                    app_id: id.clone(),
+                    token: token.clone(),
+                    granted,
+                    audit_path: data_dir.join("broker-audit.log"),
+                },
+                Box::new(|method: &str, _params: &serde_json::Value| match method {
+                    // The window list comes from the daemon's own session port.
+                    "session.windows" => {
+                        let port = crate::infrastructure::desktop_factory::create_window_manager_port();
+                        match port.query_windows() {
+                            Ok((windows, _active)) => Some(serde_json::json!(windows)),
+                            Err(_) => None,
+                        }
+                    }
+                    _ => None,
+                }),
+            )?;
+
+            // The DBus proxy comes up before the plan for the same reason the broker
+            // does: an app that dials a socket nobody serves caches the failure.
+            let dbus_socket = crate::application::app_launch::dbus_socket(&runtime_dir, id);
+            let mut dbus_proxy = None;
+            if let Some(entry) = registry.get(id) {
+                if !entry.dbus_names.is_empty() {
+                    let bus = std::env::var("DBUS_SESSION_BUS_ADDRESS")
+                        .map_err(|_| "DBUS_SESSION_BUS_ADDRESS is unset; cannot proxy DBus")?;
+                    dbus_proxy = Some(crate::application::app_launch::start_dbus_proxy(
+                        &bus,
+                        &dbus_socket,
+                        &entry.dbus_names,
+                    )?);
+                }
+            }
+
+            let launch = prepare(
+                &data_dir,
+                &apps_root,
+                &sdk_package_dir(),
+                &runtime_dir,
+                &socket,
+                if dbus_proxy.is_some() { Some(&dbus_socket) } else { None },
+                id,
+                &host,
+                &token,
+            )?;
+
+            // The broker must be listening before the app starts (and before we print the
+            // command): a launch that points at a socket nobody serves looks like a
+            // sandbox bug to the app.
+            let registry = read_registry(&data_dir)?;
+            let granted = registry
+                .get(id)
+                .map(|entry| entry.granted.iter().cloned().collect())
+                .unwrap_or_default();
+            let config = BrokerConfig {
+                app_id: id.clone(),
+                token: launch.token.clone(),
+                granted,
+                audit_path: launch.audit_path.clone(),
+            };
+            let _broker = serve(
+                &socket,
+                config,
+                Box::new(|method: &str, _params: &serde_json::Value| match method {
+                    // The window list comes from the daemon's own session port.
+                    "session.windows" => {
+                        let port = crate::infrastructure::desktop_factory::create_window_manager_port();
+                        match port.query_windows() {
+                            Ok((windows, _active)) => Some(serde_json::json!(windows)),
+                            Err(_) => None,
+                        }
+                    }
+                    _ => None,
+                }),
+            )?;
+
+            if print_only {
+                println!("{}", launch.plan.argv.join(" "));
+                if let Some(mut proxy) = dbus_proxy.take() {
+                    let _ = proxy.kill();
+                }
+                let _ = std::fs::remove_file(&socket);
+                let _ = std::fs::remove_file(&dbus_socket);
+                return Ok(());
+            }
+
+            let mut child = std::process::Command::new(&launch.plan.argv[0])
+                .args(&launch.plan.argv[1..])
+                .spawn()?;
+            let status = child.wait()?;
+            if let Some(mut proxy) = dbus_proxy.take() {
+                let _ = proxy.kill();
+                let _ = proxy.wait();
+            }
+            let _ = std::fs::remove_file(&socket);
+            let _ = std::fs::remove_file(&dbus_socket);
+            if !status.success() {
+                return Err(format!("app exited with {status}").into());
+            }
+        }
+        "api" => {
+            use crate::domain::app_compat::{API_LEVEL_HISTORY, APP_API_FLOOR, APP_API_LEVEL};
+            use crate::domain::appkit_api;
+
+            let write = args.iter().any(|arg| arg == "--write");
+            let dir = appkit_dir()?;
+            let surface = appkit_api::surface(&dir)?;
+            appkit_api::validate_deprecations(&surface, APP_API_FLOOR)?;
+
+            let mut releases = std::collections::BTreeMap::new();
+            for (level, release) in API_LEVEL_HISTORY {
+                releases.insert(level, release.to_string());
+            }
+            let document = appkit_api::render(&surface, APP_API_LEVEL, APP_API_FLOOR, &releases);
+            let snapshot: String = surface.members.iter().map(|m| m.line() + "\n").collect();
+
+            if write {
+                let docs = appkit_dir()?
+                    .ancestors()
+                    .find(|dir| dir.join("docs").is_dir())
+                    .map(|root| root.join("docs/APPKIT-API.md"))
+                    .ok_or("cannot find the repository's docs directory")?;
+                std::fs::write(&docs, &document)?;
+                let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/fixtures/appkit-surface.txt");
+                if let Some(parent) = fixture.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&fixture, &snapshot)?;
+                println!("wrote {} and {}", docs.display(), fixture.display());
+            } else {
+                print!("{snapshot}");
+            }
+        }
         "dev" => {
             use crate::application::app_sdk::lint_dir;
 
@@ -2891,6 +3053,13 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
                 }
                 return Err(format!("{} lint problem(s); not running suites", problems.len()).into());
             }
+            // Suites that live beside the app's siblings in the repo's tests/ directory are
+            // declared in the manifest, so one app can be tested on its own without moving
+            // files or duplicating coverage.
+            let declared = {
+                let raw = std::fs::read(dir.join("manifest.json"))?;
+                crate::domain::app_manifest::Manifest::parse(&raw)?.test_suites
+            };
             let tests_dir = dir.join("tests");
             let mut suites: Vec<std::path::PathBuf> = std::fs::read_dir(&tests_dir)
                 .map(|entries| {
@@ -2906,9 +3075,24 @@ async fn run_app_command(args: &[String]) -> DynResult<()> {
                         .collect()
                 })
                 .unwrap_or_default();
+            for suite in &declared {
+                let candidates = [dir.join(suite), dir.join("tests").join(suite)];
+                let root_candidate = dir
+                    .ancestors()
+                    .map(|ancestor| ancestor.join("tests").join(suite))
+                    .find(|path| path.is_file());
+                let resolved = candidates
+                    .into_iter()
+                    .find(|path| path.is_file())
+                    .or(root_candidate)
+                    .ok_or_else(|| format!("{}: declared suite '{suite}' does not exist", dir.display()))?;
+                if !suites.contains(&resolved) {
+                    suites.push(resolved);
+                }
+            }
             suites.sort();
             if suites.is_empty() {
-                println!("{}: no suites in tests/", dir.display());
+                println!("{}: no suites in tests/ and none declared", dir.display());
                 return Ok(());
             }
             let mut failed = 0;
@@ -3127,6 +3311,41 @@ fn catalog_arg(args: &[String]) -> Option<String> {
         .position(|arg| arg == "--catalog")
         .and_then(|index| args.get(index + 1))
         .cloned()
+}
+
+/// The AppKit sources: the installed package, or this checkout.
+fn appkit_dir() -> DynResult<std::path::PathBuf> {
+    let dir = sdk_package_dir().join("Astral/AppKit");
+    if dir.is_dir() {
+        return Ok(dir);
+    }
+    Err(format!("AppKit is missing at {}", dir.display()).into())
+}
+
+/// The directory that contains `Astral/AppKit`: the installed package, or the checkout's
+/// `modules/` tree (a dev run has no extracted package with the SDK in it).
+fn sdk_package_dir() -> std::path::PathBuf {
+    let packaged = branding::default_package_dir();
+    if packaged.join("Astral/AppKit").is_dir() {
+        return packaged;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().skip(1) {
+            let candidate = ancestor.join("modules");
+            if candidate.join("Astral/AppKit").is_dir() {
+                return candidate;
+            }
+        }
+    }
+    packaged
+}
+
+/// Milliseconds since the epoch, for audit lines and rate limiting.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 fn app_dir_arg(args: &[String], index: usize) -> DynResult<std::path::PathBuf> {

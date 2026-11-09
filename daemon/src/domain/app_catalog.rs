@@ -138,6 +138,35 @@ impl Catalog {
     }
 }
 
+/// Read a catalog from bytes fetched somewhere else (an HTTP origin).
+///
+/// A remote catalog **must** declare a publisher key and ship a detached signature: an
+/// unsigned catalog over an unauthenticated transport is a list of digests anyone can
+/// replace, digests included. The local loader stays permissive for a developer's own
+/// unsigned catalog, which never leaves the machine.
+pub fn load_remote(bytes: &[u8], signature: Option<&str>) -> DynResult<CatalogBinding> {
+    let catalog = Catalog::parse(bytes)?;
+    let Some(key) = catalog.publisher_key.as_deref() else {
+        return Err(
+            "a remote catalog must declare publisherKey; refusing an unsigned catalog over the network"
+                .into(),
+        );
+    };
+    let Some(signature) = signature else {
+        return Err(
+            "a remote catalog must ship a detached .minisig signature; refusing an unsigned catalog"
+                .into(),
+        );
+    };
+    if !crate::infrastructure::update_source::verify_signature(bytes, signature, key)? {
+        return Err("remote catalog signature did not verify".into());
+    }
+    Ok(CatalogBinding {
+        catalog,
+        signed: true,
+    })
+}
+
 /// Read a catalog from disk (and verify its detached signature when it declares a key).
 pub fn load_local(path: &Path) -> DynResult<CatalogBinding> {
     let bytes = std::fs::read(path)?;
