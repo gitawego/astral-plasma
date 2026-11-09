@@ -24,6 +24,7 @@ Allowed: Qt*, Quickshell*, `Astral.AppKit`, `Kernel/theme`, `Kernel/components`
 Usage:
     check_app_boundaries.py            # report violations, exit 1 if any
     check_app_boundaries.py --verbose  # also print the files it checked
+    check_app_boundaries.py --app Media  # only one app (the CI matrix runs one per job)
 """
 
 from __future__ import annotations
@@ -91,6 +92,12 @@ def main(argv: list[str]) -> int:
     problems: list[str] = []
 
     app_dirs = apps()
+    if "--app" in argv:
+        wanted = argv[argv.index("--app") + 1]
+        app_dirs = [d for d in app_dirs if d.name == wanted]
+        if not app_dirs:
+            print(f"no app named '{wanted}' in {APPS}", file=sys.stderr)
+            return 1
     for app_dir in app_dirs:
         for path in sorted(app_dir.rglob("*")):
             if path.suffix not in {".qml", ".js"}:

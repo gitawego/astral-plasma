@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "io.github.astral.tide",
+  "name": "Tide",
+  "version": "0.1.0",
+  "kernelApi": 1,
+  "dataSchema": 1,
+  "trust": "community",
+  "runtime": "hosted",
+  "publisher": { "name": "Your Name" },
+  "entry": { "root": "shell.qml", "surface": { "type": "layer-shell", "layer": "top", "anchor": ["top", "left", "right"] } },
+  "requires": { "capabilities": [], "qtModules": [], "apps": [] },
+  "permissions": [],
+  "settings": null,
+  "distribution": "store"
+}

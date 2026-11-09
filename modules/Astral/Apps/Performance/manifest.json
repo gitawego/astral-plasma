@@ -11,5 +11,10 @@
   "entry": { "root": "PerformanceApp.qml", "dashboardTab": "performance" },
   "requires": { "capabilities": [], "qtModules": [], "apps": [] },
   "permissions": ["session.read"],
-  "distribution": "preinstalled"
+  "distribution": "preinstalled",
+  "testSuites": [
+    "tst_performance_monitoring_lifecycle.qml",
+    "tst_performance_tab_motion.qml",
+    "tst_performance_tab_telemetry.qml"
+  ]
 }

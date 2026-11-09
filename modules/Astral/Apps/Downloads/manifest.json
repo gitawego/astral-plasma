@@ -11,5 +11,14 @@
   "entry": { "root": "DownloadsApp.qml", "dashboardTab": "downloads" },
   "requires": { "capabilities": [], "qtModules": [], "apps": [] },
   "permissions": ["files.read", "files.write", "network"],
-  "distribution": "preinstalled"
+  "distribution": "preinstalled",
+  "testSuites": [
+    "tst_downloads_parts.qml",
+    "tst_downloads_settings_panel.qml",
+    "tst_downloads_settings.qml",
+    "tst_downloads_tab.qml",
+    "tst_downloads_window_layout.qml",
+    "tst_downloads_window.qml",
+    "tst_download_border_effect.qml"
+  ]
 }

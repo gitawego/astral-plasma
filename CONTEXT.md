@@ -129,3 +129,90 @@ A named user outcome that may have different implementations on different backen
 - An environment profile configures a backend; it is not a second backend.
 - A hosted profile runs inside an existing desktop host and does not start a competing shell root.
 - A standalone profile owns its host and therefore requires explicit lifecycle responsibility.
+
+## App Platform
+
+The second bounded context: how a feature becomes a unit that can be installed, versioned,
+disabled and removed without the shell being rebuilt around it.
+
+### App
+
+A unit of desktop functionality with an identity (`reverse.dns.id`), a version, a declared
+API level, and a manifest. An app is not a directory of QML: the directory is where its
+payload happens to live.
+
+### App Manifest
+
+The app's whole interface with the platform: identity, version, API level, runtime, trust
+tier, entry surface, declared permissions and prerequisites. Declaring a permission is
+asking for it; it is not a grant.
+
+### Hosted App
+
+An app the platform launches as its own process inside a sandbox, with only `Astral.AppKit`
+mounted and one broker socket to talk through. Hosted is the default and the only mode for
+apps that are not official.
+
+### Embedded App
+
+An official app whose entry component the shell instantiates in-process, sharing the
+kernel's registrations. Embedded apps are trusted with kernel ports because that is how a
+session surface reads windows; the boundary linter enforces that the trust is official.
+
+### App Host
+
+The kernel service that turns the registry into a running plan: which apps exist, which are
+enabled, in what order they mount, and what state each is injected with.
+
+### App Registry
+
+The crash-safe record of what is installed: id, version, API level, digest, grants, enabled
+state, and the reason an app was disabled. The registry is authoritative — never the
+manifest on disk, which the user did not approve last.
+
+### Payload
+
+The extracted files an app actually runs. Its digest is recorded at install and re-checked
+before every launch, because "what runs is what the user consented to" must be checkable.
+
+### Artifact
+
+The packed `.astralapp` file a user installs. Its digest is verified against the catalog
+entry that named it.
+
+### Grant
+
+A permission the user consented to for one app. Grants live in the registry and are read by
+the broker at request time.
+
+### Sandbox Plan
+
+The `bwrap` invocation and environment for one launch, derived from the registry and the
+measured mount set. A plan is data, so it is testable without a session.
+
+### Broker
+
+The single socket through which a hosted app asks the shell to do something. It has a closed
+method catalogue, one required permission per method, a per-app rate limit, and an audit
+line for every request including the refused ones.
+
+### App API Level
+
+An integer naming a version of the AppKit contract. An app declares the level it was built
+against; the shell publishes the level it implements and the oldest it still supports.
+
+### API Floor
+
+The oldest API level the shell still loads. Raising it is a compatibility decision with a
+written procedure, not a cleanup.
+
+### Trust Tier
+
+How much of the platform an app is allowed to reach: `official` (may embed), `partner`, or
+`community` (hosted only).
+
+### Compatible / Disabled
+
+An app is compatible when its declared level lies inside the supported window. Outside it,
+the app is disabled with a recorded reason and an actionable warning — never silently
+dropped and never half-mounted.

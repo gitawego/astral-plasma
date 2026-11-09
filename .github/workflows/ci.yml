@@ -107,3 +107,145 @@ jobs:
       - name: Run QML test suites (offscreen)
         run: |
           bash tests/run_qml_tests.sh
+
+  app-matrix:
+    name: App Matrix (discovery)
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.discover.outputs.apps }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Discover apps from the platform index
+        id: discover
+        # The matrix is read from the same index the shell reads, so a new app joins CI by
+        # existing rather than by someone remembering to edit this workflow.
+        run: |
+          mat=$(python3 - <<'PY'
+          import json
+          index = json.load(open("modules/Astral/Apps/index.json"))
+          apps = [{"dir": a["dir"], "id": a["id"]} for a in index["apps"]]
+          print(json.dumps({"include": apps}, separators=(",", ":")))
+          PY
+          )
+          echo "apps=$mat" >> "$GITHUB_OUTPUT"
+
+  apps:
+    name: App ${{ matrix.app.id }}
+    needs: app-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.app-matrix.outputs.apps) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libasound2-dev python3
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            daemon/target/
+          key: ${{ runner.os }}-cargo-apps-${{ hashFiles('daemon/Cargo.lock') }}
+
+      - name: Build the platform CLI
+        run: cargo build --manifest-path daemon/Cargo.toml
+
+      - name: Lint ${{ matrix.app.dir }}
+        run: ./daemon/target/debug/astral-plasma app lint "modules/Astral/Apps/${{ matrix.app.dir }}"
+
+      - name: Boundary check ${{ matrix.app.dir }}
+        run: python3 scripts/check_app_boundaries.py --app "${{ matrix.app.dir }}"
+
+  platform-changed:
+    name: Platform Changed (discovery)
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the platform itself changed
+        # The platform is the kernel, the SDK, the host contract, and the tooling that
+        # packs and installs apps. A change there deserves the full distribution check.
+        id: diff
+        run: |
+          base="origin/${{ github.base_ref }}"
+          if [ -z "${{ github.base_ref }}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$base"...HEAD)
+          echo "$files" | head -50
+          if echo "$files" | grep -qE '^(modules/Astral/Kernel|modules/Astral/AppKit|shell\.qml|daemon/src/(domain/(app_|broker|sandbox)|application/(app_|broker|preinstalled))|scripts/(gen_apps_index|check_app_boundaries)\.py|sdk/)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  platform-e2e:
+    name: Platform End-to-End
+    needs: platform-changed
+    if: needs.platform-changed.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libasound2-dev python3 bubblewrap
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            daemon/target/
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('daemon/Cargo.lock') }}
+
+      - name: Build the platform CLI
+        run: cargo build --manifest-path daemon/Cargo.toml
+
+      - name: API freeze gate
+        run: cargo test --manifest-path daemon/Cargo.toml --test test_appkit_api
+
+      - name: Pack, install and plan the SDK example
+        # The whole distribution path, headless: the example must pack, install, and produce
+        # a sandbox plan. A failure here means an app author's first hour is broken.
+        run: |
+          set -eu
+          BIN=$PWD/daemon/target/debug/astral-plasma
+          WORK=$(mktemp -d)
+          export XDG_DATA_HOME="$WORK/data"
+          mkdir -p "$WORK/out"
+          "$BIN" app pack sdk/examples/hello --out "$WORK/out"
+          "$BIN" app install "$WORK/out"/io.github.astral.hello-*.astralapp
+          "$BIN" app launch io.github.astral.hello --print-command > "$WORK/plan.txt"
+          grep -q -- "--unshare-all" "$WORK/plan.txt"
+          grep -q -- "-p /app" "$WORK/plan.txt"
+          if grep -q -- "--share-net" "$WORK/plan.txt"; then
+            echo "the example declared no network permission but the plan shares the network"
+            exit 1
+          fi
+          "$BIN" app api > /dev/null
+          echo "plan:"; cat "$WORK/plan.txt"

@@ -171,6 +171,9 @@ app owns ordinary compositor windows.
 | A26 | Data compatibility | `dataSchema` integer in the manifest, recorded at install, re-checked at launch; a build that cannot read the recorded schema never runs. |
 | A27 | Compatibility constants | One Rust constant pair generated into QML; drift fails CI; no semver range parser. |
 | A28 | Core app failure | A core app that fails to load is reverted to its baseline, the failure is recorded, and the failed version is blocked instead of retried. |
+| A34 | One rule, one reader | App linters read the manifest's trust tier rather than encoding the rule twice; an official app may use kernel services, a community app may not. `astral app test` runs the app's declared `testSuites`, so "individually testable" is checked rather than asserted. |
+| A32 | Sandbox and broker boundaries | Mounts are planned from the registry (never from the manifest), only `Astral/AppKit` is exposed as an SDK, and every broker method maps to exactly one permission read from the registry. Declaring a permission is asking; granting is consent. Each launch gets one socket, one one-shot token and its own audit line. |
+| A33 | Payload integrity is re-checked at launch | The registry records a digest of the extracted payload (distinct from the artifact digest); a launch recomputes it and refuses on mismatch, so an edited payload never runs under the user's earlier consent. |
 | A31 | Settings editor is not an app | The settings editor owns the settings document; it stays a shell surface and is the only Config consumer, because a generic settings port cannot preserve QML binding reactivity. The dock also stays shell chrome. |
 | A29 | Compatibility failure | An app that no longer fits the window is auto-updated when a compatible version exists, otherwise disabled with a recorded reason and an actionable warning; never uninstalled, never half-loaded. |
 | A30 | Forced-update consent | An auto-update may not add permissions; a candidate that does is not applied and the app disables instead. |
@@ -1232,8 +1235,11 @@ Also fixed while wiring it: `run.sh` refreshed `bin/astral-plasma` only when the
 *missing*, so a stale copy silently ran every daemon command and made new subcommands look
 unimplemented. It now copies whichever build (release or debug) is newest.
 
-Still open in P3/P5: remote artifact transport and the official inline catalog, zstd +
-minisign *signing*, and the remaining app migrations.
+Landed after this section was written: remote artifact transport with a required
+signature over the network (C.28), the sandbox and broker (C.24), DBus proxying (C.26), and
+P7 hardening. Still deliberately deferred: zstd compression (a codec dependency for a
+uarchive that already packs a 2-file app in milliseconds), minisign *signing* (a private key
+the daemon must not own), and re-migrating `overview`.
 
 - `astral app new/dev/test/lint/pack` using the installed package as SDK.
 - Templates and `sdk/examples/hello`.
@@ -1300,13 +1306,15 @@ package is refused with the sandbox reason.
 - `app publish` output and submission docs.
 
 **Gate**: community fixture app cannot read `$HOME`, open the network without
-`network`, import `Astral.Kernel`, load a `.so`, or call an undeclared method;
-granting a permission makes exactly that operation work; crash leaves the shell
-running.
+`network`, import `Astral.Kernel`, reach host files from native code (C.27), or call an
+undeclared method; granting a permission makes exactly that operation work; a DBus name
+nobody consented to is refused by the proxy (C.26); crash leaves the shell running.
 
-### P7 — Platform hardening (M, optional)
+### P7 — Platform hardening (M) — **landed**
 
-- Remove shims; API freeze report; deprecation policy tests.
+- ~~Remove shims~~ (none existed: the platform never shipped a compatibility shim; the
+  only `legacy_layout` code is a data migration, not an API surface); API freeze report;
+  deprecation policy tests.
 - `docs/APPKIT-API.md` level history, deprecation table, and the floor-bump
   procedure; app release checklist (version bump, changelog, catalog entry).
 - CI matrix per app/catalog; cached `qml6`; `platform-e2e` on PRs touching the
@@ -1314,6 +1322,17 @@ running.
 - `sdk/docs` site source, examples, app-author checklist, `CONTEXT.md` and
   `ARCHITECTURE.md` updates.
 - Optional crate split if build time justifies it.
+
+**Landed as:** `domain::appkit_api` (surface parser, deprecation markup, drift check,
+document renderer) + `astral-plasma app api [--write]`, the generated
+[`APPKIT-API.md`](APPKIT-API.md), `daemon/tests/test_appkit_api.rs` (six gates: recorded
+surface, generated document, deprecation policy, type coverage, level history, and a
+negative test proving the drift check fires), `daemon/tests/test_sdk_examples.rs` (every
+example must lint, pack, install and record a payload digest), a per-app CI matrix read
+from `modules/Astral/Apps/index.json`, a `platform-e2e` job gated on a real changed-path
+diff, `sdk/README.md` (author guide + checklist), `sdk/examples/tide` (the panel example),
+the platform glossary in `CONTEXT.md`, and [`ARCHITECTURE.md`](ARCHITECTURE.md).
+`scripts/check_app_boundaries.py --app <dir>` exists so the matrix can run one app per job.
 
 ---
 
@@ -1953,3 +1972,191 @@ their apps do).
 The Apps page therefore lists the apps the platform manages (nine after the launcher), and the
 editor says so in its own header — a user does not have to wonder whether the settings app is
 uninstalled.
+
+### C.24 The sandbox and the broker, measured
+
+Two pure planners carry P6, both testable without a session:
+
+* `domain::sandbox::plan` builds the `bwrap` line: `--unshare-all`, then read-only `/usr`,
+  `/lib`, `/lib64`, `/etc/ld.so.cache`, `/etc/fonts`, `/var/cache/fontconfig`, `/etc/xdg`,
+  `/sys`, `--dev /dev`, `--dev-bind-try /dev/dri`, `--proc /proc`, tmpfs `/tmp` and
+  `/dev/shm`, the payload at `/app`, **only `Astral/AppKit` at `/sdk`**, a private
+  `/run/astral` for `XDG_RUNTIME_DIR` with an empty writable `HOME`, per-app `config` and
+  `cache` binds, the palette, the session's Wayland socket, and the broker socket.
+  `--share-net` appears only when the registry granted `network`.
+* `domain::broker::{authorize, RateLimiter, AuditEntry}` decides every socket request from a
+  closed method catalogue (`session.windows`, `session.activate`, `session.close`,
+  `workspaces.list`, `workspaces.switch`, `media.state`, `notifications.post`), each mapping
+  to exactly one permission. `application::broker_service::handle_line` is the transport: a
+  one-shot token handshake, then verdict, then audit.
+
+The rule the catalogue encodes: **declaring is asking, granting is consent.** `install`
+records `granted` from the manifest's `permissions`; the broker reads only the registry, so
+a manifest edit on disk cannot widen a running app.
+
+A probe app installed from a packed `.astralapp` and launched with `astral app launch`
+reported, in one run:
+
+```
+KERNEL-IMPORT  blocked: module "Astral.Kernel.Theme" is not installed
+HHOME          ls: cannot access '/home/hlu': No such file or directory
+XRUN           ls: cannot access '/run/user/1000': No such file or directory
+NET            curl: (6) Could not resolve host: example.com
+HOME           (empty, rc=0 — exists and is writable)
+BROKER-GRANTED   applied
+BROKER-UNDECLARED denied: needs 'windows.control'
+```
+
+and the audit file recorded both:
+
+```
+1794180879081 io.github.astral.probe session.windows applied
+1794180887856 io.github.astral.probe session.close  denied needs 'windows.control', which this app has not been granted
+```
+
+Three defects the probe found that unit tests could not:
+
+1. **`HOME` named a directory nobody created.** `--setenv HOME /run/astral/home` without a
+   matching `--dir` made every dotfile write fail with `ENOENT` — which an app reports as a
+   sandbox bug. The plan now emits `--dir /run/astral/home` plus `--chmod 0700`, and a test
+   pins the pair.
+2. **A plan could point at an unbound socket.** The socket must exist *before* the plan is
+   built, so the caller mints the token and binds the broker first; `prepare` consumes the
+   path and refuses a socket nobody listens on. That inverts the naive order and removed a
+   race where an app's first request hit a missing socket.
+3. **Launch digest ≠ install digest.** The registry stored the *archive* digest; a launch
+   hashed the *extracted* tree. `payload_digest` is now one function used by both, recorded
+   at install and re-checked before every launch, so "what runs is what the user consented
+   to" is checkable rather than asserted.
+
+### C.25 The panel template described a window
+
+`astral app new --template layer-surface` generated a `WlrLayershell` panel whose manifest
+declared `"type": "toplevel", "width": 420, "height": 260`. Every generated panel therefore
+handed the host the wrong description of itself: a window with fixed geometry instead of an
+anchored surface. The linter was clean, the pack succeeded, and nothing failed until someone
+looked at the screen.
+
+Two changes, both in the domain rather than in the template:
+
+* `SurfaceSpec.kind` became a **closed set** (`toplevel`, `layer-shell`), and a `toplevel`
+  without width and height is a validation error. A typo now fails at install with a named
+  rule instead of producing an app whose window never appears.
+* The layer template emits `layer-shell` with `layer` and `anchor`, and
+  `a_panel_template_declares_a_panel_and_not_a_floating_window` compares the generated
+  manifest against the generated QML so the two cannot disagree again.
+
+This is the same failure shape as C.24's `HOME`: a value that names something the platform
+never created. Both were found by running the thing, not by reading it.
+
+### C.26 DBus is a proxy with a per-app allow-list
+
+The spec's permission→namespace mapping is only honest if an app that asks for a service
+gets *that service* and not the bus. `Grants.dbus_names` was previously checked against the
+wrong path and then did nothing; it is now a real data path:
+
+```
+manifest.requires.dbusNames  ->  registry.dbusNames  ->  xdg-dbus-proxy --filter --talk=<name>…
+```
+
+* The manifest declares names; `is_dbus_name` refuses anything that is not a well-known
+  dotted name, because `--talk=` with a malformed entry silently opens nothing.
+* `install` copies the declared names into the registry. Consent, as with permissions, is
+  the registry record — a later manifest edit cannot widen it.
+* The launcher starts `xdg-dbus-proxy` **before** the plan and waits for its socket, then the
+  app's `DBUS_SESSION_BUS_ADDRESS` is `unix:path=/run/astral/dbus` — the proxy. Without a
+  grant, `--unshare-all` leaves the app with no bus at all.
+* A grant with no proxy socket is a named refusal (`DbusWithoutProxy`), never a fallback to
+  the session bus.
+
+Verified live with a probe app declaring `org.freedesktop.Notifications`:
+
+```
+DBUS-ALLOWED  bus=unix:path=/run/astral/dbus
+              method return sender=:1.105326 -> destination=:1.113711
+DBUS-DENIED   Error org.freedesktop.DBus.Error.ServiceUnknown
+```
+
+### C.27 "Cannot load a `.so`" was the wrong claim
+
+The P6 gate listed "cannot … load a `.so`". A probe that `dlopen`s `libc.so.6` and then
+opens `/home/hlu` from native code shows why that wording was wrong and what is actually
+true:
+
+```
+PROBE NATIVE: dlopen=ok … FileNotFoundError: '/home/hlu'
+```
+
+Native code loads and runs, and gains nothing: the library executes inside the same mount
+and network namespaces as the app, so `/home/hlu`, the host runtime directory, the network
+and the session bus are exactly as absent for it as for QML. Preventing `dlopen` is not
+something `bwrap` mounts can do (no exec/mmap control), and it would buy nothing: the only
+capability channel out of the sandbox is the broker socket, which is token- and
+permission-gated.
+
+The gate is therefore enforced as written *where it has meaning* — an app cannot load code
+from the **host's** trust domain, because the host's paths are not mounted — and the
+narrower claim ("no native code runs at all") is recorded here rather than claimed. The
+distinction is the difference between a fence and a story.
+
+### C.28 Remote transport, and what it refuses
+
+`install --catalog http://…` and `available --catalog http://…` were stubs that said "use a
+local catalog". They now fetch:
+
+* `fetch(url, limit)` uses `curl` — already a session dependency, with TLS, proxies and
+  redirects handled — and enforces a size limit (4 MiB catalog, 64 MiB artifact).
+* A **remote** catalog must declare `publisherKey` *and* ship a detached `.minisig`. A key
+  without a signature proves nothing: whoever serves the catalog also serves the digests.
+  The local loader stays permissive for a developer's own unsigned catalog, which never
+  leaves the machine.
+* A remote artifact is verified by digest **before** it is written anywhere, then staged
+  inside the app root (same filesystem, removed on both success and failure) and handed to
+  the installer.
+
+Verified live against a local HTTP origin: the catalog was fetched (the refusal is about
+signature, not transport), and the refusal is exactly the designed one:
+
+```
+a remote catalog must declare publisherKey; refusing an unsigned catalog over the network
+```
+
+**Not verified, and why:** a *signed* remote install. Signing needs a minisign private key,
+which the daemon must not own (A-decision: publishing is an authoring step, not a runtime
+capability) and which does not exist in this environment; only `minisign-verify` is
+available. The verification path it would exercise — `load_remote` → `verify_signature` →
+`install_from_catalog` — is covered by unit tests for the two refusal branches and by the
+existing signed-catalog tests; the happy path over HTTPS remains untested here.
+
+### C.29 Two linters, one rule, and what "individually testable" required
+
+`astral app test modules/Astral/Apps/Dashboard` refused to run: the Rust linter
+(`app_sdk::lint_dir`) rejected `import "../../Kernel/services/…"`. `make test` was green on
+the same file, because `scripts/check_app_boundaries.py` allows kernel services for
+**official** apps and forbids them for everyone else. Two enforcers of one rule had drifted,
+and the stricter one was wrong: an official embedded app is trusted with the kernel's ports
+(spec §7.1 — that is how a session surface reads windows), which is exactly why the dashboard
+can render telemetry at all.
+
+`lint_dir` now reads the manifest's trust tier, like the Python linter, and
+`kernel_services_are_allowed_only_for_official_apps` pins both branches so the two cannot
+disagree again.
+
+That was also the last blocker for the sentence the platform exists to keep — every app is
+**individually** testable. The migrated apps' suites live in the repo-wide `tests/` directory
+next to their siblings, so `astral app test <dir>` had nothing to run for them and said
+"no suites in tests/". Manifests now declare `testSuites`:
+
+```json
+"testSuites": ["tst_workspaces_port.qml", "tst_workspaces_tab.qml"]
+```
+
+`astral app test` runs the app's own `tests/` plus every declared suite resolved against the
+app directory or the repo's `tests/`. `daemon/tests/test_app_test_coverage.rs` enforces the
+three properties that make the claim true rather than decorative: every app declares
+coverage, every declared file exists, and no suite is claimed by two apps (a shared suite
+cannot say which app broke).
+
+Verified per app, all green: Workspaces 2, Media 8, Downloads 7, Dashboard 4,
+Performance 3, Ai 8, Assistant 2, Launcher 3 — 37 suites, each runnable on its own with
+`astral app test`.

@@ -11,5 +11,9 @@
   "entry": { "root": "AssistantWindow.qml" },
   "requires": { "capabilities": [], "qtModules": [], "apps": [] },
   "permissions": ["session.read"],
-  "distribution": "preinstalled"
+  "distribution": "preinstalled",
+  "testSuites": [
+    "tst_assistant_drawer.qml",
+    "tst_assistant_stream_watchdog.qml"
+  ]
 }

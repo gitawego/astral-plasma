@@ -11,5 +11,15 @@
   "entry": { "root": "AiApp.qml", "dashboardTab": "ai" },
   "requires": { "capabilities": [], "qtModules": [], "apps": [] },
   "permissions": ["session.read"],
-  "distribution": "preinstalled"
+  "distribution": "preinstalled",
+  "testSuites": [
+    "tst_ai_activity_effect.qml",
+    "tst_ai_agent_skills.qml",
+    "tst_ai_harness_update.qml",
+    "tst_ai_page_controls.qml",
+    "tst_ai_page.qml",
+    "tst_ai_popout.qml",
+    "tst_ai_tab.qml",
+    "tst_ai_token_service.qml"
+  ]
 }

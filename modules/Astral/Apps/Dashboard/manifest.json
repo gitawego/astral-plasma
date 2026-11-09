@@ -11,5 +11,11 @@
   "entry": { "root": "DashboardApp.qml" },
   "requires": { "capabilities": [], "qtModules": [], "apps": [] },
   "permissions": ["media.read", "session.read", "windows.read"],
-  "distribution": "preinstalled"
+  "distribution": "preinstalled",
+  "testSuites": [
+    "tst_dashboard_calendar_app_picker.qml",
+    "tst_dashboard_cards.qml",
+    "tst_dashboard_fusion.qml",
+    "tst_dashboard_tabs.qml"
+  ]
 }

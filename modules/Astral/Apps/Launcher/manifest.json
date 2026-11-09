@@ -11,5 +11,10 @@
   "entry": { "root": "LauncherApp.qml" },
   "requires": { "capabilities": [], "qtModules": [], "apps": [] },
   "permissions": ["session.read"],
-  "distribution": "preinstalled"
+  "distribution": "preinstalled",
+  "testSuites": [
+    "tst_command_launcher.qml",
+    "tst_launcher_app_discovery.qml",
+    "tst_launcher_glass.qml"
+  ]
 }

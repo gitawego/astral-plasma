@@ -11,5 +11,15 @@
   "entry": { "root": "MediaApp.qml", "dashboardTab": "media" },
   "requires": { "capabilities": [], "qtModules": [], "apps": [] },
   "permissions": ["media.read", "media.control"],
-  "distribution": "preinstalled"
+  "distribution": "preinstalled",
+  "testSuites": [
+    "tst_media_avatar.qml",
+    "tst_media_election.qml",
+    "tst_media_player_switch.qml",
+    "tst_media_port.qml",
+    "tst_media_seek_progress.qml",
+    "tst_media_tab_layout.qml",
+    "tst_browser_media_arbitration.qml",
+    "tst_cyberpunk_media_cover.qml"
+  ]
 }

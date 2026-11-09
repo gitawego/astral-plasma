@@ -26,5 +26,9 @@
     "workspaces.read",
     "workspaces.control"
   ],
-  "distribution": "preinstalled"
+  "distribution": "preinstalled",
+  "testSuites": [
+    "tst_workspaces_port.qml",
+    "tst_workspaces_tab.qml"
+  ]
 }

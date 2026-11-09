@@ -333,3 +333,109 @@ make doctor
 # Test nested Hyprland environment directly inside KDE Plasma
 ./scripts/test_nested_hyprland.sh
 ```
+
+---
+
+## 9. App Platform
+
+Section 3 describes the session domain; this section describes the *extension* domain — how a
+feature becomes a unit that can be installed, versioned, disabled and removed. The full
+narrative, decisions and spike findings live in
+[`APPS-PLATFORM-SPEC.md`](APPS-PLATFORM-SPEC.md); this is the map.
+
+Two views, because they answer different questions: **layers** (who may depend on whom) and
+**the lifecycle of one app** (what happens between a packed file and a running surface).
+
+### 9.1. Layers
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ shell surfaces  (UnifiedShell, dock, settings editor, shell.qml)     │  wiring only
+├──────────────────────────────────────────────────────────────────────┤
+│ apps            modules/Astral/Apps/*                                │  features
+├──────────────────────────────────────────────────────────────────────┤
+│ AppKit (SDK)    modules/Astral/AppKit/*                              │  frozen contract
+├──────────────────────────────────────────────────────────────────────┤
+│ kernel          modules/Astral/Kernel/{theme,components,config,      │  platform
+│                 services,Host}                                       │
+├──────────────────────────────────────────────────────────────────────┤
+│ daemon          daemon/src/{domain,application,infrastructure,       │  Rust, headless
+│                 interfaces}                                          │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+The rules the boundary linter (`scripts/check_app_boundaries.py`) enforces:
+
+* An app imports `Astral.AppKit`, Qt, Quickshell, and `Kernel/theme` + `Kernel/components`
+  (design primitives). It never imports `Kernel/config`, `Kernel/services`, `Astral.Kernel`,
+  or another app.
+* A non-official app may not reach kernel services at all.
+* `Config` is read by exactly one surface: the settings editor, which owns the settings
+  document and grants permissions.
+
+Two spellings of one kernel directory produce two singleton registrations (spec C.13), which
+is why the linter looks at strings rather than at resolved imports.
+
+### 9.2. One app, end to end
+
+```mermaid
+sequenceDiagram
+    participant Author
+    participant CLI as astral-plasma
+    participant Catalog
+    participant Registry
+    participant Host as AppHost
+    participant Broker
+    participant Sandbox
+
+    Author->>CLI: app new / lint / test / pack
+    CLI-->>Author: .astralapp (ustar + digest)
+    Author->>CLI: app install <file> [--catalog]
+    CLI->>Catalog: verify digest and trust
+    CLI->>CLI: validate manifest, API window, minQuickshell
+    CLI->>Registry: record id, version, digest, payload digest, grants
+    Note over Registry: crash-safe write (temp + rename)
+    Host->>Registry: plan at startup (order, enabled, compat)
+    Host->>Host: mount Component (embedded) or request launch (hosted)
+    CLI->>Sandbox: bwrap plan from registry grants
+    CLI->>Broker: bind socket, mint one-shot token
+    Sandbox->>Broker: {"method", "token"} per request
+    Broker-->>Sandbox: applied / denied / unsupported / stale / unavailable
+    Broker->>Broker: audit every request, refusals included
+```
+
+#### Where each decision lives
+
+| Question | Owner | Not the owner |
+| --- | --- | --- |
+| May this app run on this shell? | `domain::app_compat` | the app's manifest |
+| What may this app do? | registry grants, read by `domain::broker` | the manifest on disk |
+| What does this app mount? | `domain::sandbox`, from the registry | the app |
+| Is this the version the user approved? | `domain::app_bundle::payload_digest` | the filesystem |
+| In what order do apps mount? | `domain::AppHostPolicy` | `shell.qml`'s import order |
+| What state does an app see? | kernel ports (`ShellState`, `SessionPort`, …) | global singletons |
+
+#### Why the state arrives by injection
+
+An app loaded through a `Loader` that imported `Kernel/config` gets **its own** singleton
+instance, so every read is a stale copy (spec C.9, C.14). The platform therefore reads state
+once in the shell and hands each app a read model plus an intent channel. The one exception
+is the embedded-component mechanism (spec C.18): an app declared as a `Component` in
+`shell.qml` shares the shell's registrations, which is why the eight migrated built-ins see
+exactly the shell's palette.
+
+### 9.3. Compatibility
+
+`APP_API_LEVEL` (what the shell implements) and `APP_API_FLOOR` (the oldest it still loads)
+bound the window; `API_LEVEL_HISTORY` maps each level to the release that introduced it, so a
+message can name a version a person can act on. `docs/APPKIT-API.md` is generated from the
+QML sources and compared by `daemon/tests/test_appkit_api.rs`: the surface cannot change
+without a level decision, and a deprecation cannot remove a member before its stated level.
+
+### 9.4. Where to read further
+
+* `docs/APPS-PLATFORM-SPEC.md` — the spec, the decisions (A1–A33) and every spike finding
+  (C.1–C.24), including the measured sandbox costs and the probe that verified the fences.
+* `docs/LESSONS.md` — the design-system lessons that constrain app UI.
+* `sdk/README.md` — the author's view: templates, permissions, checklist.
+* `CONTEXT.md` — the ubiquitous language for both bounded contexts.
