@@ -41,6 +41,8 @@ app platform already treats the app registry.
    enabling restores them.
 5. **Everything the GUI shows is the filesystem's truth**, not a cached guess; a "doctor"
    reports drift and can repair it.
+6. **Adopt what is already on the machine**: a farm built by `npx skills` can be imported
+   (hashes matched, nothing rewritten) instead of duplicated or stranded (D4).
 6. **Data-driven**: agents (targets), sources, and per-target link styles are configuration,
    not code paths.
 
@@ -114,8 +116,10 @@ pub struct RepositoryKey { source: SourceSpec, scope: Scope, targets: Vec<Target
 pub struct AddedSource { id: SourceId, label: String, spec: SourceSpec,
                          added: Timestamp, last_seen: Option<Timestamp> }
 
-/// Bytes live either in the immutable store or in a folder the user owns.
-pub enum Origin { Store { ref_name: String, sha: String }, Local { path: PathBuf } }
+/// Where the bytes came from. `Adopted` is a farm `npx skills` created, recorded so we may
+/// unlink it later without ever claiming we created it (D4).
+pub enum Origin { Store { ref_name: String, sha: String }, Local { path: PathBuf },
+                  Adopted { by: String, hash: String } }
 
 // domain/skill_targets.rs  (data, not code)
 pub struct Target { id: TargetId, label: String,
@@ -271,17 +275,17 @@ source, and the choice is recorded as a **handle**, never as a value.
 
 | Mode | What happens | When it is the right choice |
 | --- | --- | --- |
-| `Configured` (default) | git is left to its own devices: `~/.gitconfig` credential helper, `gh auth setup-git`, SSH agent for `git@` URLs | the machine is already set up for this host |
+| `Configured` (default) | git is left to its own devices: `~/.gitconfig` credential helper, `gh auth setup-git`, SSH agent for `git@` URLs | the machine is already set up for this host — **tried first, always** (D6) |
 | `Credential(id)` | the manager injects a stored **GitHub fine-grained token** (contents: read) for that host | per-account tokens, CI-like machines, or several GitHub identities |
 | `SshAgent` + optional key | `GIT_SSH_COMMAND` pinned to one key (`--ssh-key ~/.ssh/id_work`) | multiple GitHub accounts over SSH |
 
 **Where the token lives.** In the OS keyring through Secret Service (`libsecret`), keyed
 `astral-plasma/skills/<host>/<credential-id>`; on this machine `secret-tool` and a running
-keyring are present, so that is the default. Only if no keyring is reachable does the manager
-offer a `0600` file under `$XDG_STATE_HOME/astral-plasma/skills/credentials/` — and it says so
-on screen, because a token on disk without encryption is a choice the user must see. The token is
-**never** written to `ledger.json`, `sources.json`, `settings.json`, the journal, a log line, a
-`--json` payload, or a git URL.
+keyring are present, so that is the default. If no keyring is reachable the manager **refuses to
+store** the token and points at `GH_TOKEN` in the environment instead (D7) — an unencrypted token
+on disk is a worse outcome than an inconvenient one. The token is **never** written to
+`ledger.json`, `sources.json`, `settings.json`, the journal, a log line, a `--json` payload, or a
+git URL.
 
 **How it is passed to git.** Not in the clone URL (it can leak into `.git/config`, `ps`, error
 output and reflog). Instead:
@@ -297,8 +301,9 @@ any captured stderr before it reaches the UI. Shallow clone uses `--filter=blob:
 supported; private content is copied into the store like any other and never transmitted
 anywhere (no telemetry, no skills.sh upload).
 
-**Access check before install.** Adding a source performs `GET /repos/{owner}/{repo}` with the
-chosen credential and reports one of four distinct outcomes — *ok*, *token expired*, *no access
+**Access check before install.** Adding a source first tries the machine's own credentials
+(D6); only a refusal leads to the token prompt. The check is `GET /repos/{owner}/{repo}` with the
+credential in use and reports one of four distinct outcomes — *ok*, *token expired*, *no access
 to this repo*, *repo not found* (which is also what a private repo looks like without a token).
 The dialog shows the result as a line under the URL field, so access is proven **before** the
 user commits to installing anything.
@@ -340,7 +345,9 @@ A skill is instructions an agent follows with its own permissions, so install sh
 - a warning that third-party skills can prompt-inject, linking the review checklist.
 
 Consent is recorded per repository key (A35: consent is a decision with a record). `--accept`
-exists for scripts, and the GUI reuses the app-platform consent card.
+exists for scripts, and the GUI reuses the app-platform consent card. An **adopted** farm is not
+consent (D4): it is listed as `adopted · unverified` with its on-disk hash until the user reviews
+it, and adoption never rewrites the files it found.
 
 ## 10. CLI
 
@@ -356,15 +363,18 @@ astral-plasma skills auth test <id> [--json]             # ok / expired / no-acc
 astral-plasma skills auth forget <id>                    # remove the keyring entry
 astral-plasma skills search <query> [--source github|skills.sh|local|<added-id>] [--limit N] [--json]
 astral-plasma skills inspect <owner/repo[#ref]> [--json]        # discovery + hashes, installs nothing
-astral-plasma skills install <source> [--skill NAME|--all] [--target claude-code,codex]
-                                     [--scope global|project:PATH] [--accept] [--json]
+astral-plasma skills install <source|url> [--skill NAME|--all]
+                                     [--target claude-code,codex] [--copy-target NAME]
+                                     [--scope project:PATH] [--accept] [--json]
+                                     # scope defaults to global (D2); targets default to the
+                                     # agents detected on this machine (D9)
 astral-plasma skills list [--repo] [--target] [--json]
 astral-plasma skills enable  <skill>[@repo] | --repo <owner/repo> [--target]
 astral-plasma skills disable <skill>[@repo] | --repo <owner/repo> [--target]
 astral-plasma skills remove  <skill>[@repo] | --repo <owner/repo> [--purge]
 astral-plasma skills update  [--repo <owner/repo>] [--check] [--json]
 astral-plasma skills doctor  [--json] [--fix]
-astral-plasma skills import  [--from npx-skills] [--dry-run]     # adopt an existing farm
+astral-plasma skills import  [--from npx-skills] [--dry-run|--apply]  # adopt what already exists (D4)
 ```
 
 Every command is `--json`-capable (the GUI is a client, not a second implementation), and every
@@ -379,7 +389,7 @@ A new platform app, `org.astralplasma.skills`, with `integrations: [{ "kind": "s
 
 ```
 ┌─ Skills ───────────────────────────────────────────────────────────────┐
-│ ⌕ find a skill…          [ GitHub ] [ skills.sh ] [ mine ] [ + Add ]   │
+│ ⌕ find a skill…  or paste a repo/URL…   [ GitHub ] [ skills.sh ] [ + Add ] │
 │                                    scope: Global ⌄   targets: 3        │
 ├────────────────────────────────────────────────────────────────────────┤
 │ owner/repo · 12 skills · ★ 2.4k installs        [ Install all ]        │
@@ -472,28 +482,28 @@ listing the skill; a removed repo must leave no link behind (`find … -xtype l`
 
 | Phase | Content | Gate |
 | --- | --- | --- |
-| **P0** (½ d) | Verify the unknowns: skills.sh API auth from a desktop client, `npx skills find` behaviour, GitHub search without a token, **Secret Service availability and a private-repo clone through `gh`/a stored token**, and this machine's real agent directories. | Findings recorded in Appendix A, one real repo (public and private) resolved end to end. |
+| **P0** (½ d) | Verify the unknowns: skills.sh API auth from a desktop client (D1), GitHub search without a token, pasted-URL resolution, **Secret Service availability and a private-repo clone through `gh`/a stored token** (D6/D7), and this machine's real agent directories (D9). | Findings recorded in Appendix A, one real repo (public and private) resolved end to end, and the detected target list printed. |
 | **P1** (1 d) | Domain: target table, discovery model, ledger, `plan_*`, `FsProbe`, journal. | Full plan-matrix suite green; idempotence and crash-resume asserted. |
-| **P2** (1 d) | Git source + credentials (§8.2) + install/enable/disable/remove/update/doctor through the CLI, both scopes. | Live: install a 6-skill repo, disable one, disable the repo, remove the repo; `find -xtype l` empty; doctor clean; a **private** repo installs with a stored token and the token appears in no file, log or argv. |
-| **P3** (½ d) | GitHub search adapter (+ optional token), skills.sh adapter behind its token, consent payload. | Search returns a repo and installs from it; without a token skills.sh says exactly why. |
+| **P2** (1 d) | Git source + credentials (§8.2) + install/enable/disable/remove/update/doctor through the CLI, global default and project scope, plus `import` (D4, dry-run first). | Live: install a 6-skill repo, disable one, disable the repo, remove the repo; `find -xtype l` empty; doctor clean; a **private** repo installs with a stored token and the token appears in no file, log or argv. |
+| **P3** (½ d) | GitHub search adapter (+ optional token) as the default source, skills.sh adapter behind its OIDC token (off by default, D1), consent payload. | Search returns a repo and installs from it; without a token skills.sh says exactly why and a pasted skills.sh URL still installs. |
 | **P4** (1 d) | The app: Settings → Skills page, daemon socket, grouping, toggles, doctor. | Live screenshots of search, install, repo toggle, doctor; QML suites green. |
-| **P5** (½ d) | Update diff/report, ref pinning UI, import from `skills-lock.json`, trash/restore. | Update a pinned repo, see the per-skill diff, restore a removed repo from trash. |
+| **P5** (½ d) | Update diff/report, ref pinning UI, one-deep rollback (D11), trash/restore. | Update a pinned repo, see the per-skill diff, roll back one ref, restore a removed repo from trash. |
 
-## 15. Open decisions
+## 15. Decisions
 
-1. **skills.sh access** — accept the token requirement (opt-in field), or make GitHub the only
-   searchable source with skills.sh as URL resolution, or also bridge `npx skills find`?
-2. **Default scope** — global (available in every project) or project (committed, shareable)?
-   Their CLI defaults to project; this desktop shell may prefer global.
-3. **Where the UI lives** — Settings → Skills as the management surface (proposed), plus a
-   compact popover from the dock's AI item for installing a skill from a pasted URL?
-4. **Adopt existing installs** — should P2's `import` adopt links created by `npx skills`
-   (matching their lock's hashes) instead of starting clean? Recommended yes, dry-run first.
-5. **Copy fallback** — keep symlink-only, or allow a per-target `Copy` style for agents that do
-   not follow links (documented as a target setting either way)?
-6. **Credential default for private repos** — rely on `gh auth token` / the SSH agent when they
-   exist (zero setup, nothing stored), or always ask for a fine-grained token on first add?
-7. **No-keyring fallback** — offer an encrypted-at-rest `0600` file, or refuse and tell the user
-   to unlock a keyring? (Proposed: offer, with the warning on screen.)
-8. **Local sources: link in place (proposed) or always copy?** Linking makes edits live and
-   keeps one author of the bytes; copying makes them reproducible and hash-pinned.
+Settled here so implementation has no open questions. Each is reversible; each says why.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| **D1** | **Search is GitHub-first.** The skills.sh adapter ships but is *off* until a Vercel OIDC token is supplied; a pasted `skills.sh/...` URL always resolves through GitHub. No `npx skills` bridge. | skills.sh's API cannot be authenticated from a desktop app (per-team OIDC), while the skills it indexes live in public git repos. A node dependency for discovery would be a dependency the product cannot debug. A pasted URL is the honest fallback. |
+| **D2** | **Global scope by default**; project scope available as `--scope project:PATH`. | A shell is not inside a repository: the GUI has no cwd, so "install for this project" has no referent there. Globals are the manager's inventory; project scope stays a CLI affordance for terminal-in-repo work. |
+| **D3** | **One management surface: Settings → Skills.** No dock popover in v1; the page carries a paste-URL install box. | The dock item is already a quota surface, and a second, smaller manager would be a second set of states to keep true. A URL box covers the "just install this one" case without one. |
+| **D4** | **Adopt existing installs** (`skills import --from npx-skills`), dry-run by default, entries recorded as `Origin::Adopted`. | Users already have farms built by `npx skills`. Starting clean would strand them or, worse, duplicate every skill. Adoption hashes what is on disk and only ever unlinks what it recorded. |
+| **D5** | **Symlinks by default; `Copy` is a per-target opt-in** (`--copy-target claude-code`). | Every relevant agent follows symlinks (Claude Code, Codex, Cursor, Gemini, Copilot, OpenCode). Copying is the exception for an agent that does not, and it must be the user's choice because it breaks the "one author of the bytes" property. |
+| **D6** | **Credentials: prove the machine first.** Try git's own configuration, the SSH agent and `gh auth token`; only when that fails offer to store a token in the keyring. | The zero-setup path is the common case, and asking for a secret before knowing one is needed trains people to paste secrets into dialogs. |
+| **D7** | **No plaintext token fallback.** Without a reachable keyring the manager refuses to store a token, and instead points at `GH_TOKEN` in the environment. | An unencrypted token on disk is a worse outcome than an inconvenient one. The environment variable is a supported, explicit alternative that leaves nothing behind. |
+| **D8** | **Local sources link in place** (`--copy` per source is available). | The reason to add a folder is that you are editing it: a copy would make the manager a stale mirror and turn every save into a manual update. Remotes stay immutable-store copies. |
+| **D9** | **Targets default to detected agents** (a target whose agent config exists), shown as a count and overridable with `--target`. | Installing to 79 directories when four agents exist is noise; installing to none because the user forgot a flag is a silent no-op. Detection plus an explicit count is honest either way. |
+| **D10** | **Keep the ecosystem's canonical layout**: `.agents/skills` remains the canonical link farm, `.claude/skills` links into it, and content is addressed by hash the same way `skills-lock.json` does. | Users run both tools and several agents read those paths. Interop is worth more than a private layout, and matching their hash function lets us adopt and compare installs. |
+| **D11** | **One-deep rollback**: an update keeps the previous store ref until the next successful update. | Updating a skill should be recoverable for a day without a full version-history store. Two refs per repository is a bounded cost. |
+| **D12** | **No telemetry, no uploads.** | Skills are user content; nothing about them leaves the machine. |
