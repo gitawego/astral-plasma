@@ -16,6 +16,8 @@ pub mod embedded_changelog;
 pub mod embedded_bundle;
 pub mod skill_fs;
 pub mod skill_git;
+pub mod skill_catalog;
+pub mod skill_secrets;
 pub mod x11_input;
 pub mod window_icons;
 pub mod fs_wallpaper;

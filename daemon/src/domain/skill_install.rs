@@ -75,7 +75,7 @@ pub enum LinkOp {
 #[serde(tag = "ledger", rename_all = "snake_case")]
 pub enum LedgerOp {
     Upsert(LinkRecord),
-    Drop(PathBuf),
+    Drop { link: PathBuf },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -416,7 +416,7 @@ pub fn plan_remove(ledger: &Ledger, selector: &Selector, probe: &dyn FsProbe) ->
             }
             Probe::Missing => {}
         }
-        plan.ledger.push(LedgerOp::Drop(row.link.clone()));
+        plan.ledger.push(LedgerOp::Drop { link: row.link.clone() });
     }
     plan
 }
@@ -787,7 +787,7 @@ mod tests {
             link: PathBuf::from(link(".agents/skills", "alpha")),
             expected: "../../store/x".to_string(),
         });
-        assert_eq!(plan.ledger, vec![LedgerOp::Drop(PathBuf::from(link(".agents/skills", "alpha")))]);
+        assert_eq!(plan.ledger, vec![LedgerOp::Drop { link: PathBuf::from(link(".agents/skills", "alpha")) }]);
     }
 
     #[test]

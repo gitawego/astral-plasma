@@ -203,7 +203,7 @@ pub fn apply(paths: &SkillPaths, plan: &Plan, now_ms: u64) -> DynResult<Applied>
     for op in &plan.ledger {
         match op {
             LedgerOp::Upsert(row) => ledger.upsert(row.clone()),
-            LedgerOp::Drop(link) => {
+            LedgerOp::Drop { link } => {
                 ledger.remove(link);
             }
         }
@@ -269,7 +269,7 @@ pub fn recover(paths: &SkillPaths) -> DynResult<usize> {
         for op in &journal.ledger_ops {
             match op {
                 LedgerOp::Upsert(row) => ledger.upsert(row.clone()),
-                LedgerOp::Drop(link) => {
+                LedgerOp::Drop { link } => {
                     ledger.remove(link);
                 }
             }

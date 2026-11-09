@@ -42,4 +42,5 @@ pub mod voice_service;
 pub mod desktop_entries_service;
 pub mod stale_claim;
 pub mod agent_tools;
+pub mod skill_manager;
 pub mod skill_service;

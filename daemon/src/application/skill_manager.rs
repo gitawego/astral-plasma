@@ -1,0 +1,955 @@
+//! The skills use cases: add a source, install, enable/disable, remove, update, doctor, import.
+//!
+//! The domain decides what the link farm should look like (spec §5–§7); this module fetches
+//! content, writes the store, and applies the plan. Everything it does is reported as data so the
+//! CLI and the GUI can render the same truth.
+
+use std::path::{Path, PathBuf};
+
+use crate::domain::ports::DynResult;
+use crate::domain::skill::{discover, SkillId, SkillMeta};
+use crate::domain::skill_install::{
+    plan_install, plan_remove, plan_set_state, Conflict, DesiredSkill, FsProbe, Plan, Selector,
+};
+use crate::domain::skill_ledger::{LinkState, Origin};
+use crate::domain::skill_source::{parse_source, source_id, AddedSource, GitAuth, SourceSpec};
+use crate::domain::skill_targets::{resolve_targets, Scope, Target};
+use crate::infrastructure::skill_fs::{self, Applied, RealFs, SkillPaths};
+use crate::infrastructure::skill_git::{FetchAuth, GitCli};
+use crate::infrastructure::skill_secrets;
+
+use crate::infrastructure::skill_fs::read_ledger;
+
+/// Everything a use case needs, assembled once by the CLI or the daemon.
+#[derive(Debug, Clone)]
+pub struct SkillContext {
+    pub paths: SkillPaths,
+    pub git: GitCli,
+    pub home: PathBuf,
+    pub now: u64,
+    /// Overrides the detected targets (`--target`), when given.
+    pub targets: Option<String>,
+    pub ssh_key: Option<PathBuf>,
+}
+
+impl SkillContext {
+    pub fn new(paths: SkillPaths, now: u64) -> Self {
+        let git = GitCli::new(paths.git_cache.clone());
+        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+        Self {
+            paths,
+            git,
+            home,
+            now,
+            targets: None,
+            ssh_key: None,
+        }
+    }
+
+    pub fn with_targets(mut self, targets: Option<String>) -> Self {
+        self.targets = targets;
+        self
+    }
+
+    pub fn with_ssh_key(mut self, key: Option<PathBuf>) -> Self {
+        self.ssh_key = key;
+        self
+    }
+
+    fn auth(&self, spec: &SourceSpec) -> FetchAuth {
+        let host = host_of(spec);
+        let token = match spec {
+            SourceSpec::Git(git) if git.auth == GitAuth::Configured => {
+                // Only a host that needs it: public repos work anonymously.
+                skill_secrets::stored_token(&host).or_else(|| {
+                    std::env::var("ASTRAL_SKILLS_TOKEN").ok().filter(|t| !t.is_empty()).map(|token| {
+                        skill_secrets::Credential { token, source: skill_secrets::TokenSource::Environment }
+                    })
+                })
+            }
+            SourceSpec::Git(git) if git.auth == GitAuth::Credential => skill_secrets::stored_token(&host),
+            _ => None,
+        };
+        FetchAuth {
+            token: token.map(|credential| credential.token),
+            ssh_key: self.ssh_key.clone(),
+        }
+    }
+}
+
+fn host_of(spec: &SourceSpec) -> String {
+    match spec {
+        SourceSpec::Git(git) => {
+            let url = &git.url;
+            let stripped = url
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .trim_start_matches("ssh://")
+                .trim_start_matches("git://")
+                .trim_start_matches("git@");
+            stripped
+                .split(['/', ':'])
+                .next()
+                .unwrap_or("github.com")
+                .to_string()
+        }
+        SourceSpec::Local(_) => "local".to_string(),
+    }
+}
+
+/// One installed skill, as the CLI and UI see it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InstalledSkill {
+    pub id: String,
+    pub description: String,
+    pub state: LinkState,
+    pub origin: String,
+    pub targets: Vec<String>,
+    pub hash: String,
+    pub links: Vec<String>,
+}
+
+/// One source with its skills.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InstalledSource {
+    pub id: String,
+    pub label: String,
+    pub spec: String,
+    pub enabled: bool,
+    pub skills: Vec<InstalledSkill>,
+    #[serde(rename = "enabledCount")]
+    pub enabled_count: usize,
+}
+
+/// A discovery result that changes nothing.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Inspection {
+    pub source: String,
+    pub id: String,
+    pub sha: Option<String>,
+    #[serde(rename = "refName")]
+    pub ref_name: Option<String>,
+    pub skills: Vec<InspectedSkill>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InspectedSkill {
+    pub id: String,
+    pub description: String,
+    pub subpath: String,
+    pub hash: String,
+    pub files: u32,
+    pub bytes: u64,
+    pub installed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InstallReport {
+    pub source: String,
+    pub sha: Option<String>,
+    #[serde(rename = "refName")]
+    pub ref_name: Option<String>,
+    pub installed: Vec<String>,
+    pub skipped: Vec<String>,
+    pub created: usize,
+    pub replaced: usize,
+    pub conflicts: Vec<String>,
+    pub plan: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct UpdateReport {
+    pub source: String,
+    pub changed: Vec<String>,
+    pub unchanged: Vec<String>,
+    pub created: usize,
+    pub replaced: usize,
+    pub conflicts: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Finding {
+    pub kind: String,
+    pub path: String,
+    pub detail: String,
+    pub skill: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ImportReport {
+    pub applied: bool,
+    pub adopted: Vec<AdoptedSkill>,
+    pub skipped: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct AdoptedSkill {
+    pub skill: String,
+    pub link: String,
+    pub by: String,
+    pub hash: String,
+}
+
+/// Every source with its skills, from the ledger (the one place that knows).
+pub fn list(ctx: &SkillContext) -> DynResult<Vec<InstalledSource>> {
+    let ledger = read_ledger(&ctx.paths.ledger)?;
+    let mut out = Vec::new();
+    for source in &ledger.sources {
+        let mut skills = Vec::new();
+        for skill_id in ledger.skills_of(&source.id) {
+            let rows: Vec<_> = ledger.for_skill(&skill_id, Some(&source.id));
+            let first = rows.first();
+            let state = ledger.state_of(&source.id, &skill_id).unwrap_or(LinkState::Disabled);
+            let mut targets: Vec<String> = rows.iter().map(|row| row.target_id.clone()).collect();
+            targets.sort();
+            targets.dedup();
+            let mut links: Vec<String> = rows.iter().map(|row| row.link.display().to_string()).collect();
+            links.sort();
+            skills.push(InstalledSkill {
+                id: skill_id.as_str().to_string(),
+                description: String::new(),
+                state,
+                origin: first.map(|row| row.origin.label()).unwrap_or_default(),
+                targets,
+                hash: first.map(|row| row.hash.clone()).unwrap_or_default(),
+                links,
+            });
+        }
+        let enabled_count = skills.iter().filter(|skill| skill.state == LinkState::Linked).count();
+        out.push(InstalledSource {
+            id: source.id.clone(),
+            label: source.label.clone(),
+            spec: source.spec.display(),
+            enabled: source.enabled,
+            skills,
+            enabled_count,
+        });
+    }
+    // A source with no rows yet (added, nothing installed) is still listed.
+    for source in &ledger.sources {
+        if !out.iter().any(|entry| entry.id == source.id) {
+            out.push(InstalledSource {
+                id: source.id.clone(),
+                label: source.label.clone(),
+                spec: source.spec.display(),
+                enabled: source.enabled,
+                skills: Vec::new(),
+                enabled_count: 0,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(out)
+}
+
+/// Fetch (or scan) a source and return what it contains, without writing anything.
+pub fn inspect(ctx: &SkillContext, input: &str) -> DynResult<Inspection> {
+    let spec = parse_source(input).map_err(|error| error.to_string())?;
+    let ledger = read_ledger(&ctx.paths.ledger)?;
+    let id = source_id(&spec);
+    let installed_ids: Vec<String> = ledger.skills_of(&id).iter().map(|s| s.as_str().to_string()).collect();
+
+    let (skills, sha, ref_name) = discover_source(ctx, &spec)?;
+    Ok(Inspection {
+        source: spec.display(),
+        id,
+        sha,
+        ref_name,
+        skills: skills
+            .iter()
+            .map(|skill| InspectedSkill {
+                id: skill.id.as_str().to_string(),
+                description: skill.description.clone(),
+                subpath: skill.subpath.clone(),
+                hash: skill.hash.clone(),
+                files: skill.files,
+                bytes: skill.bytes,
+                installed: installed_ids.contains(&skill.id.as_str().to_string()),
+            })
+            .collect(),
+    })
+}
+
+/// Read the skills of a source: git fetch, or a local folder scan (D8).
+fn discover_source(
+    ctx: &SkillContext,
+    spec: &SourceSpec,
+) -> DynResult<(Vec<SkillMeta>, Option<String>, Option<String>)> {
+    match spec {
+        SourceSpec::Git(git) => {
+            let auth = ctx.auth(spec);
+            let fetched = ctx
+                .git
+                .fetch(&git.url, git.ref_name.as_deref(), &auth)
+                .map_err(|error| error.to_string())?;
+            let skills = discover(&fetched.files, git.subpath.as_deref(), false);
+            Ok((skills, Some(fetched.sha), Some(fetched.ref_name)))
+        }
+        SourceSpec::Local(local) => {
+            if !local.path.is_dir() {
+                return Err(format!("'{}' is not a folder", local.path.display()).into());
+            }
+            let files = read_local_tree(&local.path)?;
+            let skills = discover(&files, local.subpath.as_deref(), false);
+            Ok((skills, None, None))
+        }
+    }
+}
+
+fn read_local_tree(root: &Path) -> DynResult<Vec<(String, Vec<u8>)>> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)?.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == ".git" || name == "node_modules" || name == ".venv" || name == "target" {
+                continue;
+            }
+            let metadata = entry.metadata()?;
+            if metadata.is_dir() {
+                stack.push(path);
+            } else if metadata.is_file() {
+                let relative = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                files.push((relative, std::fs::read(&path)?));
+            }
+        }
+    }
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(files)
+}
+
+/// Add a source (no skills installed yet).
+pub fn add_source(
+    ctx: &SkillContext,
+    input: &str,
+    ref_override: Option<&str>,
+    subpath: Option<&str>,
+    watch: bool,
+    copy: bool,
+) -> DynResult<AddedSource> {
+    let mut spec = parse_source(input).map_err(|error| error.to_string())?;
+    let mut check: Option<(String, Option<String>)> = None;
+    match &mut spec {
+        SourceSpec::Git(git) => {
+            if let Some(reference) = ref_override {
+                git.ref_name = Some(reference.to_string());
+            }
+            git.subpath = subpath.map(str::to_string).or(git.subpath.take());
+            check = Some((git.url.clone(), git.ref_name.clone()));
+        }
+        SourceSpec::Local(local) => {
+            local.watch = watch;
+            local.copy = copy;
+            local.subpath = subpath.map(str::to_string).or(local.subpath.take());
+            if !local.path.is_dir() {
+                return Err(format!("'{}' is not a folder", local.path.display()).into());
+            }
+        }
+    }
+
+    // Prove access before recording the source (spec §8.2).
+    if let Some((url, reference)) = check {
+        let auth = ctx.auth(&spec);
+        ctx.git
+            .check_access(&url, reference.as_deref(), &auth)
+            .map_err(|error| error.to_string())?;
+    }
+
+    let id = source_id(&spec);
+    let label = match &spec {
+        SourceSpec::Git(git) => git
+            .url
+            .trim_end_matches(".git")
+            .rsplit('/')
+            .take(2)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("/"),
+        SourceSpec::Local(local) => local.path.display().to_string(),
+    };
+    let source = AddedSource {
+        id,
+        label,
+        spec,
+        enabled: true,
+        added_at: ctx.now,
+        last_seen: Some(ctx.now),
+    };
+    let mut ledger = read_ledger(&ctx.paths.ledger)?;
+    ledger.upsert_source(source.clone());
+    skill_fs::write_ledger(&ctx.paths.ledger, &ledger)?;
+    Ok(source)
+}
+
+/// Install every skill of a source, or the named subset.
+pub fn install(
+    ctx: &SkillContext,
+    input: &str,
+    only: Option<Vec<String>>,
+    scope: &Scope,
+    accept: bool,
+) -> DynResult<InstallReport> {
+    let parsed = parse_source(input).map_err(|error| error.to_string())?;
+    let id = source_id(&parsed);
+    let mut ledger = read_ledger(&ctx.paths.ledger)?;
+    // A source that is already known carries settings the typed string does not (`--copy`,
+    // `--watch`, a pinned ref chosen when it was added).
+    let spec = ledger.source(&id).map(|source| source.spec.clone()).unwrap_or(parsed);
+    let known_source = ledger.source(&id).is_some();
+    if !known_source && !accept {
+        return Err(format!(
+            "installing from '{}' needs --accept: review it with `astral-plasma skills inspect {}`",
+            spec.display(),
+            spec.display()
+        )
+        .into());
+    }
+
+    let (mut skills, sha, ref_name) = discover_source(ctx, &spec)?;
+    if let Some(preferred) = match &spec {
+        SourceSpec::Git(git) => git.preferred_skill.clone(),
+        _ => None,
+    } {
+        // A skills.sh page names one skill of its repository.
+        let wanted = preferred.as_str().to_string();
+        skills.retain(|skill| skill.id.as_str() == wanted);
+        if skills.is_empty() {
+            return Err(format!("the repository has no skill named '{wanted}'").into());
+        }
+    }
+    if let Some(only) = &only {
+        let wanted: Vec<&str> = only.iter().map(String::as_str).collect();
+        let known: Vec<&str> = skills.iter().map(|skill| skill.id.as_str()).collect();
+        let missing: Vec<&&str> = wanted.iter().filter(|id| !known.contains(*id)).collect();
+        if !missing.is_empty() {
+            return Err(format!(
+                "no such skill: {}; this source has {}",
+                missing.iter().map(|id| **id).collect::<Vec<_>>().join(", "),
+                known.join(", ")
+            )
+            .into());
+        }
+        skills.retain(|skill| wanted.contains(&skill.id.as_str()));
+    }
+    if skills.is_empty() {
+        return Err("this source contains no skills (no SKILL.md found)".into());
+    }
+
+    // Materialise content and build the desired state.
+    let targets = resolve_targets(ctx.targets.as_deref(), &ctx.home).map_err(|error| error.to_string())?;
+    if targets.is_empty() {
+        return Err(
+            "no agent targets were detected; pass --target (claude-code, codex, …) to install anyway"
+                .into(),
+        );
+    }
+    let ref_label = ref_name.clone().unwrap_or_else(|| "local".to_string());
+    let mut desired = Vec::new();
+    let mut conflicts: Vec<String> = Vec::new();
+    for skill in &skills {
+        let origin = materialise(ctx, &spec, skill, sha.as_deref(), &ref_label)?;
+        desired.push(DesiredSkill {
+            source_id: id.clone(),
+            skill: skill.clone(),
+            origin,
+            scope: scope.clone(),
+        });
+    }
+
+    let mut plan = plan_install(&desired, &targets, &ledger, &RealFs, ctx.now);
+    // Refuse to write if anything is occupied by something that is not ours: the user must
+    // decide (spec §6.3), and a half-install is worse than a clear refusal.
+    for conflict in &plan.conflicts {
+        conflicts.push(format!("{}: {}", conflict.link.display(), conflict.detail));
+    }
+    if plan.is_blocked() {
+        return Ok(InstallReport {
+            source: spec.display(),
+            sha,
+            ref_name,
+            installed: Vec::new(),
+            skipped: skills.iter().map(|skill| skill.id.as_str().to_string()).collect(),
+            created: 0,
+            replaced: 0,
+            conflicts,
+            plan: plan.describe(),
+        });
+    }
+    let described = plan.describe();
+    let applied: Applied = skill_fs::apply(&ctx.paths, &plan, ctx.now)?;
+    if !desired.is_empty() {
+        ledger = read_ledger(&ctx.paths.ledger)?;
+        let mut source = ledger.source(&id).cloned().unwrap_or(AddedSource {
+            id: id.clone(),
+            label: id.clone(),
+            spec: spec.clone(),
+            enabled: true,
+            added_at: ctx.now,
+            last_seen: None,
+        });
+        source.last_seen = Some(ctx.now);
+        source.enabled = true;
+        ledger.upsert_source(source);
+        skill_fs::write_ledger(&ctx.paths.ledger, &ledger)?;
+    }
+
+    Ok(InstallReport {
+        source: spec.display(),
+        sha,
+        ref_name,
+        installed: skills.iter().map(|skill| skill.id.as_str().to_string()).collect(),
+        skipped: Vec::new(),
+        created: applied.created,
+        replaced: applied.replaced,
+        conflicts,
+        plan: described,
+    })
+}
+
+/// Write a skill's bytes into the immutable store, or return the local path (D8).
+fn materialise(
+    ctx: &SkillContext,
+    spec: &SourceSpec,
+    skill: &SkillMeta,
+    sha: Option<&str>,
+    ref_label: &str,
+) -> DynResult<Origin> {
+    match spec {
+        SourceSpec::Local(local) if !local.copy => Ok(Origin::Local {
+            path: local.path.join(&skill.subpath),
+        }),
+        SourceSpec::Local(local) => {
+            let path = store_dir(ctx, &format!("local/{}", crate::domain::skill_source::slug(&local.path.display().to_string())), ref_label, "local", &skill.id);
+            let source = local.path.join(&skill.subpath);
+            if path.exists() {
+                std::fs::remove_dir_all(&path)?;
+            }
+            skill_fs::copy_tree(&source, &path)?;
+            Ok(Origin::Local { path })
+        }
+        SourceSpec::Git(git) => {
+            let origin = ctx.git.fetch(&git.url, git.ref_name.as_deref(), &ctx.auth(spec));
+            // `install` fetched already; reuse that tree rather than cloning twice.
+            let files = match origin {
+                Ok(fetched) => fetched.files,
+                Err(_) => read_local_tree(&ctx.paths.git_cache).unwrap_or_default(),
+            };
+            let sha_label = sha.unwrap_or("unknown");
+            let short = &sha_label[..sha_label.len().min(12)];
+            let path = store_dir(ctx, &git.url, ref_label, short, &skill.id);
+            if path.exists() {
+                std::fs::remove_dir_all(&path)?;
+            }
+            write_skill_files(&path, &files, &skill.subpath)?;
+            Ok(Origin::Store {
+                ref_name: ref_label.to_string(),
+                sha: sha_label.to_string(),
+                path,
+            })
+        }
+    }
+}
+
+fn store_dir(ctx: &SkillContext, url: &str, ref_label: &str, short_sha: &str, skill: &SkillId) -> PathBuf {
+    let host = host_of(&SourceSpec::Git(crate::domain::skill_source::GitSource {
+        url: url.to_string(),
+        ref_name: None,
+        subpath: None,
+        auth: GitAuth::Configured,
+        preferred_skill: None,
+    }));
+    let stripped = url
+        .trim_end_matches(".git")
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_start_matches("ssh://")
+        .trim_start_matches("git://")
+        .trim_start_matches("git@");
+    let path_part = stripped
+        .split_once(['/', ':'])
+        .map(|(_, rest)| rest.to_string())
+        .unwrap_or_else(|| stripped.to_string());
+    let mut directory = ctx.paths.store.join(crate::domain::skill_source::slug(&host));
+    for segment in path_part.split('/') {
+        if !segment.is_empty() {
+            directory = directory.join(crate::domain::skill_source::slug(segment));
+        }
+    }
+    directory
+        .join(format!("{}@{}", crate::domain::skill_source::slug(ref_label), short_sha))
+        .join(skill.as_str())
+}
+
+fn write_skill_files(directory: &Path, files: &[(String, Vec<u8>)], subpath: &str) -> DynResult<()> {
+    let prefix = subpath.trim_matches('/');
+    for (path, bytes) in files {
+        let relative = if prefix.is_empty() {
+            path.as_str()
+        } else {
+            match path.strip_prefix(&format!("{prefix}/")) {
+                Some(rest) => rest,
+                None => continue,
+            }
+        };
+        if relative.is_empty() {
+            continue;
+        }
+        let target = directory.join(relative);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&target, bytes)?;
+    }
+    Ok(())
+}
+
+/// Enable or disable a skill, or every skill of a source.
+pub fn set_enabled(ctx: &SkillContext, selector: &Selector, enable: bool) -> DynResult<Applied> {
+    let mut ledger = read_ledger(&ctx.paths.ledger)?;
+    let plan = plan_set_state(&ledger, selector, enable, &RealFs, ctx.now);
+    let report = skill_fs::apply(&ctx.paths, &plan, ctx.now)?;
+    ledger = read_ledger(&ctx.paths.ledger)?;
+    if let Selector::Source { source_id } = selector {
+        if let Some(mut source) = ledger.source(source_id).cloned() {
+            source.enabled = enable;
+            ledger.upsert_source(source);
+            skill_fs::write_ledger(&ctx.paths.ledger, &ledger)?;
+        }
+    }
+    Ok(report)
+}
+
+/// Remove a skill or a whole source: unlink what we own, drop the rows, collect the store.
+pub fn remove(ctx: &SkillContext, selector: &Selector, purge: bool) -> DynResult<Applied> {
+    let ledger = read_ledger(&ctx.paths.ledger)?;
+    let plan = plan_remove(&ledger, selector, &RealFs);
+    let report = skill_fs::apply(&ctx.paths, &plan, ctx.now)?;
+    let mut after = read_ledger(&ctx.paths.ledger)?;
+    if let Selector::Source { source_id } = selector {
+        if after.for_source(source_id).is_empty() {
+            after.remove_source(source_id);
+            skill_fs::write_ledger(&ctx.paths.ledger, &after)?;
+        }
+    }
+    if purge {
+        skill_fs::gc_store(&ctx.paths, &after)?;
+    }
+    Ok(report)
+}
+
+/// Re-fetch a source and relink only the skills whose content changed.
+pub fn update(ctx: &SkillContext, source_id: &str) -> DynResult<UpdateReport> {
+    let ledger = read_ledger(&ctx.paths.ledger)?;
+    let source = ledger
+        .source(source_id)
+        .ok_or_else(|| format!("no source '{source_id}'"))?;
+    let spec = source.spec.clone();
+    let (skills, sha, ref_name) = discover_source(ctx, &spec)?;
+    let ref_label = ref_name.clone().unwrap_or_else(|| "local".to_string());
+
+    let mut changed = Vec::new();
+    let mut unchanged = Vec::new();
+    let mut conflicts = Vec::new();
+    let mut created = 0usize;
+    let mut replaced = 0usize;
+
+    for skill in &skills {
+        let rows = ledger.for_skill(&skill.id, Some(source_id));
+        if rows.is_empty() {
+            continue; // not installed
+        }
+        let current_hash = rows.first().map(|row| row.hash.clone()).unwrap_or_default();
+        if current_hash == skill.hash && rows.iter().all(|row| row.state == LinkState::Linked) {
+            unchanged.push(skill.id.as_str().to_string());
+            continue;
+        }
+        let origin = materialise(ctx, &spec, skill, sha.as_deref(), &ref_label)?;
+        let targets: Vec<&'static Target> = rows
+            .iter()
+            .filter_map(|row| crate::domain::skill_targets::target_by_id(&row.target_id))
+            .fold(Vec::new(), |mut acc, target| {
+                if !acc.iter().any(|existing: &&Target| existing.id == target.id) {
+                    acc.push(target);
+                }
+                acc
+            });
+        let desired = vec![DesiredSkill {
+            source_id: source_id.to_string(),
+            skill: skill.clone(),
+            origin,
+            scope: rows.first().map(|row| row.scope.clone()).unwrap_or(Scope::Global),
+        }];
+        let plan = plan_install(&desired, &targets, &ledger, &RealFs, ctx.now);
+        for conflict in &plan.conflicts {
+            conflicts.push(format!("{}: {}", conflict.link.display(), conflict.detail));
+        }
+        if plan.is_blocked() {
+            continue;
+        }
+        let applied = skill_fs::apply(&ctx.paths, &plan, ctx.now)?;
+        created += applied.created;
+        replaced += applied.replaced;
+        changed.push(skill.id.as_str().to_string());
+    }
+
+    // Refresh the source's last-seen stamp.
+    let mut after = read_ledger(&ctx.paths.ledger)?;
+    if let Some(mut entry) = after.source(source_id).cloned() {
+        entry.last_seen = Some(ctx.now);
+        after.upsert_source(entry);
+        skill_fs::write_ledger(&ctx.paths.ledger, &after)?;
+    }
+
+    Ok(UpdateReport {
+        source: source_id.to_string(),
+        changed,
+        unchanged,
+        created,
+        replaced,
+        conflicts,
+    })
+}
+
+/// Compare the ledger with the filesystem (spec §11, the Doctor section).
+pub fn doctor(ctx: &SkillContext) -> DynResult<Vec<Finding>> {
+    let ledger = read_ledger(&ctx.paths.ledger)?;
+    let mut findings = Vec::new();
+    for row in &ledger.links {
+        match RealFs.probe(&row.link) {
+            crate::domain::skill_install::Probe::Missing => findings.push(Finding {
+                kind: "missing".to_string(),
+                path: row.link.display().to_string(),
+                detail: "the ledger has a record but nothing is at this path".to_string(),
+                skill: row.skill.as_str().to_string(),
+                source: row.source_id.clone(),
+            }),
+            crate::domain::skill_install::Probe::Symlink { target, dangling } => {
+                if target != row.target {
+                    findings.push(Finding {
+                        kind: "drifted".to_string(),
+                        path: row.link.display().to_string(),
+                        detail: format!("points at {target}, the ledger recorded {}", row.target),
+                        skill: row.skill.as_str().to_string(),
+                        source: row.source_id.clone(),
+                    });
+                } else if dangling {
+                    findings.push(Finding {
+                        kind: "dangling".to_string(),
+                        path: row.link.display().to_string(),
+                        detail: "the content this link points at is gone".to_string(),
+                        skill: row.skill.as_str().to_string(),
+                        source: row.source_id.clone(),
+                    });
+                }
+            }
+            crate::domain::skill_install::Probe::Directory | crate::domain::skill_install::Probe::File => {
+                findings.push(Finding {
+                    kind: "replaced".to_string(),
+                    path: row.link.display().to_string(),
+                    detail: "the managed link was replaced by a real file or directory".to_string(),
+                    skill: row.skill.as_str().to_string(),
+                    source: row.source_id.clone(),
+                });
+            }
+        }
+    }
+    // Unmanaged skills: something an agent will load that this manager did not create. Scan the
+    // global farm and every project farm the ledger mentions.
+    // Detected agents *and* every target the ledger manages: a farm is worth checking even if the
+    // agent was uninstalled after we wrote to it.
+    let mut targets = resolve_targets(None, &ctx.home).map_err(|error| error.to_string())?;
+    for row in &ledger.links {
+        if let Some(target) = crate::domain::skill_targets::target_by_id(&row.target_id) {
+            if !targets.iter().any(|known| known.id == target.id) {
+                targets.push(target);
+            }
+        }
+    }
+    let mut scopes = vec![Scope::Global];
+    for row in &ledger.links {
+        if !scopes.iter().any(|scope| scope.key() == row.scope.key()) {
+            scopes.push(row.scope.clone());
+        }
+    }
+    let mut seen: Vec<PathBuf> = Vec::new();
+    for target in targets {
+      for scope in &scopes {
+        let dir = target.dir_for_with(scope, &ctx.home);
+        if !dir.is_dir() || seen.contains(&dir) {
+            continue;
+        }
+        seen.push(dir.clone());
+        for entry in read_skill_entries(&dir) {
+            if ledger.row_for(&entry).is_none() {
+                findings.push(Finding {
+                    kind: "unmanaged".to_string(),
+                    path: entry.display().to_string(),
+                    detail: format!("a skill in the {} directory that Astral did not install", target.label),
+                    skill: entry
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    source: String::new(),
+                });
+            }
+        }
+      }
+    }
+    findings.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(findings)
+}
+
+/// Real skill directories or links in one target directory (a name with a `SKILL.md`, or a link).
+fn read_skill_entries(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_symlink()
+                || path.join("SKILL.md").is_file()
+                || path.join("skill.md").is_file()
+        })
+        .collect()
+}
+
+/// Adopt a farm built by `npx skills` instead of duplicating it (D4).
+///
+/// Reads what is on disk and records it as `Origin::Adopted`; nothing is rewritten, and the rows
+/// let `remove`/`disable` work on links Astral did not create.
+pub fn import_npx(ctx: &SkillContext, apply: bool) -> DynResult<ImportReport> {
+    let mut ledger = read_ledger(&ctx.paths.ledger)?;
+    let mut adopted = Vec::new();
+    let mut skipped = Vec::new();
+    let targets = resolve_targets(None, &ctx.home).map_err(|error| error.to_string())?;
+    for target in targets {
+        let dir = target.dir_for_with(&Scope::Global, &ctx.home);
+        for entry in read_skill_entries(&dir) {
+            if ledger.row_for(&entry).is_some() {
+                continue;
+            }
+            let name = entry
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let skill = match SkillId::parse(&name) {
+                Ok(skill) => skill,
+                Err(_) => {
+                    skipped.push(format!("{}: not a skill name", entry.display()));
+                    continue;
+                }
+            };
+            // Hash what the link resolves to, so a later change is visible.
+            let resolved = std::fs::canonicalize(&entry).unwrap_or_else(|_| entry.clone());
+            let files = read_local_tree(&resolved).unwrap_or_default();
+            let hash = crate::domain::skill::hash_files(&files);
+            let link_target = std::fs::read_link(&entry)
+                .map(|target| target.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| resolved.display().to_string());
+            let source_id = format!("adopted-{}", crate::domain::skill_source::slug(&resolved.display().to_string()));
+            adopted.push(AdoptedSkill {
+                skill: skill.as_str().to_string(),
+                link: entry.display().to_string(),
+                by: "npx skills".to_string(),
+                hash: hash.clone(),
+            });
+            if apply {
+                ledger.upsert_source(AddedSource {
+                    id: source_id.clone(),
+                    label: format!("adopted · {}", resolved.display()),
+                    spec: SourceSpec::Local(crate::domain::skill_source::LocalSource {
+                        path: resolved.clone(),
+                        watch: false,
+                        copy: false,
+                        subpath: None,
+                    }),
+                    enabled: true,
+                    added_at: ctx.now,
+                    last_seen: Some(ctx.now),
+                });
+                ledger.upsert(crate::domain::skill_ledger::LinkRecord {
+                    link: entry.clone(),
+                    target: link_target,
+                    target_id: target.id.to_string(),
+                    source_id,
+                    skill,
+                    origin: Origin::Adopted {
+                        by: "npx skills".to_string(),
+                        hash: hash.clone(),
+                    },
+                    scope: Scope::Global,
+                    state: LinkState::Linked,
+                    hash: hash.clone(),
+                    created_at: ctx.now,
+                });
+            }
+        }
+    }
+    if apply && !adopted.is_empty() {
+        skill_fs::write_ledger(&ctx.paths.ledger, &ledger)?;
+    }
+    Ok(ImportReport {
+        applied: apply,
+        adopted,
+        skipped,
+    })
+}
+
+/// Recover transactions left by a crash, and report how many were finished.
+pub fn recover(ctx: &SkillContext) -> DynResult<usize> {
+    skill_fs::recover(&ctx.paths)
+}
+
+/// The plan for a would-be install, for `--dry-run` and the consent card.
+pub fn preview(ctx: &SkillContext, input: &str, scope: &Scope) -> DynResult<Vec<String>> {
+    let parsed = parse_source(input).map_err(|error| error.to_string())?;
+    let id = source_id(&parsed);
+    let ledger = read_ledger(&ctx.paths.ledger)?;
+    let spec = ledger.source(&id).map(|source| source.spec.clone()).unwrap_or(parsed);
+    let (skills, sha, ref_name) = discover_source(ctx, &spec)?;
+    let targets = resolve_targets(ctx.targets.as_deref(), &ctx.home).map_err(|error| error.to_string())?;
+    let ref_label = ref_name.unwrap_or_else(|| "local".to_string());
+    let mut desired = Vec::new();
+    for skill in &skills {
+        let origin = match &spec {
+            SourceSpec::Local(local) if !local.copy => Origin::Local { path: local.path.join(&skill.subpath) },
+            _ => Origin::Store {
+                ref_name: ref_label.clone(),
+                sha: sha.clone().unwrap_or_else(|| "preview".to_string()),
+                path: PathBuf::from(format!("/preview/{}/{}", ref_label, skill.id)),
+            },
+        };
+        desired.push(DesiredSkill {
+            source_id: id.clone(),
+            skill: skill.clone(),
+            origin,
+            scope: scope.clone(),
+        });
+    }
+    let plan: Plan = plan_install(&desired, &targets, &ledger, &RealFs, ctx.now);
+    Ok(plan.describe())
+}
+
+/// Which skills a source has, for the CLI's completion and the GUI's tree.
+pub fn skills_in_source(ctx: &SkillContext, source_id: &str) -> DynResult<Vec<String>> {
+    let ledger = read_ledger(&ctx.paths.ledger)?;
+    Ok(ledger.skills_of(source_id).iter().map(|skill| skill.as_str().to_string()).collect())
+}
+
+/// Conflicts in a plan are data, not an error: the callers decide how loud to be.
+pub fn conflict_lines(conflicts: &[Conflict]) -> Vec<String> {
+    conflicts
+        .iter()
+        .map(|conflict| format!("{}: {}", conflict.link.display(), conflict.detail))
+        .collect()
+}

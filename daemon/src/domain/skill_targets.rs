@@ -129,7 +129,18 @@ impl Scope {
 }
 
 impl Target {
-    /// The directory this target reads for `scope`.
+    /// The directory this target reads for `scope`, resolving a global path against `home`.
+    ///
+    /// Taking the home explicitly keeps the manager testable and honest: a daemon may run with a
+    /// different `$HOME` than the caller expects, and a test never wants to touch the real one.
+    pub fn dir_for_with(&self, scope: &Scope, home: &Path) -> PathBuf {
+        match scope {
+            Scope::Global => expand_into(home, self.global_dir),
+            Scope::Project { root } => root.join(self.project_dir),
+        }
+    }
+
+    /// The directory this target reads for `scope`, against the process `$HOME`.
     pub fn dir_for(&self, scope: &Scope) -> PathBuf {
         match scope {
             Scope::Global => self.global_path(),
