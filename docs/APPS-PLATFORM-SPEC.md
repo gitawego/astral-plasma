@@ -172,7 +172,7 @@ app owns ordinary compositor windows.
 | A27 | Compatibility constants | One Rust constant pair generated into QML; drift fails CI; no semver range parser. |
 | A28 | Core app failure | A core app that fails to load is reverted to its baseline, the failure is recorded, and the failed version is blocked instead of retried. |
 | A36 | Ports are checked, not trusted | An injected port is one more contract: `check_app_boundaries.py` verifies that every member an app reads is declared by that port, that every intent it requests is registered in `shell.qml`, and that every `ShellState` property is populated. Silent `undefined` is the failure mode this platform keeps producing, so it is now a test failure instead. |
-| A37 | A removal is a decision, not a deletion | Removing an app writes a tombstone in the registry; reconcile and the host respect it, installing or restoring clears it, and the Apps page offers the way back. Bundled apps can be removed and restored from the UI, and their settings survive unless `--purge`. |
+| A37 | Bundled apps are disabled, not removed | A `preinstalled` app ships with the platform and is reconciled on every read, so removing it would either break the shell or be undone; `remove_app` refuses it in the domain and the Apps page does not offer the action. Disable is the control, the user's disabled state survives reconcile, and removing a *user-installed* app still deletes payload and record while keeping its settings unless `--purge`. |
 | A35 | Consent before install | Installing needs a user decision on information from the artifact: `app inspect` describes the file, the Apps page renders it as a consent card, and `--accept-permissions` is passed only because that click happened. `app publish` is the authoring counterpart and the daemon never holds a signing key. |
 | A34 | One rule, one reader | App linters read the manifest's trust tier rather than encoding the rule twice; an official app may use kernel services, a community app may not. `astral app test` runs the app's declared `testSuites`, so "individually testable" is checked rather than asserted. |
 | A32 | Sandbox and broker boundaries | Mounts are planned from the registry (never from the manifest), only `Astral/AppKit` is exposed as an SDK, and every broker method maps to exactly one permission read from the registry. Declaring a permission is asking; granting is consent. Each launch gets one socket, one one-shot token and its own audit line. |
@@ -2244,33 +2244,44 @@ Verified live after the fix: with music playing, the pane shows the pause glyph,
 advances, the spectrum spikes move, and `media toggleVisualizer` switches between the radial
 halo and the heatmap speaker (16 351 px of difference between the two styles' renders).
 
-### C.32 Removing a bundled app has to mean something
+### C.32 A bundled app is disabled, never removed
 
-Reported symptom: *"built-in apps can't be removed"* — the button printed "Removed" and the
-row came straight back.
+Reported symptom, twice and in opposite directions: *"built-in apps can't be removed"* (the
+button said "Removed" and the row came straight back), then *"i see still remove button on
+bundled apps — bundled apps can only be disabled"*.
 
-Root cause: `app list` reconciles bundled apps on every read ("first-boot semantics: every
-bundled app is installed"), so a removal that left nothing behind was undone by the refresh
-that follows the removal. Two further defects surfaced while fixing it:
+The first report was a dead button, not a missing feature. My first fix made removal work
+(tombstone + `app restore`), which treated the symptom: offering Remove on an app that ships
+with the platform is a promise the platform cannot keep, because `app list` reconciles
+bundled apps on every read by design (first-boot semantics). The second report stated the
+rule, and it is the better one:
 
-* `remove_app` deleted the whole app directory, so `--purge` was meaningless and a plain
-  removal destroyed the app's own settings — while printing "kept app data" only when that was
-  impossible.
-* `AppRegistry` synthesised a record for every bundled app regardless of the registry, so
-  even a tombstone would not have stopped the surface from mounting (the removal would have
-  been cosmetic).
+* **`remove_app` refuses a `preinstalled` entry**, in the domain, naming the alternative:
+  *"'org.astralplasma.media' is bundled with Astral and cannot be removed; disable it
+  instead."* No tombstone, no restore machinery, no false success message.
+* **The Apps page offers Remove only when the app is not bundled** (`canRemove(app)`), so the
+  action never appears where it cannot work. Disable/Enable is the sanctioned control, and a
+  disabled bundled app stays disabled across reconciles — the user's state wins, which is the
+  whole point of the registry.
+* Removal still works for apps the user installed: payload and manifest go, `config/` and
+  `cache/` stay unless `--purge`, and the record is deleted.
 
-The fix is a **tombstone** in the registry (`removed: [id]`), consulted by reconcile and by
-`AppRegistry` (through `AppHostPolicy.withoutRemoved`, keyed on the **id** — the package
-directory is named `Media`, which is exactly the mismatch that would have hidden a
-name-keyed filter). Removal now deletes the payload and manifest, keeps `config/`/`cache/`
-unless `--purge`, and installing or restoring clears the tombstone. `app removed` lists what
-can come back and `app restore <id|--all>` brings it back; the Apps page shows a "removed"
-row with a Restore button, because removing was one click and restoring must be too.
+Deleting the tombstone machinery was part of the fix: with removal refused there is nothing
+to resurrect, so `Registry.removed`, `restore_bundled`, `app restore`/`app removed` and the
+page's restore row all went away. One rule, one representation.
 
-Verified live: `app remove org.astralplasma.media` took the list 8 → 7 and the dashboard's
-media tab degraded to *"the media app is not installed; restore it in Settings → Apps"*;
-`app restore` returned it to 8 and the tab rendered again; the Apps page showed
-`7 installed · 7 enabled` with `1 removed app — Media … [Restore]` without a restart, because
-`AppRegistry` now watches `apps.json` (and calls `reload()` — `fileChanged` only announces,
-it does not re-read).
+Two live defects surfaced while verifying this and are fixed too:
+
+* The Apps page reported `8 installed` after a ninth app had been installed from a shell,
+  because it only refreshed when it was first created. `AppsService` now watches
+  `apps.json` (`FileView` + `reload()` on change), so an install, a removal or a disable from
+  anywhere — a script, the CLI — shows up in the page without a restart.
+* `remove_app` used to delete the whole app directory, which made `--purge` meaningless and
+  destroyed settings on a plain removal; it now removes the payload and manifest and keeps the
+  app's own `config/`/`cache/`.
+
+Verified live: the Apps page shows `[Disable]` and no `[Remove]` on all eight bundled apps; a
+freshly installed app shows Remove and `app remove` removes it; disabling Assistant from the
+CLI updated the page to `9 installed · 8 enabled` with the row reading `Disabled [Enable]`
+without a restart; and `app remove org.astralplasma.media` refuses with the sentence above.
+

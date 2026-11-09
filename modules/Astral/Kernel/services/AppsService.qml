@@ -17,9 +17,8 @@ import "../config"
 //   `app inspect <file>`                  -> what installing a file would grant
 //   `app install <file> --accept-permissions` -> staging, verify, record
 //   `app enable|disable <id>`             -> registry, written atomically
-//   `app remove <id> [--purge]`           -> payload + record + tombstone
-//   `app removed --json`                  -> bundled apps the user removed
-//   `app restore <id>`                    -> clear the tombstone, re-add the record
+//   `app remove <id> [--purge]`           -> payload + record (installed apps only; a
+//                                            bundled app is refused: it can be disabled)
 //
 // One short-lived process per action, then a refresh: the registry is the single
 // source of truth, so the page never patches its own list optimistically.
@@ -51,8 +50,6 @@ Singleton {
         root.loading = true;
         listProc.running = false;
         listProc.running = true;
-        removedProc.running = false;
-        removedProc.running = true;
     }
 
     function setEnabled(appId, enabled) {
@@ -94,21 +91,25 @@ Singleton {
     /// What `inspect` found, or null while nothing has been inspected.
     property var pendingInstall: null
 
-    /// Bundled apps the user removed: removable, and restorable from here.
-    property var removed: []
 
-    function restore(appId) {
-        root.lastError = "";
-        actionProc.command = [root.daemonBin, "app", "restore", String(appId)];
-        actionProc.running = false;
-        actionProc.running = true;
-    }
 
     function appById(appId) {
         for (let index = 0; index < apps.length; index++) {
             if (apps[index].id === appId) return apps[index];
         }
         return null;
+    }
+
+    // The registry is the truth, and it changes from outside this page (a CLI install, an
+    // app that removes itself). Watching it keeps the list honest without polling: the
+    // page showed "8 installed" after a ninth app had been installed from a shell.
+    FileView {
+        id: registryWatch
+        path: Paths.appsRegistryPath
+        watchChanges: true
+        // `fileChanged` only announces: the contents are still the old ones until reload().
+        onFileChanged: registryWatch.reload()
+        onLoaded: root.refresh()
     }
 
     Process {
@@ -125,24 +126,6 @@ Singleton {
                     root.apps = Array.isArray(parsed) ? parsed : [];
                 } catch (error) {
                     root.lastError = "could not read the app list: " + error;
-                }
-            }
-        }
-    }
-
-    Process {
-        id: removedProc
-        command: [root.daemonBin, "app", "removed", "--json"]
-
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const text = this.text.trim();
-                if (text.length === 0) return;
-                try {
-                    const parsed = JSON.parse(text);
-                    root.removed = Array.isArray(parsed) ? parsed : [];
-                } catch (error) {
-                    root.removed = [];
                 }
             }
         }

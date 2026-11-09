@@ -71,13 +71,6 @@ pub struct Registry {
     pub schema: u32,
     #[serde(default)]
     pub apps: Vec<RegistryEntry>,
-    /// Apps the user removed on purpose.
-    ///
-    /// Bundled apps are reconciled on read, so a removal that left nothing behind came
-    /// straight back on the next refresh and the button looked broken. A tombstone is the
-    /// record of the decision; installing or restoring the app clears it.
-    #[serde(default)]
-    pub removed: Vec<String>,
 }
 
 impl Default for Registry {
@@ -85,7 +78,6 @@ impl Default for Registry {
         Self {
             schema: REGISTRY_SCHEMA,
             apps: Vec::new(),
-            removed: Vec::new(),
         }
     }
 }
@@ -190,8 +182,6 @@ pub fn write_registry(data_dir: &Path, registry: &Registry) -> DynResult<()> {
 ///
 /// Returns true when an existing entry was replaced.
 pub fn upsert_entry(registry: &mut Registry, entry: RegistryEntry) -> bool {
-    // Installing (or restoring) an app is a fresh decision: its tombstone goes away.
-    registry.removed.retain(|removed| removed != &entry.id);
     match registry.apps.iter_mut().find(|existing| existing.id == entry.id) {
         Some(existing) => {
             *existing = entry;
@@ -372,7 +362,6 @@ mod tests {
     fn disabled_apps_are_not_loaded_but_stay_recorded() {
         let registry = Registry {
             schema: 1,
-            removed: Vec::new(),
             apps: vec![
                 RegistryEntry {
                     name: "Fixture".to_string(),
@@ -488,7 +477,6 @@ mod tests {
     fn a_registry_file_round_trips() {
         let registry = Registry {
             schema: REGISTRY_SCHEMA,
-            removed: Vec::new(),
             apps: vec![entry_for(
                 &manifest("org.astralplasma.media", Some("preinstalled"), "official"),
                 "sha256:m",
@@ -527,7 +515,6 @@ mod tests {
         let registry = Registry {
             schema: REGISTRY_SCHEMA,
             apps: vec![sample("io.github.alice.clock", "1.0.0")],
-            removed: Vec::new(),
         };
         write_registry(dir.path(), &registry).unwrap();
         assert_eq!(read_registry(dir.path()).unwrap(), registry);
@@ -543,14 +530,12 @@ mod tests {
         let good = Registry {
             schema: REGISTRY_SCHEMA,
             apps: vec![sample("io.github.alice.clock", "1.0.0")],
-            removed: Vec::new(),
         };
         write_registry(dir.path(), &good).unwrap();
 
         let broken = Registry {
             schema: REGISTRY_SCHEMA,
             apps: vec![sample("Clock", "1.0.0")],
-            removed: Vec::new(),
         };
         assert!(write_registry(dir.path(), &broken).is_err());
         assert_eq!(read_registry(dir.path()).unwrap(), good);
@@ -602,7 +587,6 @@ mod tests {
         let mut registry = Registry {
             schema: REGISTRY_SCHEMA,
             apps: vec![sample("io.github.alice.clock", "1.0.0")],
-            removed: Vec::new(),
         };
         assert!(set_enabled(&mut registry, "io.github.alice.clock", false).unwrap());
         assert!(!registry.apps[0].enabled);
@@ -617,7 +601,6 @@ mod tests {
         let mut registry = Registry {
             schema: REGISTRY_SCHEMA,
             apps: vec![sample("org.astralplasma.dock", "1.0.0")],
-            removed: Vec::new(),
         };
         block_version(&mut registry, "org.astralplasma.dock", "1.0.1").unwrap();
         block_version(&mut registry, "org.astralplasma.dock", "1.0.1").unwrap();

@@ -313,10 +313,7 @@ ShellRoot {
             Config.openSettings("apps");
             AppsService.remove(id, false);
         }
-        function restoreApp(id: string): void {
-            Config.openSettings("apps");
-            AppsService.restore(id);
-        }
+
     }
 
     IpcHandler {

@@ -48,7 +48,6 @@ ApplicationWindow {
         anchors.fill: parent
         testMode: true
         testApps: testRoot.fixtures
-        testRemoved: ["org.astralplasma.media"]
         testPendingInstall: ({
             id: "io.github.alice.timer", name: "Timer", version: "0.3.0", kernelApi: 1,
             trust: "community", publisher: "Alice", permissions: ["windows.read", "network"],
@@ -102,23 +101,23 @@ ApplicationWindow {
             "consent must be explicit when installing");
         assert(consentSource.indexOf("FileDialog") >= 0, "the user picks the artifact");
 
-        // ---- a removal can be undone from the page --------------------------
-        assert(page.removedApps.length === 1, "removed bundled apps are offered for restore");
-        assert(page.appName("org.astralplasma.media") === "Media",
-            "a removed app still has a readable name");
-        assert(readLocalFile("../modules/Astral/Kernel/services/AppsService.qml")
-                .indexOf('"app", "restore"') >= 0,
-            "restoring goes through the daemon, not the page");
-        assert(readLocalFile("../modules/Astral/Kernel/services/AppsService.qml")
-                .indexOf('"app", "removed", "--json"') >= 0,
-            "the removed list is the daemon's");
+        // ---- a bundled app can be disabled, not removed ---------------------
+        // The daemon refuses it (the app ships with the platform, and reconcile would put
+        // it back), so the row must not offer the action at all.
+        assert(page.canRemove(page.apps[0]) === false, "a bundled app offers no Remove");
+        assert(page.canRemove(page.apps[2]) === true, "an installed app does offer Remove");
+        assert(page.canRemove(null) === false, "no app, no action");
 
         // ---- the page is data-driven and action-bearing ---------------------
         const source = readLocalFile("../settings_gui/pages/AppsPage.qml");
         assert(source.length > 1000, "the page must be readable");
         assert(source.indexOf("AppsService.refresh()") >= 0, "the page refreshes from the service");
         assert(source.indexOf("setEnabled(") >= 0, "the page must offer enable/disable");
-        assert(source.indexOf("remove(") >= 0, "the page must offer remove");
+        assert(source.indexOf("remove(") >= 0, "the page must offer remove for installed apps");
+        assert(source.indexOf("visible: root.canRemove(modelData)") >= 0,
+            "Remove is hidden for bundled apps");
+        assert(source.indexOf("AppsService.restore") === -1,
+            "there is nothing to restore: a bundled app is disabled, not removed");
         assert(source.indexOf("modelData.version") >= 0, "each row shows its version");
         assert(source.indexOf("modelData.kernelApi") >= 0, "each row shows its API level");
         assert(source.indexOf("trustLabel(modelData)") >= 0, "each row shows its trust tier");

@@ -182,8 +182,17 @@ pub fn remove_app(
     purge: bool,
 ) -> DynResult<Removed> {
     let mut registry = read_registry(data_dir)?;
-    if registry.get(id).is_none() {
+    let Some(entry) = registry.get(id) else {
         return Err(format!("'{id}' is not installed").into());
+    };
+    // A bundled app ships with the platform: removing it would either break the shell or be
+    // undone by the next reconcile, so the answer is "disable it" — a rule the domain owns,
+    // not a convention the UI remembers.
+    if entry.preinstalled {
+        return Err(format!(
+            "'{id}' is bundled with Astral and cannot be removed; disable it instead"
+        )
+        .into());
     }
 
     let app_dir = apps_root.join(id);
@@ -207,12 +216,6 @@ pub fn remove_app(
 
     let before = registry.apps.len();
     registry.apps.retain(|entry| entry.id != id);
-    // A tombstone, because bundled apps are reconciled on read: without it the next
-    // `app list` reinstalls what the user just removed.
-    if !registry.removed.iter().any(|removed| removed == id) {
-        registry.removed.push(id.to_string());
-        registry.removed.sort();
-    }
     if registry.apps.len() != before {
         write_registry(data_dir, &registry)?;
     }
@@ -434,7 +437,7 @@ mod tests {
             install_file(&fixture.data(), &fixture.apps(), &broken, &host(), false, false).unwrap_err();
         assert!(error.to_string().contains("entry.root") || error.to_string().contains("malformed"),
             "got: {error}");
-        assert!(!fixture.apps().join("io.github.alice.clock").exists());
+        assert!(!fixture.apps().join("io.github.alice.clock").join("payload").exists());
     }
 
     #[test]
@@ -452,11 +455,6 @@ mod tests {
         assert!(!app_dir.join("manifest.json").exists());
         let registry = read_registry(&fixture.data()).unwrap();
         assert!(registry.get("io.github.alice.clock").is_none(), "the record is gone");
-        assert_eq!(
-            registry.removed,
-            vec!["io.github.alice.clock".to_string()],
-            "and it is remembered, so a bundled copy cannot resurrect it"
-        );
     }
 
     #[test]

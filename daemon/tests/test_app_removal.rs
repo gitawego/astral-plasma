@@ -1,27 +1,21 @@
-//! Removing an app — including a bundled one — must actually remove it.
+//! Removing an app — and the rule that a bundled app is not removable.
 //!
-//! The Apps page offers Remove on every row, bundled or not. Before this suite existed,
-//! `app remove org.astralplasma.media` printed "Removed" and the app came straight back:
-//! `app list` reconciles bundled apps on read, and a removal left nothing behind to say
-//! "the user meant it". These tests pin the intent, its reversibility, and the data rules.
+//! The Apps page used to offer Remove on every row. For a bundled app that button could
+//! never do what it said: the app ships with the platform, so `app list` reconciles it back
+//! and the row returns. The rule is now explicit and enforced in the domain: **a bundled
+//! app can be disabled, not removed**; Remove is offered only for apps the user installed.
 
 use std::path::{Path, PathBuf};
 
-use astral_plasma::application::app_install::remove_app;
-use astral_plasma::application::app_service::{read_registry, write_registry};
+use astral_plasma::application::app_install::{install_file, remove_app};
+use astral_plasma::application::app_service::{read_registry, set_enabled};
 use astral_plasma::application::preinstalled::reconcile_preinstalled;
+use astral_plasma::domain::app_compat::{HostApi, APP_API_LEVEL};
 
-/// `org.astralplasma.media` -> `Media`: the layout the real package uses.
-fn bundle_dir_name(id: &str) -> String {
-    let last = id.rsplit('.').next().unwrap_or(id);
-    let mut chars = last.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
+fn host() -> HostApi {
+    HostApi { level: APP_API_LEVEL, floor: APP_API_LEVEL, quickshell: Some("0.3.0".to_string()) }
 }
 
-/// A bundled-apps directory with one app, plus a data dir to reconcile into.
 struct Fixture {
     dir: tempfile::TempDir,
 }
@@ -34,26 +28,22 @@ impl Fixture {
     fn apps(&self) -> PathBuf { self.data().join("apps") }
     fn bundled(&self) -> PathBuf { self.dir.path().join("bundled") }
 
-    /// A bundled app the package ships: `<bundled>/<Dir>/{manifest.json,payload…}`, where
-    /// the directory is named for humans (`Media`) and the id is reverse-DNS.
+    /// A bundled app as the package ships it: `<bundled>/Media/{manifest.json, App.qml}`.
     fn bundle(&self, id: &str) {
         let dir = self.bundled().join(bundle_dir_name(id));
-        std::fs::create_dir_all(dir.join("tests")).unwrap();
-        std::fs::write(
-            dir.join("manifest.json"),
-            format!(
-                r#"{{
-  "schema": 1, "id": "{id}", "name": "Bundled", "version": "0.1.0", "kernelApi": 1,
-  "dataSchema": 1, "trust": "official", "runtime": "embedded",
-  "publisher": {{ "name": "Astral Plasma", "key": "minisign:RWSplaceholderReleaseKey" }},
-  "entry": {{ "root": "App.qml" }},
-  "requires": {{ "capabilities": [], "qtModules": [], "apps": [] }},
-  "permissions": ["session.read"], "distribution": "preinstalled"
-}}"#
-            ),
-        )
-        .unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("manifest.json"), manifest_json(id, "official", "preinstalled")).unwrap();
         std::fs::write(dir.join("App.qml"), "import QtQuick\nItem { }\n").unwrap();
+    }
+
+    /// A packed, installable app the user owns.
+    fn install(&self, id: &str) -> astral_plasma::application::app_install::Installed {
+        let source = self.dir.path().join(format!("src-{id}"));
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("manifest.json"), manifest_json(id, "community", "store")).unwrap();
+        std::fs::write(source.join("shell.qml"), "import QtQuick\nItem { }\n").unwrap();
+        let packed = astral_plasma::application::app_sdk::pack_dir(&source, Some(self.dir.path())).unwrap();
+        install_file(&self.data(), &self.apps(), &packed.path, &host(), false, false).unwrap()
     }
 
     fn reconcile(&self) -> Vec<String> {
@@ -66,137 +56,132 @@ impl Fixture {
     }
 }
 
-#[test]
-fn a_removed_bundled_app_does_not_come_back_on_the_next_list() {
-    let fixture = Fixture::new();
-    fixture.bundle("org.astralplasma.media");
-    assert_eq!(fixture.reconcile(), vec!["org.astralplasma.media"]);
-
-    let removed = remove_app(&fixture.data(), &fixture.apps(), "org.astralplasma.media", false)
-        .expect("removal succeeds");
-    assert_eq!(removed.id, "org.astralplasma.media");
-
-    // This is the bug the user reported: the refresh that follows Remove reconciles the
-    // bundled apps back in, so the row returns and the button looks broken.
-    assert!(
-        fixture.reconcile().is_empty(),
-        "a deliberate removal must survive the next reconcile"
-    );
+fn bundle_dir_name(id: &str) -> String {
+    let last = id.rsplit('.').next().unwrap_or(id);
+    let mut chars = last.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
 }
 
-#[test]
-fn removing_one_bundled_app_leaves_the_others_alone() {
-    let fixture = Fixture::new();
-    fixture.bundle("org.astralplasma.media");
-    fixture.bundle("org.astralplasma.workspaces");
-    fixture.reconcile();
-
-    remove_app(&fixture.data(), &fixture.apps(), "org.astralplasma.media", false).unwrap();
-    assert_eq!(fixture.reconcile(), vec!["org.astralplasma.workspaces"]);
-}
-
-#[test]
-fn a_removed_app_can_be_restored_from_the_bundle() {
-    let fixture = Fixture::new();
-    fixture.bundle("org.astralplasma.media");
-    fixture.reconcile();
-    remove_app(&fixture.data(), &fixture.apps(), "org.astralplasma.media", false).unwrap();
-
-    let restored = astral_plasma::application::preinstalled::restore_bundled(
-        &fixture.data(),
-        &fixture.bundled(),
-        "org.astralplasma.media",
+fn manifest_json(id: &str, trust: &str, distribution: &str) -> String {
+    let (runtime, root) = if distribution == "preinstalled" {
+        ("embedded", "App.qml")
+    } else {
+        ("hosted", "shell.qml")
+    };
+    format!(
+        r#"{{
+  "schema": 1, "id": "{id}", "name": "Fixture", "version": "0.1.0", "kernelApi": 1,
+  "dataSchema": 1, "trust": "{trust}", "runtime": "{runtime}",
+  "publisher": {{ "name": "Astral Plasma", "key": "minisign:RWSplaceholderReleaseKey" }},
+  "entry": {{ "root": "{root}" }},
+  "requires": {{ "capabilities": [], "qtModules": [], "apps": [] }},
+  "permissions": ["session.read"], "distribution": "{distribution}"
+}}"#
     )
-    .expect("a bundled app can be restored");
-    assert_eq!(restored, "org.astralplasma.media");
+}
+
+#[test]
+fn a_bundled_app_cannot_be_removed_and_says_why() {
+    let fixture = Fixture::new();
+    fixture.bundle("org.astralplasma.media");
+    fixture.reconcile();
+
+    let error = remove_app(&fixture.data(), &fixture.apps(), "org.astralplasma.media", false)
+        .expect_err("a bundled app is not removable");
+    let text = error.to_string();
+    assert!(text.contains("bundled"), "the refusal names what it is: {text}");
+    assert!(text.contains("disable"), "and names the action that does work: {text}");
+
+    // Nothing moved: the record, the payload and the state are untouched.
     assert_eq!(fixture.ids(), vec!["org.astralplasma.media"]);
-    let registry = read_registry(&fixture.data()).unwrap();
-    assert!(registry.removed.is_empty(), "restoring clears the tombstone");
-    let entry = registry.get("org.astralplasma.media").expect("the record is back");
-    assert!(entry.enabled, "a restored app is enabled");
-    // A bundled app's payload is the package's own copy (embedded apps load it from
-    // there), so restoring restores the record and leaves the package untouched.
-    assert!(
-        fixture.bundled().join("Media/App.qml").is_file(),
-        "the package copy is still the payload"
-    );
+    assert!(fixture.bundled().join("Media/App.qml").is_file());
 }
 
 #[test]
-fn reinstalling_a_removed_app_also_clears_its_removal() {
+fn the_refusal_survives_a_reconcile_so_the_row_cannot_vanish_then_return() {
     let fixture = Fixture::new();
     fixture.bundle("org.astralplasma.media");
     fixture.reconcile();
-    remove_app(&fixture.data(), &fixture.apps(), "org.astralplasma.media", false).unwrap();
+    assert!(remove_app(&fixture.data(), &fixture.apps(), "org.astralplasma.media", true).is_err());
+    assert_eq!(fixture.reconcile(), vec!["org.astralplasma.media"]);
+}
 
-    // Installing from a file is a second consent: it must not be shadowed by a tombstone.
-    // `upsert_entry` is the path every install goes through, so the rule lives there.
-    let manifest = astral_plasma::domain::app_manifest::Manifest::parse(
-        &std::fs::read(fixture.bundled().join("Media/manifest.json")).unwrap(),
-    )
-    .unwrap();
+#[test]
+fn a_bundled_app_can_be_disabled_instead() {
+    let fixture = Fixture::new();
+    fixture.bundle("org.astralplasma.media");
+    fixture.reconcile();
+
     let mut registry = read_registry(&fixture.data()).unwrap();
-    astral_plasma::application::app_service::upsert_entry(
-        &mut registry,
-        astral_plasma::application::app_service::entry_for(&manifest, "sha256:x"),
-    );
-    write_registry(&fixture.data(), &registry).unwrap();
-    let removed = astral_plasma::application::app_service::read_registry(&fixture.data())
-        .unwrap()
-        .removed;
-    assert!(removed.is_empty(), "installing an app clears its tombstone: {removed:?}");
+    assert!(set_enabled(&mut registry, "org.astralplasma.media", false).unwrap());
+    astral_plasma::application::app_service::write_registry(&fixture.data(), &registry).unwrap();
+
+    // Reconciliation keeps the user's state: re-enabling is the user's decision, not boot's.
+    fixture.reconcile();
+    let registry = read_registry(&fixture.data()).unwrap();
+    let entry = registry.get("org.astralplasma.media").expect("still installed");
+    assert!(!entry.enabled, "a disabled bundled app stays disabled");
 }
 
 #[test]
-fn removal_keeps_the_apps_own_data_unless_purged() {
+fn an_installed_app_is_still_removable() {
     let fixture = Fixture::new();
-    fixture.bundle("org.astralplasma.media");
-    fixture.reconcile();
-    let app_dir = fixture.apps().join("org.astralplasma.media");
+    let installed = fixture.install("io.github.alice.clock");
+    assert_eq!(fixture.ids(), vec!["io.github.alice.clock"]);
+
+    let removed = remove_app(&fixture.data(), &fixture.apps(), "io.github.alice.clock", false).unwrap();
+    assert!(removed.removed_files, "the payload went with it");
+    assert!(fixture.ids().is_empty(), "and so did the record");
+    assert!(!fixture.apps().join(&installed.id).join("payload").exists());
+}
+
+#[test]
+fn removal_keeps_the_apps_own_settings_unless_purged() {
+    let fixture = Fixture::new();
+    fixture.install("io.github.alice.clock");
+    let app_dir = fixture.apps().join("io.github.alice.clock");
     std::fs::create_dir_all(app_dir.join("config")).unwrap();
-    std::fs::create_dir_all(app_dir.join("cache")).unwrap();
     std::fs::write(app_dir.join("config/settings.json"), "{}").unwrap();
 
-    let removed = remove_app(&fixture.data(), &fixture.apps(), "org.astralplasma.media", false).unwrap();
+    let removed = remove_app(&fixture.data(), &fixture.apps(), "io.github.alice.clock", false).unwrap();
     assert!(removed.kept_data, "settings survive a plain removal");
+    assert!(app_dir.join("config/settings.json").is_file(), "settings are kept");
     assert!(!app_dir.join("payload").exists(), "the payload is gone");
     assert!(!app_dir.join("manifest.json").exists(), "the manifest is gone");
-    assert!(app_dir.join("config/settings.json").is_file(), "settings are kept");
 }
 
 #[test]
-fn purge_removes_the_apps_data_too() {
+fn purge_removes_the_apps_settings_too() {
     let fixture = Fixture::new();
-    fixture.bundle("org.astralplasma.media");
-    fixture.reconcile();
-    let app_dir = fixture.apps().join("org.astralplasma.media");
+    fixture.install("io.github.alice.clock");
+    let app_dir = fixture.apps().join("io.github.alice.clock");
     std::fs::create_dir_all(app_dir.join("config")).unwrap();
     std::fs::write(app_dir.join("config/settings.json"), "{}").unwrap();
 
-    let removed = remove_app(&fixture.data(), &fixture.apps(), "org.astralplasma.media", true).unwrap();
+    let removed = remove_app(&fixture.data(), &fixture.apps(), "io.github.alice.clock", true).unwrap();
     assert!(!removed.kept_data);
     assert!(!app_dir.exists(), "--purge leaves nothing behind");
 }
 
 #[test]
-fn removing_an_app_that_is_not_installed_is_an_error_not_a_silent_no_op() {
+fn removing_an_app_that_is_not_installed_names_it() {
     let fixture = Fixture::new();
     let error = remove_app(&fixture.data(), &fixture.apps(), "io.github.nobody.here", false).unwrap_err();
-    assert!(error.to_string().contains("not installed"), "got: {error}");
+    assert!(error.to_string().contains("io.github.nobody.here"), "got: {error}");
 }
 
 #[test]
-fn the_removal_list_names_what_was_removed_and_why_it_matters() {
+fn the_registry_no_longer_carries_a_removal_list() {
+    // The tombstone existed only to stop reconcile from resurrecting a bundled app that
+    // could be removed. Bundled apps cannot be removed now, so the state is gone: one
+    // rule, one representation (disable).
     let fixture = Fixture::new();
     fixture.bundle("org.astralplasma.media");
-    fixture.bundle("org.astralplasma.workspaces");
     fixture.reconcile();
-    remove_app(&fixture.data(), &fixture.apps(), "org.astralplasma.media", false).unwrap();
-
-    let registry = read_registry(&fixture.data()).unwrap();
-    assert_eq!(registry.removed, vec!["org.astralplasma.media".to_string()]);
-    // Only bundled apps can be restored, so the list is what the UI offers.
-    let restorable = astral_plasma::application::preinstalled::restorable(&registry, &fixture.bundled());
-    assert_eq!(restorable, vec!["org.astralplasma.media".to_string()]);
-    assert!(!Path::new("/nonexistent").exists());
+    let text = std::fs::read_to_string(fixture.data().join("apps.json")).unwrap();
+    assert!(!text.contains("\"removed\""), "no tombstone field: {text}");
+    assert!(Path::new(&fixture.data()).exists());
 }
