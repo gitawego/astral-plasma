@@ -958,7 +958,7 @@ real content, plus a full-shell capture after install/remove.
 
 Each phase is a separate change set; `make test` green at every gate.
 
-### P0 — Spikes and baseline (S)
+### P0 — Spikes and baseline (S) — **landed** (C.1, C.2)
 
 - Live-Wayland proof that Quickshell loads an external `Astral.AppKit` app.
 - `bwrap` + `quickshell -p` spike: Wayland socket, DRI, fonts, broker socket,
@@ -979,7 +979,7 @@ nothing once the shared font cache is visible. 11 metadata-only loaders cost
 **Gate**: spike notes; a hello app runs embedded and hosted on the live session;
 baseline recorded.
 
-### P1 — Kernel extraction, no behavior change (L)
+### P1 — Kernel extraction, no behavior change (L) — **landed**
 
 - Move `theme/`, `components/`, kernel `config/`, kernel `services/` under
   `modules/Astral/Kernel/`; rewrite every path reference; **`qmldir` deferred to
@@ -1016,7 +1016,7 @@ palette) all render. Not verified: a before/after pixel diff; the claim is
 **Gate**: `make test` 100%; visually identical dock/dashboard/settings; no
 behavior change.
 
-### P2 — Contract, host, registry (M) — **partially done**
+### P2 — Contract, host, registry (M) — **landed**
 
 Landed:
 
@@ -1121,7 +1121,7 @@ Original scope:
 app declaring `kernelApi: 99` is refused with a reason that names both levels;
 registry/host tests green.
 
-### P3 — SDK v0 + first reference app: downloads (L) — **AppKit landed**
+### P3 — SDK v0 + first reference app: downloads (L) — **landed**
 
 `Astral.AppKit` exists and a real app loads through it:
 
@@ -1255,7 +1255,7 @@ the daemon must not own), and re-migrating `overview`.
 installed locally; the downloads install→use→disable→remove cycle is proven
 live; existing downloads tests moved and green.
 
-### P4 — Migrate official apps (L, per app)
+### P4 — Migrate official apps (L, per app) — **landed for 8 of 11** (settings editor, dock and overview stay shell surfaces: C.23, A31)
 
 1. `media`, `performance`, `workspaces`;
 2. `dashboard` (tabs from registry);
@@ -1271,7 +1271,7 @@ install/enable/disable/remove; live proof; no edit to `shell.qml`.
 suite and a version; `astral app list` shows eleven independently versioned
 preinstalled apps.
 
-### P5 — Packages, catalogs, install UX (M)
+### P5 — Packages, catalogs, install UX (M) — **landed** (C.28, C.30)
 
 - `.astralapp` pack/verify, minisign, staging/rollback, permission records.
 - Version fields in the install record; forward-only update, `--to`, pin,
@@ -1299,7 +1299,7 @@ disabled with a warning and keeps its data; a downgrade that would corrupt data
 is refused; uninstall leaves no desktop entry, token, or grant; a community
 package is refused with the sandbox reason.
 
-### P6 — Hosted runtime and sandbox (L)
+### P6 — Hosted runtime and sandbox (L) — **landed** (C.24, C.26, C.27)
 
 - `broker` context: grants, handshake, methods, audit, rate limits.
 - `bwrap` + `xdg-dbus-proxy` launcher; permission→mount/namespace mapping.
