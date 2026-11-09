@@ -4,6 +4,7 @@ import "../../modules/Astral/Kernel/theme"
 import "../../modules/Astral/Kernel/components"
 import "../../modules/Astral/Kernel/services"
 import "../../modules/Astral/Kernel/config"
+import "../../modules/Astral/Kernel/Host"
 
 LiquidGlassCard {
     id: root
@@ -374,12 +375,20 @@ LiquidGlassCard {
         // 4. AI Token Quota Pill (Dynamic & Activity-Aware)
         Item {
             id: aiItem
-            // The whole item belongs to the AI Quotas app: quotas *and* agent activity are
-            // its surfaces, so a disabled app shows neither. Gating only `shouldShowPill`
-            // left the icon on the dock whenever an agent CLI was running.
-            visible: (typeof AiTokenService !== "undefined" && AiTokenService.appEnabled)
-                     && ((typeof AiTokenService !== "undefined" && AiTokenService.shouldShowPill)
-                         || (typeof AiActivityService !== "undefined" && AiActivityService.isActive))
+            // The item exists because an app declares this dock location. Quotas *and* agent
+            // activity are that app's surfaces, so a disabled app shows neither — the
+            // declaration decides, not a name in the dock.
+            // Read the map before asking it: a function call on a singleton is not a QML
+            // dependency, so the item would keep the visibility it computed at startup.
+            visible: {
+                if (typeof AppStates === "undefined" || !AppStates) {
+                    return false;
+                }
+                const map = AppStates.integrations;
+                return AppStates.integrationEnabled("dockItem", "ai")
+                    && ((typeof AiTokenService !== "undefined" && AiTokenService.shouldShowPill)
+                        || (typeof AiActivityService !== "undefined" && AiActivityService.isActive));
+            }
             implicitWidth: visible ? root.btnSize : 0
             implicitHeight: visible ? root.btnSize : 0
             width: implicitWidth

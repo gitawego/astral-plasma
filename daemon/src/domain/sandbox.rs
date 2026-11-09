@@ -291,6 +291,7 @@ mod tests {
             permissions: permissions.iter().map(|p| p.to_string()).collect(),
             settings: None,
         test_suites: Vec::new(),
+            integrations: Vec::new(),
             distribution: None,
         }
     }

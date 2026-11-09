@@ -238,6 +238,7 @@ mod tests {
             permissions: Vec::new(),
             settings: None,
         test_suites: Vec::new(),
+            integrations: Vec::new(),
             distribution: None,
         }
     }

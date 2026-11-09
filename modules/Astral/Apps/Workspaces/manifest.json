@@ -30,5 +30,8 @@
   "testSuites": [
     "tst_workspaces_port.qml",
     "tst_workspaces_tab.qml"
+  ],
+  "integrations": [
+    { "kind": "dashboardTab", "id": "workspaces" }
   ]
 }

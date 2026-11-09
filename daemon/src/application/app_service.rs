@@ -340,6 +340,7 @@ mod tests {
             permissions: vec!["session.read".to_string()],
             settings: None,
         test_suites: Vec::new(),
+            integrations: Vec::new(),
             distribution: distribution.map(str::to_string),
         }
     }

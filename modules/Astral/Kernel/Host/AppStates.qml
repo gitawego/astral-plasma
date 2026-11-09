@@ -1,6 +1,7 @@
 pragma Singleton
 
 import QtQuick
+import "AppIntegrations.js" as Integrations
 
 // ============================================================================
 // AppStates — "is this app on?", for shell surfaces that represent an app
@@ -49,6 +50,28 @@ QtObject {
         const entry = root.byId[String(appId)];
         if (!entry) return true;
         return entry.enabled !== false;
+    }
+
+    // ---- integration locations ------------------------------------------------
+    // `{ "kind:id": appId }` for enabled apps: the tab, dock item, drawer, page or window
+    // each app provides. Every shell surface asks this instead of knowing its app by name.
+
+    readonly property var integrations: Integrations.build(root.entries)
+
+    function providerOf(kind, id) {
+        return Integrations.providerOf(root.integrations, kind, id);
+    }
+
+    function integrationEnabled(kind, id) {
+        return Integrations.isProvided(root.integrations, kind, id);
+    }
+
+    function idsFor(kind) {
+        return Integrations.idsForKind(root.entries, kind);
+    }
+
+    function providedOnly(kind, wanted) {
+        return Integrations.providedOnly(root.integrations, kind, wanted);
     }
 
     /// Called by the shell whenever the registry changes.

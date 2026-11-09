@@ -1,5 +1,4 @@
 import QtQuick
-import "../modules/Astral/Kernel/config/PopoutModes.js" as PopoutModes
 import "../modules/Astral/Kernel/Host/AppRegistryState.js" as Registry
 
 // ============================================================================
@@ -57,13 +56,8 @@ Item {
             assert(Registry.disabledIds(parsed).length === 0, "nothing is disabled by accident");
         }
 
-        // ---- drawers that belong to an app ----------------------------------
-        assert(PopoutModes.appForMode("ai") === "org.astralplasma.ai",
-            "the AI drawer belongs to the AI Quotas app");
-        assert(PopoutModes.appForMode("AI") === "org.astralplasma.ai", "case does not matter");
-        assert(PopoutModes.appForMode("audio") === "", "a shell-owned drawer has no app");
-        assert(PopoutModes.appForMode("") === "", "no mode, no owner");
-        assert(PopoutModes.appForMode(null) === "", "null mode, no owner");
+        // Drawer ownership moved to the integration declarations (spec C.35), so this suite
+        // only covers the registry document; tst_app_integrations.qml covers the locations.
 
         // ---- the wiring that uses them --------------------------------------
         const service = readLocalFile("../modules/Astral/Kernel/services/AiTokenService.qml");
@@ -75,12 +69,14 @@ Item {
         const shell = readLocalFile("../shell.qml");
         assert(shell.indexOf("AiTokenService.appEnabled = bundledApps.isEnabled") >= 0,
             "the shell pushes the answer, because a singleton must not reach another");
-        assert(shell.indexOf("bundledApps.isEnabled(\"org.astralplasma.ai\")") >= 0,
-            "the drawer opener refuses a disabled app, through the registry the shell mounts from");
+        assert(shell.indexOf('AppStates.integrationEnabled("drawer", "ai")') >= 0,
+            "the drawer opener asks whether an enabled app declares that location");
+        assert(shell.indexOf('AppStates.providedOnly("dashboardTab", Config.dashboardTabs)') >= 0,
+            "the dashboard strip is filtered by the declarations, not by a list of app names");
 
         const dock = readLocalFile("../dock/components/DockStatusIcons.qml");
-        assert(dock.indexOf("AiTokenService.appEnabled") >= 0,
-            "the dock item is gated by the app, not only by the quota pill");
+        assert(dock.indexOf('AppStates.integrationEnabled("dockItem", "ai")') >= 0,
+            "the dock item exists only while an enabled app declares that location");
         assert(dock.indexOf("AiActivityService.isActive") >= 0,
             "agent activity is still shown when the app is enabled");
 

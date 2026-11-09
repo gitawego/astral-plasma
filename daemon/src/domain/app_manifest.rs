@@ -100,6 +100,46 @@ pub struct Entry {
     pub settings_page: Option<String>,
 }
 
+/// One place an app plugs into the shell.
+///
+/// This is the data that makes "disable" complete: the shell resolves every declared
+/// location to its owning app, so disabling an app removes its tab, its dock item, its
+/// drawer and its settings page without a single `if (id === "…")` anywhere. Before it,
+/// those surfaces were the shell's own and kept advertising a disabled app (spec C.33,
+/// C.35).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Integration {
+    /// One of [`INTEGRATION_KINDS`].
+    pub kind: String,
+    /// The integration's own key: a tab id, a drawer mode, a dock item id, a page id.
+    pub id: String,
+}
+
+/// Where an app may declare an integration, in the shell's vocabulary.
+pub const INTEGRATION_KINDS: [&str; 5] = [
+    "dashboardTab",
+    "dockItem",
+    "drawer",
+    "settingsPage",
+    "window",
+];
+
+impl Integration {
+    pub fn is_valid(&self) -> bool {
+        INTEGRATION_KINDS.contains(&self.kind.as_str())
+            && !self.id.trim().is_empty()
+            && self
+                .id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    }
+
+    /// `kind:id` — the key the shell resolves.
+    pub fn key(&self) -> String {
+        format!("{}:{}", self.kind, self.id)
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Requires {
     #[serde(default)]
@@ -156,6 +196,10 @@ pub struct Manifest {
     pub permissions: Vec<String>,
     #[serde(default)]
     pub settings: Option<SettingsSpec>,
+    /// Every place this app plugs into the shell (`{ kind, id }`). The shell resolves these
+    /// to the owning app, so disabling the app disables all of them.
+    #[serde(default)]
+    pub integrations: Vec<Integration>,
     /// Test suites that cover this app, relative to the app directory or to the
     /// repository's `tests/` directory. Declared so `astral app test` can run exactly the
     /// suites that cover one app: that is what "individually testable" means for a feature
@@ -185,6 +229,8 @@ pub enum ManifestError {
     UnknownSurfaceKind { kind: String },
     InvalidDbusName { name: String },
     InvalidTestSuite { suite: String },
+    InvalidIntegration { kind: String, id: String },
+    DuplicateIntegration { key: String },
     SurfaceWithoutGeometry { root: String },
     AbsoluteRoot { root: String },
     EscapingRoot { root: String },
@@ -235,6 +281,14 @@ impl fmt::Display for ManifestError {
                 "a {trust} app cannot declare runtime '{runtime}': only official apps may run embedded"
             ),
             Self::EmptyRoot => write!(f, "entry.root is empty"),
+            Self::InvalidIntegration { kind, id } => write!(
+                f,
+                "integration '{kind}:{id}' is not valid: kind must be one of {} and id must be a non-empty key",
+                INTEGRATION_KINDS.join(", ")
+            ),
+            Self::DuplicateIntegration { key } => {
+                write!(f, "integration '{key}' is declared twice")
+            }
             Self::InvalidTestSuite { suite } => write!(
                 f,
                 "testSuites entry '{suite}' must be a .qml file inside the app or the repo tests/ directory"
@@ -429,6 +483,22 @@ impl Manifest {
         }
         // The surface kind is a closed set: a typo here would otherwise produce an app
         // whose window never appears, with nothing in any log to say why.
+        for integration in &self.integrations {
+            if !integration.is_valid() {
+                return Err(ManifestError::InvalidIntegration {
+                    kind: integration.kind.clone(),
+                    id: integration.id.clone(),
+                });
+            }
+        }
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for integration in &self.integrations {
+            if !seen.insert(integration.key()) {
+                return Err(ManifestError::DuplicateIntegration {
+                    key: integration.key(),
+                });
+            }
+        }
         for suite in &self.test_suites {
             if !suite.ends_with(".qml") || suite.split('/').any(|segment| segment == "..") {
                 return Err(ManifestError::InvalidTestSuite { suite: suite.clone() });
@@ -517,6 +587,7 @@ mod tests {
             requires: Requires::default(),
             permissions: vec!["session.read".to_string()],
             settings: None,
+            integrations: Vec::new(),
             test_suites: Vec::new(),
             distribution: Some("store".to_string()),
         }
@@ -671,6 +742,52 @@ mod tests {
             anchor: Some(vec!["top".to_string(), "left".to_string()]),
         });
         manifest.validate().expect("an anchored panel is valid");
+    }
+
+    #[test]
+    fn an_app_declares_the_locations_it_integrates_with() {
+        // This is what makes "disable" complete: the shell resolves each declared location
+        // to its owning app instead of hardcoding surface ids (spec C.35).
+        let mut manifest = fixture();
+        manifest.integrations = vec![
+            Integration { kind: "dashboardTab".into(), id: "media".into() },
+            Integration { kind: "dockItem".into(), id: "ai".into() },
+            Integration { kind: "drawer".into(), id: "ai".into() },
+        ];
+        manifest.validate().expect("declared locations are valid");
+        assert_eq!(manifest.integrations[1].key(), "dockItem:ai");
+    }
+
+    #[test]
+    fn an_unknown_integration_kind_is_refused() {
+        let mut manifest = fixture();
+        manifest.integrations = vec![Integration { kind: "trayIcon".into(), id: "x".into() }];
+        let error = manifest.validate().unwrap_err().to_string();
+        assert!(error.contains("trayIcon"), "got: {error}");
+        assert!(error.contains("dashboardTab"), "the error lists the vocabulary");
+    }
+
+    #[test]
+    fn the_same_location_cannot_be_declared_twice() {
+        let mut manifest = fixture();
+        manifest.integrations = vec![
+            Integration { kind: "dashboardTab".into(), id: "media".into() },
+            Integration { kind: "dashboardTab".into(), id: "media".into() },
+        ];
+        let error = manifest.validate().unwrap_err().to_string();
+        assert!(error.contains("declared twice"), "got: {error}");
+    }
+
+    #[test]
+    fn an_empty_or_odd_integration_key_is_refused() {
+        for id in ["", "  ", "media tab", "media/tab"] {
+            let mut manifest = fixture();
+            manifest.integrations = vec![Integration { kind: "dashboardTab".into(), id: id.into() }];
+            assert!(
+                manifest.validate().is_err(),
+                "id {id:?} must be refused"
+            );
+        }
     }
 
     #[test]

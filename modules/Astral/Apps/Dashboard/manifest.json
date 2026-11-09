@@ -17,5 +17,8 @@
     "tst_dashboard_cards.qml",
     "tst_dashboard_fusion.qml",
     "tst_dashboard_tabs.qml"
+  ],
+  "integrations": [
+    { "kind": "dashboardTab", "id": "dashboard" }
   ]
 }

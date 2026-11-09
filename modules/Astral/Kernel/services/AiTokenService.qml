@@ -95,7 +95,9 @@ Singleton {
         }
     }
 
-    /// Whether the AI Quotas app is enabled, pushed by the shell from the registry.
+    /// Whether the app that owns the AI dock location is enabled, pushed by the shell from
+    /// the integration declarations. The dock also asks the resolver directly; this flag is
+    /// what a singleton can use without crossing a registration boundary (spec C.13).
     ///
     /// A boolean, not a lookup: this service is a singleton, and a singleton that reaches
     /// for another singleton crosses a registration boundary (the shell's import and this

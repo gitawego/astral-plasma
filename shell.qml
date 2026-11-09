@@ -39,7 +39,17 @@ ShellRoot {
         aiDefaultAgent: Config.aiDefaultAgent
         dashboardVisible: Config.dashboardVisible
         dashboardWidth: Config.dashboardWidth
-        dashboardTabs: Config.dashboardTabs
+        // Only the tabs an enabled app provides: disabling an app removes its tab from the
+        // strip instead of leaving a pane that apologises (spec C.35).
+        //
+        // `AppStates.integrations` is read first on purpose: a call into a singleton creates
+        // no QML dependency, so binding straight to the function would evaluate once (when the
+        // map was still empty) and never again — the strip vanished instead of updating.
+        dashboardTabs: {
+            // Read the map first: see the note above about function calls and dependencies.
+            const map = AppStates.integrations;
+            return AppStates.providedOnly("dashboardTab", Config.dashboardTabs);
+        }
         perfSelectedDevice: Config.perfSelectedDevice
         activeDashboardTab: Config.activeDashboardTab
         hostAvatar: Config.hostAvatar
@@ -202,7 +212,7 @@ ShellRoot {
         // The registry is the truth for every surface, including the ones that are the
         // shell's own (the dock's AI pill, an app-owned drawer).
         function onRecordsChanged() {
-            AppStates.adopt(bundledApps.records);
+            AppStates.adopt(bundledApps.entries);
 
             AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai");
         }
@@ -351,15 +361,15 @@ ShellRoot {
             }
         }
         function openPopout(y: real): void {
-            // The drawer belongs to the AI Quotas app: a disabled app opens nothing.
-            if (!bundledApps.isEnabled("org.astralplasma.ai")) return;
+            // A drawer belongs to whichever app declares it; a disabled app opens nothing.
+            if (!AppStates.integrationEnabled("drawer", "ai")) return;
             Config.openBottomPopout("ai", (y !== undefined && y > 0) ? y : 1450);
         }
         function closePopout(): void { Config.closeBottomPopout(); }
         function togglePopout(): void {
             if (Config.bottomPopoutVisible && Config.bottomPopoutMode === "ai") {
                 Config.closeBottomPopout();
-            } else if (bundledApps.isEnabled("org.astralplasma.ai")) {
+            } else if (AppStates.integrationEnabled("drawer", "ai")) {
                 Config.openBottomPopout("ai", 1450);
             }
         }
@@ -784,7 +794,7 @@ ShellRoot {
     }
 
     Component.onCompleted: {
-        AppStates.adopt(bundledApps.records);
+        AppStates.adopt(bundledApps.entries);
         AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai");
 
         // Intent handlers live here, next to the rest of the shell's startup wiring:

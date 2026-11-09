@@ -16,5 +16,9 @@
     "tst_command_launcher.qml",
     "tst_launcher_app_discovery.qml",
     "tst_launcher_glass.qml"
+  ],
+  "integrations": [
+    { "kind": "dockItem", "id": "launcher" },
+    { "kind": "window", "id": "launcher" }
   ]
 }

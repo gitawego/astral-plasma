@@ -171,6 +171,7 @@ app owns ordinary compositor windows.
 | A26 | Data compatibility | `dataSchema` integer in the manifest, recorded at install, re-checked at launch; a build that cannot read the recorded schema never runs. |
 | A27 | Compatibility constants | One Rust constant pair generated into QML; drift fails CI; no semver range parser. |
 | A28 | Core app failure | A core app that fails to load is reverted to its baseline, the failure is recorded, and the failed version is blocked instead of retried. |
+| A39 | Apps declare their integration points | An app lists where it plugs in (`integrations: [{kind, id}]`, kinds `dashboardTab|dockItem|drawer|settingsPage|window`), the shell resolves each declaring app once, and every consumer asks the map rather than naming an app. Disabling an app therefore removes all of its locations — tab, dock item, drawer, page, window — with no per-surface rule. |
 | A38 | A disabled app owns nothing on screen | Any shell surface that represents an app (a dock pill, a drawer, a shortcut) asks the registry whether that app is enabled: `PopoutModes.appForMode` names the owner, `AppRegistry.isEnabled` answers for shell instances, and `AppStates` — fed by the shell, Quickshell-free — answers for singletons. Disabling closes what is open and refuses to reopen. |
 | A36 | Ports are checked, not trusted | An injected port is one more contract: `check_app_boundaries.py` verifies that every member an app reads is declared by that port, that every intent it requests is registered in `shell.qml`, and that every `ShellState` property is populated. Silent `undefined` is the failure mode this platform keeps producing, so it is now a test failure instead. |
 | A37 | Bundled apps are disabled, not removed | A `preinstalled` app ships with the platform and is reconciled on every read, so removing it would either break the shell or be undone; `remove_app` refuses it in the domain and the Apps page does not offer the action. Disable is the control, the user's disabled state survives reconcile, and removing a *user-installed* app still deletes payload and record while keeping its settings unless `--purge`. |
@@ -2349,3 +2350,44 @@ Verified live with the reported repro (disable → enable media, then open the d
 drawer rendered the player and its visualiser again, the AI Quotas drawer its quota cards, and
 the log showed `mountTab` reaching `activate` with a live loader for every pane. Before the fix
 the same repro left `current null, children 0` on every tick.
+
+### C.35 Apps declare where they plug in, and disabling removes all of it
+
+Reported: *"when app is disabled, top drawer should be disabled too. you must find a generic way
+to do it, each app declares the locations to be integrated, when disable an app, all must be
+disabled."*
+
+The previous answers were per-surface: the AI pill asked a flag, the drawer asked
+`PopoutModes.APP_MODES`, the dashboard tab strip asked nothing and showed a pane that
+apologised ("AI Quotas is not available"). Each new surface needed its own rule, and each rule
+needed its own bug fix (C.33 was one).
+
+The generic mechanism:
+
+* **The app declares its locations** in the manifest —
+  `integrations: [{ "kind": "dashboardTab", "id": "ai" }, { "kind": "dockItem", "id": "ai" },
+  { "kind": "drawer", "id": "ai" }]` — validated against a closed vocabulary
+  (`dashboardTab`, `dockItem`, `drawer`, `settingsPage`, `window`), with duplicate and
+  malformed keys refused at install.
+* **The shell resolves them once**: `AppIntegrations.build(entries)` maps `kind:id → appId` for
+  *enabled* apps, and `AppStates` exposes it to every surface. A surface asks
+  "is `dockItem:ai` provided?" instead of knowing an app by name.
+* **Consumers use the map, not a list of names**: the dashboard strip is
+  `providedOnly("dashboardTab", Config.dashboardTabs)`, the dock item exists only while
+  `dockItem:ai` is provided, and `openBottomPopout` refuses a drawer nobody provides. Adding a
+  surface later means adding a kind and a declaration, not another exception.
+
+Two bugs of the "JS has no bindings" family surfaced while wiring it, both fixed and recorded
+here because they will recur:
+
+1. **A function call creates no QML dependency.** `dashboardTabs: AppStates.providedOnly(…)`
+   was evaluated once (while the map was still empty) and never again, so the strip vanished.
+   The binding now reads `AppStates.integrations` first, which is what QML tracks.
+2. **`Config.dashboardTabs` is a list of descriptors, not ids.** `String(item)` produced
+   `"[object Object]"` for every tab and filtered all of them away. `idOf()` reads `.id` out of
+   a descriptor and keeps the descriptor's shape, so a disabled tab's own `enabled: false` also
+   wins.
+
+Verified live: with AI Quotas enabled the strip shows six tabs; disabling it removes the
+**AI Quotas tab** from the strip (and its dock item, and its drawer), and re-enabling restores
+all three — no restart, driven entirely by the declarations in the manifests.

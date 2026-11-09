@@ -20,5 +20,8 @@
     "tst_downloads_window_layout.qml",
     "tst_downloads_window.qml",
     "tst_download_border_effect.qml"
+  ],
+  "integrations": [
+    { "kind": "dashboardTab", "id": "downloads" }
   ]
 }

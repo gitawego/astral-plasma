@@ -16,5 +16,8 @@
     "tst_performance_monitoring_lifecycle.qml",
     "tst_performance_tab_motion.qml",
     "tst_performance_tab_telemetry.qml"
+  ],
+  "integrations": [
+    { "kind": "dashboardTab", "id": "performance" }
   ]
 }

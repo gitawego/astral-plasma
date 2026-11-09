@@ -21,5 +21,10 @@
     "tst_ai_popout.qml",
     "tst_ai_tab.qml",
     "tst_ai_token_service.qml"
+  ],
+  "integrations": [
+    { "kind": "dashboardTab", "id": "ai" },
+    { "kind": "dockItem", "id": "ai" },
+    { "kind": "drawer", "id": "ai" }
   ]
 }

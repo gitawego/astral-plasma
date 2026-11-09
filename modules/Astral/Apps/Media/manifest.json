@@ -21,5 +21,8 @@
     "tst_media_tab_layout.qml",
     "tst_browser_media_arbitration.qml",
     "tst_cyberpunk_media_cover.qml"
+  ],
+  "integrations": [
+    { "kind": "dashboardTab", "id": "media" }
   ]
 }
