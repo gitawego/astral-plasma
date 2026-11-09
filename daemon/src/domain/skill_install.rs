@@ -38,7 +38,8 @@ pub struct DesiredSkill {
     pub scope: Scope,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ConflictKind {
     /// A link we did not create (a user's own, or another tool's).
     UnmanagedLink,
@@ -50,14 +51,15 @@ pub enum ConflictKind {
     MissingContent,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Conflict {
     pub link: PathBuf,
     pub kind: ConflictKind,
     pub detail: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
 pub enum LinkOp {
     Create { link: PathBuf, target: String },
     Replace { link: PathBuf, target: String, expected: String },
@@ -69,13 +71,14 @@ pub enum LinkOp {
 }
 
 /// The ledger changes a plan implies.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "ledger", rename_all = "snake_case")]
 pub enum LedgerOp {
     Upsert(LinkRecord),
     Drop(PathBuf),
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Plan {
     pub ops: Vec<LinkOp>,
     pub ledger: Vec<LedgerOp>,
@@ -120,7 +123,8 @@ impl Plan {
 }
 
 /// Which records an operation applies to.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "selector", rename_all = "snake_case")]
 pub enum Selector {
     /// One skill of one source.
     Skill { source_id: String, skill: String },

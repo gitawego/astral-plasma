@@ -14,6 +14,8 @@ pub mod systemd_adapter;
 pub mod update_source;
 pub mod embedded_changelog;
 pub mod embedded_bundle;
+pub mod skill_fs;
+pub mod skill_git;
 pub mod x11_input;
 pub mod window_icons;
 pub mod fs_wallpaper;
