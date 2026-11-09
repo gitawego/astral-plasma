@@ -61,6 +61,49 @@ function shouldSearch(query) {
     return typeof query === "string" && query.trim().length >= 2;
 }
 
+/// What a hit is: a whole repository (GitHub) or one skill inside one (skills.sh).
+function hitKind(hit) {
+    return (hit && hit.kind === "skill") ? "skill" : "repository";
+}
+
+/// The title of a search row.
+///
+/// A GitHub hit names a repository, so the repository is the title. A skills.sh hit names one
+/// skill of a repository, so the skill is the title and the repository is context — rendering both
+/// as `source` made the two tabs look identical while they return different things.
+function hitTitle(hit) {
+    if (!hit) return "";
+    if (hitKind(hit) === "skill") {
+        return String(hit.name || hit.source || "");
+    }
+    return String(hit.source || hit.name || "");
+}
+
+/// The badge a row shows: `repo` or `skill`.
+function hitBadge(hit) {
+    return hitKind(hit) === "skill" ? "skill" : "repo";
+}
+
+/// What the row says under the title.
+function hitSubtitle(hit) {
+    if (!hit) return "";
+    const detail = hitDetail(hit);
+    if (hitKind(hit) === "skill" && hit.source) {
+        return detail.length > 0 ? detail + " · " + hit.source : String(hit.source);
+    }
+    return detail;
+}
+
+/// The install call a hit implies: a repository installs all of it, a skill hit installs that
+/// one skill of its repository.
+function installTarget(hit) {
+    if (!hit) return { source: "", skills: [] };
+    if (hitKind(hit) === "skill") {
+        return { source: String(hit.source || ""), skills: [String(hit.name || "")] };
+    }
+    return { source: String(hit.source || ""), skills: [] };
+}
+
 /// The one-line description under a search hit.
 function hitDetail(hit) {
     if (!hit) return "";

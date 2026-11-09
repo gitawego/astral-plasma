@@ -72,6 +72,23 @@ Item {
         assert(grouped[0].kind === "dangling" && grouped[0].items.length === 2, "both dangling findings");
         assert(Model.groupFindings(null).length === 0, "no findings, no groups");
 
+        // ---- a hit says what it is -------------------------------------------
+        const repoHit = { kind: "repository", source: "vercel-labs/agent-skills", name: "agent-skills", installs: 2410 };
+        const skillHit = { kind: "skill", source: "vercel-labs/agent-skills", name: "web-design-guidelines", installs: 842309, description: "UI review" };
+        assert(Model.hitBadge(repoHit) === "repo", "a GitHub hit is a repository");
+        assert(Model.hitBadge(skillHit) === "skill", "a skills.sh hit is one skill");
+        assert(Model.hitTitle(repoHit) === "vercel-labs/agent-skills", "the repo is the title of a repo hit");
+        assert(Model.hitTitle(skillHit) === "web-design-guidelines",
+            "the skill is the title of a skill hit, not its repository");
+        assert(Model.hitSubtitle(skillHit).indexOf("vercel-labs/agent-skills") >= 0,
+            "and the repository is context: " + Model.hitSubtitle(skillHit));
+        assert(Model.installTarget(repoHit).skills.length === 0, "a repo hit installs the whole repo");
+        assert(Model.installTarget(skillHit).skills[0] === "web-design-guidelines",
+            "a skill hit installs only that skill");
+        assert(Model.installTarget(skillHit).source === "vercel-labs/agent-skills", "from its repository");
+        assert(JSON.stringify(Model.installTarget(null)) === JSON.stringify({ source: "", skills: [] }),
+            "no hit, no install");
+
         // ---- a hit describes itself usefully --------------------------------
         assert(Model.hitDetail({ description: "UI review" }) === "UI review", "the description wins");
         assert(Model.hitDetail({ installs: 2410 }) === "2410 installs", "else the install count");
@@ -85,8 +102,14 @@ Item {
         assert(service.indexOf('"skills", "doctor", "--json"') >= 0, "the doctor is the daemon's");
         assert(service.indexOf('enabled ? "enable" : "disable"') >= 0, "toggles go through the daemon");
         assert(service.indexOf('"import", "--apply"') >= 0, "adoption is explicit");
+        assert(service.indexOf("root.results = [];") >= 0,
+            "switching catalogs drops the previous list instead of showing it under the new tab");
 
         const app = readLocalFile("../modules/Astral/Apps/Skills/SkillsApp.qml");
+        assert(app.indexOf("Model.hitBadge(modelData)") >= 0,
+            "the row labels what kind of hit it is");
+        assert(app.indexOf("root.activeSource") >= 0,
+            "the chip highlight follows the service, so there is one owner of the selected source");
         assert(app.indexOf("property var skills: null") >= 0,
             "the app receives a port, not a kernel import");
         assert(app.indexOf("Kernel/services") === -1, "and never reaches the kernel's services");

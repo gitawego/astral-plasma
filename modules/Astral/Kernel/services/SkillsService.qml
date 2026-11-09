@@ -76,7 +76,12 @@ Singleton {
     property string searchSource: "github"
 
     function setSearchSource(source) {
+        if (root.searchSource === source) return;
         root.searchSource = source;
+        // A different catalog answers a different question: never show the previous list under
+        // the new tab, and do not invent a search when the box is empty.
+        root.results = [];
+        root.lastError = "";
         if (root.lastQuery.length > 0) root.search(root.lastQuery);
     }
 

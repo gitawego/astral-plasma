@@ -29,6 +29,8 @@ Item {
     readonly property string lastError: root.skills ? root.skills.lastError : ""
 
     property string query: ""
+    /// The catalog the service is searching; the chips render this, so there is one owner.
+    readonly property string activeSource: root.skills ? root.skills.searchSource : root.searchSource
     property string searchSource: "github"
     property bool addingSource: false
     property string newSource: ""
@@ -131,7 +133,7 @@ Item {
                     fixedHeight: 26
                     paddingHorizontal: 10
                     fontPixelSize: 10
-                    variant: root.searchSource === modelData.id ? "primary" : "secondary"
+                    variant: (root.activeSource === modelData.id) ? "primary" : "secondary"
                     onClicked: {
                         root.searchSource = modelData.id;
                         if (root.skills) root.skills.setSearchSource(modelData.id);
@@ -298,18 +300,35 @@ Item {
                             Layout.fillWidth: true
                             spacing: 2
 
-                            Text {
-                                text: modelData.source
-                                color: Colors.textOnSurface
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 13
-                                font.weight: Font.Medium
-                                elide: Text.ElideRight
+                            RowLayout {
                                 Layout.fillWidth: true
+                                spacing: Theme.spaceSmall
+
+                                // What the user is looking at: a whole repository or one skill
+                                // inside one. The two catalogs answer differently, so the row says
+                                // which answer this is.
+                                Text {
+                                    text: Model.hitBadge(modelData)
+                                    color: Colors.primary
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 9
+                                    font.weight: Font.Medium
+                                }
+
+                                Text {
+                                    text: Model.hitTitle(modelData)
+                                    color: Colors.textOnSurface
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
                             }
+
                             Text {
                                 Layout.fillWidth: true
-                                text: Model.hitDetail(modelData)
+                                text: Model.hitSubtitle(modelData)
                                 color: Colors.textOnSurfaceVariant
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 11
@@ -318,11 +337,16 @@ Item {
                         }
 
                         ActionPill {
-                            text: "Install"
+                            // A skill hit installs that skill; a repository hit installs the repo.
+                            text: Model.hitBadge(modelData) === "skill" ? "Install skill" : "Install repo"
                             fixedHeight: 26
                             paddingHorizontal: 12
                             fontPixelSize: 10
-                            onClicked: root.install(modelData.source)
+                            onClicked: {
+                                const target = Model.installTarget(modelData);
+                                if (!root.skills || target.source.length === 0) return;
+                                root.skills.install(target.source, target.skills);
+                            }
                         }
                     }
                 }
