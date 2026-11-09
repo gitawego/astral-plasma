@@ -329,6 +329,19 @@ Item {
                 map[modelData.id] = appLoader;
                 root.loaders = map;
             }
+
+            // The plan changes at runtime now (an app is disabled, enabled, installed), so
+            // this delegate can be destroyed. Keeping its entry in `loaders` meant a pane
+            // asked a dead Loader for its item, got null, and left the drawer blank — the
+            // "disable and re-enable an app, then the drawers are empty" report.
+            Component.onDestruction: {
+                if (root.loaders[modelData.id] !== appLoader) {
+                    return;
+                }
+                const map = Object.assign({}, root.loaders);
+                delete map[modelData.id];
+                root.loaders = map;
+            }
         }
     }
 }

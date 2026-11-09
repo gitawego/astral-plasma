@@ -203,6 +203,7 @@ ShellRoot {
         // shell's own (the dock's AI pill, an app-owned drawer).
         function onRecordsChanged() {
             AppStates.adopt(bundledApps.records);
+
             AiTokenService.appEnabled = bundledApps.isEnabled("org.astralplasma.ai");
         }
     }

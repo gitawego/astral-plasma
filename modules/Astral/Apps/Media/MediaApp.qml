@@ -32,6 +32,8 @@ Item {
 
 
 
+
+
     Item {
         anchors.fill: parent
         clip: true

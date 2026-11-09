@@ -105,16 +105,48 @@ Item {
         return { id: "", available: false, reason: "this shell does not host apps" };
     }
 
+    /// Whether this dashboard is on screen. There is one per monitor, and every instance
+    /// owns a pane for the same app — but an app is a *single* item, so mounting from a
+    /// hidden instance steals it from the visible one and leaves a blank drawer (reported as
+    /// "all the tabs are gone except the first one"). Only the shown instance mounts.
+    readonly property bool isShown: root.visible
+
+    /// Mount every tab pane. Called when this dashboard is shown: that is the moment it may
+    /// take an app item from a hidden instance on another screen, and the moment a stale
+    /// item left behind by a disabled app must be replaced.
+    function mountAllTabs() {
+        mountTab("media", mediaAppSurface);
+        mountTab("performance", perfAppSurface);
+        mountTab("ai", aiAppSurface);
+        mountTab("workspaces", wsAppSurface);
+        mountTab("downloads", dlAppHostSurface);
+    }
+
+    onIsShownChanged: if (root.isShown) root.mountAllTabs()
+
     function mountTab(tabId, surface) {
         if (!root.appHost || typeof root.appHost.providerForTab !== "function") {
+            return null;
+        }
+        if (!root.isShown) {
             return null;
         }
         const provider = root.appHost.providerForTab(tabId);
         if (provider.length === 0 || typeof root.appHost.loaderFor !== "function") {
             return null;
         }
-        if (root.appHost.loaderFor(provider) === null || surface.children.length > 0) {
+        if (root.appHost.loaderFor(provider) === null) {
             return null;
+        }
+        // Mount when the pane is empty, or when it holds something else (a stale item from
+        // a disabled app, or an item this instance lost to another screen). Identity, not a
+        // child count: a count says "occupied" even when the occupant is dead.
+        const current = typeof root.appHost.itemFor === "function" ? root.appHost.itemFor(provider) : null;
+        if (surface.children.length === 1 && surface.children[0] === current && current !== null) {
+            return current;
+        }
+        for (let index = surface.children.length - 1; index >= 0; index--) {
+            surface.children[index].parent = null;
         }
         return root.appHost.mount(provider, surface);
     }

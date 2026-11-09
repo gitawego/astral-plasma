@@ -2320,3 +2320,32 @@ produced a screen identical to the disabled one (0 px of difference — the requ
 refused, nothing flashed). Re-enabling restored both. `tests/tst_app_states.qml` pins the
 parser (including corrupt documents, which fail *open* so a broken registry cannot disable
 every app) and the drawer→app map.
+
+### C.34 "Everything is broken" after disabling and re-enabling an app
+
+Reported with the exact repro: *"test when you disable and re-enable an app, then check the
+top drawers"* — every dashboard pane then rendered empty.
+
+Three independent faults lined up, and each only showed after the plan changed at runtime:
+
+1. **An app item was mounted by every screen.** There is one `UnifiedShell` per monitor, each
+   with its own `DashboardApp`, and an app is a *single* item: `AppHost.mount` re-parents it.
+   So each instance's `mountTab` stole the item from the other, and the visible drawer could
+   end up owning nothing. `mountTab` now refuses while the dashboard is hidden and mounts when
+   it is shown (`onIsShownChanged → mountAllTabs`), so only the shown instance takes it.
+2. **The pane's occupancy test was a child *count*.** `surface.children.length > 0` says
+   "occupied" even when the occupant is a dead item left behind by a disabled app. Mounting now
+   compares identity (`surface.children[0] === itemFor(provider)`) and detaches anything else.
+3. **The host's loader map kept destroyed delegates.** `loaders[id]` was written when a
+   `Repeater` delegate completed and never removed when it was destroyed — so after a disable
+   (delegate destroyed) the next `mount` asked a dead `Loader` for its item, got `null`, and
+   skipped mounting. Delegates now prune themselves in `Component.onDestroyed`.
+
+The lesson is the same one this file keeps recording: with a plan that changes at runtime, every
+"already done?" shortcut written for a read-once world becomes a trap. Identity, not counts;
+liveness, not presence; and one owner for a single item.
+
+Verified live with the reported repro (disable → enable media, then open the drawers): the Media
+drawer rendered the player and its visualiser again, the AI Quotas drawer its quota cards, and
+the log showed `mountTab` reaching `activate` with a live loader for every pane. Before the fix
+the same repro left `current null, children 0` on every tick.
