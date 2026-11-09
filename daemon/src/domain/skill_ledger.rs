@@ -225,6 +225,8 @@ mod tests {
             enabled: true,
             added_at: 1,
             last_seen: None,
+            previous_sha: None,
+            previous_ref: None,
         }
     }
 
