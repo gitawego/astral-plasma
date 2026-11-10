@@ -148,6 +148,25 @@ Item {
         assert(/progressBar/.test(fxSrc), "declares prominent visual progress bar");
         assert(/sessionMaxSpeed/.test(fxSrc) && /sessionMinSpeed/.test(fxSrc), "declares session max/min speed tracking");
         assert(/matrixGlyphs/.test(fxSrc), "declares streaming matrix hex glyphs");
+
+        // Fixed glyph cells. hudCapsule.width follows hudRow.width, so an implicitly
+        // sized rain glyph re-flows the row and resizes the badge on every glyph swap
+        // (20x/s for a whole transfer). Measured on the twin MatrixBorderEffect:
+        // 6.10% -> 5.20% of one core of render-thread work, with bursty repaint storms
+        // (up to 3473 wakeups/s) collapsing to a steady 65 fps once cells were fixed.
+        const glyphAnchor = "text: root.matrixGlyphs";
+        const glyphTracks = fxSrc.split(glyphAnchor).length - 1;
+        assert(glyphTracks === 3, "download rain must declare exactly 3 glyph tracks (found " + glyphTracks + ")");
+        let glyphFrom = 0;
+        for (let g = 0; g < glyphTracks; g++) {
+            const at = fxSrc.indexOf(glyphAnchor, glyphFrom);
+            const block = fxSrc.slice(at, at + 520);
+            assert(/width:\s*[0-9]+/.test(block) && /height:\s*[0-9]+/.test(block),
+                "download rain glyph track " + (g + 1) + " must declare a fixed width/height cell so a glyph change never re-flows the row/column");
+            assert(/horizontalAlignment:\s*Text\.AlignHCenter/.test(block) && /verticalAlignment:\s*Text\.AlignVCenter/.test(block),
+                "download rain glyph track " + (g + 1) + " must centre the glyph inside its fixed cell");
+            glyphFrom = at + glyphAnchor.length;
+        }
         assert(/MotionClock/.test(fxSrc), "advances matrix tick via MotionClock");
         assert(/running:\s*root\.active\s*&&/.test(fxSrc), "timers gated on active (0% idle CPU)");
 

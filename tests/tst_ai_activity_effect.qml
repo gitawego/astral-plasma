@@ -299,6 +299,31 @@ Item {
         assert(/Math\.max\(1350,\s*Math\.min\(3200/.test(matrixSrc),
             "MatrixBorderEffect must use slowed down electric pulses (1350ms to 3200ms)");
 
+        // ---- 8b. Decorative repaint budget (the effect runs for a whole AI turn) ----
+        // Measured on the live shell: a rain glyph whose `text` changes while the
+        // Text sizes itself implicitly re-lays out its Row/Column sibling chain and
+        // resizes the HUD capsule (hudCapsule.width follows hudRow.width), so one
+        // glyph swap repaints the badge, the track and the strip around it - 20x/s
+        // for a whole agent turn. A fixed cell makes the swap a local glyph repaint:
+        // render-thread CPU 6.10% -> 5.20% of one core, and intermittent repaint
+        // storms (bursts of 249-3473 wakeups/s) settle to a steady 64-68 fps,
+        // with no visual change.
+        // Digital rain glyphs must occupy fixed cells: a content change may never
+        // re-flow the Row/Column (which resizes the HUD capsule and damages the strip).
+        const glyphAnchor = "text: root.matrixGlyphs";
+        const glyphCount = matrixSrc.split(glyphAnchor).length - 1;
+        assert(glyphCount === 3, "MatrixBorderEffect must declare exactly 3 digital-rain glyph tracks (found " + glyphCount + ")");
+        let from = 0;
+        for (let g = 0; g < glyphCount; g++) {
+            const at = matrixSrc.indexOf(glyphAnchor, from);
+            const block = matrixSrc.slice(at, at + 520);
+            assert(/width:\s*[0-9]+/.test(block) && /height:\s*[0-9]+/.test(block),
+                "digital-rain glyph track " + (g + 1) + " must declare a fixed width/height cell so a glyph change never re-flows the row/column");
+            assert(/horizontalAlignment:\s*Text\.AlignHCenter/.test(block) && /verticalAlignment:\s*Text\.AlignVCenter/.test(block),
+                "digital-rain glyph track " + (g + 1) + " must centre the glyph inside its fixed cell");
+            from = at + glyphAnchor.length;
+        }
+
         // ---- 9. Source Contract: shell/UnifiedShell.qml ----
         const shellSrc = readLocalFile("../shell/UnifiedShell.qml");
         assert(shellSrc.length > 1000, "UnifiedShell.qml must be readable");

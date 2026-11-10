@@ -345,6 +345,9 @@ Item {
                 delegate: Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.matrixGlyphs[(index * 3 + root.matrixTick) % root.matrixGlyphs.length]
+                    width: 7; height: 11
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                     font.pixelSize: 9
                     font.weight: Font.Bold
@@ -580,6 +583,9 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.verticalCenterOffset: 0.5
                     text: root.matrixGlyphs[(index * 5 + root.matrixTick + 7) % root.matrixGlyphs.length]
+                    width: 7; height: 11
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                     font.pixelSize: 9
                     font.weight: (index >= 6) ? Font.Black : Font.Bold
@@ -702,6 +708,9 @@ Item {
                 delegate: Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: root.matrixGlyphs[(index * 7 + root.matrixTick + 3) % root.matrixGlyphs.length]
+                    width: 7; height: 11
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                     font.family: (typeof Theme !== "undefined" && Theme.fontFamilyMonospace) ? Theme.fontFamilyMonospace : "monospace"
                     font.pixelSize: 9
                     font.weight: (index >= 12) ? Font.Black : Font.Bold
