@@ -130,6 +130,16 @@ Singleton {
     // Upper bound on decorative idle motion update rate
     readonly property int decorativeMaxFps: 30
 
+    // Decoded edge of album artwork, in device-independent pixels.
+    //
+    // Artwork arrives at whatever size the provider served — measured on a live
+    // session, covers from 108x108 up to 4000x4000 / 8.25 MB — and a 4000x4000
+    // cover becomes a 64 MB texture to fill a 42 px badge. Every art consumer
+    // decodes at THIS bound and no other: Qt's pixmap cache is keyed by
+    // (url, sourceSize), so one shared number is one decode per track, while
+    // per-surface numbers would decode the same cover once per surface.
+    readonly property int mediaArtPreviewEdge: 512
+
     // Expressive Motion Durations (ms)
     readonly property int animExpressiveFastSpatial: 350
     readonly property int animExpressiveDefaultSpatial: 500

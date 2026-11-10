@@ -277,6 +277,11 @@ Item {
                         source: root.effectiveCover
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
+                        // A notification draws this at 42 px. Decoding the shared budget
+                        // (never the provider's original) keeps a large cover from
+                        // becoming a texture the size of a photo for a badge.
+                        sourceSize.width: Theme.mediaArtPreviewEdge
+                        sourceSize.height: Theme.mediaArtPreviewEdge
                     }
 
                     layer.enabled: iconBadge.badgeRadius > 0

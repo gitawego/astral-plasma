@@ -1,3 +1,4 @@
+pub mod art_cache;
 pub mod universal_cover;
 pub mod netease_adapter;
 pub mod qqmusic_adapter;
@@ -6,6 +7,7 @@ pub mod generic_adapter;
 pub mod native_adapter;
 pub mod registry;
 
+pub use art_cache::ArtCache;
 pub use universal_cover::UniversalCoverResolver;
 pub use netease_adapter::NetEaseAdapter;
 pub use qqmusic_adapter::QQMusicAdapter;

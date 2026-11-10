@@ -173,6 +173,9 @@ Item {
                         anchors.fill: parent
                         source: root.artUrl
                         fillMode: Image.PreserveAspectCrop
+                        // The shared artwork budget: one decode per track, not one per surface.
+                        sourceSize.width: Theme.mediaArtPreviewEdge
+                        sourceSize.height: Theme.mediaArtPreviewEdge
                     }
 
                     layer.enabled: true

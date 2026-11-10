@@ -854,6 +854,10 @@ Item {
                                     anchors.fill: parent
                                     source: root.media.artUrl || ""
                                     fillMode: Image.PreserveAspectCrop
+                                    // Serve the cover at the shared artwork budget, not at
+                                    // whatever resolution the provider gave us.
+                                    sourceSize.width: Theme.mediaArtPreviewEdge
+                                    sourceSize.height: Theme.mediaArtPreviewEdge
                                 }
                             }
 

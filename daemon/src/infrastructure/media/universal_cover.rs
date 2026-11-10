@@ -1,8 +1,9 @@
 use crate::domain::branding;
+use crate::domain::media::CoverArtResolverPort;
+use crate::infrastructure::media::art_cache::ArtCache;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use crate::domain::media::CoverArtResolverPort;
 
 pub struct UniversalCoverResolver {
     cache_dir: PathBuf,
@@ -165,6 +166,10 @@ impl UniversalCoverResolver {
         if target_path.exists() {
             if let Ok(meta) = fs::metadata(&target_path) {
                 if meta.len() > 100 {
+                    // A download is the one moment this directory grows, so it is
+                    // also the one moment it needs bounding: the cache keeps a few
+                    // hundred recent covers, not every cover it ever saw.
+                    ArtCache::new(&self.cache_dir).prune(Some(&target_path));
                     return Some(format!("file://{}", path_str));
                 }
             }

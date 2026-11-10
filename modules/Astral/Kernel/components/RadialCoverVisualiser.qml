@@ -282,6 +282,9 @@ Item {
                 asynchronous: true
                 smooth: true
                 mipmap: true
+                // The shared artwork budget: one decode per track, not one per surface.
+                sourceSize.width: Theme.mediaArtPreviewEdge
+                sourceSize.height: Theme.mediaArtPreviewEdge
                 visible: root.artUrl !== "" && status === Image.Ready
             }
         }

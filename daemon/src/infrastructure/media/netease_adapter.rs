@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use crate::domain::media::{MediaAction, WineAppKind, WineCaptionInfo, WinePlayerPort, WineTrackMeta};
+use crate::infrastructure::media::art_cache::ArtCache;
 use crate::infrastructure::media::universal_cover::UniversalCoverResolver;
 use crate::infrastructure::x11_input::{send_wine_media_action, WineMediaAction};
 
@@ -224,6 +225,10 @@ impl NetEaseAdapter {
                     let _ = fs::create_dir_all(&cache_dir);
                     let target_file = cache_dir.join(format!("netease_{}.jpg", track_id));
                     if fs::copy(&dat_path, &target_file).is_ok() {
+                        // The player's own statics cache is copied at full resolution
+                        // (measured: 4000x4000, 8.25 MB). The copy is where this
+                        // directory grows, so it is where it is bounded.
+                        ArtCache::new(&cache_dir).prune(Some(&target_file));
                         return Some(format!("file://{}", target_file.display()));
                     }
                 }
