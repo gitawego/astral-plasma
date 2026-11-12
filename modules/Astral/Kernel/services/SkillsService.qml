@@ -26,6 +26,9 @@ Singleton {
     property var sources: []
     property var findings: []
     property var results: []
+    property var mcp: null
+    property bool mcpLoaded: false
+    property bool mcpBusy: false
     property bool busy: false
     property string lastError: ""
     property string lastQuery: ""
@@ -56,6 +59,39 @@ Singleton {
         root.lastError = "";
         listProc.running = false;
         listProc.running = true;
+        root.refreshMcp();
+    }
+
+    /// Probe the endpoint and read every supported agent's MCP config.
+    function refreshMcp() {
+        root.mcpLoaded = false;
+        root.lastError = "";
+        mcpProc.running = false;
+        mcpProc.running = true;
+    }
+
+    /// Remove `astral-skills` from one agent's config. The page confirms first.
+    function uninstallMcp(agentId) {
+        if (!agentId) return;
+        root.mcpBusy = true;
+        root.lastError = "";
+        mcpActionProc.command = [
+            root.bin, "skills", "mcp", "uninstall", "--agent", String(agentId), "--json"
+        ];
+        mcpActionProc.running = false;
+        mcpActionProc.running = true;
+    }
+
+    /// Register `astral-skills` in one agent's config.
+    function installMcp(agentId) {
+        if (!agentId) return;
+        root.mcpBusy = true;
+        root.lastError = "";
+        mcpActionProc.command = [
+            root.bin, "skills", "mcp", "install", "--agent", String(agentId), "--json"
+        ];
+        mcpActionProc.running = false;
+        mcpActionProc.running = true;
     }
 
     function search(query) {
@@ -209,6 +245,61 @@ Singleton {
         // `fileChanged` only announces; `reload()` is what re-reads, and `loaded` follows it.
         onFileChanged: ledgerWatch.reload()
         onLoaded: root.refresh()
+    }
+
+    Process {
+        id: mcpProc
+        command: [root.bin, "skills", "mcp", "status", "--json"]
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.mcpLoaded = true;
+                const text = this.text.trim();
+                if (text.length === 0) return;
+                try {
+                    const parsed = JSON.parse(text);
+                    root.mcp = parsed;
+                } catch (error) {
+                    root.mcp = {
+                        server: { state: "down", detail: "could not read MCP status: " + error, url: "", tools: [] },
+                        agents: []
+                    };
+                }
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+                root.mcpLoaded = true;
+                if (text.length > 0) {
+                    root.mcp = {
+                        server: { state: "down", detail: text.split("\n").pop(), url: "", tools: [] },
+                        agents: []
+                    };
+                }
+            }
+        }
+    }
+
+    Process {
+        id: mcpActionProc
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.mcpBusy = false;
+                root.refreshMcp();
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+                root.mcpBusy = false;
+                if (text.length > 0) {
+                    root.lastError = text.split("\n").pop();
+                }
+                root.refreshMcp();
+            }
+        }
     }
 
     Process {

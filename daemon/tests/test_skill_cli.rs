@@ -42,16 +42,23 @@ impl Sandbox {
     }
 
     fn run(&self, args: &[&str]) -> (bool, String, String) {
+        self.run_env(args, &[])
+    }
+
+    fn run_env(&self, args: &[&str], envs: &[(&str, &str)]) -> (bool, String, String) {
         let home = self.home();
         std::fs::create_dir_all(&home).unwrap();
-        let output = Command::new(env!("CARGO_BIN_EXE_astral-plasma"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_astral-plasma"));
+        command
             .args(args)
             .env("HOME", &home)
             .env("XDG_DATA_HOME", self.dir.path().join("data"))
             .env("XDG_STATE_HOME", self.dir.path().join("state"))
-            .env("XDG_CACHE_HOME", self.dir.path().join("cache"))
-            .output()
-            .expect("the binary runs");
+            .env("XDG_CACHE_HOME", self.dir.path().join("cache"));
+        for (name, value) in envs {
+            command.env(name, value);
+        }
+        let output = command.output().expect("the binary runs");
         (
             output.status.success(),
             String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -253,4 +260,68 @@ fn the_mcp_command_names_the_transport_it_offers() {
         stderr.contains("unknown MCP transport") && stderr.contains("--http"),
         "the refusal names the two transports: {stderr}"
     );
+}
+
+#[test]
+fn the_cli_reports_mcp_status_and_uninstalls_an_agent_entry() {
+    let sandbox = Sandbox::new();
+    let pi_dir = sandbox.home().join(".pi/agent");
+    std::fs::create_dir_all(&pi_dir).unwrap();
+    std::fs::write(
+        pi_dir.join("mcp.json"),
+        r#"{"mcpServers":{"astral-skills":{"url":"http://127.0.0.1:1/mcp"},"other":{"url":"http://example.com/mcp"}}}"#,
+    )
+    .unwrap();
+
+    let (ok, stdout, stderr) = sandbox.run_env(
+        &["skills", "mcp", "status", "--json"],
+        &[("ASTRAL_API_PORT", "1")],
+    );
+    assert!(ok, "{stderr}");
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(report["server"]["state"], "down", "{report}");
+    assert_eq!(report["agents"].as_array().unwrap().len(), 7);
+    let pi = report["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|agent| agent["id"] == "pi")
+        .unwrap();
+    assert_eq!(pi["configured"], true, "{pi}");
+
+    let (ok, stdout, stderr) = sandbox.run_env(
+        &["skills", "mcp", "uninstall", "--agent", "pi", "--json"],
+        &[("ASTRAL_API_PORT", "1")],
+    );
+    assert!(ok, "{stderr}");
+    let removal: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(removal["removed"][0]["agent"], "pi", "{removal}");
+    let config = std::fs::read_to_string(pi_dir.join("mcp.json")).unwrap();
+    assert!(!config.contains("astral-skills"), "{config}");
+    assert!(config.contains("example.com"), "the sibling survives: {config}");
+}
+
+#[test]
+fn the_cli_installs_and_uninstalls_an_agent_mcp_entry() {
+    let sandbox = Sandbox::new();
+    let (ok, stdout, stderr) = sandbox.run_env(
+        &["skills", "mcp", "install", "--agent", "pi", "--json"],
+        &[("ASTRAL_API_PORT", "1")],
+    );
+    assert!(ok, "{stderr}");
+    let installation: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(installation["installed"][0]["agent"], "pi", "{installation}");
+    let config = std::fs::read_to_string(sandbox.home().join(".pi/agent/mcp.json")).unwrap();
+    assert!(config.contains("astral-skills"), "{config}");
+    assert!(config.contains("http://127.0.0.1:1/mcp"), "{config}");
+
+    let (ok, stdout, stderr) = sandbox.run_env(
+        &["skills", "mcp", "uninstall", "--agent", "pi", "--json"],
+        &[("ASTRAL_API_PORT", "1")],
+    );
+    assert!(ok, "{stderr}");
+    let removal: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(removal["removed"][0]["agent"], "pi", "{removal}");
+    let config = std::fs::read_to_string(sandbox.home().join(".pi/agent/mcp.json")).unwrap();
+    assert!(!config.contains("astral-skills"), "{config}");
 }

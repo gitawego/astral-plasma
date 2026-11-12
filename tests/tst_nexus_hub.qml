@@ -6,29 +6,15 @@ Item {
     width: 800
     height: 600
 
-    // Harness matching NexusHub navigation stack architecture
+    // Harness matching NexusHub's single-level navigation.
     QtObject {
         id: nexusHarness
 
         property string activePage: "wallpaper"
-        property var pageHistory: []
-        readonly property bool canGoBack: pageHistory.length > 0
 
         function navigateTo(pageId) {
             if (!pageId || pageId === activePage) return;
-            let h = pageHistory.slice();
-            h.push(activePage);
-            pageHistory = h;
             activePage = pageId;
-        }
-
-        function goBack() {
-            if (pageHistory.length > 0) {
-                let h = pageHistory.slice();
-                const prev = h.pop();
-                pageHistory = h;
-                activePage = prev;
-            }
         }
     }
 
@@ -57,39 +43,30 @@ Item {
     }
 
     function runTests() {
-        console.log("RUNNING: NexusHub Hierarchical Navigation & Back Stack Unit Tests");
+        console.log("RUNNING: NexusHub single-level navigation & page chrome Unit Tests");
 
-        // 1. Initial State: defaults to wallpaper, cannot go back
+        // 1. Initial State: defaults to wallpaper.
         assert(nexusHarness.activePage === "wallpaper", "Default page must be wallpaper");
-        assert(!nexusHarness.canGoBack, "Initial back stack must be empty");
 
-        // 2. Navigate to Network page
+        // 2. Rail navigation is single-level: the destination is the state.
         nexusHarness.navigateTo("network");
         assert(nexusHarness.activePage === "network", "Active page must be network");
-        assert(nexusHarness.canGoBack === true, "Back stack must have 1 entry");
-        assert(nexusHarness.pageHistory[0] === "wallpaper", "History entry 0 must be wallpaper");
-
-        // 3. Drill down to Bluetooth
         nexusHarness.navigateTo("bluetooth");
         assert(nexusHarness.activePage === "bluetooth", "Active page must be bluetooth");
-        assert(nexusHarness.pageHistory.length === 2, "History has 2 entries");
-
-        // 4. Drill down to Audio
         nexusHarness.navigateTo("audio");
         assert(nexusHarness.activePage === "audio", "Active page must be audio");
 
-        // 5. Click < Back (pop audio -> back to bluetooth)
-        nexusHarness.goBack();
-        assert(nexusHarness.activePage === "bluetooth", "goBack returns to bluetooth");
+        // 3. The dead drill-down chrome is gone, not merely hidden.
+        const hubSource = readLocalFile("../settings_gui/NexusHub.qml");
+        assert(hubSource.indexOf("arrow_back") === -1, "the dead Back arrow is removed");
+        assert(hubSource.indexOf("goBack") === -1, "the dead goBack handler is removed");
+        assert(hubSource.indexOf("canGoBack") === -1, "the unused back-stack state is removed");
+        assert(hubSource.indexOf("pageHistory") === -1, "the unused page history is removed");
+        assert(hubSource.indexOf('text: "Back"') === -1, "the Back label is removed");
 
-        // 6. Click < Back (pop bluetooth -> back to network)
-        nexusHarness.goBack();
-        assert(nexusHarness.activePage === "network", "goBack returns to network");
-
-        // 7. Click < Back (pop network -> back to wallpaper)
-        nexusHarness.goBack();
-        assert(nexusHarness.activePage === "wallpaper", "goBack returns to root wallpaper");
-        assert(!nexusHarness.canGoBack, "Back button hides when at root page");
+        // 4. Rail navigation still selects the page.
+        assert(/active:\s*root\.activePage\s*===\s*modelData\.id/.test(hubSource),
+            "the sidebar must use the page-level active state");
 
         // The content pane must be readable over a bright wallpaper: the same
         // substrate the Copilot card uses, not a fully transparent block. The
@@ -135,13 +112,11 @@ Item {
         assert(/active:\s*root\.activePage\s*===\s*modelData\.id/.test(hubSrc),
             "NexusHub sidebar must strictly use page-level active state, decoupled from in-page scroll sections");
 
-        // Test navigation to voice page and back
+        // Test direct navigation to the voice page.
         nexusHarness.navigateTo("voice");
         assert(nexusHarness.activePage === "voice", "Harness can navigate directly to voice page");
-        nexusHarness.goBack();
-        assert(nexusHarness.activePage === "wallpaper", "Harness can navigate back from voice page");
 
-        console.log("PASS: NexusHub Hierarchical Navigation & Back Stack Unit Tests");
+        console.log("PASS: NexusHub single-level navigation & page chrome Unit Tests");
         Qt.exit(0);
     }
 }

@@ -182,6 +182,17 @@ Other clients use the same URL in their own MCP configuration; examples for
 Pi, Claude Desktop, Cursor, Codex, and OpenCode are in
 [`docs/SKILLS-MANAGER-SPEC.md`](docs/SKILLS-MANAGER-SPEC.md#12b-mcp-find-and-load-without-installing).
 
+Check the endpoint and every supported agent's MCP config from one command:
+
+```bash
+astral-plasma skills mcp status
+astral-plasma skills mcp install --agent all      # installed agents only
+astral-plasma skills mcp uninstall --agent pi
+```
+
+The same report is the MCP card on **Settings → Skills**, with Install/Uninstall per agent.
+`status --json` is the machine-readable form.
+
 ### 📥 Integrated Downloads Manager (Aria2 Engine)
 A dedicated, fluid download manager embedded directly inside the Central Dashboard:
 

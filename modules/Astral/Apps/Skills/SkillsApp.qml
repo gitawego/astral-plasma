@@ -27,8 +27,20 @@ Item {
     readonly property var results: root.skills ? root.skills.results : []
     readonly property var findings: root.skills ? root.skills.findings : []
     readonly property string lastError: root.skills ? root.skills.lastError : ""
+    readonly property var mcpReport: root.skills ? root.skills.mcp : null
+    readonly property var mcpServer: root.mcpReport ? root.mcpReport.server : null
+    readonly property var mcpAgents: root.mcpReport ? (root.mcpReport.agents || []) : []
 
     property string query: ""
+    /// The agent whose MCP entry is waiting for the second, confirming click.
+    property string pendingMcpRemoval: ""
+    /// The agent matrix is a management detail, not the page's first read.
+    property bool mcpExpanded: false
+
+    /// Scroll anchors for the settings hub's zone rail.
+    property alias findAnchor: findHeader
+    property alias mcpAnchor: mcpHeader
+    property alias installedAnchor: installedHeader
     /// The catalog the service is searching; the chips render this, so there is one owner.
     readonly property string activeSource: root.skills ? root.skills.searchSource : root.searchSource
     property string searchSource: "github"
@@ -73,10 +85,17 @@ Item {
         width: parent.width
         spacing: Theme.spaceMedium
 
-        // ---- search ---------------------------------------------------------
-        RowLayout {
+        // ---- find -----------------------------------------------------------
+        SectionHeader {
+            id: findHeader
             Layout.fillWidth: true
             Layout.topMargin: Theme.padLarge
+            title: "Find a skill"
+            eyebrow: "GitHub + skills.sh · or paste a repo / folder"
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
             spacing: Theme.spaceSmall
 
             Rectangle {
@@ -255,6 +274,155 @@ Item {
             }
         }
 
+        // ---- MCP server + agent registration --------------------------------
+        SectionHeader {
+            id: mcpHeader
+            Layout.fillWidth: true
+            title: "MCP server"
+            eyebrow: Model.mcpSummary(root.mcpReport)
+
+            ActionPill {
+                text: root.mcpExpanded ? "Hide agents" : "Manage agents"
+                fixedHeight: 24
+                paddingHorizontal: 10
+                fontPixelSize: 9
+                variant: "secondary"
+                onClicked: root.mcpExpanded = !root.mcpExpanded
+            }
+            ActionPill {
+                text: "Check again"
+                fixedHeight: 24
+                paddingHorizontal: 10
+                fontPixelSize: 9
+                variant: "secondary"
+                onClicked: if (root.skills) root.skills.refreshMcp()
+            }
+        }
+
+        GlassCard {
+            Layout.fillWidth: true
+            implicitHeight: mcpColumn.implicitHeight + Theme.padMedium * 2
+            radius: Theme.radiusMedium
+
+            ColumnLayout {
+                id: mcpColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.margins: Theme.padMedium
+                spacing: Theme.spaceSmall
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceSmall
+
+                    MaterialIcon {
+                        iconName: Model.mcpStateIcon(root.mcpServer)
+                        size: 14
+                        color: Model.mcpState(root.mcpServer) === "up" ? Colors.primary : Colors.warning
+                    }
+                    Text {
+                        text: Model.mcpStateLabel(root.mcpServer)
+                        color: Model.mcpState(root.mcpServer) === "up" ? Colors.primary : Colors.warning
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.mcpServer ? String(root.mcpServer.url || "") : ""
+                        color: Colors.textOnSurfaceVariant
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        elide: Text.ElideMiddle
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: Model.mcpDetail(root.mcpServer)
+                    color: Colors.textOnSurfaceVariant
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10
+                    wrapMode: Text.WordWrap
+                }
+
+                Repeater {
+                    model: root.mcpExpanded ? root.mcpAgents : []
+                    delegate: RowLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceSmall
+
+                        MaterialIcon {
+                            iconName: Model.agentStateIcon(modelData)
+                            size: 13
+                            color: Model.agentState(modelData) === "configured" ? Colors.primary : Colors.textOnSurfaceVariant
+                        }
+                        Text {
+                            Layout.preferredWidth: 104
+                            text: modelData.label
+                            color: Colors.textOnSurface
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.preferredWidth: 88
+                            text: Model.agentStateLabel(modelData)
+                            color: Model.agentState(modelData) === "configured" ? Colors.primary : Colors.textOnSurfaceVariant
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: String(modelData.detail || "")
+                            color: Colors.textOnSurfaceVariant
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                        }
+                        ActionPill {
+                            visible: modelData.installed === true && modelData.configured !== true
+                            interactive: root.skills ? !root.skills.mcpBusy : true
+                            text: "Install"
+                            fixedHeight: 22
+                            paddingHorizontal: 9
+                            fontPixelSize: 9
+                            variant: "secondary"
+                            onClicked: if (root.skills) root.skills.installMcp(modelData.id)
+                        }
+                        ActionPill {
+                            visible: modelData.configured === true
+                            interactive: root.skills ? !root.skills.mcpBusy : true
+                            text: root.pendingMcpRemoval === modelData.id ? "Remove" : "Uninstall"
+                            fixedHeight: 22
+                            paddingHorizontal: 9
+                            fontPixelSize: 9
+                            variant: root.pendingMcpRemoval === modelData.id ? "danger" : "secondary"
+                            onClicked: {
+                                if (root.pendingMcpRemoval === modelData.id) {
+                                    root.pendingMcpRemoval = "";
+                                    if (root.skills) root.skills.uninstallMcp(modelData.id);
+                                } else {
+                                    root.pendingMcpRemoval = modelData.id;
+                                }
+                            }
+                        }
+                        ActionPill {
+                            visible: root.pendingMcpRemoval === modelData.id
+                            text: "Cancel"
+                            fixedHeight: 22
+                            paddingHorizontal: 9
+                            fontPixelSize: 9
+                            variant: "secondary"
+                            onClicked: root.pendingMcpRemoval = ""
+                        }
+                    }
+                }
+            }
+        }
+
         // ---- a refusal is information ---------------------------------------
         Text {
             Layout.fillWidth: true
@@ -272,12 +440,10 @@ Item {
             spacing: Theme.spaceSmall
             visible: root.results.length > 0
 
-            Text {
-                text: "Results"
-                color: Colors.textOnSurface
-                font.family: Theme.fontFamily
-                font.pixelSize: 15
-                font.weight: Font.DemiBold
+            SectionHeader {
+                Layout.fillWidth: true
+                title: "Results"
+                eyebrow: root.results.length + " found"
             }
 
             Repeater {
@@ -358,34 +524,61 @@ Item {
             Layout.fillWidth: true
             spacing: Theme.spaceSmall
 
-            RowLayout {
+            SectionHeader {
+                id: installedHeader
                 Layout.fillWidth: true
                 Layout.topMargin: Theme.spaceSmall
-
-                Text {
-                    text: "Installed"
-                    color: Colors.textOnSurface
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 15
-                    font.weight: Font.DemiBold
-                }
-                Item { Layout.fillWidth: true }
-                Text {
-                    text: root.skills ? (root.skills.enabledSkillCount + " of " + root.skills.skillCount + " enabled") : ""
-                    color: Colors.textOnSurfaceVariant
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
+                title: "Installed"
+                eyebrow: root.skills ? (root.skills.enabledSkillCount + " of " + root.skills.skillCount + " enabled") : ""
             }
 
-            Text {
+            GlassCard {
                 Layout.fillWidth: true
                 visible: root.ready && root.sources.length === 0
-                text: "No skills installed yet. Search for one, or add a folder or a git remote."
-                color: Colors.textOnSurfaceVariant
-                font.family: Theme.fontFamily
-                font.pixelSize: 12
-                wrapMode: Text.WordWrap
+                implicitHeight: emptyRow.implicitHeight + Theme.padMedium * 2
+                radius: Theme.radiusMedium
+
+                RowLayout {
+                    id: emptyRow
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: Theme.padMedium
+                    spacing: Theme.spaceMedium
+
+                    MaterialIcon {
+                        iconName: "auto_awesome"
+                        size: 18
+                        color: Colors.primary
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            text: "No skills installed yet"
+                            color: Colors.textOnSurface
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.Medium
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Search above, or add a folder or a git remote."
+                            color: Colors.textOnSurfaceVariant
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    ActionPill {
+                        text: "Add source…"
+                        fixedHeight: 24
+                        paddingHorizontal: 10
+                        fontPixelSize: 9
+                        variant: "secondary"
+                        onClicked: root.addingSource = true
+                    }
+                }
             }
 
             Repeater {
@@ -522,13 +715,11 @@ Item {
             spacing: Theme.spaceSmall
             visible: (root.skills ? root.skills.trash.length : 0) > 0
 
-            Text {
+            SectionHeader {
+                Layout.fillWidth: true
                 Layout.topMargin: Theme.spaceSmall
-                text: "Recently removed"
-                color: Colors.textOnSurface
-                font.family: Theme.fontFamily
-                font.pixelSize: 15
-                font.weight: Font.DemiBold
+                title: "Recently removed"
+                eyebrow: (root.skills ? root.skills.trash.length : 0) + " recoverable"
             }
 
             Repeater {
@@ -574,13 +765,11 @@ Item {
             spacing: Theme.spaceSmall
             visible: root.findings.length > 0
 
-            Text {
+            SectionHeader {
+                Layout.fillWidth: true
                 Layout.topMargin: Theme.spaceSmall
-                text: "Doctor"
-                color: Colors.textOnSurface
-                font.family: Theme.fontFamily
-                font.pixelSize: 15
-                font.weight: Font.DemiBold
+                title: "Doctor"
+                eyebrow: root.findings.length + " finding" + (root.findings.length === 1 ? "" : "s")
             }
 
             Repeater {

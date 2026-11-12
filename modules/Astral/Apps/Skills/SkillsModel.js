@@ -111,3 +111,62 @@ function hitDetail(hit) {
     if (Number(hit.installs || 0) > 0) return Number(hit.installs) + " installs";
     return "";
 }
+
+// ---- MCP status -----------------------------------------------------------
+
+/// The server state as a short word. A missing report is "checking", not "down":
+/// the page must not accuse a server before the probe has run.
+function mcpState(server) {
+    if (!server) return "checking";
+    return String(server.state || (server.reachable ? "up" : "down"));
+}
+
+function mcpStateLabel(server) {
+    switch (mcpState(server)) {
+        case "up": return "Up";
+        case "down": return "Down";
+        case "wrong-service": return "Wrong service";
+        default: return "Checking…";
+    }
+}
+
+function mcpStateIcon(server) {
+    return mcpState(server) === "up" ? "check_circle" : "warning";
+}
+
+/// "4 tools · 2026-07-28", or the refusal sentence when the probe failed.
+function mcpDetail(server) {
+    if (!server) return "Checking the endpoint…";
+    if (mcpState(server) === "up") {
+        const tools = (server.tools || []).length;
+        return tools + " tools" + (server.protocol ? " · " + server.protocol : "");
+    }
+    return String(server.detail || "");
+}
+
+function agentState(agent) {
+    if (!agent) return "unknown";
+    if (!agent.installed) return "not-installed";
+    return agent.configured ? "configured" : "not-configured";
+}
+
+function agentStateLabel(agent) {
+    switch (agentState(agent)) {
+        case "configured": return "Configured";
+        case "not-configured": return "Not configured";
+        case "not-installed": return "Not installed";
+        default: return "Unknown";
+    }
+}
+
+function agentStateIcon(agent) {
+    return agentState(agent) === "configured" ? "check_circle" : "radio_button_unchecked";
+}
+
+function mcpSummary(report) {
+    if (!report) return "Checking…";
+    const installed = Number(report.installedCount || 0);
+    const configured = Number(report.configuredCount || 0);
+    if (installed === 0) return "No supported agent detected";
+    return configured + " of " + installed + " installed agents configured";
+}

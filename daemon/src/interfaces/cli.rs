@@ -3649,10 +3649,10 @@ fn skills_flag(args: &[String], name: &str) -> Option<String> {
 }
 
 /// Flags whose value must not be mistaken for a positional argument.
-const SKILLS_VALUE_FLAGS: [&str; 14] = [
+const SKILLS_VALUE_FLAGS: [&str; 15] = [
     "--source", "--skill", "--target", "--scope", "--ref", "--subpath",
     "--ssh-key", "--host", "--label", "--token", "--limit", "--copy-target",
-    "--port", "--transport",
+    "--port", "--transport", "--agent",
 ];
 
 /// The positional arguments from `start` onwards, with flag *values* skipped.
@@ -3734,6 +3734,52 @@ fn skills_selector(
     }
 }
 
+fn run_mcp_status(
+    ctx: &crate::application::skill_manager::SkillContext,
+    is_json: bool,
+) -> DynResult<()> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let report = crate::application::mcp_status::inspect(&ctx.home, &cwd, api_port());
+    if is_json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print!("{}", report.render());
+    }
+    Ok(())
+}
+
+fn run_mcp_uninstall(
+    ctx: &crate::application::skill_manager::SkillContext,
+    args: &[String],
+    is_json: bool,
+) -> DynResult<()> {
+    let agent = skills_flag(args, "--agent").unwrap_or_else(|| "all".to_string());
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let report = crate::application::mcp_status::uninstall(&ctx.home, &cwd, api_port(), Some(&agent));
+    if is_json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print!("{}", report.render());
+    }
+    Ok(())
+}
+
+fn run_mcp_install(
+    ctx: &crate::application::skill_manager::SkillContext,
+    args: &[String],
+    is_json: bool,
+) -> DynResult<()> {
+    let agent = skills_flag(args, "--agent").unwrap_or_else(|| "all".to_string());
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let report = crate::application::mcp_status::install(&ctx.home, &cwd, api_port(), Some(&agent));
+    if is_json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print!("{}", report.render());
+    }
+    Ok(())
+}
+
 async fn run_skills_command(args: &[String]) -> DynResult<()> {
     use crate::application::skill_manager as manager;
 
@@ -3742,7 +3788,10 @@ async fn run_skills_command(args: &[String]) -> DynResult<()> {
     let ctx = skills_context(args);
     // The MCP server is a read path: it must not finish a pending install as a side effect of
     // loading a skill. Every other subcommand keeps the recovery behaviour.
-    if sub != "mcp" && sub != "serve-mcp" {
+    if !matches!(
+        sub,
+        "mcp" | "serve-mcp" | "mcp-status" | "mcp-install" | "mcp-uninstall"
+    ) {
         manager::recover(&ctx).ok();
     }
 
@@ -3752,17 +3801,30 @@ async fn run_skills_command(args: &[String]) -> DynResult<()> {
     };
 
     match sub {
+        "mcp-status" => return run_mcp_status(&ctx, is_json),
+        "mcp-install" => return run_mcp_install(&ctx, args, is_json),
+        "mcp-uninstall" => return run_mcp_uninstall(&ctx, args, is_json),
         "mcp" | "serve-mcp" => {
+            match args.get(3).map(String::as_str) {
+                Some("status") => return run_mcp_status(&ctx, is_json),
+                Some("install") | Some("add") => return run_mcp_install(&ctx, args, is_json),
+                Some("uninstall") | Some("remove") => {
+                    return run_mcp_uninstall(&ctx, args, is_json)
+                }
+                _ => {}
+            }
             if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-                eprintln!(
-                    "Usage: astral-plasma skills mcp [--http [--port N] | --stdio]\n\n\
-                     Streamable HTTP: pass --http [--port N] (the running shell and\n\
-                     `astral-plasma serve` also expose http://127.0.0.1:8942/mcp).\n\
-                     Stdio: pass --stdio (the default when no transport is named).\n\
-                     Tools: skill_search, skill_inspect, skill_load, skill_read. Loading returns\n\
-                     a skill's SKILL.md in the current session; it never installs a link into a\n\
-                     project."
-                );
+                eprintln!("Usage: astral-plasma skills mcp [--http [--port N] | --stdio]");
+                eprintln!("       astral-plasma skills mcp status [--json]");
+                eprintln!("       astral-plasma skills mcp install --agent <id|all> [--json]");
+                eprintln!("       astral-plasma skills mcp uninstall --agent <id|all> [--json]");
+                eprintln!();
+                eprintln!("Streamable HTTP: pass --http [--port N] (the running shell and");
+                eprintln!("`astral-plasma serve` also expose http://127.0.0.1:8942/mcp).");
+                eprintln!("Stdio: pass --stdio (the default when no transport is named).");
+                eprintln!("Tools: skill_search, skill_inspect, skill_load, skill_read. Loading");
+                eprintln!("returns a skill's SKILL.md in the current session; it never installs");
+                eprintln!("a link into a project.");
                 return Ok(());
             }
             let transport = skills_flag(args, "--transport").unwrap_or_else(|| {

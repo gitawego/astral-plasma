@@ -2979,3 +2979,60 @@ Real issues fixed:
 History was not rewritten: with no real secret, rewriting 411 commits and four tags would be a
 destructive force-push for test fixtures. If a real secret is found, the rule is rotate first,
 then `git filter-repo` and force-push.
+
+---
+
+## MCP status, and per-agent install/uninstall (2026-11-12)
+
+The Skills page now answers the two questions that were previously invisible:
+
+- **Is the server up?** `astral-plasma skills mcp status` probes the same Streamable HTTP
+  endpoint a client uses (`server/discover`, then legacy `initialize` if needed) and reports
+  `up` / `down` / `wrong-service`, the protocol, and the tool names.
+- **Is it registered with each agent?** It reads the config each agent actually loads — Claude
+  Code (`~/.claude.json`, project scope included), OpenCode, Pi, Codex (TOML), Cursor, Gemini
+  CLI, GitHub Copilot — and reports `Configured`, `Not configured`, or `Not installed`.
+
+The same report is the MCP card at the top of **Settings → Skills**, with an **Install** button
+for an installed agent that lacks the entry and an **Uninstall** button for one that has it.
+Uninstall asks for a second click; it removes only the matching entry and preserves sibling
+servers and the rest of the file. `--json` is the machine-readable form.
+
+> **Verified live**: with `astral-plasma serve 8942` running, `skills mcp status` printed
+> `MCP server: ● up — http://127.0.0.1:8942/mcp`, `4 tools · 2026-07-28`, and the seven agent
+> rows; the Skills page rendered the same card. A scratch `HOME` exercised `install --agent pi`
+> and `uninstall --agent pi` end to end, including a wrong-port entry being updated rather than
+> duplicated. `make test` exit 0 — 1345 Rust tests, 169 QML suites, app boundaries clean.
+
+The CLI tests are `test_mcp_status.rs` (detection, project scope, TOML, install/uninstall,
+wrong-port update, mock protocol probe) and `test_skill_cli.rs` (status/install/uninstall over
+the real binary). The QML suite covers the status labels and the Install/Uninstall wiring.
+
+---
+
+## Settings navigation and Skills hierarchy (2026-11-12)
+
+The settings chrome had a Back control that existed only because a page history was recorded,
+yet it read as a dead button in normal use. It is gone: the left rail is the navigation, and
+`NexusHub.navigateTo()` now sets the page directly. The unused `pageHistory`, `goBack` and
+`canGoBack` state went with it; the test asserts the source no longer contains them.
+
+The Skills page now has the same sticky zone rail as the other long settings pages:
+
+- **Find** — search, catalog chips, add-source.
+- **MCP server** — a compact status line with protocol/tool count and a **Manage agents**
+  disclosure. The agent matrix is closed by default; opening it shows Install/Uninstall per
+  agent. The summary in the section eyebrow says how many installed agents are configured.
+- **Installed** — repositories, skill toggles, and a real empty-state card with an Add-source
+  action.
+
+Section headers carry the hierarchy instead of three competing title sizes, and the page reads
+top-to-bottom without the wall of agent rows.
+
+> **Verified live**: captured the Skills page over a real wallpaper with the endpoint up. It
+> shows `Find / MCP server / Installed`, the MCP summary `0 of 6 installed agents configured`,
+> `Up · http://127.0.0.1:8942/mcp · 4 tools · 2026-07-28`, and the empty state; no Back control.
+> `make test` exit 0 — 1345 Rust tests, 169 QML suites, app boundaries clean.
+
+The QML contract tests now also check the three zone anchors, the `Manage agents` disclosure,
+and the absence of the Back stack.

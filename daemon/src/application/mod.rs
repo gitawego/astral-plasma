@@ -44,3 +44,4 @@ pub mod stale_claim;
 pub mod agent_tools;
 pub mod skill_manager;
 pub mod skill_service;
+pub mod mcp_status;

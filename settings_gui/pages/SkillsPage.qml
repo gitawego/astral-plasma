@@ -18,7 +18,11 @@ SettingsPage {
 
     title: "Skills"
     subtitle: "Agent skills: search sources, install, and control the link farm"
-    zones: [{ id: "skills", label: "Skills", anchor: appSurface }]
+    zones: [
+        { id: "find", label: "Find", anchor: skillsApp.findAnchor },
+        { id: "mcp", label: "MCP server", anchor: skillsApp.mcpAnchor },
+        { id: "installed", label: "Installed", anchor: skillsApp.installedAnchor }
+    ]
 
     property bool testMode: false
     /// `{ "kind:id": appId }` for enabled apps, from the shell.

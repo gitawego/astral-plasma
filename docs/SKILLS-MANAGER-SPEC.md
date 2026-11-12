@@ -375,6 +375,9 @@ astral-plasma skills update  [--repo <owner/repo>] [--check] [--json]
 astral-plasma skills doctor  [--json] [--fix]
 astral-plasma skills import  [--from npx-skills] [--dry-run|--apply]  # adopt what already exists (D4)
 astral-plasma skills mcp                             # MCP: --http (Streamable HTTP) or --stdio; find + load, never install
+astral-plasma skills mcp status [--json]             # probe the endpoint and every agent's MCP config
+astral-plasma skills mcp install --agent <id|all>    # register in an agent config
+astral-plasma skills mcp uninstall --agent <id|all>  # remove from an agent config
 ```
 
 Every command is `--json`-capable (the GUI is a client, not a second implementation), and every
@@ -592,6 +595,15 @@ exists. Point the client at the process that already owns the URL, choose anothe
 port, or set `ASTRAL_API_PORT` for the shell and configure the client to the same URL. A fixed
 URL in a client is configuration, so an automatic fallback port would be worse than a clear
 failure.
+
+`skills mcp status` answers the two questions separately: it probes the endpoint
+(`up` / `down` / `wrong-service`, protocol, tools) and reads each supported agent's actual MCP
+config (`claude-code`, `opencode`, `pi`, `codex`, `cursor`, `gemini-cli`,
+`github-copilot`). `--json` is the same data the Skills page renders. `skills mcp install
+--agent <id|all>` writes the endpoint into an agent's config; `uninstall` removes only the entry
+that matches this server, preserving sibling servers and other settings. `all` installs only
+into agents that are present on the machine; naming one id explicitly can prepare a config
+before the agent is installed.
 
 Clients that can only launch a child process use the stdio fallback:
 

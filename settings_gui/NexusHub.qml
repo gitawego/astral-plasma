@@ -17,7 +17,6 @@ Item {
     /// registration (spec C.13), and the offscreen runner cannot resolve it at all.
     property var integrations: ({})
     property string activePage: (typeof Config !== "undefined" && Config.activeSettingsPage) ? Config.activeSettingsPage : "wallpaper"
-    property var pageHistory: []
 
     signal closeRequested()
 
@@ -26,9 +25,6 @@ Item {
 
     function navigateTo(pageId) {
         if (!pageId || pageId === activePage) return;
-        let h = pageHistory.slice();
-        h.push(activePage);
-        pageHistory = h;
         activePage = pageId;
         if (typeof Config !== "undefined") {
             Config.activeSettingsPage = pageId;
@@ -146,18 +142,6 @@ Item {
         }
     }
 
-    function goBack() {
-        if (pageHistory.length > 0) {
-            let h = pageHistory.slice();
-            const prev = h.pop();
-            pageHistory = h;
-            activePage = prev;
-            if (typeof Config !== "undefined") {
-                Config.activeSettingsPage = prev;
-            }
-        }
-    }
-
     /// Smoothly bring `y` to the top of the viewport.
     ///
     /// Programmatic only: the animation is a spatial transition (DESIGN.md token
@@ -210,8 +194,6 @@ Item {
         easing.type: Easing.BezierSpline
         onStopped: root.programmaticScroll = false
     }
-
-    readonly property bool canGoBack: pageHistory.length > 0
 
     /// Motion for a programmatic scroll.
     ///
@@ -589,7 +571,7 @@ Item {
             color: (typeof Colors !== "undefined") ? Qt.alpha(Colors.glassBorderSpecular, 0.35) : "#33ffffff"
         }
 
-        // Right Content Pane with Breadcrumb Drill-down Header.
+        // Right Content Pane.
         //
         // It carries the same readable substrate as the Copilot card: a page of
         // options behind a fully transparent block disappears into a bright
@@ -605,48 +587,6 @@ Item {
                 anchors.fill: parent
                 anchors.margins: Theme.padExtraLarge
                 spacing: Theme.spaceMedium
-
-                // Breadcrumb Header
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    visible: root.canGoBack
-
-                    Rectangle {
-                        width: 32
-                        height: 32
-                        radius: (typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, 16) : 16
-                        color: backHover.containsMouse ? Colors.pillHover : "transparent"
-                        border.color: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber") ? Qt.alpha(Colors.primary, 0.40) : Theme.borderSubtle
-                        border.width: 1
-                        z: 10
-
-                        MaterialIcon {
-                            anchors.centerIn: parent
-                            text: "arrow_back"
-                            size: 16
-                            color: Colors.m3onSurface
-                        }
-
-                        MouseArea {
-                            id: backHover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.goBack()
-                        }
-                    }
-
-                    Text {
-                        text: "Back"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontBodySmall
-                        font.weight: Font.DemiBold
-                        color: Colors.primary
-                    }
-
-                    Item { Layout.fillWidth: true }
-                }
 
                 // Pinned page header: provided by the page, rendered here so it
                 // never scrolls away with the content. It carries its own surface
