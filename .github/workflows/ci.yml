@@ -60,6 +60,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-cargo-ci-
 
+      - name: Stage the daemon binary for the runtime-path contract
+        # Paths.qml resolves the shell's daemon at <repo>/bin/astral-plasma. A
+        # developer machine has it after `make build`; the runner does not.
+        run: |
+          cargo build --manifest-path daemon/Cargo.toml
+          mkdir -p bin
+          cp daemon/target/debug/astral-plasma bin/astral-plasma
+
       - name: Run Rust unit tests
         run: |
           cargo test --manifest-path daemon/Cargo.toml
