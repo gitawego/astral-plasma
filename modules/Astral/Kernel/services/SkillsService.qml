@@ -250,7 +250,6 @@ Singleton {
     Process {
         id: mcpProc
         command: [root.bin, "skills", "mcp", "status", "--json"]
-
         stdout: StdioCollector {
             onStreamFinished: {
                 root.mcpLoaded = true;
@@ -278,6 +277,24 @@ Singleton {
                     };
                 }
             }
+        }
+    }
+
+    // The endpoint can appear after the first probe: a direct `quickshell -p` launch starts
+    // the watcher, and the watcher binds the API/MCP port a moment later. Retry quickly while
+    // the page is open and down, then keep a slow heartbeat while it is up. Closed settings
+    // spawn no probe at all.
+    readonly property bool mcpVisible: (typeof Config !== "undefined")
+        && Config.settingsVisible && Config.activeSettingsPage === "skills"
+
+    Timer {
+        id: mcpRetryTimer
+        interval: (root.mcp && root.mcp.server && root.mcp.server.state === "up") ? 30000 : 5000
+        repeat: true
+        running: root.mcpVisible
+        onRunningChanged: if (running) root.refreshMcp()
+        onTriggered: {
+            if (!root.mcpBusy) root.refreshMcp();
         }
     }
 

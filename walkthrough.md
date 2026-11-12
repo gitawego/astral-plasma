@@ -3036,3 +3036,33 @@ top-to-bottom without the wall of agent rows.
 
 The QML contract tests now also check the three zone anchors, the `Manage agents` disclosure,
 and the absence of the Back stack.
+
+---
+
+## MCP endpoint starts with the shell, not only `astral-plasma run` (2026-11-12)
+
+The status card was right to say **Down**: the live shell was launched as `quickshell -p …`,
+which starts the `watch` daemon but never enters `run_self_contained_app`, the only place that
+started the API/MCP server. The endpoint therefore did not exist at all, regardless of how long
+the shell had been open.
+
+The `watch` daemon now starts the API/MCP server with an idempotent
+`run_api_server_if_needed(port)`: if this daemon's `/api/status` is already answering, it does
+nothing; if another process owns the port, it logs the sentence and leaves it alone; otherwise it
+binds. `astral-plasma run` uses the same guard, so the two launch paths cooperate instead of
+racing.
+
+The Skills page also stopped trusting a single startup probe: it retries every 5s while the page
+is open and the server is down, then keeps a 30s heartbeat while up. That is why the card now
+turns from **Down** to **Up** on its own after the watcher binds.
+
+> **Verified live**: started only `astral-plasma watch` on a scratch port; it logged
+> `[API Server] Listening … /mcp`, and `skills mcp status` reported
+> `● up — 4 tools · 2026-07-28`. On the real shell, killing the stale watcher let its restart
+> timer launch the new binary; the Skills page then rendered **Up** at
+> `http://127.0.0.1:8942/mcp` without a manual refresh. `make test` exit 0 — 1347 Rust tests,
+> 169 QML suites, app boundaries clean.
+
+Regression tests: `the_api_server_start_is_idempotent_when_our_endpoint_is_already_up`,
+`the_api_server_start_names_a_foreign_listener`, and the QML assertion that the retry timer only
+runs while the Skills page is visible.

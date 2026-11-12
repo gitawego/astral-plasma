@@ -127,6 +127,10 @@ Item {
             "uninstalling removes the agent's config entry through the daemon");
         assert(service.indexOf('"mcp", "install", "--agent"') >= 0,
             "installing registers the agent's config entry through the daemon");
+        assert(service.indexOf("mcpRetryTimer") >= 0,
+            "a stale down report self-corrects while the page is open");
+        assert(service.indexOf("Config.settingsVisible") >= 0,
+            "the probe only runs while the Skills page is visible");
 
         const app = readLocalFile("../modules/Astral/Apps/Skills/SkillsApp.qml");
         assert(app.indexOf("Model.hitBadge(modelData)") >= 0,

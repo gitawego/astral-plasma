@@ -13,7 +13,7 @@ use crate::infrastructure::launcher::DesktopLauncherAdapter;
 use crate::infrastructure::plasma_adapter::PlasmaAdapter;
 use crate::infrastructure::proc_metrics::ProcMetricsAdapter;
 use crate::infrastructure::systemd_adapter::SystemdAdapter;
-use crate::interfaces::api_server::{api_port, run_api_server};
+use crate::interfaces::api_server::{api_port, run_api_server, run_api_server_if_needed};
 use std::env;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -870,6 +870,20 @@ pub async fn run_cli() -> DynResult<()> {
             }
         }
         "watch" | "--daemon" => {
+            // The shell can be launched directly as `quickshell -p …`, which never runs
+            // `run_self_contained_app`; the watcher is the one process every shell launch
+            // starts, so it owns the API/MCP endpoint. `if_needed` makes the `astral-plasma
+            // run` path and this one cooperate instead of fighting for the port.
+            if !branding::test_mode() {
+                let port = api_port();
+                tokio::spawn(async move {
+                    if let Err(error) =
+                        crate::interfaces::api_server::run_api_server_if_needed(port).await
+                    {
+                        eprintln!("[API Server] {error}");
+                    }
+                });
+            }
             // Best-effort: give the shell's xdg-toplevel windows a frameless
             // KWin rule before publishing events. Never fatal - a non-KWin
             // session simply has nothing to configure.
@@ -2461,9 +2475,10 @@ async fn run_self_contained_app() -> DynResult<()> {
 
     let is_kwin = crate::infrastructure::desktop_factory::detect_compositor() == crate::infrastructure::desktop_factory::CompositorKind::KWin;
 
-    // 3. Start API server in background task
+    // 3. Start API server in background task (the watch daemon also does this when the shell
+    // is launched directly; `if_needed` makes the two paths cooperate).
     tokio::spawn(async move {
-        if let Err(error) = run_api_server(api_port()).await {
+        if let Err(error) = run_api_server_if_needed(api_port()).await {
             eprintln!("[API Server] {error}");
         }
     });

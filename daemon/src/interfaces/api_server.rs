@@ -16,6 +16,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
+use tokio::time::{timeout, Duration};
 
 pub const DEFAULT_API_PORT: u16 = 8942;
 pub const DEFAULT_SOCKET_PATH: &str = "/tmp/astral-plasma.sock";
@@ -79,6 +80,56 @@ pub async fn run_api_server(port: u16) -> DynResult<()> {
     }
 
     Ok(())
+}
+
+/// Start the API/MCP server only when this port is not already served by this daemon.
+///
+/// The shell can be launched two ways: `astral-plasma run` starts the server itself, while a
+/// direct `quickshell -p …` only starts the `watch` daemon. Both paths call this, so the MCP
+/// endpoint exists either way and a second process does not fight for the port.
+pub async fn run_api_server_if_needed(port: u16) -> DynResult<()> {
+    if tcp_port_open(port).await {
+        if api_status_is_ours(port).await {
+            println!("[API Server] Already running on http://127.0.0.1:{port}");
+            return Ok(());
+        }
+        return Err(format!(
+            "port {port} is already in use by another process; stop it or set ASTRAL_API_PORT (MCP clients must use the same URL)"
+        )
+        .into());
+    }
+    run_api_server(port).await
+}
+
+async fn tcp_port_open(port: u16) -> bool {
+    timeout(
+        Duration::from_millis(400),
+        TcpStream::connect(("127.0.0.1", port)),
+    )
+    .await
+    .map(|result| result.is_ok())
+    .unwrap_or(false)
+}
+
+async fn api_status_is_ours(port: u16) -> bool {
+    let Ok(Ok(mut stream)) = timeout(
+        Duration::from_millis(600),
+        TcpStream::connect(("127.0.0.1", port)),
+    )
+    .await
+    else {
+        return false;
+    };
+    let request = format!(
+        "GET /api/status HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    );
+    if stream.write_all(request.as_bytes()).await.is_err() {
+        return false;
+    }
+    let mut response = Vec::new();
+    let _ = timeout(Duration::from_secs(1), stream.read_to_end(&mut response)).await;
+    let text = String::from_utf8_lossy(&response);
+    text.starts_with("HTTP/1.1 200") && text.contains("\"name\":\"astral-plasma\"")
 }
 
 async fn handle_tcp_connection(mut stream: TcpStream, mcp: Arc<HttpMcp>) -> DynResult<()> {
