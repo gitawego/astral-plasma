@@ -235,10 +235,57 @@ fn parse_amixer_percent(line: &str) -> Option<u32> {
     rest[..end].trim().parse::<u32>().ok()
 }
 
+/// `<bin> --version`, with Qt forced onto its offscreen platform.
+///
+/// Two of the tools this file probes are Qt GUI applications (`plasmashell`,
+/// `spectacle`). Their `--version` still constructs a `QGuiApplication`, so with
+/// no `WAYLAND_DISPLAY`/`DISPLAY` in the environment they call `qFatal`, abort
+/// (SIGABRT) and leave a ~1.2 MB coredump behind - one per probe. The doctor runs
+/// from the user daemon and from agent scopes that legitimately have no session
+/// display, which made the health check itself the source of the crash reports it
+/// exists to diagnose. Offscreen only prints the version and exits 0; for the
+/// plain CLIs probed alongside it is an inert environment variable.
+fn version_command(bin: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut cmd = Command::new(bin);
+    cmd.arg("--version").env("QT_QPA_PLATFORM", "offscreen");
+    cmd
+}
+
+/// Version reported by `plasmashell`, probed without needing a session display.
+///
+/// Public so `tests/test_doctor.rs` can prove the probe survives an environment
+/// with `DISPLAY` and `WAYLAND_DISPLAY` unset.
+pub fn plasma_version() -> Option<String> {
+    let output = version_command("plasmashell").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    extract_version(&String::from_utf8_lossy(&output.stdout))
+}
+
+#[cfg(test)]
+mod version_probe_tests {
+    use super::version_command;
+
+    /// A probe must carry the offscreen platform itself, not rely on the caller.
+    ///
+    /// Qt GUI tools abort when `--version` finds no display, so the guard has to
+    /// live in the command: every caller (daemon, agent scope, login shell) has a
+    /// different environment.
+    #[test]
+    fn version_probe_forces_qt_offscreen() {
+        let cmd = version_command("plasmashell");
+        let found = cmd.get_envs().any(|(key, value)| {
+            key == "QT_QPA_PLATFORM" && value == Some(std::ffi::OsStr::new("offscreen"))
+        });
+        assert!(found, "version probes must force QT_QPA_PLATFORM=offscreen: a Qt --version probe with no display aborts and writes a ~1.2 MB coredump");
+    }
+}
+
 fn check_quickshell() -> DependencyCheck {
     let path = which("quickshell");
     if let Some(ref bin_path) = path {
-        if let Ok(output) = Command::new(bin_path).arg("--version").output() {
+        if let Ok(output) = version_command(bin_path).output() {
             let out_str = String::from_utf8_lossy(&output.stdout);
             let version_opt = extract_version(&out_str);
             let req = "0.3.0";
@@ -366,7 +413,7 @@ fn check_desktop_environment() -> DependencyCheck {
     {
         let hypr_path = which("Hyprland");
         let hypr_ver = hypr_path.as_ref().and_then(|p| {
-            Command::new(p).arg("--version").output().ok().and_then(|o| {
+            version_command(p).output().ok().and_then(|o| {
                 extract_version(&String::from_utf8_lossy(&o.stdout))
             })
         });
@@ -393,15 +440,7 @@ fn check_desktop_environment() -> DependencyCheck {
 
     // 2. Check KDE Plasma / KWin
     let kwin_path = which("kwin_wayland").or_else(|| which("kwin_x11"));
-    let plasma_ver = if let Ok(output) = Command::new("plasmashell").arg("--version").output() {
-        if output.status.success() {
-            extract_version(&String::from_utf8_lossy(&output.stdout))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let plasma_ver = plasma_version();
 
     if kwin_path.is_some() || plasma_ver.is_some() {
         let msg = if is_wayland {
@@ -484,7 +523,7 @@ fn check_pipewire() -> DependencyCheck {
     let path = which("pw-record").or_else(|| which("pipewire"));
     if let Some(ref p) = path {
         let mut ver = None;
-        if let Ok(output) = Command::new(p).arg("--version").output() {
+        if let Ok(output) = version_command(p).output() {
             let out = String::from_utf8_lossy(&output.stdout);
             ver = extract_version(&out);
         }
@@ -520,7 +559,7 @@ fn check_matugen() -> DependencyCheck {
     let path = which("matugen");
     if let Some(ref p) = path {
         let mut ver = None;
-        if let Ok(output) = Command::new(p).arg("--version").output() {
+        if let Ok(output) = version_command(p).output() {
             let out = String::from_utf8_lossy(&output.stdout);
             ver = extract_version(&out);
         }
@@ -618,7 +657,7 @@ fn check_spectacle() -> DependencyCheck {
     let path = which("spectacle");
     if let Some(ref p) = path {
         let mut ver = None;
-        if let Ok(output) = Command::new(p).arg("--version").output() {
+        if let Ok(output) = version_command(p).output() {
             let out = String::from_utf8_lossy(&output.stdout);
             ver = extract_version(&out);
         }
@@ -721,7 +760,7 @@ fn check_aria2() -> DependencyCheck {
     let install_cmd = crate::infrastructure::aria2_adapter::aria2_install_command();
     if let Some(ref p) = path {
         let mut ver = None;
-        if let Ok(output) = Command::new(p).arg("--version").output() {
+        if let Ok(output) = version_command(p).output() {
             let out = String::from_utf8_lossy(&output.stdout);
             ver = extract_version(&out);
         }

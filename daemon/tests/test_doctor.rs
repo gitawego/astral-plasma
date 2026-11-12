@@ -221,3 +221,27 @@ fn fake_pi(version: &str, mcp: bool) -> std::path::PathBuf {
     }
     path
 }
+
+/// The health check must not itself produce crash reports.
+///
+/// `plasmashell --version` constructs a `QGuiApplication`; with no session display
+/// it calls `qFatal` and aborts (SIGABRT), leaving a ~1.2 MB coredump per probe.
+/// `make test-rust` runs with `DISPLAY` and `WAYLAND_DISPLAY` unset - the same
+/// environment as an agent scope or the user daemon - so a `None` here is that
+/// abort, not a missing Plasmashell.
+#[test]
+fn plasma_probe_survives_without_a_session_display() {
+    let installed = std::process::Command::new("sh")
+        .args(["-c", "command -v plasmashell"])
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false);
+    if !installed {
+        return;
+    }
+
+    let version = astral_plasma::application::doctor_service::plasma_version();
+    let version = version.expect("plasmashell --version aborted: the probe must force QT_QPA_PLATFORM=offscreen");
+    assert!(version.chars().next().is_some_and(|c| c.is_ascii_digit()),
+        "parsed a non-version out of plasmashell --version: {version:?}");
+}
