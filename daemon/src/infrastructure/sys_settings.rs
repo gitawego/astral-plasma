@@ -3,7 +3,10 @@ use crate::domain::system_settings::{
     AudioAppStream, AudioDevice, AudioPort, AudioStatus, BluetoothDevice, BluetoothPort,
     BluetoothStatus, NetworkPort, NetworkStatus, WifiAccessPoint,
 };
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // ==========================================
 // Parsing Utilities (Pure functions for TDD)
@@ -161,14 +164,122 @@ impl NetworkPort for SystemNetworkAdapter {
     }
 
     fn connect_wifi(&self, ssid: &str, password: Option<&str>) -> DynResult<()> {
-        let mut cmd = Command::new("nmcli");
-        cmd.args(["dev", "wifi", "connect", ssid]);
-        if let Some(pass) = password {
-            cmd.args(["password", pass]);
+        let Some(password) = password else {
+            let output = Command::new("nmcli")
+                .args(["dev", "wifi", "connect", ssid])
+                .output()?;
+            return if output.status.success() {
+                Ok(())
+            } else {
+                Err(nmcli_error("cannot connect to Wi-Fi", &output, ""))
+            };
+        };
+        if password.contains('\n') || password.contains('\r') {
+            return Err("a Wi-Fi password cannot contain a newline".into());
         }
-        cmd.output()?;
-        Ok(())
+
+        // Never put the PSK in argv: /proc/<pid>/cmdline and `ps` expose it. NetworkManager's
+        // documented passwd-file path carries the secret in a 0600 file that is removed after
+        // activation.
+        let profile_exists = Command::new("nmcli")
+            .args(["-t", "-f", "NAME", "connection", "show"])
+            .output()
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .any(|line| line.trim() == ssid)
+            })
+            .unwrap_or(false);
+        let mut created = false;
+        if !profile_exists {
+            let output = Command::new("nmcli")
+                .args([
+                    "connection",
+                    "add",
+                    "type",
+                    "wifi",
+                    "con-name",
+                    ssid,
+                    "ssid",
+                    ssid,
+                    "wifi-sec.key-mgmt",
+                    "wpa-psk",
+                ])
+                .output()?;
+            if !output.status.success() {
+                return Err(nmcli_error("cannot create the Wi-Fi profile", &output, password));
+            }
+            created = true;
+        }
+
+        let path = std::env::temp_dir().join(format!(
+            "astral-plasma-wifi-{}-{}.passwd",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        let secret_file = SecretFile(path);
+        let write_result = (|| -> DynResult<()> {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&secret_file.0)?;
+            file.write_all(wifi_passwd_line(password).as_bytes())?;
+            file.flush()?;
+            Ok(())
+        })();
+        write_result?;
+
+        let passwd_file = secret_file.0.to_string_lossy().to_string();
+        let output = Command::new("nmcli")
+            .args([
+                "connection",
+                "up",
+                "id",
+                ssid,
+                "passwd-file",
+                &passwd_file,
+            ])
+            .output();
+        drop(secret_file);
+        let output = output?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            if created {
+                let _ = Command::new("nmcli")
+                    .args(["connection", "delete", "id", ssid])
+                    .output();
+            }
+            Err(nmcli_error("cannot activate the Wi-Fi profile", &output, password))
+        }
     }
+}
+
+fn wifi_passwd_line(password: &str) -> String {
+    format!("802-11-wireless-security.psk:{password}\n")
+}
+
+/// A 0600 secret file that removes itself on every normal return and unwind.
+struct SecretFile(std::path::PathBuf);
+
+impl Drop for SecretFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn nmcli_error(context: &str, output: &std::process::Output, secret: &str) -> crate::domain::ports::DynError {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let redacted = if secret.is_empty() {
+        stderr.to_string()
+    } else {
+        stderr.replace(secret, "••••")
+    };
+    format!("{context}: {}", redacted.trim()).into()
 }
 
 pub struct SystemBluetoothAdapter;
@@ -376,5 +487,29 @@ impl AudioPort for SystemAudioAdapter {
             .args(["set-default", &sink_id.to_string()])
             .output()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_wifi_password_file_uses_the_documented_key() {
+        assert_eq!(
+            wifi_passwd_line("correct horse battery staple"),
+            "802-11-wireless-security.psk:correct horse battery staple\n"
+        );
+    }
+
+    #[test]
+    fn nmcli_errors_redact_the_password() {
+        let output = Command::new("sh")
+            .args(["-c", "printf 'activation failed for secret-psk' >&2; exit 1"])
+            .output()
+            .unwrap();
+        let error = nmcli_error("nmcli failed", &output, "secret-psk").to_string();
+        assert!(!error.contains("secret-psk"), "the PSK leaked: {error}");
+        assert!(error.contains("••••"), "the redaction marker is missing: {error}");
     }
 }

@@ -27,3 +27,24 @@ docs/proof/
 
 # Agent orchestration panel state (local tool state, not product source)
 .orchestration/
+
+# Secrets and credentials: never repository content
+.env
+.env.*
+!.env.example
+.envrc
+.direnv/
+*.ovpn
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.kdbx
+id_rsa
+id_ed25519
+.netrc
+.npmrc
+.pypirc
+credentials.json
+secrets.json

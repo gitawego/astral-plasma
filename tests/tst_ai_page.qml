@@ -164,7 +164,7 @@ Item {
         assert(aiPage.testAccountSwitchRequests[0].provider === "opencode-go" && aiPage.testAccountSwitchRequests[0].target === "oc_2",
             "switchProviderAccount must target opencode-go oc_2");
 
-        aiPage.addProviderAccount("deepseek", "sk-test-12345", "DeepSeek Main");
+        aiPage.addProviderAccount("deepseek", "test-ai-key-12345", "DeepSeek Main");
         assert(aiPage.testAccountAddRequests.length === 1, "addProviderAccount must record add request");
         assert(aiPage.testAccountAddRequests[0].provider === "deepseek" && aiPage.testAccountAddRequests[0].label === "DeepSeek Main",
             "addProviderAccount must record provider and label");

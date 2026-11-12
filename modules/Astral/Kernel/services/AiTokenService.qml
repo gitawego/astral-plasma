@@ -356,6 +356,10 @@ Singleton {
 
     Process {
         id: addProc
+        onExited: (code, status) => {
+            addProc.environment = {};
+            root.refresh(true);
+        }
         stdout: StdioCollector {
             onStreamFinished: {
                 root.refresh(true);
@@ -365,10 +369,13 @@ Singleton {
 
     function addAccount(provider, credential, label) {
         if (!provider || !credential) return;
-        let cmd = [root.daemonBin, "ai", "add-account", provider, credential];
+        // The credential travels in the child's environment, not argv: argv is visible in
+        // /proc/<pid>/cmdline and ps, while an environment override is not.
+        let cmd = [root.daemonBin, "ai", "add-account", provider, "--credential-env"];
         if (label && label.trim().length > 0) {
             cmd.push(label.trim());
         }
+        addProc.environment = { "ASTRAL_AI_CREDENTIAL": credential };
         addProc.command = cmd;
         if (!addProc.running) {
             addProc.running = true;

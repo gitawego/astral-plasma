@@ -1,0 +1,48 @@
+# Historical false positives: tests/tst_dsh_auth.qml used a deterministic
+# test vector, base64url(bytes(range(32))), as its HMAC key. It was never a
+# credential and the current test computes the value instead of storing it.
+# The fingerprints are commit-scoped, so a real secret in a new commit is
+# still reported. See docs/SECURITY-AUDIT-2026-11-12.md.
+7e8c0c13904bd96b47d49198224ddf32a8d39687:tests/tst_dsh_auth.qml:generic-api-key:27
+802e83977d3a72b2489387cfb797e36888db268e:tests/tst_dsh_auth.qml:generic-api-key:27
+e3a65d4c50e9a4c1ca989c4a3b4d6c8ee363ad0d:tests/tst_dsh_auth.qml:generic-api-key:27
+40fde961e26ff2c8dc4bc6f72de6d52fa57eb011:tests/tst_dsh_auth.qml:generic-api-key:27
+ac54cf9e222dc1459010037e0b1a7ff4b00faae0:tests/tst_dsh_auth.qml:generic-api-key:27
+742ca0f800913234a5331fead209f7c7ec8fcac8:tests/tst_dsh_auth.qml:generic-api-key:27
+d4965b2c02fbf604c9e492143040aaa50433d654:tests/tst_dsh_auth.qml:generic-api-key:27
+c9b840013e06518d3b81105648ed909f73712927:tests/tst_dsh_auth.qml:generic-api-key:27
+6a5aa9cd81a2acedd6fbfc144d061b03adf1f2a1:tests/tst_dsh_auth.qml:generic-api-key:27
+250773062d031b9d3b2c2b5528ea619e3575fa95:tests/tst_dsh_auth.qml:generic-api-key:27
+8b4bb94a7bc63bf3af67297acbef8adee91905f6:tests/tst_dsh_auth.qml:generic-api-key:27
+08410000d0d2dbc1b71b5b5eac30d31cbfb340ca:tests/tst_dsh_auth.qml:generic-api-key:27
+e6a60e5a81eb43438d0759a3954d9e4b17051008:tests/tst_dsh_auth.qml:generic-api-key:27
+91dcf94db59bb4b0e506cd4fcad400606c0eab62:tests/tst_dsh_auth.qml:generic-api-key:27
+ab84005cd8cc28c519ccb8d4d920a878db72aba7:tests/tst_dsh_auth.qml:generic-api-key:27
+b49f9546f2cee0c5aa0e5ac405eb1b89986f4c9c:tests/tst_dsh_auth.qml:generic-api-key:27
+62775df1c1d9fa9917e030323d49c62592a49bd4:tests/tst_dsh_auth.qml:generic-api-key:27
+8065010e2a659d9b246acb33390bc69c47951c75:tests/tst_dsh_auth.qml:generic-api-key:27
+73ec36a1b8e391d2f568099d3bb2c03e968ab6dc:tests/tst_dsh_auth.qml:generic-api-key:27
+a6b85d72da905363e3fa5d24ca8285e1d6d50c2c:tests/tst_dsh_auth.qml:generic-api-key:27
+e596f0b53fae38d32ec59921466d35e91b1538da:tests/tst_dsh_auth.qml:generic-api-key:27
+2a3b48acfc4ef21e8eb7def13eeb128790652f74:tests/tst_dsh_auth.qml:generic-api-key:27
+3489b03323c8e11cc478cc998339dbee1fbdfd7b:tests/tst_dsh_auth.qml:generic-api-key:27
+11ae3d44d64876d149d264f85a3df0917f15982e:tests/tst_dsh_auth.qml:generic-api-key:27
+0a7ef73b348d7ee1d2ede7cc4ca87da9322ba621:tests/tst_dsh_auth.qml:generic-api-key:27
+0cd5ec950ebbe70a926035598a61e205637dd12e:tests/tst_dsh_auth.qml:generic-api-key:27
+0beadbedb2aecd232c96d0d4ce826d7bb8955ae8:tests/tst_dsh_auth.qml:generic-api-key:27
+3d055940ee102d274d95a313a5bf722df8acc550:tests/tst_dsh_auth.qml:generic-api-key:27
+fe3f67eafdb5607bf725432d0ee9f9e060ad96d9:tests/tst_dsh_auth.qml:generic-api-key:27
+296708dc7233e0a2d1f4af4e30e72588190d0ad2:tests/tst_dsh_auth.qml:generic-api-key:27
+369fe0277dd8ffa97123456313ff2375797f1ce7:tests/tst_dsh_auth.qml:generic-api-key:27
+b53764d11d048ea7b55296d550d632c3a1e45812:tests/tst_dsh_auth.qml:generic-api-key:27
+66d41dee80f68a72c579068604112d6dac637675:tests/tst_dsh_auth.qml:generic-api-key:27
+dbe63accc6e678464f5cb206aefff19521e07c7e:tests/tst_dsh_auth.qml:generic-api-key:27
+b532dc11ca7471cf5908ee988e051352bbb59aa8:tests/tst_dsh_auth.qml:generic-api-key:27
+f82253a333c12c3fc46fbf8f60f7d573332b090d:tests/tst_dsh_auth.qml:generic-api-key:27
+e283dbeb68e78351e7ad982c9ceeb4304605c655:tests/tst_dsh_auth.qml:generic-api-key:27
+6a842c493fd13d061660e4d8e6e529bce5a92394:tests/tst_dsh_auth.qml:generic-api-key:27
+f390fdf1f8ebaeed3a5c6923627885964bd1dcaf:tests/tst_dsh_auth.qml:generic-api-key:27
+1666e4b357616b7d6f8ca081e55199537ffbf132:tests/tst_dsh_auth.qml:generic-api-key:27
+e9e38c06cff2618d7b413522deea660545212b64:tests/tst_dsh_auth.qml:generic-api-key:27
+03227e679fad78ecc48a993514581433ff689d08:tests/tst_dsh_auth.qml:generic-api-key:27
+b271bff21317aec727e31a318d494c46f3cb11cc:tests/tst_dsh_auth.qml:generic-api-key:27

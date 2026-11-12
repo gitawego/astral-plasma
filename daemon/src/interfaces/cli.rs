@@ -15,6 +15,7 @@ use crate::infrastructure::proc_metrics::ProcMetricsAdapter;
 use crate::infrastructure::systemd_adapter::SystemdAdapter;
 use crate::interfaces::api_server::{api_port, run_api_server};
 use std::env;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -587,12 +588,34 @@ pub async fn run_cli() -> DynResult<()> {
                         }
                         "connect" => {
                             if let Some(ssid) = args.get(4) {
-                                let pass = args.get(5).map(|s| s.as_str());
-                                use_case.connect_wifi(ssid, pass)?;
+                                let from_stdin = args.iter().any(|arg| arg == "--password-stdin");
+                                let from_env = args.iter().any(|arg| arg == "--password-env");
+                                if !from_stdin && !from_env && args.get(5).is_some() {
+                                    return Err(
+                                        "pass --password-env or --password-stdin: a Wi-Fi password in argv is visible to other processes"
+                                            .into(),
+                                    );
+                                }
+                                let pass = if from_stdin {
+                                    let mut input = String::new();
+                                    std::io::stdin().read_to_string(&mut input)?;
+                                    Some(input.trim().to_string())
+                                } else if from_env {
+                                    Some(
+                                        std::env::var("ASTRAL_WIFI_PASSWORD")
+                                            .map_err(|_| "ASTRAL_WIFI_PASSWORD is not set")?,
+                                    )
+                                } else {
+                                    None
+                                };
+                                let pass = pass.filter(|value| !value.trim().is_empty());
+                                use_case.connect_wifi(ssid, pass.as_deref())?;
                                 println!(r#"{{"success":true,"connected":"{}"}}"#, ssid);
                             }
                         }
-                        _ => eprintln!("Usage: astral-plasma settings network <status|scan|toggle|connect>"),
+                        _ => eprintln!(
+                            "Usage: astral-plasma settings network <status|scan|toggle|connect <ssid> [--password-env|--password-stdin]>"
+                        ),
                     }
                 }
                 "bluetooth" => {
@@ -1409,16 +1432,36 @@ pub async fn run_cli() -> DynResult<()> {
                     }
                 }
                 "add-account" | "add" => {
-                    if args.len() >= 5 {
-                        let provider = &args[3];
-                        let credential = &args[4];
-                        let label = args.get(5).map(|s| s.as_str());
-                        let id = ai_service.add_account(provider, credential, label, false)?;
-                        println!(r#"{{"success":true,"provider":"{}","account_id":"{}"}}"#, provider, id);
-                    } else {
-                        eprintln!("Usage: astral-plasma ai add-account <provider> <credential> [label]");
-                        std::process::exit(1);
+                    let provider = args.get(3).map(String::as_str).ok_or(
+                        "usage: astral-plasma ai add-account <provider> [label] --credential-env|--credential-stdin",
+                    )?;
+                    let from_stdin = args.iter().any(|arg| arg == "--credential-stdin");
+                    let from_env = args.iter().any(|arg| arg == "--credential-env");
+                    if !from_stdin && !from_env {
+                        return Err(
+                            "pass --credential-env or --credential-stdin: a credential in argv is visible to other processes"
+                                .into(),
+                        );
                     }
+                    let credential = if from_stdin {
+                        let mut input = String::new();
+                        std::io::stdin().read_to_string(&mut input)?;
+                        input.trim().to_string()
+                    } else {
+                        std::env::var("ASTRAL_AI_CREDENTIAL")
+                            .map_err(|_| "ASTRAL_AI_CREDENTIAL is not set")?
+                    };
+                    if credential.trim().is_empty() {
+                        return Err("the AI credential is empty".into());
+                    }
+                    // With a flag, the label is the first non-flag argument after the provider.
+                    let label = args
+                        .iter()
+                        .skip(4)
+                        .find(|arg| !arg.starts_with("--"))
+                        .map(String::as_str);
+                    let id = ai_service.add_account(provider, &credential, label, false)?;
+                    println!(r#"{{"success":true,"provider":"{}","account_id":"{}"}}"#, provider, id);
                 }
                 "list-accounts" | "accounts" => {
                     let provider = args.get(3).map(|s| s.as_str());

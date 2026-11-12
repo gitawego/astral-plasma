@@ -176,3 +176,55 @@ fn test_parse_minimax_status_2062_pay_as_you_go() {
     assert!(quota.is_available);
     assert!(quota.windows.is_empty());
 }
+
+#[test]
+fn credential_files_and_directories_are_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_root = TempDir::new().unwrap();
+    let legacy_dir = temp_root.path().join("token-tracker");
+    let legacy_gemini = legacy_dir.join("accounts/gemini");
+    fs::create_dir_all(&legacy_gemini).unwrap();
+    fs::write(
+        legacy_gemini.join("acc1.json"),
+        serde_json::json!({
+            "id": "acc1",
+            "provider_id": "gemini",
+            "label": "Legacy",
+            "identity": "legacy@example.com",
+            "credential": "{\"access_token\":\"legacy\"}",
+            "is_active": true
+        })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(
+        legacy_dir.join("credentials.json"),
+        serde_json::json!({ "gemini": "legacy-secret" }).to_string(),
+    )
+    .unwrap();
+    // Simulate the old world: copied files were world-readable.
+    fs::set_permissions(legacy_gemini.join("acc1.json"), fs::Permissions::from_mode(0o644)).unwrap();
+    fs::set_permissions(legacy_dir.join("credentials.json"), fs::Permissions::from_mode(0o644)).unwrap();
+
+    let config_dir = temp_root.path().join("astral-plasma");
+    let adapter = AiQuotaAdapter::with_dirs(
+        temp_root.path().join("cache"),
+        config_dir.clone(),
+        Some(legacy_dir),
+    );
+    adapter.ensure_storage_migrated();
+
+    let mode = |path: &std::path::Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&config_dir.join("accounts/gemini/acc1.json")), 0o600);
+    assert_eq!(mode(&config_dir.join("credentials.json")), 0o600);
+    assert_eq!(mode(&config_dir.join("accounts/gemini")), 0o700);
+
+    let id = adapter
+        .add_account("deepseek", "test-deepseek-key-12345", Some("Test"), false)
+        .unwrap();
+    let account = config_dir.join("accounts/deepseek").join(format!("{id}.json"));
+    assert_eq!(mode(&account), 0o600, "new account file must be 0600");
+    assert_eq!(mode(&config_dir.join("accounts/deepseek")), 0o700, "account dir must be 0700");
+    assert_eq!(mode(&config_dir.join("credentials.json")), 0o600, "fallback must stay 0600");
+}

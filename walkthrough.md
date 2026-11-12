@@ -2946,3 +2946,36 @@ errors, no install side effects, and traversal refused. The existing install sui
 the link farm, so the new path did not replace the old one. An MCP load is a read, so it happens
 without the install consent prompt; the server tells clients to load only requested or clearly
 relevant skills, and warns that third-party instructions are untrusted.
+
+---
+
+## Security audit — no real secrets, three hardening fixes (2026-11-12)
+
+The full tree, 411 commits, all 3,720 blob objects, commit messages, and 37 tracked screenshots
+were scanned for credentials. No real secret was found. The only gitleaks history findings were
+43 repetitions of one deterministic DSH test vector; the current test computes
+`base64url(bytes(range(32)))` instead of storing the literal, and the historical fingerprints are
+documented in `.gitleaksignore`.
+
+Real issues fixed:
+
+- **Dependency advisories:** `rustls` 0.23.46, `rustls-webpki` 0.103.16, `rustix` 1.1.6,
+  `tokio` 1.54.1, and the yanked `async-executor` 1.14.1. `cargo audit` now reports no
+  vulnerabilities (three unmaintained `zbus`-family warnings remain, with no fixed upgrade).
+- **Credentials in argv:** the AI account path now passes the credential through
+  `ASTRAL_AI_CREDENTIAL`/stdin and refuses a positional credential; the Wi-Fi path writes a 0600
+  `passwd-file`, removes it with a drop guard, and refuses a positional password. QML was updated
+  to the environment form.
+- **World-readable credential files:** AI account JSON and `credentials.json` were 0644 and their
+  directories 0755. They are now written atomically 0600/0700, and existing trees are repaired on
+  startup without following symlinks.
+
+> **Verified**: `gitleaks dir` and `gitleaks git --log-opts=--all` report no leaks (the latter
+> with the documented commit-scoped false-positive list); `cargo audit` reports 0
+> vulnerabilities; the new permission test confirms 0600/0700; `make test` exit 0 — 1334 Rust
+> tests, 169 QML suites, app boundaries clean. The audit report is
+> [`docs/SECURITY-AUDIT-2026-11-12.md`](docs/SECURITY-AUDIT-2026-11-12.md).
+
+History was not rewritten: with no real secret, rewriting 411 commits and four tags would be a
+destructive force-push for test fixtures. If a real secret is found, the rule is rotate first,
+then `git filter-repo` and force-push.

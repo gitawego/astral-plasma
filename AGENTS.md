@@ -143,6 +143,40 @@ The design language is adapted from upstream [caelestia-dots/shell](https://gith
 
 ---
 
+## 4d. Mandatory Rule: No Hard-Coded Content, No Secrets In Git
+
+> [!CAUTION]
+> **Two things must never enter this repository: fabricated content and credentials.**
+>
+> 1. **Never hard-code or fabricate content.**
+>    - Every value a surface renders must come from ground truth: system telemetry, the audio
+>      stream, the filesystem, a database, or reactive configuration. If a value is unavailable,
+>      render an explicit empty/unavailable state — never an invented number, title, beat, or
+>      status.
+>    - Test fixtures are the only exception, and they must be unmistakably synthetic: names like
+>      `test-minimax-key-999`, RFC vectors, or values generated in the test itself. Never copy a
+>      real credential into a fixture, even an expired or revoked one.
+>    - Do not hard-code player identities, device names, user paths, ports, or content that the
+>      system can discover. See §4 for the data-driven visualizer rules.
+>
+> 2. **Never store secrets in git.**
+>    - Never commit API keys, access/refresh tokens, passwords, cookies, session secrets, private
+>      keys, keyring exports, `.env` files, or credentials embedded in URLs, JSON, YAML, logs,
+>      screenshots, or test fixtures.
+>    - Pass secrets through environment variables, the OS keyring, stdin, or one-shot runtime
+>      tokens. Redact them from logs, errors, `--json` payloads, and command arguments.
+>    - Commit only placeholders (`${OPENAI_API_KEY}`, `test-…`, `<token>`), never a real value.
+>    - **If a secret is committed: assume it is compromised.** Rotate/revoke it first, then
+>      rewrite the history that contains it (for example `git filter-repo --replace-text`) and
+>      force-push the rewritten refs. Deleting the file in a new commit does **not** remove it
+>      from history.
+>    - Before pushing, scan the tree **and all history** (`gitleaks git --log-opts=--all`) and
+>      run `cargo audit` for the daemon. A finding may be accepted only with a written
+>      false-positive justification; a real credential is never waived.
+>    - `.gitignore` must cover `.env*`, private keys, credential stores, and local secret files.
+
+---
+
 ## 5. Repository Map
 
 ```

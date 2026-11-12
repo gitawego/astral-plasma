@@ -22,9 +22,15 @@ Item {
         onTriggered: runTests()
     }
 
-    // Vectors generated with Python hashlib/hmac (see repo history). Secret is
-    // base64url(bytes(range(32))) so the key is deterministic and printable.
-    readonly property string secretB64: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+    // RFC-style test vector: base64url(bytes(range(32))). It is computed here
+    // rather than stored as a literal so the repository carries no
+    // credential-shaped string.
+    function testSecretBytes() {
+        var bytes = [];
+        for (var i = 0; i < 32; i++) bytes.push(i);
+        return bytes;
+    }
+    readonly property string secretB64: DshAuth.bytesToBase64Url(testSecretBytes())
 
     readonly property string sampleYaml: [
         "version: 1",
@@ -35,7 +41,7 @@ Item {
         "      version: 1",
         "      secret: " + secretB64,
         "refs:",
-        "  OPENCODE_GO_CUSTOM_API_KEY: sk-whatever"
+        "  OPENCODE_GO_CUSTOM_API_KEY: test-api-key-placeholder"
     ].join("\n")
 
     function runTests() {

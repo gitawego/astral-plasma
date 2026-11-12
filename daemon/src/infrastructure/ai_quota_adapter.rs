@@ -8,7 +8,8 @@ use crate::infrastructure::scanners::ToolConfigAggregator;
 use crate::infrastructure::token_cache_analytics::TokenCacheAnalytics;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 
@@ -24,6 +25,68 @@ impl Default for AiQuotaAdapter {
             custom_cache_dir: None,
             custom_config_dir: None,
             custom_legacy_config_dir: None,
+        }
+    }
+}
+
+/// Create an owner-only directory (0700) for credential material.
+fn ensure_private_dir(path: &Path) {
+    let _ = fs::create_dir_all(path);
+    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o700));
+}
+
+/// Write a credential file atomically with 0600 permissions. The temp file is created with
+/// `create_new` and the final rename keeps a reader from seeing a half-written JSON document.
+fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        ensure_private_dir(parent);
+    }
+    let nonce = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let temporary = path.with_extension(format!("tmp-{}-{nonce}", std::process::id()));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&temporary)?;
+    if let Err(error) = file.write_all(contents.as_bytes()).and_then(|_| file.flush()) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    drop(file);
+    if let Err(error) = fs::rename(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+    Ok(())
+}
+
+/// Repair permissions on an existing account tree (older releases wrote 0644 files).
+fn secure_private_tree(root: &Path) {
+    let Ok(metadata) = fs::symlink_metadata(root) else {
+        return;
+    };
+    if metadata.file_type().is_symlink() {
+        return;
+    }
+    let _ = fs::set_permissions(root, fs::Permissions::from_mode(0o700));
+    if let Ok(entries) = fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(metadata) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
+                secure_private_tree(&path);
+            } else if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+                let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+            }
         }
     }
 }
@@ -112,7 +175,18 @@ impl AiQuotaAdapter {
     /// 1. Migrates existing accounts and credentials from ~/.config/token-tracker (one-time).
     /// 2. If token-tracker doesn't exist either, auto-bootstraps from Desktop Keyring
     ///    or ~/.gemini/antigravity-cli/antigravity-oauth-token.
+    /// Repair permissions on Astral-owned credential storage. Older releases wrote 0644 files.
+    fn secure_storage(&self) {
+        if let Some(config_dir) = self.get_config_dir() {
+            secure_private_tree(&config_dir.join("accounts"));
+            if let Some(credentials) = self.get_credentials_file() {
+                let _ = fs::set_permissions(&credentials, fs::Permissions::from_mode(0o600));
+            }
+        }
+    }
+
     pub fn ensure_storage_migrated(&self) {
+        self.secure_storage();
         let gemini_dir = match self.get_gemini_accounts_dir() {
             Some(d) => d,
             None => return,
@@ -193,6 +267,7 @@ impl AiQuotaAdapter {
         }
 
         if has_accounts {
+            self.secure_storage();
             return;
         }
 
@@ -257,10 +332,12 @@ impl AiQuotaAdapter {
 
             let target_path = gemini_dir.join("antigravity_primary.json");
             if let Ok(content) = serde_json::to_string_pretty(&default_account) {
-                let _ = fs::write(target_path, content);
+                let _ = write_private(&target_path, &content);
                 let _ = fs::write(gemini_dir.join(".antigravity_last_active"), &email_str);
             }
         }
+
+        self.secure_storage();
     }
 
     /// Single Source of Truth (SSOT): Resolves the currently active Gemini account identity.
@@ -1332,7 +1409,7 @@ impl AiQuotaAdapter {
     fn write_credential_fallback(&self, provider_id: &str, credential: &str) {
         if let Some(creds_path) = self.get_credentials_file() {
             if let Some(parent) = creds_path.parent() {
-                let _ = fs::create_dir_all(parent);
+                ensure_private_dir(parent);
             }
             let mut creds_map: serde_json::Map<String, serde_json::Value> = if creds_path.exists() {
                 fs::read_to_string(&creds_path)
@@ -1347,7 +1424,7 @@ impl AiQuotaAdapter {
                 serde_json::Value::String(credential.to_string()),
             );
             if let Ok(updated) = serde_json::to_string_pretty(&creds_map) {
-                let _ = fs::write(creds_path, updated);
+                let _ = write_private(&creds_path, &updated);
             }
         }
     }
@@ -1456,7 +1533,7 @@ impl AiQuotaAdapter {
         let dir = self
             .get_accounts_dir_for(provider_id)
             .ok_or_else(|| format!("Cannot find accounts directory for '{}'", provider_id))?;
-        let _ = fs::create_dir_all(&dir);
+        ensure_private_dir(&dir);
 
         // Deactivate any previously active accounts for this provider
         if let Ok(entries) = fs::read_dir(&dir) {
@@ -1502,7 +1579,7 @@ impl AiQuotaAdapter {
         let target_file = dir.join(format!("{}.json", account_id));
         let pretty = serde_json::to_string_pretty(&acc_obj)
             .map_err(|e| format!("Failed to serialize account JSON: {}", e))?;
-        fs::write(&target_file, pretty)
+        write_private(&target_file, &pretty)
             .map_err(|e| format!("Failed to write account file: {}", e))?;
 
         // Update credentials.json fallback

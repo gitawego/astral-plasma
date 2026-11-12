@@ -13,11 +13,11 @@ fn test_pi_scanner_deterministic_extraction() {
     let auth_content = r#"{
         "opencode-go": {
             "type": "api_key",
-            "key": "sk-opencode-test-12345"
+            "key": "test-opencode-key-12345"
         },
         "minimax-cn": {
             "type": "api_key",
-            "key": "sk-minimax-test-67890"
+            "key": "test-minimax-key-67890"
         }
     }"#;
     fs::write(&auth_path, auth_content).expect("Failed to write auth.json");
@@ -29,12 +29,12 @@ fn test_pi_scanner_deterministic_extraction() {
 
     let opencode = creds.iter().find(|c| c.provider_id == "opencode-go");
     assert!(opencode.is_some());
-    assert_eq!(opencode.unwrap().credential, "sk-opencode-test-12345");
+    assert_eq!(opencode.unwrap().credential, "test-opencode-key-12345");
     assert_eq!(opencode.unwrap().tool_source, "pi");
 
     let minimax = creds.iter().find(|c| c.provider_id == "minimax-cn");
     assert!(minimax.is_some());
-    assert_eq!(minimax.unwrap().credential, "sk-minimax-test-67890");
+    assert_eq!(minimax.unwrap().credential, "test-minimax-key-67890");
     assert_eq!(minimax.unwrap().tool_source, "pi");
 }
 
@@ -44,7 +44,7 @@ fn test_omp_scanner_deterministic_yaml_extraction() {
     let models_path = dir.path().join("models.yml");
 
     // Set a test env var for resolution
-    std::env::set_var("TEST_MINIMAX_ENV_KEY_XYZ", "sk-minimax-from-env-999");
+    std::env::set_var("TEST_MINIMAX_ENV_KEY_XYZ", "test-minimax-env-key-999");
 
     let yaml_content = r#"
 providers:
@@ -67,7 +67,7 @@ providers:
     assert!(minimax.is_some());
     assert_eq!(
         minimax.unwrap().credential,
-        "sk-minimax-from-env-999",
+        "test-minimax-env-key-999",
         "Should resolve environment variable"
     );
     assert_eq!(
@@ -142,7 +142,7 @@ fn test_aggregator_finds_best_matching_credential() {
     let auth_content = r#"{
         "minimax-cn": {
             "type": "api_key",
-            "key": "sk-pi-minimax-key"
+            "key": "test-pi-minimax-key"
         }
     }"#;
     fs::write(dir_pi.path().join("auth.json"), auth_content).unwrap();
@@ -161,7 +161,7 @@ providers:
 
     let cred = aggregator.find_credential_for("minimax-cn", &["minimax"]);
     assert!(cred.is_some());
-    assert_eq!(cred.unwrap().credential, "sk-pi-minimax-key");
+    assert_eq!(cred.unwrap().credential, "test-pi-minimax-key");
 
     let ark = aggregator.find_credential_for("ark-code", &["ark"]);
     assert!(ark.is_some());
@@ -190,7 +190,7 @@ fn test_zcode_scanner_deterministic_extraction() {
               "config": {
                 "access": {
                   "type": "api-key",
-                  "apiKey": "sk-cp-minimax-zcode-12345"
+                  "apiKey": "test-minimax-zcode-key-12345"
                 },
                 "api": {
                   "type": "anthropic-messages",
@@ -205,7 +205,7 @@ fn test_zcode_scanner_deterministic_extraction() {
               "config": {
                 "access": {
                   "type": "api-key",
-                  "apiKey": "sk-deepseek-zcode-67890"
+                  "apiKey": "test-deepseek-zcode-key-67890"
                 },
                 "api": {
                   "type": "anthropic-messages",
@@ -249,13 +249,13 @@ fn test_zcode_scanner_deterministic_extraction() {
 
     let minimax = creds.iter().find(|c| c.provider_id == "minimax-cn");
     assert!(minimax.is_some());
-    assert_eq!(minimax.unwrap().credential, "sk-cp-minimax-zcode-12345");
+    assert_eq!(minimax.unwrap().credential, "test-minimax-zcode-key-12345");
     assert_eq!(minimax.unwrap().tool_source, "zcode");
     assert_eq!(minimax.unwrap().base_url.as_deref(), Some("https://api.minimaxi.com/anthropic"));
 
     let deepseek = creds.iter().find(|c| c.provider_id == "deepseek");
     assert!(deepseek.is_some());
-    assert_eq!(deepseek.unwrap().credential, "sk-deepseek-zcode-67890");
+    assert_eq!(deepseek.unwrap().credential, "test-deepseek-zcode-key-67890");
     assert_eq!(deepseek.unwrap().tool_source, "zcode");
 
     let glm = creds.iter().find(|c| c.provider_id == "glm");
