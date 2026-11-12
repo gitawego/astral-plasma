@@ -11,8 +11,17 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-/// Locates the built binary next to the integration test executable.
+/// Locates the binary Cargo built for this integration test. `CARGO_BIN_EXE` is
+/// authoritative; the adjacency fallback handles a direct invocation from
+/// `target/debug/deps`.
 fn daemon_bin() -> PathBuf {
+    if let Some(path) = option_env!("CARGO_BIN_EXE_astral-plasma") {
+        let candidate = PathBuf::from(path);
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+
     let mut dir = std::env::current_exe().expect("test executable path");
     dir.pop(); // deps/
     if dir.ends_with("deps") {
