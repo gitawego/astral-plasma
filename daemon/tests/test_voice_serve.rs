@@ -11,6 +11,16 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 fn daemon_bin() -> PathBuf {
+    // Cargo gives integration tests the path to the binary it just built. This
+    // is the authoritative location; deriving it from current_exe() only works
+    // when the test binary happens to sit next to the daemon (a `deps/` layout).
+    if let Some(path) = option_env!("CARGO_BIN_EXE_astral-plasma") {
+        let candidate = PathBuf::from(path);
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+
     let mut dir = std::env::current_exe().expect("test executable path");
     dir.pop();
     if dir.ends_with("deps") {
