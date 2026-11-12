@@ -1313,7 +1313,7 @@ Item {
         }
 
         // ---- Task list: bounded, glass rows, per-row progress + D5 actions ----
-        Flickable {
+        SmoothFlickable {
             id: taskList
             Layout.fillWidth: true
             // Drawer: content-driven (capped at four rows). Window: the layout

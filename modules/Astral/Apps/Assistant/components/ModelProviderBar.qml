@@ -262,7 +262,7 @@ Item {
         border.width: 1
         border.color: Colors.glassBorderSpecular
 
-        Flickable {
+        SmoothFlickable {
             anchors.fill: parent
             anchors.margins: 8
             contentHeight: providerCol.implicitHeight
@@ -467,7 +467,7 @@ Item {
             }
 
             // Models List
-            Flickable {
+            SmoothFlickable {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(200, modelListCol.implicitHeight)
                 contentHeight: modelListCol.implicitHeight

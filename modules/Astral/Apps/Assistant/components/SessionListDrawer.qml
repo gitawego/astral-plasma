@@ -245,7 +245,7 @@ Rectangle {
         }
 
         // 3. Scrollable Session List
-        Flickable {
+        SmoothFlickable {
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentHeight: sessionListCol.implicitHeight

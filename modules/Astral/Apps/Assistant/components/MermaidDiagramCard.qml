@@ -208,7 +208,7 @@ Rectangle {
             border.color: Colors.glassBorderSpecular
             clip: true
 
-            Flickable {
+            SmoothFlickable {
                 id: bodyScroll
                 anchors.fill: parent
                 anchors.margins: 8

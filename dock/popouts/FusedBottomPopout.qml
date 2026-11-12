@@ -298,7 +298,7 @@ Item {
                     }
                 }
 
-                readonly property bool btPowered: (typeof BluetoothService !== "undefined" && BluetoothService.powered) 
+                readonly property bool btPowered: (typeof BluetoothService !== "undefined" && BluetoothService.powered)
                     || (Boolean(Bluetooth.defaultAdapter) && Boolean(Bluetooth.defaultAdapter.enabled))
                 readonly property var btDeviceList: (typeof BluetoothService !== "undefined" && BluetoothService.devices && BluetoothService.devices.length > 0)
                     ? BluetoothService.devices
@@ -439,7 +439,7 @@ Item {
                     id: wifiToggleItem
                     icon: !NetworkService.wifiEnabled ? "wifi_off" : (NetworkService.connected ? "wifi" : "wifi_find")
                     iconColor: NetworkService.wifiEnabled ? (NetworkService.connected ? Colors.primary : Colors.textOnSurface) : Colors.textOnSurfaceVariant
-                    label: NetworkService.wifiEnabled 
+                    label: NetworkService.wifiEnabled
                         ? ("Wi-Fi: " + (NetworkService.connected ? (NetworkService.activeSsid || NetworkService.ssid || "Connected") : "Disconnected"))
                         : "Wi-Fi: Off"
                     checked: NetworkService.wifiEnabled
@@ -451,8 +451,8 @@ Item {
                 }
 
                 Repeater {
-                    model: (NetworkService.wifiEnabled && (NetworkService.wifiNetworks || NetworkService.scannedNetworks)) 
-                        ? (NetworkService.wifiNetworks || NetworkService.scannedNetworks).slice(0, 5) 
+                    model: (NetworkService.wifiEnabled && (NetworkService.wifiNetworks || NetworkService.scannedNetworks))
+                        ? (NetworkService.wifiNetworks || NetworkService.scannedNetworks).slice(0, 5)
                         : []
 
                     delegate: ActionItem {
@@ -768,7 +768,7 @@ Item {
                     }
 
                     // Items List
-                    Flickable {
+                    SmoothFlickable {
                         id: clipFlickable
                         anchors.fill: parent
                         contentWidth: width
@@ -902,13 +902,7 @@ Item {
                             }
                         }
 
-                        WheelHandler {
-                            target: clipFlickable
-                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                            onWheel: (event) => {
-                                clipFlickable.contentY = Math.max(0, Math.min(clipFlickable.contentHeight - clipFlickable.height, clipFlickable.contentY - event.angleDelta.y));
-                            }
-                        }
+
                     }
 
                     GlassScrollIndicator {
@@ -1068,7 +1062,7 @@ Item {
                     }
 
                     // Notifications List
-                    Flickable {
+                    SmoothFlickable {
                         id: notifFlickable
                         anchors.fill: parent
                         contentWidth: width
@@ -1193,13 +1187,7 @@ Item {
                             }
                         }
 
-                        WheelHandler {
-                            target: notifFlickable
-                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                            onWheel: (event) => {
-                                notifFlickable.contentY = Math.max(0, Math.min(notifFlickable.contentHeight - notifFlickable.height, notifFlickable.contentY - event.angleDelta.y));
-                            }
-                        }
+
                     }
 
                     GlassScrollIndicator {
@@ -1768,8 +1756,8 @@ Item {
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: (WindowService.activeTrayItem && WindowService.activeTrayItem.title && !WindowService.activeTrayItem.title.startsWith("Error")) 
-                                        ? WindowService.activeTrayItem.title 
+                                    text: (WindowService.activeTrayItem && WindowService.activeTrayItem.title && !WindowService.activeTrayItem.title.startsWith("Error"))
+                                        ? WindowService.activeTrayItem.title
                                         : ((WindowService.activeTrayItem && WindowService.activeTrayItem.id) ? WindowService.activeTrayItem.id : "Application")
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontMedium
@@ -2801,7 +2789,7 @@ Item {
         readonly property real contentHeight: pageCol.implicitHeight
         signal itemClicked(var modelData)
 
-        Flickable {
+        SmoothFlickable {
             id: pageFlickable
             anchors.fill: parent
             contentWidth: width
@@ -2847,13 +2835,7 @@ Item {
                 }
             }
 
-            WheelHandler {
-                target: pageFlickable
-                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                onWheel: (event) => {
-                    pageFlickable.contentY = Math.max(0, Math.min(pageFlickable.contentHeight - pageFlickable.height, pageFlickable.contentY - event.angleDelta.y));
-                }
-            }
+
         }
 
         // A menu hides its bar at rest - it is transient, and a permanent stripe

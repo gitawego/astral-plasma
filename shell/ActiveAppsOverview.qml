@@ -721,7 +721,7 @@ PanelWindow {
 
         Behavior on opacity { NumberAnimation { duration: Theme.animExpressiveFastEffects } }
 
-        GridView {
+        SmoothGridView {
             id: gridV
             visible: root.grid.cols > 0
             clip: root.gridOverflow
@@ -1048,7 +1048,7 @@ PanelWindow {
             showRefraction: true
 
             // Results List View
-            ListView {
+            SmoothListView {
                 id: resultsList
                 anchors.fill: parent
                 anchors.margins: 14

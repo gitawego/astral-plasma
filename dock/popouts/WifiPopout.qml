@@ -81,7 +81,7 @@ Card {
         }
 
         // Scanned Network List
-        ListView {
+        SmoothListView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true

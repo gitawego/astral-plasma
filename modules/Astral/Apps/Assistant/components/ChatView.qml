@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import "../../../Kernel/theme"
 import "../../../Kernel/components"
 
-Flickable {
+SmoothFlickable {
     id: root
 
     contentWidth: width

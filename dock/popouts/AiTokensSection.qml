@@ -406,7 +406,7 @@ Item {
         }
 
         // Horizontal Segmented Provider Tabs (Responsive Chip Bar for 2, 3, 4, 5+ providers)
-        Flickable {
+        SmoothFlickable {
             id: providerFlickable
             Layout.fillWidth: true
             Layout.preferredHeight: 32

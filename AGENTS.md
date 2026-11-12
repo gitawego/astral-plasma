@@ -308,9 +308,13 @@ Inspect the resulting image using `view_file` to verify alignment, centering, co
    - Never combine `anchors.fill: parent` with an item whose parent's `implicitHeight` depends on its children.
    - Use `implicitWidth` and `implicitHeight` on custom components.
 2. **Bounded Scrolling**:
-   - Any dynamic list whose item count depends on user state (e.g. running application windows) MUST be wrapped in a `Flickable` and height-clamped to prevent pushing fixed dock controls off-screen on smaller displays.
+   - Any dynamic list whose item count depends on user state (e.g. running application windows) MUST be wrapped in a `SmoothFlickable` (or `SmoothListView`) and height-clamped to prevent pushing fixed dock controls off-screen on smaller displays.
 3. **Dual-Text Cross-Fading**:
    - For labels that update reactively (such as the active window title), use alternating double `Text` items (`titleText1` / `titleText2`) with opacity cross-fading rather than instant text jumps.
 4. **Resilient Icon Resolution**:
    - Always chain app icons: check for raw desktop file / URI path -> query `Quickshell.iconPath()` -> fallback to a Material Symbols icon via `MaterialIcon`.
+5. **Smooth Scrolling Everywhere**:
+   - Every scrollable surface MUST use the shared [`SmoothFlickable`](modules/Astral/Kernel/components/SmoothFlickable.qml), [`SmoothListView`](modules/Astral/Kernel/components/SmoothListView.qml), or [`SmoothGridView`](modules/Astral/Kernel/components/SmoothGridView.qml). Never declare a bare `Flickable`/`ListView`/`GridView` in the shell.
+   - Wheel normalization and motion live in [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js) and [`SmoothWheelHandler.qml`](modules/Astral/Kernel/components/SmoothWheelHandler.qml). Never assign `contentY`/`contentX` directly from a wheel handler; that is the jumpy path this primitive replaced.
+   - The only intentional exception is a wheel-driven carousel (`WallpaperCarousel.qml`), where a wheel step selects an item rather than scrolling a viewport.
 

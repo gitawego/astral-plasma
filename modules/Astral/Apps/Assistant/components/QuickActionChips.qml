@@ -18,7 +18,7 @@ Item {
         { "label": "Clean Cache", "icon": "delete", "prompt": "Check disk usage, orphaned packages, and package cache size to suggest cleanup." }
     ]
 
-    Flickable {
+    SmoothFlickable {
         anchors.fill: parent
         contentWidth: row.implicitWidth + Theme.padLarge * 2
         contentHeight: height

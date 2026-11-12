@@ -404,7 +404,7 @@ SettingsPage {
 
     // Search hits: the shell's list-row archetype, clamped and scrollable so a
     // long result set never pushes the card around.
-    component ZoneResults: Flickable {
+    component ZoneResults: SmoothFlickable {
         id: results
         property string query: ""
         property var model: []

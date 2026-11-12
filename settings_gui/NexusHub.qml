@@ -41,7 +41,7 @@ Item {
     /// top - the page runs out of content first - so at the clamped position the
     /// geometry cannot tell "Logging" from "Display", and the pill the reader
     /// pressed would light a *different* one. The reader's own scroll clears this
-    /// (see `userScrolled` and the reader-detection below): from then on, the
+    /// (the page flickable's movement below): from then on, the
     /// geometry is the truth again. A name the page does not declare as a zone
     /// (a legacy deep link, e.g. the AI page's `voice`) never becomes an override.
     property string requestedSectionId: ""
@@ -322,15 +322,6 @@ Item {
         sectionScrollAnim.start();
     }
 
-    /// The reader is driving the scroll (wheel or trackpad): drop the in-flight
-    /// programmatic scroll and the request highlight instead of fighting them -
-    /// the geometry is the truth from here on.
-    function userScrolled(deltaY) {
-        sectionScrollAnim.stop();
-        root.requestedSectionId = "";
-        pageFlickable.contentY = Math.max(0, Math.min(root.contentMaxOffset, pageFlickable.contentY - deltaY));
-    }
-
     function recomputeZoneOffsets() {
         const page = pageLoader.item;
         const zones = root.pageZones;
@@ -422,16 +413,31 @@ Item {
     }
 
     Connections {
+        function onScrollStarted() {
+            sectionScrollAnim.stop();
+            root.requestedSectionId = "";
+        }
+
+        target: pageFlickable.wheelHandler
+    }
+
+    Connections {
         function onContentHeightChanged() {
             root.refreshZoneOffsets();
+        }
+
+        function onMovementStarted() {
+            sectionScrollAnim.stop();
+            root.requestedSectionId = "";
         }
 
         /// Anything but the hub's own movement means the reader is scrolling: the
         /// request highlight is dropped and the geometry takes over again.
         function onContentYChanged() {
-            if (!root.programmaticScroll)
+            if (!root.programmaticScroll) {
                 root.requestedSectionId = "";
-
+                sectionScrollAnim.stop();
+            }
         }
 
         function onMovingChanged() {
@@ -568,7 +574,7 @@ Item {
                 // scrolls - and it scrolls to the active page. Without that, a
                 // newly added page can be the one page the reader cannot see in
                 // the rail that is supposed to lead to it.
-                Flickable {
+                SmoothFlickable {
                     id: navFlick
 
                     Layout.fillWidth: true
@@ -729,7 +735,7 @@ Item {
                 }
 
                 // Page Scrollable Content Container
-                Flickable {
+                SmoothFlickable {
                     id: pageFlickable
 
                     Layout.fillWidth: true
@@ -738,14 +744,6 @@ Item {
                     contentHeight: Math.max(height, pageLoader.item ? pageLoader.item.implicitHeight : pageLoader.implicitHeight)
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
-
-                    WheelHandler {
-                        target: pageFlickable
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onWheel: (event) => {
-                            return root.userScrolled(event.angleDelta.y);
-                        }
-                    }
 
                     Loader {
                         id: pageLoader

@@ -180,7 +180,7 @@ Rectangle {
             implicitHeight: root.stagedFiles.length > 0 ? 50 : 0
             visible: root.stagedFiles.length > 0
 
-            Flickable {
+            SmoothFlickable {
                 anchors.fill: parent
                 contentWidth: stagedRow.implicitWidth
                 contentHeight: height
@@ -377,7 +377,7 @@ Rectangle {
             }
 
 
-            Flickable {
+            SmoothFlickable {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 contentHeight: inputField.implicitHeight
@@ -825,7 +825,7 @@ Rectangle {
             return allSkills.filter(s => s.name.toLowerCase().includes(query) || s.description.toLowerCase().includes(query)).slice(0, 5);
         }
 
-        Flickable {
+        SmoothFlickable {
             anchors.fill: parent
             anchors.margins: 8
             contentHeight: skillCol.implicitHeight

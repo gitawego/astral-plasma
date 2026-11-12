@@ -3160,3 +3160,49 @@ heading and every pill icon share the same x.
 > (`CONNECTIVITY`, `AI & VOICE`, `HARDWARE`, `DESKTOP SHELL`, `SYSTEM`) and the leading icon of
 > every pill now share the same left x. `make test` exit 0 — 1347 Rust tests, 170 QML suites,
 > app boundaries clean.
+
+---
+
+## Smooth scrolling is the default on every surface (2026-11-12)
+
+Wheel scrolling was inconsistent: settings, the bottom popouts, and the tray menu each
+assigned `contentY` directly, so a notch jumped; other Flickables relied on whatever Qt did
+by default. The fix is one scroll primitive, not a patch per surface.
+
+### The generic primitive
+
+- `modules/Astral/Kernel/components/ScrollPhysics.js` — one place for wheel normalization
+  (a 120-unit notch is 60 px; a trackpad's `pixelDelta` wins), clamping, flick physics, and
+  the fast-effects motion token.
+- `SmoothWheelHandler.qml` — a `WheelHandler` that accumulates wheel deltas into a target and
+  eases `contentY`/`contentX` there with `animExpressiveFastEffects`. It scrolls only when the
+  surface has room in that axis; at a boundary it hands the wheel to the nearest ancestor
+  `Smooth*` handler, so a nested list cannot trap the page. It consumes the event either way,
+  which keeps `Flickable`'s own jump-by-a-whole-notch `wheelEvent` from running underneath.
+  A drag or native flick stops the tween; a programmatic scroll can listen for
+  `scrollStarted()` and yield.
+- `SmoothFlickable.qml`, `SmoothListView.qml`, `SmoothGridView.qml` — the only scroll types
+  the shell should declare. Each installs the handler and the shared flick physics.
+
+### Migration
+
+Every shipped scroll surface now uses those wrappers: settings (page and nav rail), the
+fused bottom popouts (clips, notifications, pages), tray menu, Assistant chat/input/file
+picker/model bars/session drawer, Downloads, Launcher, Workspaces, dock lists and capsules,
+Wi-Fi popout, input-method list, active-apps overview, and the Time/Voice settings lists.
+The old direct-`contentY` wheel handlers were removed. `WallpaperCarousel` is the one
+intentional exception: its wheel selects a wallpaper instead of scrolling a viewport.
+
+The rule is recorded in `AGENTS.md` §9.5 and `DESIGN.md` §3.5, and `tests/tst_smooth_scroll.qml`
+audits the migrated files for bare `Flickable`/`ListView`/`GridView` declarations.
+
+### Verification
+
+`tests/tst_smooth_scroll.qml` asserts the wheel delta normalization, a mid-glide offset, the
+landing target, horizontal routing, the non-interactive guard, both clamp ends, the
+boundary/ancestor rule, and the source contract. `make test` exit 0 — 1347 Rust tests,
+171 QML suites, app boundaries clean.
+
+> **Verified live**: injected a real wheel event over the settings content; the page moved
+> through the shared handler. I did not capture a mid-glide frame (Spectacle's latency is
+> longer than the 150 ms tween); the intermediate offset is asserted in `tst_smooth_scroll`.

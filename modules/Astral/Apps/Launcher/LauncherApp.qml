@@ -343,7 +343,7 @@ PanelWindow {
             }
 
             // 2. Command Suggestions List (Frame 46)
-            ListView {
+            SmoothListView {
                 id: suggestionsList
                 visible: root.isCommandMode && !root.hasActiveCommandPage
                 anchors.fill: parent
@@ -700,7 +700,7 @@ PanelWindow {
             }
 
             // 7. App Results List (Frame 45) - High-Performance Virtual Scroll
-            ListView {
+            SmoothListView {
                 id: appsList
                 visible: !root.isCommandMode
                 anchors.fill: parent

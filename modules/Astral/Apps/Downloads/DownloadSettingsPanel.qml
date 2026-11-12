@@ -101,7 +101,7 @@ Rectangle {
         }
     }
 
-    Flickable {
+    SmoothFlickable {
         id: scroll
         anchors.fill: parent
         anchors.margins: sheet.pad

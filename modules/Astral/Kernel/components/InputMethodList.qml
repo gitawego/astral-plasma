@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import "../theme"
 import "../services"
+import "."
 
 /// The configured input methods, one row each, plus the framework's settings.
 ///
@@ -17,7 +18,7 @@ ColumnLayout {
     readonly property var methods: (typeof InputMethodService !== "undefined") ? InputMethodService.items : []
     readonly property int activeIndex: (typeof InputMethodService !== "undefined") ? InputMethodService.currentIndex : -1
 
-    ListView {
+    SmoothListView {
         id: methodList
         Layout.fillWidth: true
         Layout.preferredHeight: Math.min(contentHeight, 220)

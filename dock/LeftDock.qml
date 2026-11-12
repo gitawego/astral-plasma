@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/config"
 import "popouts"
+import "../modules/Astral/Kernel/components"
 
 PanelWindow {
     id: root
@@ -59,7 +60,7 @@ PanelWindow {
             }
 
             // The modules inside the dock
-            Flickable {
+            SmoothFlickable {
                 anchors.fill: parent
                 anchors.topMargin: Theme.padMedium
                 anchors.bottomMargin: Theme.padMedium

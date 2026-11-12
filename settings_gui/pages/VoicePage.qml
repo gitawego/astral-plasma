@@ -887,7 +887,7 @@ SettingsPage {
                     border.width: 1
                     border.color: Colors.glassBorderSpecular
 
-                    Flickable {
+                    SmoothFlickable {
                         anchors.fill: parent
                         anchors.margins: 6
                         contentHeight: modelListCol.implicitHeight
@@ -1073,7 +1073,7 @@ SettingsPage {
                         border.width: 1
                         border.color: Colors.glassBorderSpecular
 
-                        Flickable {
+                        SmoothFlickable {
                             anchors.fill: parent
                             anchors.margins: 6
                             contentHeight: languageListCol.implicitHeight

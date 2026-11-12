@@ -215,43 +215,72 @@ PillButton {
 
 ---
 
-### 3.5. Settings Pages: Pinned Identity & Zone Rail (`SettingsPage.qml`)
+### 3.5. Settings Pages: Pinned Identity, Sections & Tabs (`SettingsPage.qml`)
 
 Every settings page roots in [`settings_gui/pages/SettingsPage.qml`](settings_gui/pages/SettingsPage.qml)
-and *declares* its identity and its sections; it never draws its own page header:
+and *declares* its identity and its shape; it never draws its own page header.
+
+Most pages are a vertical stack of sections. `zones` names the section anchors so a
+deep link can scroll to one; the page itself draws no in-page navigation rail:
 
 ```qml
 SettingsPage {
     title: "Network & Internet"
     subtitle: "Wi-Fi connections, signal strength & network interfaces"
+    icon: "wifi"
     zones: [
         { id: "wifi", label: "Wi-Fi", anchor: masterPowerCard },
         { id: "networks", label: "Networks", anchor: networksSection }
     ]
 
-    ColumnLayout { /* the page body; SectionHeader marks the zones */ }
+    ColumnLayout { /* the page body; SectionHeader marks the sections */ }
+}
+```
+
+Only a page whose content genuinely runs several viewports uses tabs:
+
+```qml
+SettingsPage {
+    title: "AI & Agents"
+    subtitle: "Token quotas, coding harnesses, provider accounts, and agent skills"
+    icon: "psychology"
+    property string currentTab: "quotas"
+    tabs: [
+        { id: "quotas", label: "Quotas", icon: "performance" },
+        { id: "copilot", label: "Copilot", icon: "psychology" }
+    ]
 }
 ```
 
 - **Pinned identity**: the hub renders the scaffold's `stickyHeader` *above* the
-  scroll area, so the page title, its one-line purpose and the zone rail stay put
+  scroll area, so the page title, icon, one-line purpose and tab strip stay put
   while the content moves. A page therefore repeats its title nowhere in the body.
-- **Zone rail**: two or more zones render as `PillButton`s, and the zone the
-  reader is in is highlighted. One zone is a title, not navigation - it renders
-  no rail.
-- **Zones are live state**: a page may compute its `zones` list, so a section
-  that is hidden (Wi-Fi off, no app streams) leaves the rail with it. A pill
-  never scrolls to a section that is not there.
+- **Sections by default**: most pages read in one or two screens. Their content is
+  a vertical stack; `zones` are deep-link anchors, not a rail.
+- **Tabs only for long pages**: AI & Agents, Voice Dictation, System & Services,
+  and Skills are tall enough that a tab strip earns its navigation cost. A page
+  with one section declares neither tabs nor anchors.
+- **Sections are live state**: a page may compute its `zones` list, so a section
+  that is hidden (Wi-Fi off, no app streams) leaves the deep-link vocabulary with
+  it. A link never scrolls to a section that is not there.
 - **Section headings**: [`components/SectionHeader.qml`](components/SectionHeader.qml)
-  marks a zone anchor. Its eyebrow carries the section's live state (counts,
+  marks a section anchor. Its eyebrow carries the section's live state (counts,
   active preset, install status) - never a decorative index.
-- **Section jump**: pressing a pill is a *request to the host*. The page emits
-  `zoneRequested(zoneId)`; the hub owns the scroll area, so the hub scrolls -
-  smoothly, with the `animExpressive*Spatial` tokens from `Theme`, damped by
-  distance (`settings_gui/ScrollMotion.js`), and yielding to the reader the
-  instant they wheel or drag. A page never writes a shell global to navigate
-  itself: a control that depends on an identifier its own file did not import is
-  dead without an error (see `docs/LESSONS.md` §36).
+- **Deep links**: the hub owns the scroll area. For a sections page it calls
+  `sectionY(id)` and scrolls with the `animExpressive*Spatial` tokens from
+  `Theme`, damped by distance (`settings_gui/ScrollMotion.js`); for a tabs page it
+  calls `selectTab(id)`. A page never writes a shell global to navigate itself: a
+  control that depends on an identifier its own file did not import is dead
+  without an error (see `docs/LESSONS.md` §36).
+- **Smooth scrolling everywhere**: every scrollable surface uses the shared
+  [`SmoothFlickable`](modules/Astral/Kernel/components/SmoothFlickable.qml),
+  [`SmoothListView`](modules/Astral/Kernel/components/SmoothListView.qml), or
+  [`SmoothGridView`](modules/Astral/Kernel/components/SmoothGridView.qml). Wheel
+  deltas are normalized in
+  [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js), and
+  the glide uses `animExpressiveFastEffects`. Never assign `contentY` directly
+  from a wheel handler, and never create a bare `Flickable`/`ListView`/`GridView`
+  that bypasses the shared physics.
 
 ---
 

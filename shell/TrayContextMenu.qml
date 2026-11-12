@@ -457,7 +457,7 @@ Item {
         readonly property real contentHeight: menuCol.implicitHeight
         signal itemClicked(var modelData)
 
-        Flickable {
+        SmoothFlickable {
             id: menuFlickable
             anchors.fill: parent
             contentWidth: width
@@ -502,13 +502,7 @@ Item {
                 }
             }
 
-            WheelHandler {
-                target: menuFlickable
-                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                onWheel: (event) => {
-                    menuFlickable.contentY = Math.max(0, Math.min(menuFlickable.contentHeight - menuFlickable.height, menuFlickable.contentY - event.angleDelta.y));
-                }
-            }
+
         }
 
         function resetScroll() {

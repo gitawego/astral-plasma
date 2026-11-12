@@ -90,7 +90,7 @@ LiquidGlassCard {
     function scrollToTop() { listFlick.contentY = 0; }
     function scrollToBottom() { listFlick.contentY = Math.max(0, root.contentHeight - root.listHeight); }
 
-    Flickable {
+    SmoothFlickable {
         id: listFlick
         anchors.fill: parent
         anchors.topMargin: root.vPad

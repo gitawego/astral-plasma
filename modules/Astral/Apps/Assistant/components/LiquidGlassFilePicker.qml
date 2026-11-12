@@ -345,7 +345,7 @@ Rectangle {
                     }
 
                     // Path Segments Breadcrumb
-                    Flickable {
+                    SmoothFlickable {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         contentWidth: breadcrumbRow.implicitWidth
@@ -778,7 +778,7 @@ Rectangle {
                             sortReversed: root.sortReversed
                         }
 
-                        GridView {
+                        SmoothGridView {
                             id: gridView
                             anchors.fill: parent
                             anchors.margins: 8

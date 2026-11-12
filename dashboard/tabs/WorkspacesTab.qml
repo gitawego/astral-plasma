@@ -311,7 +311,7 @@ Item {
             // ------------------------------------------
             // 1. Search Results Mode (Active Query)
             // ------------------------------------------
-            ListView {
+            SmoothListView {
                 id: searchListView
                 anchors.fill: parent
                 visible: root.searchQuery.trim().length > 0
@@ -455,7 +455,7 @@ Item {
             // ------------------------------------------
             // 2. Spatial Stage Mode (Grid of Desktops)
             // ------------------------------------------
-            Flickable {
+            SmoothFlickable {
                 id: stageFlickable
                 anchors.fill: parent
                 visible: root.searchQuery.trim().length === 0
