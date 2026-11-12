@@ -106,15 +106,19 @@ Item {
         assert(!/SettingToggle\s*\{[\s\S]*?Dynamic Wallpaper Colors/.test(themePageSrc),
                "ThemePage must not have a redundant SettingToggle for dynamic colors");
 
-        console.log("Test 10: Verify WallpaperAndStylePage and ThemePage have Accent Palette title and valid zones");
+        console.log("Test 10: Verify WallpaperAndStylePage and ThemePage have Accent Palette title and Atlas tabs");
         const wallpaperPageSrc = readLocalFile("../settings_gui/pages/WallpaperAndStylePage.qml");
         assert(wallpaperPageSrc.indexOf('title: "Accent Palette"') >= 0,
                "WallpaperAndStylePage must use 'Accent Palette' title");
         assert(themePageSrc.indexOf('title: "Accent Palette"') >= 0,
                "ThemePage must use 'Accent Palette' title");
 
-        assert(wallpaperPage.sectionY("palette") !== undefined, "WallpaperAndStylePage palette zone must resolve offset");
-        assert(themePage.sectionY("colors") !== undefined, "ThemePage colors zone must resolve offset");
+        wallpaperPage.selectTab("palette");
+        assert(wallpaperPage.currentTab === "palette",
+               "WallpaperAndStylePage's palette deep link selects its tab");
+        themePage.selectTab("colors");
+        assert(themePage.currentTab === "colors",
+               "ThemePage's colors deep link selects its tab");
 
         console.log("PASS: Archetype Accent Reactivity & Geometry Scaling Tests Passed!");
         Qt.exit(0);

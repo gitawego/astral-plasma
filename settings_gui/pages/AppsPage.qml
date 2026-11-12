@@ -20,11 +20,9 @@ import "../../modules/Astral/Kernel/services"
 SettingsPage {
     id: root
 
+    icon: "grid_view"
     title: "Apps"
     subtitle: "Installed apps, their versions, and what they are allowed to do"
-    zones: [
-        { id: "apps", label: "Installed", anchor: listHeader }
-    ]
 
     property bool testMode: false
     /// Injected by the harness: the rows to render (the service cannot run there).

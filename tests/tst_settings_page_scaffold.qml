@@ -47,6 +47,24 @@ Item {
         Item { id: outputsAnchor; implicitHeight: 20 }
     }
 
+    // Atlas: tabs switch the body; they do not scroll to an anchor.
+    SettingsPage {
+        id: tabPage
+        width: 800
+        title: "Skills"
+        icon: "school"
+        tabs: [
+            { id: "find", label: "Find", icon: "search", component: findTab },
+            { id: "mcp", label: "MCP server", icon: "dns", component: mcpTab }
+        ]
+        property Component findTab: Component {
+            Item { objectName: "findTab"; implicitHeight: 40 }
+        }
+        property Component mcpTab: Component {
+            Item { objectName: "mcpTab"; implicitHeight: 40 }
+        }
+    }
+
     function assert(condition, message) {
         if (!condition) {
             console.error("FAIL: " + message);
@@ -114,6 +132,23 @@ Item {
         assert(singleZonePage.hasRail === false,
             "one zone does not get a rail - a single pill is not navigation");
         assert(singleZonePage.sectionY("outputs") !== undefined, "its anchor still resolves");
+
+        // ------------------------------------------------------------------
+        // Atlas tabs
+        // ------------------------------------------------------------------
+        assert(tabPage.hasTabs === true && tabPage.hasTabComponents === true,
+            "the page declares tabs and their components");
+        assert(tabPage.currentTab === "find", "the first tab is selected by default");
+        assert(tabPage.tabContentItem !== null
+                && tabPage.tabContentItem.objectName === "findTab",
+            "the body is the active tab's component");
+        tabPage.selectTab("mcp");
+        assert(tabPage.currentTab === "mcp", "selectTab changes the tab");
+        assert(tabPage.tabContentItem !== null
+                && tabPage.tabContentItem.objectName === "mcpTab",
+            "selecting a tab swaps the body, not a scroll position");
+        tabPage.selectTab("nonsense");
+        assert(tabPage.currentTab === "mcp", "an unknown tab id is ignored");
 
         // ------------------------------------------------------------------
         // The hub contract is present (the hub reads these four members)

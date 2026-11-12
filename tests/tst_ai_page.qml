@@ -192,6 +192,8 @@ Item {
         assert(aiPage.authenticatingEmail === "", "aiPage.authenticatingEmail must be empty after cancelAuth()");
 
         // 9. Desktop Agent Skills verification
+        aiPage.selectTab("setup");
+        assert(aiPage.currentTab === "setup", "the skills setup tab is selected");
         assert(aiPage.skillInstalled === false, "agent skill must start uninstalled");
         assert(aiPage.installSkillButtonItem.visible === true, "install button must be visible when uninstalled");
         assert(aiPage.uninstallSkillButtonItem.visible === false, "uninstall button must be hidden when uninstalled");

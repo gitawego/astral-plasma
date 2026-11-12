@@ -52,6 +52,8 @@ Item {
         console.log("RUNNING: Desktop Agent Skills Card Unit Tests");
 
         // 1. Verify installed state presentation
+        installedPage.selectTab("setup");
+        uninstalledPage.selectTab("setup");
         assert(installedPage.skillInstalled === true, "installedPage reports skill installed");
         assert(installedPage.skillStatusItem.text.indexOf("astral-desktop-tools installed") >= 0,
             "status text reflects installed state: " + installedPage.skillStatusItem.text);

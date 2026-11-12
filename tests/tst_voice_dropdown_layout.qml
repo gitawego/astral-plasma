@@ -123,6 +123,10 @@ Item {
             label + ": the open list paints over unrelated controls -> " + offenders.join(", "));
     }
 
+    // The dropdowns live in the Speech Model tab; open that tab before any
+    // geometry is measured, or every rect is the hidden body's zero.
+    Component.onCompleted: page.selectTab("model")
+
     // The list height is animated (Theme.animExpressiveFastSpatial = 350ms), so
     // geometry is only settled after the transition has finished.
     Timer {

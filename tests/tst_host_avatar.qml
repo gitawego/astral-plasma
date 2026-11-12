@@ -302,9 +302,9 @@ Item {
             "DashboardPage must not import Quickshell (keeps it instantiable under qml6)");
         assert(/Config\.setHostAvatar/.test(pageSrc), "page must persist the host avatar via Config.setHostAvatar");
         assert(/Config\.setMediaAvatar/.test(pageSrc), "page must keep persisting the media avatar via Config.setMediaAvatar");
-        assert(/onPathPicked:\s*p\s*=>\s*\{\s*if\s*\(\s*!root\.testMode[^}]*Config\.setHostAvatar/.test(pageSrc),
+        assert(/onPathPicked:\s*\(?\s*p\s*\)?\s*=>\s*\{\s*if\s*\(\s*!root\.testMode[^}]*Config\.setHostAvatar/.test(pageSrc),
             "setHostAvatar must stay gated behind testMode");
-        assert(/onPathPicked:\s*p\s*=>\s*\{\s*if\s*\(\s*!root\.testMode[^}]*Config\.setMediaAvatar/.test(pageSrc),
+        assert(/onPathPicked:\s*\(?\s*p\s*\)?\s*=>\s*\{\s*if\s*\(\s*!root\.testMode[^}]*Config\.setMediaAvatar/.test(pageSrc),
             "setMediaAvatar must stay gated behind testMode");
         const fieldUses = pageSrc.split("AvatarPathField").length - 1;
         assert(fieldUses >= 2,

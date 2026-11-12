@@ -280,6 +280,7 @@ Item {
         // A downloaded model must be removable, and the control must only exist
         // while there is something to remove.
         assert(page.voiceModelRemoveItem !== undefined, "VoicePage must offer removing a downloaded model");
+        page.selectTab("model");
         page.testVoiceStatus = { engine_available: true, model_present: true, setup_complete: true, gap: "" };
         assert(page.voiceModelPresent === true, "the seam must drive model presence");
         assert(page.voiceModelRemoveItem.visible === true, "the remove control shows for a present model");
@@ -298,6 +299,7 @@ Item {
         page.testVoiceStatus = null;
 
         // GPU Acceleration Recommendation notice test:
+        page.selectTab("engine");
         page.testVoiceStatus = {
             engine: "whisper-cpp",
             engine_available: true,

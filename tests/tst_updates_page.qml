@@ -84,17 +84,25 @@ Item {
     }
 
     Component.onCompleted: {
-        // A page adopts the hub contract: identity, zones, resolvable anchors.
+        // A page adopts the hub contract: identity and Atlas tabs.
         assert(idlePage.title === "Updates & About", "the page names itself");
         assert(idlePage.subtitle.length > 0, "the page describes itself");
-        assert(idlePage.zones.length === 4, "four zones (got " + idlePage.zones.length + ")");
-        const ids = idlePage.zones.map(z => z.id).join(",");
-        assert(ids === "version,update,notes,maintenance", "zone order: " + ids);
-        for (let i = 0; i < idlePage.zones.length; ++i) {
-            const zone = idlePage.zones[i];
-            assert(zone.anchor !== null && zone.anchor !== undefined,
-                "zone '" + zone.id + "' must resolve to a real anchor");
+        assert(idlePage.icon !== "", "the page carries an icon");
+        assert(idlePage.tabs.length === 4, "four tabs (got " + idlePage.tabs.length + ")");
+        const ids = idlePage.tabs.map(t => t.id).join(",");
+        assert(ids === "version,update,notes,maintenance", "tab order: " + ids);
+        for (let i = 0; i < idlePage.tabs.length; ++i) {
+            const tab = idlePage.tabs[i];
+            assert(tab.label && tab.label !== "",
+                "tab '" + tab.id + "' must carry a label");
+            assert(tab.icon && tab.icon !== "",
+                "tab '" + tab.id + "' must carry an icon");
         }
+        assert(idlePage.zones.length === 0, "the page no longer declares a scroll rail");
+        assert(idlePage.currentTab === "version", "the page opens on Version");
+        idlePage.selectTab("notes");
+        assert(idlePage.currentTab === "notes", "selectTab switches to What's New");
+        idlePage.selectTab("version");
 
         // Idle: nothing on offer, and the notes that are compiled in are shown.
         assert(idlePage.currentVersion === "0.1.3", "the running version is shown");

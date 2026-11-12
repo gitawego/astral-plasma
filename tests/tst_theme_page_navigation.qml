@@ -38,43 +38,28 @@ Item {
     function runTests() {
         console.log("RUNNING: Theme Page Navigation & Rich Settings Tests");
 
-        // 1. Zone Declaration Conformance
-        assert(themePage.zones.length === 4, "ThemePage must declare 4 zones");
-        assert(themePage.zones[0].id === "style", "Zone 0 must be 'style'");
-        assert(themePage.zones[1].id === "colors", "Zone 1 must be 'colors'");
-        assert(themePage.zones[2].id === "shape", "Zone 2 must be 'shape'");
-        assert(themePage.zones[3].id === "preview", "Zone 3 must be 'preview'");
+        // 1. Atlas tab declaration
+        assert(themePage.tabs.length === 4, "ThemePage must declare 4 tabs");
+        assert(themePage.tabs[0].id === "style", "Tab 0 must be 'style'");
+        assert(themePage.tabs[1].id === "colors", "Tab 1 must be 'colors'");
+        assert(themePage.tabs[2].id === "shape", "Tab 2 must be 'shape'");
+        assert(themePage.tabs[3].id === "preview", "Tab 3 must be 'preview'");
+        for (let i = 0; i < themePage.tabs.length; ++i) {
+            const tab = themePage.tabs[i];
+            assert(tab.label && tab.label !== "", "tab '" + tab.id + "' must carry a label");
+            assert(tab.icon && tab.icon !== "", "tab '" + tab.id + "' must carry an icon");
+        }
 
-        // 2. Zone Anchors Monotonically Ascending & Offset Verification
-        let yStyle = themePage.sectionY("style");
-        let yColors = themePage.sectionY("colors");
-        let yShape = themePage.sectionY("shape");
-        let yPreview = themePage.sectionY("preview");
-
-        assert(yStyle !== undefined && yStyle >= 0, "style anchor must resolve");
-        assert(yColors !== undefined && yColors > yStyle, "colors anchor must be below style");
-        assert(yShape !== undefined && yShape > yColors, "shape anchor must be below colors");
-        assert(yPreview !== undefined && yPreview > yShape, "preview anchor must be below shape");
-
-        // 3. Navigation Signal Contract
-        themePage.zoneRequested.connect(zone => {
-            testRoot.lastRequestedZone = zone;
-        });
-
-        themePage.jumpToZone("shape");
-        assert(testRoot.lastRequestedZone === "shape", "jumpToZone('shape') must emit zoneRequested('shape')");
-
-        themePage.jumpToZone("preview");
-        assert(testRoot.lastRequestedZone === "preview", "jumpToZone('preview') must emit zoneRequested('preview')");
-
-        // 4. Section Focus / Active State Reactivity
-        themePage.currentSection = "shape";
-        assert(themePage.isZoneCurrent("shape") === true, "isZoneCurrent('shape') must be true when currentSection is shape");
-        assert(themePage.isZoneCurrent("style") === false, "isZoneCurrent('style') must be false when currentSection is shape");
-
-        // 5. Scroll Runway Height Check
-        // Page must have sufficient height so that scrolling to sections is possible on desktop viewports
-        assert(themePage.implicitHeight >= 600, "ThemePage implicitHeight must be at least 600px for scrollability, got " + themePage.implicitHeight);
+        // 2. Tabs switch the body; they never scroll to an anchor
+        assert(themePage.zones.length === 0, "ThemePage must not declare a scroll rail");
+        assert(themePage.hasRail === false, "ThemePage must not render the legacy rail");
+        assert(themePage.currentTab === "style", "ThemePage opens on Style");
+        themePage.selectTab("shape");
+        assert(themePage.currentTab === "shape", "selectTab('shape') must select the Shape tab");
+        themePage.selectTab("preview");
+        assert(themePage.currentTab === "preview", "selectTab('preview') must select the Preview tab");
+        themePage.selectTab("nonsense");
+        assert(themePage.currentTab === "preview", "an unknown tab id must be ignored");
 
         // 6. Archetype Selector Reactivity
         assert(themePage.currentArchetype === "liquid_glass", "Default archetype must be liquid_glass");

@@ -70,6 +70,7 @@ Item {
         // ------------------------------------------------------------------
         // Status is the real probed version
         // ------------------------------------------------------------------
+        harnessPage.selectTab("setup");
         assert(harnessPage.harnessStatusItem.text.indexOf("1.0.0") >= 0,
             "the card reports the installed version, got: " + harnessPage.harnessStatusItem.text);
         assert(harnessPage.harnessInstalled === true, "an installed harness is reported as such");
@@ -83,6 +84,7 @@ Item {
         // ------------------------------------------------------------------
         // Missing harness: guide instead of updating nothing
         // ------------------------------------------------------------------
+        noHarnessPage.selectTab("setup");
         assert(noHarnessPage.harnessStatusItem.text.indexOf("not installed") >= 0,
             "a missing harness says so, got: " + noHarnessPage.harnessStatusItem.text);
         assert(noHarnessPage.updatePiButtonItem.visible === false
@@ -97,6 +99,7 @@ Item {
         // ------------------------------------------------------------------
         // One update at a time
         // ------------------------------------------------------------------
+        updatingPage.selectTab("setup");
         assert(updatingPage.harnessUpdating === true, "the running state is visible");
         assert(updatingPage.updatePiButtonItem.label === "Updating…",
             "the button says what is happening, got: " + updatingPage.updatePiButtonItem.label);
@@ -118,6 +121,7 @@ Item {
         // ------------------------------------------------------------------
         // Results are reported; failures are not dressed up
         // ------------------------------------------------------------------
+        failedPage.selectTab("setup");
         assert(failedPage.harnessResultItem.visible === true, "a failed update is shown");
         assert(failedPage.harnessResultItem.text.indexOf("EACCES") >= 0,
             "the failure carries the real output, got: " + failedPage.harnessResultItem.text);

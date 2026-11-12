@@ -18,10 +18,11 @@ SettingsPage {
 
     title: "Skills"
     subtitle: "Agent skills: search sources, install, and control the link farm"
-    zones: [
-        { id: "find", label: "Find", anchor: skillsApp.findAnchor },
-        { id: "mcp", label: "MCP server", anchor: skillsApp.mcpAnchor },
-        { id: "installed", label: "Installed", anchor: skillsApp.installedAnchor }
+    icon: "extension"
+    tabs: [
+        { id: "find", label: "Find", icon: "search" },
+        { id: "mcp", label: "MCP server", icon: "lan" },
+        { id: "installed", label: "Installed", icon: "folder" }
     ]
 
     property bool testMode: false
@@ -50,6 +51,7 @@ SettingsPage {
                 skills: SkillsService
                 shellState: null
                 intents: null
+                tab: root.currentTab
             }
 
             Text {

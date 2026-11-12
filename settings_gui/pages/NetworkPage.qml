@@ -1,297 +1,355 @@
-import QtQuick
-import QtQuick.Layouts
-import "../../modules/Astral/Kernel/theme"
 import "../../modules/Astral/Kernel/components"
 import "../../modules/Astral/Kernel/services"
+import "../../modules/Astral/Kernel/theme"
+import QtQuick
+import QtQuick.Layouts
 
 SettingsPage {
     id: root
-    spacing: Theme.spaceMedium
-    width: parent ? parent.width : 600
-
-    title: "Network & Internet"
-    subtitle: "Wi-Fi connections, signal strength & network interfaces"
-    // The networks zone exists only while Wi-Fi is on: a Wi-Fi-off page has no
-    // scan list to scroll to.
-    function zoneList() {
-        const zones = [{ id: "wifi", label: "Wi-Fi", anchor: masterPowerCard }];
-        if (root.wifiEnabled) {
-            zones.push({ id: "networks", label: "Networks", anchor: networksSection });
-        }
-        return zones;
-    }
-    zones: root.zoneList()
 
     property bool testMode: false
     property bool testWifiEnabled: true
     property string testActiveSsid: "darktalker"
     property var testNetworks: []
-
     readonly property bool wifiEnabled: testMode ? testWifiEnabled : ((typeof NetworkService !== "undefined") ? NetworkService.wifiEnabled : true)
     readonly property string activeSsid: testMode ? testActiveSsid : ((typeof NetworkService !== "undefined") ? NetworkService.activeSsid : "")
     readonly property var networksList: {
-        if (testMode && testNetworks.length > 0) return testNetworks;
-        if (typeof NetworkService !== "undefined" && NetworkService.wifiNetworks) {
+        if (testMode && testNetworks.length > 0)
+            return testNetworks;
+
+        if (typeof NetworkService !== "undefined" && NetworkService.wifiNetworks)
             return NetworkService.wifiNetworks;
-        }
+
         return [];
     }
 
-    // Wi-Fi Master Power Card
-    Rectangle {
-        id: masterPowerCard
-        Layout.fillWidth: true
-        height: 64
-        radius: Theme.radiusMedium
-        color: powerCardHover.containsMouse ? (root.wifiEnabled ? Qt.alpha(Colors.primary, 0.12) : Colors.surfaceContainerHigh) : Colors.surfaceContainer
-        border.color: root.wifiEnabled ? Qt.alpha(Colors.primary, 0.4) : Theme.borderSubtle
-        border.width: 1
+    // The networks tab exists only while Wi-Fi is on: a Wi-Fi-off page has no
+    // scan list to show.
+    function tabList() {
+        const tabs = [{
+            "id": "wifi",
+            "label": "Wi-Fi",
+            "icon": "wifi"
+        }];
+        if (root.wifiEnabled)
+            tabs.push({
+                "id": "networks",
+                "label": "Networks",
+                "icon": "lan"
+            });
 
-        MouseArea {
-            id: powerCardHover
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                if (!root.testMode && typeof NetworkService !== "undefined") {
-                    NetworkService.toggleWifi();
-                } else {
-                    root.testWifiEnabled = !root.testWifiEnabled;
-                }
-            }
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.margins: Theme.padLarge
-            spacing: Theme.spaceMedium
-
-            MaterialIcon {
-                text: root.wifiEnabled ? "wifi" : "wifi_off"
-                size: 24
-                color: root.wifiEnabled ? Colors.primary : Colors.m3onSurfaceVariant
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-                Text {
-                    text: "Wi-Fi"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontTitleSmall
-                    font.weight: Font.DemiBold
-                    color: Colors.m3onSurface
-                }
-                Text {
-                    text: root.wifiEnabled ? (root.activeSsid ? "Connected to " + root.activeSsid : "Turned On (Searching...)") : "Turned Off"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontLabelSmall
-                    color: Colors.m3onSurfaceVariant
-                }
-            }
-
-            // Toggle switch pill
-            Rectangle {
-                width: 48
-                height: 26
-                radius: 13
-                color: root.wifiEnabled ? Colors.primary : Colors.surfaceContainerHighest
-                border.color: Theme.borderSubtle
-                border.width: 1
-
-                Rectangle {
-                    width: 20
-                    height: 20
-                    radius: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: root.wifiEnabled ? parent.width - width - 3 : 3
-                    color: root.wifiEnabled ? Colors.onPrimary : Colors.m3onSurfaceVariant
-
-                    Behavior on x {
-                        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                    }
-                }
-            }
-        }
+        return tabs;
     }
 
-    // Scanned Wi-Fi Networks List
+    spacing: Theme.spaceMedium
+    width: parent ? parent.width : 600
+    title: "Network & Internet"
+    subtitle: "Wi-Fi connections, signal strength & network interfaces"
+    icon: "wifi"
+    tabs: root.tabList()
+
     ColumnLayout {
-        id: networksSection
         Layout.fillWidth: true
-        spacing: 12
-        visible: root.wifiEnabled
+        spacing: Theme.spaceMedium
+        visible: root.currentTab === "wifi"
 
-        // Available Networks Header with Rescan Button
-        SectionHeader {
-            title: "Available Networks"
-            eyebrow: root.networksList.length === 0
-                ? "nothing in range"
-                : (root.networksList.length + (root.networksList.length === 1 ? " network" : " networks") + " in range")
+        // Wi-Fi Master Power Card
+        Rectangle {
+            id: masterPowerCard
 
-            PillButton {
-                label: "Rescan"
-                iconText: "refresh"
-                active: false
+            Layout.fillWidth: true
+            height: 64
+            radius: Theme.radiusMedium
+            color: powerCardHover.containsMouse ? (root.wifiEnabled ? Qt.alpha(Colors.primary, 0.12) : Colors.surfaceContainerHigh) : Colors.surfaceContainer
+            border.color: root.wifiEnabled ? Qt.alpha(Colors.primary, 0.4) : Theme.borderSubtle
+            border.width: 1
+
+            MouseArea {
+                id: powerCardHover
+
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    if (!root.testMode && typeof NetworkService !== "undefined") {
-                        NetworkService.rescan();
-                    }
+                    if (!root.testMode && typeof NetworkService !== "undefined")
+                        NetworkService.toggleWifi();
+                    else
+                        root.testWifiEnabled = !root.testWifiEnabled;
                 }
             }
-        }
 
-        // List of deduplicated, sorted Wi-Fi cards
-        Column {
-            Layout.fillWidth: true
-            spacing: 8
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: Theme.padLarge
+                spacing: Theme.spaceMedium
 
-            Repeater {
-                model: root.networksList
-                delegate: Rectangle {
-                    id: netCard
-                    required property var modelData
-                    required property int index
+                MaterialIcon {
+                    text: root.wifiEnabled ? "wifi" : "wifi_off"
+                    size: 24
+                    color: root.wifiEnabled ? Colors.primary : Colors.m3onSurfaceVariant
+                }
 
-                    width: parent.width
-                    height: 56
-                    radius: Theme.radiusMedium
-                    color: modelData.active
-                        ? Qt.alpha(Colors.primary, 0.12)
-                        : (cardHover.containsMouse ? Qt.alpha(Colors.onSurface, 0.05) : Colors.surfaceContainer)
-                    border.color: modelData.active
-                        ? Colors.primary
-                        : (cardHover.containsMouse ? Qt.alpha(Colors.primary, 0.3) : Theme.borderSubtle)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        text: "Wi-Fi"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontTitleSmall
+                        font.weight: Font.DemiBold
+                        color: Colors.m3onSurface
+                    }
+
+                    Text {
+                        text: root.wifiEnabled ? (root.activeSsid ? "Connected to " + root.activeSsid : "Turned On (Searching...)") : "Turned Off"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontLabelSmall
+                        color: Colors.m3onSurfaceVariant
+                    }
+
+                }
+
+                // Toggle switch pill
+                Rectangle {
+                    width: 48
+                    height: 26
+                    radius: 13
+                    color: root.wifiEnabled ? Colors.primary : Colors.surfaceContainerHighest
+                    border.color: Theme.borderSubtle
                     border.width: 1
 
-                    // Full card clickable for quick connection
-                    MouseArea {
-                        id: cardHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: modelData.active ? Qt.ArrowCursor : Qt.PointingHandCursor
-                        onClicked: {
-                            if (!modelData.active && !root.testMode && typeof NetworkService !== "undefined") {
-                                NetworkService.connectToNetwork(modelData.ssid);
+                    Rectangle {
+                        width: 20
+                        height: 20
+                        radius: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: root.wifiEnabled ? parent.width - width - 3 : 3
+                        color: root.wifiEnabled ? Colors.onPrimary : Colors.m3onSurfaceVariant
+
+                        Behavior on x {
+                            NumberAnimation {
+                                duration: 150
+                                easing.type: Easing.OutQuad
                             }
+
                         }
+
                     }
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Theme.padLarge
-                        anchors.rightMargin: Theme.padLarge
-                        spacing: Theme.spaceMedium
+                }
 
-                        MaterialIcon {
-                            text: {
-                                const sig = modelData.signal || 0;
-                                if (!modelData.active && sig === 0) return "wifi_off";
-                                if (sig >= 75) return "wifi";
-                                if (sig >= 50) return "network_wifi_3_bar";
-                                if (sig >= 25) return "network_wifi_2_bar";
-                                return "network_wifi_1_bar";
-                            }
-                            size: 22
-                            color: modelData.active ? Colors.primary : Colors.m3onSurface
-                        }
+            }
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
+        }
 
-                            Text {
-                                text: modelData.ssid || "Hidden Network"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 13
-                                font.weight: modelData.active ? Font.Bold : Font.DemiBold
-                                color: Colors.m3onSurface
-                                Layout.fillWidth: true
-                                elide: Text.ElideRight
-                            }
+    }
 
-                            RowLayout {
-                                spacing: 6
-                                Text {
-                                    text: modelData.active ? "Connected" : (modelData.security || "Open")
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    font.weight: modelData.active ? Font.DemiBold : Font.Normal
-                                    color: modelData.active ? Colors.primary : Colors.m3onSurfaceVariant
-                                }
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Theme.spaceMedium
+        visible: root.currentTab === "networks"
 
-                                Text {
-                                    text: "•  " + (modelData.signal || 0) + "%"
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    color: Colors.m3onSurfaceVariant
-                                }
-                            }
-                        }
+        // Scanned Wi-Fi Networks List
+        ColumnLayout {
+            id: networksSection
 
-                        // Connected indicator badge
-                        RowLayout {
-                            visible: modelData.active
-                            spacing: 4
+            Layout.fillWidth: true
+            spacing: 12
+            visible: root.wifiEnabled
 
-                            MaterialIcon {
-                                text: "check"
-                                size: 16
-                                color: Colors.primary
-                            }
+            // Available Networks Header with Rescan Button
+            SectionHeader {
+                title: "Available Networks"
+                eyebrow: root.networksList.length === 0 ? "nothing in range" : (root.networksList.length + (root.networksList.length === 1 ? " network" : " networks") + " in range")
 
-                            Text {
-                                text: "Connected"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 12
-                                font.weight: Font.Bold
-                                color: Colors.primary
-                            }
-                        }
+                PillButton {
+                    label: "Rescan"
+                    iconText: "refresh"
+                    active: false
+                    onClicked: {
+                        if (!root.testMode && typeof NetworkService !== "undefined")
+                            NetworkService.rescan();
 
-                        // Explicit Connect Button for inactive networks
-                        Rectangle {
-                            id: connectBtn
-                            visible: !modelData.active
-                            height: 28
-                            implicitWidth: connLabel.implicitWidth + 24
-                            radius: 14
-                            color: connHover.containsMouse ? Colors.primary : Colors.surfaceContainerHighest
-                            border.color: connHover.containsMouse ? Colors.primary : Theme.borderSubtle
-                            border.width: 1
-                            z: 10
-
-                            Text {
-                                id: connLabel
-                                anchors.centerIn: parent
-                                text: "Connect"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11
-                                font.weight: Font.DemiBold
-                                color: connHover.containsMouse ? Colors.onPrimary : Colors.m3onSurface
-                            }
-
-                            MouseArea {
-                                id: connHover
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (!root.testMode && typeof NetworkService !== "undefined") {
-                                        NetworkService.connectToNetwork(modelData.ssid);
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
+
             }
+
+            // List of deduplicated, sorted Wi-Fi cards
+            Column {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Repeater {
+                    model: root.networksList
+
+                    delegate: Rectangle {
+                        id: netCard
+
+                        required property var modelData
+                        required property int index
+
+                        width: parent.width
+                        height: 56
+                        radius: Theme.radiusMedium
+                        color: modelData.active ? Qt.alpha(Colors.primary, 0.12) : (cardHover.containsMouse ? Qt.alpha(Colors.onSurface, 0.05) : Colors.surfaceContainer)
+                        border.color: modelData.active ? Colors.primary : (cardHover.containsMouse ? Qt.alpha(Colors.primary, 0.3) : Theme.borderSubtle)
+                        border.width: 1
+
+                        // Full card clickable for quick connection
+                        MouseArea {
+                            id: cardHover
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: modelData.active ? Qt.ArrowCursor : Qt.PointingHandCursor
+                            onClicked: {
+                                if (!modelData.active && !root.testMode && typeof NetworkService !== "undefined")
+                                    NetworkService.connectToNetwork(modelData.ssid);
+
+                            }
+                        }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.padLarge
+                            anchors.rightMargin: Theme.padLarge
+                            spacing: Theme.spaceMedium
+
+                            MaterialIcon {
+                                text: {
+                                    const sig = modelData.signal || 0;
+                                    if (!modelData.active && sig === 0)
+                                        return "wifi_off";
+
+                                    if (sig >= 75)
+                                        return "wifi";
+
+                                    if (sig >= 50)
+                                        return "network_wifi_3_bar";
+
+                                    if (sig >= 25)
+                                        return "network_wifi_2_bar";
+
+                                    return "network_wifi_1_bar";
+                                }
+                                size: 22
+                                color: modelData.active ? Colors.primary : Colors.m3onSurface
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+
+                                Text {
+                                    text: modelData.ssid || "Hidden Network"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 13
+                                    font.weight: modelData.active ? Font.Bold : Font.DemiBold
+                                    color: Colors.m3onSurface
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                }
+
+                                RowLayout {
+                                    spacing: 6
+
+                                    Text {
+                                        text: modelData.active ? "Connected" : (modelData.security || "Open")
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        font.weight: modelData.active ? Font.DemiBold : Font.Normal
+                                        color: modelData.active ? Colors.primary : Colors.m3onSurfaceVariant
+                                    }
+
+                                    Text {
+                                        text: "•  " + (modelData.signal || 0) + "%"
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        color: Colors.m3onSurfaceVariant
+                                    }
+
+                                }
+
+                            }
+
+                            // Connected indicator badge
+                            RowLayout {
+                                visible: modelData.active
+                                spacing: 4
+
+                                MaterialIcon {
+                                    text: "check"
+                                    size: 16
+                                    color: Colors.primary
+                                }
+
+                                Text {
+                                    text: "Connected"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 12
+                                    font.weight: Font.Bold
+                                    color: Colors.primary
+                                }
+
+                            }
+
+                            // Explicit Connect Button for inactive networks
+                            Rectangle {
+                                id: connectBtn
+
+                                visible: !modelData.active
+                                height: 28
+                                implicitWidth: connLabel.implicitWidth + 24
+                                radius: 14
+                                color: connHover.containsMouse ? Colors.primary : Colors.surfaceContainerHighest
+                                border.color: connHover.containsMouse ? Colors.primary : Theme.borderSubtle
+                                border.width: 1
+                                z: 10
+
+                                Text {
+                                    id: connLabel
+
+                                    anchors.centerIn: parent
+                                    text: "Connect"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: Font.DemiBold
+                                    color: connHover.containsMouse ? Colors.onPrimary : Colors.m3onSurface
+                                }
+
+                                MouseArea {
+                                    id: connHover
+
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (!root.testMode && typeof NetworkService !== "undefined")
+                                            NetworkService.connectToNetwork(modelData.ssid);
+
+                                    }
+                                }
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+            // Bottom breathing room spacer
+            Item {
+                Layout.fillWidth: true
+                height: 32
+            }
+
         }
 
-        // Bottom breathing room spacer
-        Item {
-            Layout.fillWidth: true
-            height: 32
-        }
     }
+
 }

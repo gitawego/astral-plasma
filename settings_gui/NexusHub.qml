@@ -77,6 +77,13 @@ Item {
     /// moment we know the page's layout has settled, so its anchors are real.
     function scrollToSection(zoneId) {
         if (!zoneId) return;
+        const page = pageLoader.item;
+        // Atlas: a tab is selected, not scrolled to.
+        if (page && typeof page.selectTab === "function" && page.hasTabs) {
+            page.selectTab(zoneId);
+            root.requestedSectionId = zoneId;
+            return;
+        }
         root.pendingSectionId = zoneId;
         root.refreshZoneOffsets();
     }
@@ -91,6 +98,12 @@ Item {
         const zoneId = root.pendingSectionId;
         if (zoneId === "") return;
         const page = pageLoader.item;
+        if (page && typeof page.selectTab === "function" && page.hasTabs) {
+            root.pendingSectionId = "";
+            root.requestedSectionId = zoneId;
+            page.selectTab(zoneId);
+            return;
+        }
         if (page && typeof page.sectionY === "function") {
             const y = page.sectionY(zoneId);
             if (y !== undefined && y !== null && !isNaN(y)) {
@@ -350,55 +363,55 @@ Item {
                 if (!item.requires) return true;
                 return !!provided[item.requires.kind + ":" + item.requires.id];
             });
-            if (items.length > 0) sections.push({ title: entry.title, items: items });
+            if (items.length > 0) sections.push({ title: entry.title, icon: entry.icon, items: items });
         }
         return sections;
     }
 
     readonly property var navigationSections: [
         {
-            title: "Personalization",
+            title: "Personalization", icon: "palette",
             items: [
-                { id: "wallpaper", label: "Wallpaper & Style", icon: "wallpaper" },
+                { id: "wallpaper", label: "Wallpaper & Style", icon: "image" },
                 { id: "theme", label: "Appearance", icon: "palette" }
             ]
         },
         {
-            title: "Connectivity",
+            title: "Connectivity", icon: "wifi",
             items: [
                 { id: "network", label: "Wi-Fi & Network", icon: "wifi" },
                 { id: "bluetooth", label: "Bluetooth", icon: "bluetooth" }
             ]
         },
         {
-            title: "AI & Voice",
+            title: "AI & Voice", icon: "psychology",
             items: [
                 { id: "ai", label: "AI & Agents", icon: "psychology" },
-                { id: "voice", label: "Voice Dictation", icon: "mic" }
+                { id: "voice", label: "Voice Dictation", icon: "volume_up" }
             ]
         },
         {
-            title: "Hardware",
+            title: "Hardware", icon: "volume_up",
             items: [
                 { id: "audio", label: "Sound & Audio", icon: "volume_up" }
             ]
         },
         {
-            title: "Desktop Shell",
+            title: "Desktop Shell", icon: "dashboard",
             items: [
                 { id: "dock", label: "Dock & Layout", icon: "dashboard" },
                 { id: "status", label: "Status Icons", icon: "tune" },
                 { id: "dashboard", label: "Dashboard Tabs", icon: "calendar_month" },
                 { id: "downloads", label: "Downloads", icon: "download" },
-                { id: "skills", label: "Skills", icon: "school",
+                { id: "skills", label: "Skills", icon: "extension",
                   requires: { kind: "settingsPage", id: "skills" } },
-                { id: "apps", label: "Apps", icon: "apps" }
+                { id: "apps", label: "Apps", icon: "grid_view" }
             ]
         },
         {
-            title: "System",
+            title: "System", icon: "settings",
             items: [
-                { id: "time", label: "World Clock", icon: "schedule" },
+                { id: "time", label: "World Clock", icon: "clock" },
                 { id: "system", label: "System & Services", icon: "memory" },
                 { id: "updates", label: "Updates & About", icon: "system_update" }
             ]
@@ -417,8 +430,8 @@ Item {
         // showing through the corner notches between them.
         Rectangle {
             id: navRail
-            Layout.preferredWidth: 250
-            Layout.minimumWidth: 250
+            Layout.preferredWidth: 236
+            Layout.minimumWidth: 236
             Layout.fillHeight: true
             color: (typeof Colors !== "undefined")
                 ? (Colors.isDarkMode ? Qt.rgba(1, 1, 1, 0.03) : Qt.rgba(0, 0, 0, 0.02))
@@ -508,15 +521,29 @@ Item {
                                 spacing: 4
 
                                 // Section Title
-                                Text {
-                                    text: modelData.title.toUpperCase()
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: 10
-                                    font.weight: Font.Bold
-                                    color: Colors.m3onSurfaceVariant
-                                    leftPadding: 8
-                                    topPadding: 4
-                                    bottomPadding: 2
+                                Item {
+                                    width: parent.width
+                                    height: sectionRow.implicitHeight + 6
+
+                                    Row {
+                                        id: sectionRow
+                                        x: 8
+                                        y: 3
+                                        spacing: 6
+
+                                        MaterialIcon {
+                                            iconName: modelData.icon || ""
+                                            size: 12
+                                            color: Colors.m3onSurfaceVariant
+                                        }
+                                        Text {
+                                            text: modelData.title.toUpperCase()
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 10
+                                            font.weight: Font.Bold
+                                            color: Colors.m3onSurfaceVariant
+                                        }
+                                    }
                                 }
 
                                 Repeater {

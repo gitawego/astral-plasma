@@ -148,14 +148,11 @@ Item {
             "and register an installed agent that lacks it");
         assert(app.indexOf("pendingMcpRemoval") >= 0,
             "removal asks for a second, confirming click");
-        assert(app.indexOf("property alias findAnchor") >= 0,
-            "the Find zone points at a real anchor");
-        assert(app.indexOf("property alias mcpAnchor") >= 0,
-            "the MCP zone points at a real anchor");
-        assert(app.indexOf("property alias installedAnchor") >= 0,
-            "the Installed zone points at a real anchor");
-
+        assert(app.indexOf('property string tab: "find"') >= 0,
+            "the app reacts to the scaffold's selected tab");
         const page = readLocalFile("../settings_gui/pages/SkillsPage.qml");
+        assert(page.indexOf("tabs: [") >= 0,
+            "the page declares Atlas tabs");
         assert(page.indexOf("skills: SkillsService") >= 0, "the page injects the service as the port");
         assert(page.indexOf('{ id: "find", label: "Find"') >= 0, "the page exposes a Find zone");
         assert(page.indexOf('{ id: "mcp", label: "MCP server"') >= 0, "the page exposes an MCP zone");

@@ -8,9 +8,9 @@ import "../../modules/Astral/Kernel/components"
 SettingsPage {
     id: root
 
+    icon: "notifications"
     title: "Status Icons"
     subtitle: "Which indicators the dock shows, and the popout behind each one"
-    zones: [{ id: "icons", label: "Indicators", anchor: iconsHeader }]
 
     spacing: Theme.spaceMedium
 

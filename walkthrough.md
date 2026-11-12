@@ -3017,7 +3017,7 @@ yet it read as a dead button in normal use. It is gone: the left rail is the nav
 `NexusHub.navigateTo()` now sets the page directly. The unused `pageHistory`, `goBack` and
 `canGoBack` state went with it; the test asserts the source no longer contains them.
 
-The Skills page now has the same sticky zone rail as the other long settings pages:
+The Skills page now has section navigation (later converted to Atlas tabs, below):
 
 - **Find** — search, catalog chips, add-source.
 - **MCP server** — a compact status line with protocol/tool count and a **Manage agents**
@@ -3034,8 +3034,8 @@ top-to-bottom without the wall of agent rows.
 > `Up · http://127.0.0.1:8942/mcp · 4 tools · 2026-07-28`, and the empty state; no Back control.
 > `make test` exit 0 — 1345 Rust tests, 169 QML suites, app boundaries clean.
 
-The QML contract tests now also check the three zone anchors, the `Manage agents` disclosure,
-and the absence of the Back stack.
+The QML contract tests check the section contract, the `Manage agents` disclosure, and the
+absence of the Back stack. (The zone anchors were replaced by Atlas tabs; see the next entry.)
 
 ---
 
@@ -3066,3 +3066,50 @@ turns from **Down** to **Up** on its own after the watcher binds.
 Regression tests: `the_api_server_start_is_idempotent_when_our_endpoint_is_already_up`,
 `the_api_server_start_names_a_foreign_listener`, and the QML assertion that the retry timer only
 runs while the Skills page is visible.
+
+---
+
+## Atlas settings navigation: every section is a tab (2026-11-12)
+
+The settings surface was reorganized around the **Atlas** direction. The left rail is 236 px
+wide, every rail item carries an icon and a label, and each page has a page icon plus a
+horizontal strip of icon + label tabs. Exactly one tab body is shown at a time; the active tab
+is marked by a single accent underline. The old scroll-to-section rail is gone from every
+shipped page, so there is no longer a control whose only job is to move the reader down the
+same document.
+
+What changed:
+
+- `SettingsPage` is the Atlas scaffold: `icon`, `tabs`, `currentTab`, `selectTab()`, and
+  `ensureCurrentTab()`. The shared `SettingsTabBar` control renders the strip. A page with one
+  section declares no tabs, because one section is not navigation.
+- Every multi-section page was migrated: Wallpaper & Style, Appearance, Network, Bluetooth,
+  Audio, Dock & Layout, Dashboard, Downloads, System & Services, World Clock, Updates, Voice,
+  and Skills. Apps and Status Icons keep a single body.
+- `AiPage` keeps its own root for absolutely positioned overlays, but now exposes the same
+  `hasTabs` / `tabs` / `currentTab` / `selectTab` contract. Its legacy deep links still work:
+  `voice`, `skills`, and `setup` all select the Setup tab, and selecting Setup opens the
+  desktop-agent-skills group.
+- Deep links (`Config.openSettings(page, section)` and the `settings openSection` IPC) select a
+  tab in `NexusHub.scrollToSection()` instead of scrolling. The legacy `zones` fallback remains
+  in the scaffold, but no shipped page declares zones.
+- Tabs follow live state. The Audio **Apps** tab disappears when no app stream is playing, the
+  Network **Networks** tab disappears when Wi-Fi is off, and the Bluetooth **Devices** tab
+  disappears when the adapter is off. `ensureCurrentTab()` moves the selection to a tab that
+  still exists, so the body can never go blank.
+- Rail category headings also carry icons, and every page has a page icon; tab icons use names
+  present in `MaterialIcon`'s own map (not aspirational Material Symbols names that render
+  blank).
+
+Regression tests: `tests/tst_settings_pages_contract.qml` now asserts tabs, labels, icons,
+default selection, unknown-id handling, and live tab shrink; `tests/tst_settings_hub_rail.qml`
+drives the real hub and presses rendered tabs; `tests/tst_settings_sticky_header.qml` keeps the
+sticky-header contract while asserting AiPage's tab deep links.
+
+> **Verified live**: captured the Skills page in Find, MCP server, and Installed (via
+> `settings openSection skills mcp|installed`), the System page with all five tabs, and the AI
+> page in Quotas and Setup (via the legacy `ai voice` deep link, which opened the Setup tab and
+> the skills group). Also captured the Appearance page under `liquid_glass`,
+> `nordic_minimal`, and `cyberpunk_neon`: the tab strip, header icon, and active underline
+> remain legible in all three, and the page content switches without scrolling. `make test`
+> exit 0 — 1347 Rust tests, 169 QML suites, app boundaries clean.
