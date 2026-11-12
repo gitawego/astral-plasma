@@ -74,6 +74,16 @@ fn every_example_app_fits_the_running_platform() {
 /// Best-effort: the app's `minQuickshell` must not exceed what is installed, or
 /// the fixture would be un-installable on the machine that ships it.
 fn quickshell_version() -> String {
+    // CI has no shell installed. The fixture may declare the platform version it
+    // is testing against, so the contract still checks a real compatibility
+    // window instead of failing every example against a missing binary.
+    if let Ok(version) = std::env::var("ASTRAL_TEST_QUICKSHELL_VERSION") {
+        let version = version.trim();
+        if !version.is_empty() {
+            return version.to_string();
+        }
+    }
+
     let output = std::process::Command::new("quickshell")
         .arg("--version")
         .output();

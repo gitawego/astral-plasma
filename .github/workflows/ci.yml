@@ -24,6 +24,10 @@ jobs:
   test-rust:
     name: Rust Tests & Checks
     runs-on: ubuntu-latest
+    env:
+      # The runner has no Quickshell binary. The contract test reads this
+      # explicit fixture version instead of treating a missing shell as 0.0.0.
+      ASTRAL_TEST_QUICKSHELL_VERSION: "0.3.2"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -132,7 +136,7 @@ jobs:
           echo "apps=$mat" >> "$GITHUB_OUTPUT"
 
   apps:
-    name: App ${{ matrix.app.id }}
+    name: App ${{ matrix.id }}
     needs: app-matrix
     runs-on: ubuntu-latest
     strategy:
@@ -162,11 +166,11 @@ jobs:
       - name: Build the platform CLI
         run: cargo build --manifest-path daemon/Cargo.toml
 
-      - name: Lint ${{ matrix.app.dir }}
-        run: ./daemon/target/debug/astral-plasma app lint "modules/Astral/Apps/${{ matrix.app.dir }}"
+      - name: Lint ${{ matrix.dir }}
+        run: ./daemon/target/debug/astral-plasma app lint "modules/Astral/Apps/${{ matrix.dir }}"
 
-      - name: Boundary check ${{ matrix.app.dir }}
-        run: python3 scripts/check_app_boundaries.py --app "${{ matrix.app.dir }}"
+      - name: Boundary check ${{ matrix.dir }}
+        run: python3 scripts/check_app_boundaries.py --app "${{ matrix.dir }}"
 
   platform-changed:
     name: Platform Changed (discovery)
