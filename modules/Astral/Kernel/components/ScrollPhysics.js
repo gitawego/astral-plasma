@@ -23,12 +23,13 @@ var ANGLE_TO_PIXELS = 0.5;
 var FLICK_DECELERATION = 1500;
 var MAXIMUM_FLICK_VELOCITY = 4000;
 
-/// Momentum. A 60 px notch gives a 420 px/s impulse, which travels about 60 px
-/// with a 7/s decay. Fast gestures accumulate velocity up to the ceiling, so
-/// they travel farther without becoming unstable.
-var SCROLL_IMPULSE = 7;
-var SCROLL_DECELERATION = 7;
-var SCROLL_MAX_VELOCITY = 4000;
+/// Momentum. A 60 px notch gives a 1440 px/s impulse, which travels about
+/// 120 px with a 12/s decay and settles in roughly half a second. Fast gestures
+/// accumulate velocity up to the ceiling, so they travel farther without
+/// becoming unstable.
+var SCROLL_IMPULSE = 24;
+var SCROLL_DECELERATION = 12;
+var SCROLL_MAX_VELOCITY = 6000;
 
 /// Edge return. The raw position may sit outside the bounds; this spring pulls
 /// it back after the momentum has decayed.

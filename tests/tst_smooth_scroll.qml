@@ -93,7 +93,7 @@ Item {
         assert(bottomBand > 800 && bottomBand < 850,
             "the bottom overshoot is compressed (got " + bottomBand + ")");
 
-        // One notch: 420 px/s decays to rest after travelling about 60 px.
+        // One notch: 1440 px/s decays to rest after travelling about 120 px.
         let position = 0;
         let velocity = 60 * Physics.SCROLL_IMPULSE;
         for (let i = 0; i < 180; ++i) {
@@ -101,8 +101,8 @@ Item {
             position = next.position;
             velocity = Physics.applyEdge(position, next.velocity, 0, 800, 1 / 60);
         }
-        assert(position > 55 && position < 70,
-            "one notch travels about 60 px (got " + position + ")");
+        assert(position > 115 && position < 125,
+            "one notch travels about 120 px (got " + position + ")");
         assert(Math.abs(velocity) < 1, "one notch settles");
 
         // Fast input accumulates velocity and travels farther.
@@ -113,7 +113,7 @@ Item {
             position = next.position;
             velocity = Physics.applyEdge(position, next.velocity, 0, 800, 1 / 60);
         }
-        assert(position > 250,
+        assert(position > 400,
             "a fast gesture travels farther than a notch (got " + position + ")");
 
         // At a bound the raw position overshoots, the displayed offset is
@@ -136,7 +136,7 @@ Item {
             "and the edge spring snaps back to the bound (got " + position + ")");
 
         // Start one real gesture through the QML handler.
-        vertical.wheelHandler.scrollBy(0, -120);
+        vertical.wheelHandler.scrollBy(0, -60);
         assert(vertical.wheelHandler.animating === true,
             "a wheel step starts the physics frame loop");
         assert(vertical.contentY === 0,
