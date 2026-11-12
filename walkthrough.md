@@ -3174,16 +3174,19 @@ by default. The fix is one scroll primitive, not a patch per surface.
 - `modules/Astral/Kernel/components/ScrollPhysics.js` — one place for wheel normalization
   (a 120-unit notch is 60 px; a trackpad's `pixelDelta` wins), clamping, flick physics, and
   the spring-damper constants/integrator.
-- `SmoothWheelHandler.qml` — a `WheelHandler` that adds a velocity impulse and a target, then
-  integrates `contentY`/`contentX` every frame with a spring-damper: real momentum, an
-  overshoot past the target, and a rubber-band bounce at a top-level boundary. There is no
-  fixed-duration tween. It scrolls only when the surface has room in that axis; at a boundary
-  it hands the wheel to the nearest ancestor `Smooth*` handler, so a nested list cannot trap
-  the page. It consumes the event either way, which keeps `Flickable`'s own
+- `SmoothWheelHandler.qml` — a `WheelHandler` that follows the macOS model: a wheel delta is a
+  velocity impulse, velocity decays exponentially, and the raw position is mapped through the
+  UIScrollView rubber-band curve at the edges with a damped return. There is no target spring
+  and no fixed-duration tween, so fast input accumulates velocity instead of fighting a lagging
+  target. One axis is latched per gesture; a cross-axis wheel delegates to an ancestor, while a
+  same-axis edge bounces. It consumes the event, which keeps `Flickable`'s own
   jump-by-a-whole-notch `wheelEvent` from running underneath. A drag or native flick stops the
-  physics; a programmatic scroll can listen for `scrollStarted()` and yield.
+  physics; a programmatic scroll can listen for `scrollStarted()`/`scrollEnded()` and yield.
 - `SmoothFlickable.qml`, `SmoothListView.qml`, `SmoothGridView.qml` — the only scroll types
   the shell should declare. Each installs the handler and the shared flick physics.
+- `GlassScrollIndicator.qml` now follows the handler's `scrollStarted`/`scrollEnded` signals:
+  a wheel glide fades the bar in even though `Flickable.moving` stays false, the bar holds for
+  700 ms after the momentum stops, and it expands on hover like a macOS overlay scroller.
 
 ### Migration
 
@@ -3199,12 +3202,14 @@ audits the migrated files for bare `Flickable`/`ListView`/`GridView` declaration
 
 ### Verification
 
-`tests/tst_smooth_scroll.qml` asserts the wheel delta normalization, a mid-glide offset, the
-landing target, the spring's overshoot and settle, the bound rubber-band, horizontal routing,
-the non-interactive guard, both clamp ends, the boundary/ancestor rule, and the source
-contract. `make test` exit 0 — 1347 Rust tests, 171 QML suites, app boundaries clean.
+`tests/tst_smooth_scroll.qml` asserts the wheel delta normalization, a mid-glide offset,
+momentum decay, fast-input accumulation, the rubber-band compression, the edge return/snap,
+horizontal routing, the non-interactive guard, the boundary/ancestor rule, and the source
+contract. `tests/tst_scroll_indicator_macos.qml` asserts the fade-in during a wheel glide, the
+post-momentum hold, and the fade-out. `make test` exit 0 — 1347 Rust tests, 172 QML suites,
+app boundaries clean.
 
 > **Verified live**: injected a real wheel event over the settings content; the page moved
-> through the shared handler. I did not capture a mid-glide or overshoot frame (Spectacle's
-> latency is longer than the spring's early motion); the intermediate, overshoot, and settle
+> through the shared handler. I did not capture a mid-glide or edge-bounce frame (Spectacle's
+> latency is longer than the early motion); the intermediate, momentum, rubber-band, and settle
 > offsets are asserted in `tst_smooth_scroll`.

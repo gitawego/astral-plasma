@@ -278,11 +278,12 @@ SettingsPage {
   [`SmoothGridView`](modules/Astral/Kernel/components/SmoothGridView.qml). Wheel
   deltas are normalized in
   [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js), and a
-  frame-synced spring-damper integrates the viewport with momentum, a slight
-  overshoot at the target, and a rubber-band bounce at a top-level boundary.
-  Never assign `contentY` directly from a wheel handler, never use a
-  fixed-duration tween for scroll, and never create a bare
-  `Flickable`/`ListView`/`GridView` that bypasses the shared physics.
+  frame-synced momentum engine integrates the viewport: a wheel step is a
+  velocity impulse, velocity decays exponentially, and the edges use the
+  UIScrollView rubber-band curve plus a damped return. Never assign `contentY`
+  directly from a wheel handler, never use a fixed-duration tween or a target
+  spring for scroll, and never create a bare `Flickable`/`ListView`/`GridView`
+  that bypasses the shared physics.
 
 ---
 

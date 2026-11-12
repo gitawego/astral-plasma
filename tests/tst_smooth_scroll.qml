@@ -5,14 +5,16 @@ import "../modules/Astral/Kernel/components/ScrollPhysics.js" as Physics
 // ============================================================================
 // Smooth scrolling
 // ============================================================================
-// One scroll primitive for the shell. A wheel notch adds an impulse and a
-// target; the spring-damper integrates every frame, so the content has momentum
-// and an elastic overshoot instead of a fixed-duration slide. A surface that
-// cannot scroll in that axis hands the wheel to its parent.
+// macOS-style scrolling: a wheel delta is a velocity impulse, momentum decays
+// exponentially, and an edge maps the raw position through the UIScrollView
+// rubber band. Fast gestures accumulate velocity; they do not fight a target.
 Item {
     id: testRoot
     width: 700
     height: 500
+
+    property int scrollStarts: 0
+    property int scrollEnds: 0
 
     SmoothFlickable {
         id: vertical
@@ -60,6 +62,9 @@ Item {
     }
 
     Component.onCompleted: {
+        vertical.wheelHandler.scrollStarted.connect(() => testRoot.scrollStarts++);
+        vertical.wheelHandler.scrollEnded.connect(() => testRoot.scrollEnds++);
+
         // Wheel delta normalization: a high-resolution pixel delta wins;
         // a classic 120-unit notch becomes 60 px of content.
         assert(Physics.axisDelta({
@@ -71,68 +76,72 @@ Item {
             angleDelta: { x: 0, y: 120 }
         }, "y") === 3, "a trackpad pixel delta is used as-is");
 
-        // The spring moves with velocity, not a fixed tween: one step must
-        // change both the position and the velocity.
-        const stepped = Physics.step(0, 600, 60, 1 / 60);
-        assert(stepped.position > 0 && stepped.position < 60,
-            "one physics frame moves toward the target: " + stepped.position);
-        assert(stepped.velocity > 0,
-            "the spring accelerates toward the target: " + stepped.velocity);
-        const braking = Physics.step(60, 600, 60, 1 / 60);
-        assert(braking.velocity < 600,
-            "the damper brakes a fast spring at its target: " + braking.velocity);
+        // Momentum decays every frame instead of easing to a target.
+        assert(Physics.decay(600, 1 / 60) < 600,
+            "velocity decays with momentum");
+        assert(Physics.decay(600, 1 / 60) > 0,
+            "and does not stop in one frame");
 
-        // The elastic tail: the spring must overshoot its target, then settle.
+        // Rubber band: inside the bounds the offset is untouched; outside it is
+        // compressed by the UIScrollView curve.
+        assert(Physics.displayed(50, 0, 800, 760) === 50,
+            "inside the bounds the raw position is the content offset");
+        const topBand = Physics.displayed(-50, 0, 800, 760);
+        assert(topBand < 0 && topBand > -50,
+            "the top overshoot is compressed (got " + topBand + ")");
+        const bottomBand = Physics.displayed(850, 0, 800, 760);
+        assert(bottomBand > 800 && bottomBand < 850,
+            "the bottom overshoot is compressed (got " + bottomBand + ")");
+
+        // One notch: 420 px/s decays to rest after travelling about 60 px.
         let position = 0;
-        let velocity = 600;
-        let peak = 0;
+        let velocity = 60 * Physics.SCROLL_IMPULSE;
         for (let i = 0; i < 180; ++i) {
-            const next = Physics.step(position, velocity, 60, 1 / 60);
+            const next = Physics.advance(position, velocity, 1 / 60);
             position = next.position;
-            velocity = next.velocity;
-            peak = Math.max(peak, position);
+            velocity = Physics.applyEdge(position, next.velocity, 0, 800, 1 / 60);
         }
-        assert(peak > 62, "the spring overshoots its target elastically (peak " + peak + ")");
-        assert(Math.abs(position - 60) < 0.5,
-            "and settles back on the target (got " + position + ")");
+        assert(position > 55 && position < 70,
+            "one notch travels about 60 px (got " + position + ")");
+        assert(Math.abs(velocity) < 1, "one notch settles");
 
-        // At a bound, the same spring gives a rubber-band overshoot.
+        // Fast input accumulates velocity and travels farther.
+        position = 0;
+        velocity = Math.min(5 * 60 * Physics.SCROLL_IMPULSE, Physics.SCROLL_MAX_VELOCITY);
+        for (let i = 0; i < 240; ++i) {
+            const next = Physics.advance(position, velocity, 1 / 60);
+            position = next.position;
+            velocity = Physics.applyEdge(position, next.velocity, 0, 800, 1 / 60);
+        }
+        assert(position > 250,
+            "a fast gesture travels farther than a notch (got " + position + ")");
+
+        // At a bound the raw position overshoots, the displayed offset is
+        // compressed, and the edge spring returns to the bound.
         position = 800;
-        velocity = 600;
-        peak = 800;
+        velocity = 60 * Physics.SCROLL_IMPULSE;
+        let rawPeak = position;
+        let displayPeak = position;
         for (let i = 0; i < 180; ++i) {
-            const next = Physics.step(position, velocity, 800, 1 / 60);
+            const next = Physics.advance(position, velocity, 1 / 60);
             position = next.position;
-            velocity = next.velocity;
-            peak = Math.max(peak, position);
+            velocity = Physics.applyEdge(position, next.velocity, 0, 800, 1 / 60);
+            rawPeak = Math.max(rawPeak, position);
+            displayPeak = Math.max(displayPeak, Physics.displayed(position, 0, 800, 760));
         }
-        assert(peak > 803, "the bound overshoots elastically (peak " + peak + ")");
-        assert(Math.abs(position - 800) < 0.5,
-            "and returns to the bound (got " + position + ")");
-        assert(Physics.settled(60, 0, 60) === true,
-            "an at-rest spring at its target is settled");
-        assert(Physics.settled(0, 600, 60) === false,
-            "a moving spring is not settled");
+        assert(rawPeak > 803, "the raw position overshoots the bound (peak " + rawPeak + ")");
+        assert(displayPeak > 800 && displayPeak < rawPeak,
+            "the displayed overshoot is compressed (" + displayPeak + " < " + rawPeak + ")");
+        assert(Physics.snapped(position, 0, 800) === 800,
+            "and the edge spring snaps back to the bound (got " + position + ")");
 
-        // Target clamping at both ends.
-        assert(Physics.targetFor(0, 100000, 800) === 0,
-            "an upward wheel at the top clamps to the start");
-        assert(Physics.targetFor(0, -100000, 800) === 800,
-            "a downward wheel clamps to the end");
-
-        // At a boundary the wheel belongs to the parent, not to a surface
-        // that has nowhere left to go.
-        assert(vertical.wheelHandler.canScrollBy(0, 60) === false,
-            "at the top, an upward wheel is left for the parent");
-        assert(vertical.wheelHandler.canScrollBy(0, -60) === true,
-            "at the top, a downward wheel is consumed");
-
-        // Start one real spring gesture. The position must not jump there.
+        // Start one real gesture through the QML handler.
         vertical.wheelHandler.scrollBy(0, -120);
         assert(vertical.wheelHandler.animating === true,
             "a wheel step starts the physics frame loop");
         assert(vertical.contentY === 0,
             "the content has not jumped to the target");
+        assert(testRoot.scrollStarts === 1, "the scroll-start signal fires");
     }
 
     Timer {
@@ -143,7 +152,7 @@ Item {
     }
 
     Timer {
-        interval: 1000
+        interval: 1500
         running: true
         repeat: false
         onTriggered: finishTests()
@@ -169,20 +178,21 @@ Item {
         assert(vertical.contentY > 0 && vertical.contentY < 120,
             "the content is mid-glide with momentum (got " + vertical.contentY + ")");
         assert(vertical.wheelHandler.animating === true,
-            "the spring is still integrating mid-glide");
+            "the momentum loop is still running mid-glide");
     }
 
     function finishTests() {
         assert(Math.abs(vertical.contentY - 120) < 1,
-            "the spring settles on the wheel target (got " + vertical.contentY + ")");
+            "momentum settles on the wheel distance (got " + vertical.contentY + ")");
         assert(vertical.wheelHandler.animating === false,
             "the physics frame loop stops at rest");
+        assert(testRoot.scrollEnds === 1, "the scroll-end signal fires once");
 
         // Horizontal-only surfaces route the wheel to contentX.
         assert(horizontal.wheelHandler.scrollBy(-120, 0) === true,
             "a horizontal surface takes a horizontal wheel");
         assert(horizontal.wheelHandler.animating === true,
-            "the horizontal spring starts");
+            "the horizontal momentum starts");
         horizontal.wheelHandler.stopPhysics();
 
         // A non-interactive surface must ignore the wheel entirely.

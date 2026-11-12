@@ -315,6 +315,154 @@ Inspect the resulting image using `view_file` to verify alignment, centering, co
    - Always chain app icons: check for raw desktop file / URI path -> query `Quickshell.iconPath()` -> fallback to a Material Symbols icon via `MaterialIcon`.
 5. **Smooth Scrolling Everywhere**:
    - Every scrollable surface MUST use the shared [`SmoothFlickable`](modules/Astral/Kernel/components/SmoothFlickable.qml), [`SmoothListView`](modules/Astral/Kernel/components/SmoothListView.qml), or [`SmoothGridView`](modules/Astral/Kernel/components/SmoothGridView.qml). Never declare a bare `Flickable`/`ListView`/`GridView` in the shell.
-   - Wheel normalization and the spring-damper live in [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js) and [`SmoothWheelHandler.qml`](modules/Astral/Kernel/components/SmoothWheelHandler.qml). Never assign `contentY`/`contentX` directly from a wheel handler, and never replace the spring with a fixed-duration tween; scrolling must carry momentum and an elastic overshoot.
+   - Wheel normalization and the macOS-style momentum/rubber-band physics live in [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js) and [`SmoothWheelHandler.qml`](modules/Astral/Kernel/components/SmoothWheelHandler.qml). Never assign `contentY`/`contentX` directly from a wheel handler, and never replace momentum with a fixed-duration tween or a target spring; scrolling must accumulate velocity, decay exponentially, and rubber-band at the edges.
    - The only intentional exception is a wheel-driven carousel (`WallpaperCarousel.qml`), where a wheel step selects an item rather than scrolling a viewport.
 
+---
+
+## 10. How To Build Good Animations
+
+> [!IMPORTANT]
+> Animation is part of the interface, not decoration added at the end. A motion that is
+> mechanically correct but feels slow, floaty, or jumpy is still a bug. This section is the
+> playbook; [DESIGN.md](DESIGN.md) §2 holds the tokens and [docs/LESSONS.md](docs/LESSONS.md)
+> holds the failures that produced these rules.
+
+### 10.1. Pick the motion category first
+
+| Category | Use for | Primitive |
+| :--- | :--- | :--- |
+| **Spatial** | Position, size, page/tab changes, popout morphs | `animExpressive*Spatial` tokens |
+| **Effects** | Opacity, colour, icon/text cross-fades | `animExpressive*Effects` tokens |
+| **Gesture physics** | Scroll, drag, fling, rubber-band edges | velocity + momentum/rubber-band integrator |
+| **Discrete state** | Toggles, checks, selected chips | short effect token; no spring overshoot |
+| **Indeterminate** | Real ongoing work only | a loop that stops when the work stops |
+
+Never use a spatial spring for a colour fade, and never use an effects fade for a page
+transition. The category decides the token, not the other way round.
+
+### 10.2. Tokens, not numbers
+
+- All durations and curves come from [`theme/Theme.qml`](theme/Theme.qml). A literal
+  `duration: 200` or `Easing.OutQuad` in a UI file is a review failure.
+- If a new motion class is genuinely needed, add a token to `Theme.qml` first, then use it in
+  at least two places. Do not invent a one-off curve in a component.
+- Physics constants (scroll impulse, decay, rubber-band constant, spring stiffness) live in one
+  shared file - currently [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js).
+  A component must not carry its own copy.
+- Offscreen harnesses may not resolve `Theme`; use a guarded token read with a safe fallback
+  for *layout*, never invent a live duration. The live design has one source of truth.
+
+### 10.3. Use the right primitive
+
+- `Behavior on x` - one property follows another with one token. Best for toggles, hovers,
+  active indicators, and small layout shifts.
+- `NumberAnimation` - a known target. Set `from` to the current value when interrupting.
+- `SpringAnimation` - one physical settle with no continuous input. Use it for a card or
+  overlay that should overshoot once; do not restart it on every wheel event.
+- `FrameAnimation` + a small integrator - continuous gesture physics (scroll, fling,
+  rubber-band). One frame loop per surface, stopped when idle.
+- `SequentialAnimation` / `ParallelAnimation` - orchestration of several properties. Prefer
+  tokens for each step; do not build a second timing system.
+- `Timer` - state deadlines (auto-close, hold, debounce), never frame-by-frame motion.
+
+### 10.4. Interruptibility and input ownership
+
+- A new gesture always wins. On `movementStarted`, `scrollStarted`, or a new press, stop the
+  programmatic animation and continue from the current geometry.
+- Never restart from a stale `from`. Read the current value at interruption time.
+- Preserve velocity when retargeting a physics animation; do not zero it mid-gesture.
+- Latch one scrollable and one axis for the duration of a gesture. Do not hand the same
+  gesture to a parent halfway through; macOS-style scrolling bounces at the edge and requires a
+  new gesture to move the parent.
+- A cross-axis wheel may delegate to an ancestor (a vertical wheel over a horizontal chip row),
+  but a same-axis edge must bounce, not switch targets.
+
+### 10.5. Momentum and elasticity are not a target spring
+
+This was learned the hard way:
+
+- **Do not** add a wheel delta to a target and spring `contentY` toward it on every event.
+  Under fast input the target runs ahead, the spring overshoots or lags, and the result is
+  clunky.
+- **Do** add the delta as a velocity impulse, decay velocity exponentially, and integrate the
+  position exactly:
+  `position += velocity * (1 - exp(-k * dt)) / k`.
+  The naive `position += velocity * dt` over-travels because it holds the start-of-frame
+  velocity for the whole frame.
+- **Do** apply the UIScrollView rubber-band curve only at the edges:
+  `f(x) = (x * d * c) / (d + c * x)`, `c = 0.55`.
+- **Do** clamp velocity to a ceiling and stop the frame loop at rest. Fast input should travel
+  farther, not destabilise.
+- **Do** snap a settled edge to the bound; an edge spring can cross back inside with a few
+  pixels left, which reads as a sliver of blank content.
+
+### 10.6. Continuity and in-flight state
+
+- Never let a label, icon, or selected state change before the geometry that carries it
+  arrives. Latch the discrete state until the motion completes.
+- Use asymmetric leading/trailing durations where the design calls for it (workspace pills:
+  500 ms / 750 ms); do not symmetrise them "for consistency".
+- Cross-fade changing text with two `Text` items; never swap a string in place while it is
+  visible.
+- An overlay must be fully opaque before it is interactive, and must stop accepting input as
+  soon as it starts closing.
+- Reversing an animation must look like a reversal, not a restart: keep the current geometry
+  and velocity.
+
+### 10.7. Animate the cheap properties
+
+- High-frequency motion belongs on `x`, `y`, `scale`, `opacity`, and `transform`. These can
+  stay on the render thread and do not relayout the scene.
+- `width`, `height`, and `implicitHeight` trigger layout. Animate them only when the size
+  change *is* the interaction (a morphing popout, an expanding group), and keep those
+  animations short and infrequent.
+- Do not animate blur radius, shadows, or large shader uniforms every frame; cross-fade a
+  prepared surface instead.
+- One frame loop per surface, not per child. Stop it when idle; an idle animation that keeps
+  waking the compositor is a battery bug.
+
+### 10.8. Data-driven motion only
+
+- Visualisers, beat pulses, and audio-reactive elements follow ground-truth PCM and spectral
+  flux. No synthetic beats, sine bobbing, or idle wobble. No beat means no motion; settle to
+  `0.0`.
+- Progress and loading motion exists only while real work is running. No decorative loops, no
+  fake progress.
+- A status animation must reflect the real state, not a timer that assumes the state.
+
+### 10.9. Reduced motion and failure paths
+
+- Every continuous animation needs a seam to disable it (a motion-token property that can be
+  `null`, or a `reducedMotion` flag). With no tokens, jump to the destination rather than
+  inventing a duration.
+- An animation that cannot load its tokens must degrade to a correct static state, never to a
+  half-applied geometry.
+- Test the failure path: missing Theme, zero-size parent, hidden page, and a gesture that
+  starts while a programmatic scroll is in flight.
+
+### 10.10. Verify the motion, not just the code
+
+- Pure motion math (curve choice, duration ladder, decay, rubber-band, clamp, settle) gets a
+  unit test. QML tests assert interruption and ownership, not just the end value.
+- A passing test does not prove the feel. Capture the live surface at the real window size,
+  over real content, and inspect it. State what you actually saw.
+- For scroll/gesture physics, test: one notch, fast repeated input, an edge bounce, a nested
+  surface, and a drag that interrupts the animation.
+- Run `make test` before claiming a motion change is complete. Then check the surrounding
+  surfaces for regressions; a shared primitive change is never local.
+
+### 10.11. Review checklist
+
+Before shipping an animation, answer all of these:
+
+1. Which motion category is it, and which token does it use?
+2. Is every duration/curve from `Theme` (or the shared physics file)?
+3. Can a new gesture interrupt it without a jump or a stale start?
+4. Does it preserve velocity / current geometry on retarget?
+5. Does it stop when idle, and is there only one frame loop?
+6. Is it data-driven, with a correct static state when data is absent?
+7. Does it animate cheap properties, or is the size change genuinely the interaction?
+8. Does it respect reduced motion / missing tokens?
+9. Is there a test for the maths and the interruption, and a live capture for the feel?
+10. Did `make test` pass, and did the shared surfaces survive?
