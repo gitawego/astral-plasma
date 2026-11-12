@@ -9,7 +9,7 @@ ListView {
 
     flickDeceleration: Physics.FLICK_DECELERATION
     maximumFlickVelocity: Physics.MAXIMUM_FLICK_VELOCITY
-    boundsBehavior: Flickable.StopAtBounds
+    boundsBehavior: Flickable.OvershootBounds
 
     SmoothWheelHandler {
         id: wheelHandler

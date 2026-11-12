@@ -277,10 +277,12 @@ SettingsPage {
   [`SmoothListView`](modules/Astral/Kernel/components/SmoothListView.qml), or
   [`SmoothGridView`](modules/Astral/Kernel/components/SmoothGridView.qml). Wheel
   deltas are normalized in
-  [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js), and
-  the glide uses `animExpressiveFastEffects`. Never assign `contentY` directly
-  from a wheel handler, and never create a bare `Flickable`/`ListView`/`GridView`
-  that bypasses the shared physics.
+  [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js), and a
+  frame-synced spring-damper integrates the viewport with momentum, a slight
+  overshoot at the target, and a rubber-band bounce at a top-level boundary.
+  Never assign `contentY` directly from a wheel handler, never use a
+  fixed-duration tween for scroll, and never create a bare
+  `Flickable`/`ListView`/`GridView` that bypasses the shared physics.
 
 ---
 

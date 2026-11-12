@@ -315,6 +315,6 @@ Inspect the resulting image using `view_file` to verify alignment, centering, co
    - Always chain app icons: check for raw desktop file / URI path -> query `Quickshell.iconPath()` -> fallback to a Material Symbols icon via `MaterialIcon`.
 5. **Smooth Scrolling Everywhere**:
    - Every scrollable surface MUST use the shared [`SmoothFlickable`](modules/Astral/Kernel/components/SmoothFlickable.qml), [`SmoothListView`](modules/Astral/Kernel/components/SmoothListView.qml), or [`SmoothGridView`](modules/Astral/Kernel/components/SmoothGridView.qml). Never declare a bare `Flickable`/`ListView`/`GridView` in the shell.
-   - Wheel normalization and motion live in [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js) and [`SmoothWheelHandler.qml`](modules/Astral/Kernel/components/SmoothWheelHandler.qml). Never assign `contentY`/`contentX` directly from a wheel handler; that is the jumpy path this primitive replaced.
+   - Wheel normalization and the spring-damper live in [`ScrollPhysics.js`](modules/Astral/Kernel/components/ScrollPhysics.js) and [`SmoothWheelHandler.qml`](modules/Astral/Kernel/components/SmoothWheelHandler.qml). Never assign `contentY`/`contentX` directly from a wheel handler, and never replace the spring with a fixed-duration tween; scrolling must carry momentum and an elastic overshoot.
    - The only intentional exception is a wheel-driven carousel (`WallpaperCarousel.qml`), where a wheel step selects an item rather than scrolling a viewport.
 

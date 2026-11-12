@@ -7,34 +7,31 @@
 //         SmoothWheelHandler { flickable: page }
 //     }
 
-import "../theme"
 import QtQuick
 import "ScrollPhysics.js" as Physics
 
-// One wheel notch moves a short distance and eases to it with the fast effects
-// token; a trackpad's high-resolution pixel deltas accumulate into the same
-// target, so a stream of small events reads as one continuous glide. The handler
-// accepts the event only when the flickable can actually scroll in that
-// direction, so a nested horizontal list cannot trap a page's vertical scroll.
+// A wheel step adds a velocity impulse and a target offset. A frame-synced
+// spring-damper integrates the viewport toward that target, so the content has
+// momentum and overshoots its bounds elastically instead of easing on a fixed
+// duration. At a boundary the wheel is handed to the nearest ancestor scrollable,
+// and the event is always consumed so Flickable's own jump-by-a-whole-notch
+// wheelEvent never runs underneath.
 WheelHandler {
     id: root
 
     required property Flickable flickable
-    /// Overridable for tests / reduced motion. Null means "no tokens, jump".
-    property var motionTokens: (typeof Theme !== "undefined") ? Theme : null
     property real speed: 1
-    readonly property bool scrollable: root.flickable !== null && root.flickable.interactive && root.flickable.enabled
-    readonly property bool canScrollVertically: root.scrollable && root.flickable.contentHeight > root.flickable.height + 0.5 && root.flickable.flickableDirection !== Flickable.HorizontalFlick
-    readonly property bool canScrollHorizontally: root.scrollable && root.flickable.contentWidth > root.flickable.width + 0.5 && root.flickable.flickableDirection !== Flickable.VerticalFlick
-    readonly property bool animating: verticalAnim.running || horizontalAnim.running
+    property real velocity: 0
     property real targetX: root.flickable ? root.flickable.contentX : 0
     property real targetY: root.flickable ? root.flickable.contentY : 0
     /// Introspection for tests: how many wheel events this handler has seen.
     property int wheelEvents: 0
-    /// A drag or a native flick owns the position; stop fighting it.
     property Connections flickableConnections
-    property NumberAnimation verticalAnim
-    property NumberAnimation horizontalAnim
+    property FrameAnimation physicsFrame
+    readonly property bool animating: physicsFrame.running
+    readonly property bool scrollable: root.flickable !== null && root.flickable.interactive && root.flickable.enabled
+    readonly property bool canScrollVertically: root.scrollable && root.flickable.contentHeight > root.flickable.height + 0.5 && root.flickable.flickableDirection !== Flickable.HorizontalFlick
+    readonly property bool canScrollHorizontally: root.scrollable && root.flickable.contentWidth > root.flickable.width + 0.5 && root.flickable.flickableDirection !== Flickable.VerticalFlick
 
     /// Emitted when a wheel event takes over. A host with a programmatic scroll
     /// animation (a settings section jump) stops it here instead of fighting.
@@ -64,21 +61,23 @@ WheelHandler {
     }
 
     /// Public seam for tests and for callers that already normalized a delta.
-    /// Returns true only when this surface actually moved.
+    /// Returns true only when this surface actually took the wheel.
     function scrollBy(dx, dy) {
         if (!root.flickable)
             return false;
 
         if (root.canScrollBy(0, dy)) {
             root.targetY = Physics.targetFor(root.targetY, dy * root.speed, root.maxY());
+            root.velocity -= dy * root.speed * Physics.SCROLL_IMPULSE;
             root.scrollStarted();
-            startVertical();
+            root.physicsFrame.running = true;
             return true;
         }
         if (root.canScrollBy(dx, 0)) {
             root.targetX = Physics.targetFor(root.targetX, dx * root.speed, root.maxX());
+            root.velocity -= dx * root.speed * Physics.SCROLL_IMPULSE;
             root.scrollStarted();
-            startHorizontal();
+            root.physicsFrame.running = true;
             return true;
         }
         return false;
@@ -100,28 +99,29 @@ WheelHandler {
         return false;
     }
 
-    function startVertical() {
-        const motion = Physics.motionFor(root.motionTokens);
-        if (!motion) {
-            root.flickable.contentY = root.targetY;
-            return ;
-        }
-        verticalAnim.duration = motion.duration;
-        verticalAnim.easing.bezierCurve = motion.curve;
-        verticalAnim.to = root.targetY;
-        verticalAnim.restart();
-    }
+    /// A wheel at a top-level boundary has nowhere to go. Give it a short
+    /// rubber-band impulse instead of swallowing it, so the spring pulls the
+    /// content back with visible elasticity. A nested surface with a scrollable
+    /// ancestor delegates instead and never bounces inside the parent.
+    function bounce(dx, dy) {
+        if (!root.flickable)
+            return false;
 
-    function startHorizontal() {
-        const motion = Physics.motionFor(root.motionTokens);
-        if (!motion) {
-            root.flickable.contentX = root.targetX;
-            return ;
+        if (root.canScrollVertically && dy !== 0) {
+            root.targetY = Physics.clamp(root.flickable.contentY, 0, root.maxY());
+            root.velocity -= dy * root.speed * Physics.SCROLL_IMPULSE * 0.6;
+            root.scrollStarted();
+            root.physicsFrame.running = true;
+            return true;
         }
-        horizontalAnim.duration = motion.duration;
-        horizontalAnim.easing.bezierCurve = motion.curve;
-        horizontalAnim.to = root.targetX;
-        horizontalAnim.restart();
+        if (root.canScrollHorizontally && dx !== 0) {
+            root.targetX = Physics.clamp(root.flickable.contentX, 0, root.maxX());
+            root.velocity -= dx * root.speed * Physics.SCROLL_IMPULSE * 0.6;
+            root.scrollStarted();
+            root.physicsFrame.running = true;
+            return true;
+        }
+        return false;
     }
 
     function syncTargets() {
@@ -130,6 +130,41 @@ WheelHandler {
 
         root.targetX = root.flickable.contentX;
         root.targetY = root.flickable.contentY;
+        root.velocity = 0;
+    }
+
+    function stopPhysics() {
+        root.physicsFrame.running = false;
+        root.velocity = 0;
+    }
+
+    /// One frame of the spring-damper. `dt` comes from FrameAnimation, clamped
+    /// so a stalled frame cannot fling the content.
+    function step(dt) {
+        if (!root.flickable) {
+            root.stopPhysics();
+            return ;
+        }
+        const stepDt = Math.max(1 / 240, Math.min(dt > 0 ? dt : 1 / 60, 1 / 30));
+        if (root.canScrollVertically) {
+            const next = Physics.step(root.flickable.contentY, root.velocity, root.targetY, stepDt);
+            root.flickable.contentY = next.position;
+            root.velocity = next.velocity;
+            if (Physics.settled(next.position, next.velocity, root.targetY)) {
+                root.flickable.contentY = root.targetY;
+                root.stopPhysics();
+            }
+        } else if (root.canScrollHorizontally) {
+            const next = Physics.step(root.flickable.contentX, root.velocity, root.targetX, stepDt);
+            root.flickable.contentX = next.position;
+            root.velocity = next.velocity;
+            if (Physics.settled(next.position, next.velocity, root.targetX)) {
+                root.flickable.contentX = root.targetX;
+                root.stopPhysics();
+            }
+        } else {
+            root.stopPhysics();
+        }
     }
 
     target: root.flickable
@@ -141,8 +176,8 @@ WheelHandler {
         root.wheelEvents += 1;
         const dx = Physics.axisDelta(event, "x");
         const dy = Physics.axisDelta(event, "y");
-        if (!root.scrollBy(dx, dy))
-            root.scrollAncestor(dx, dy);
+        if (!root.scrollBy(dx, dy) && !root.scrollAncestor(dx, dy))
+            root.bounce(dx, dy);
 
         // Flickable has its own wheelEvent that jumps by a whole angle delta.
         // The handler is the one scroll path, so consume the event even when
@@ -150,21 +185,21 @@ WheelHandler {
         event.accepted = true;
     }
 
+    /// A drag or a native flick owns the position; stop fighting it.
     flickableConnections: Connections {
         function onMovementStarted() {
-            root.verticalAnim.stop();
-            root.horizontalAnim.stop();
+            root.stopPhysics();
             root.syncTargets();
         }
 
         function onContentYChanged() {
-            if (!root.verticalAnim.running)
+            if (!root.animating)
                 root.targetY = root.flickable.contentY;
 
         }
 
         function onContentXChanged() {
-            if (!root.horizontalAnim.running)
+            if (!root.animating)
                 root.targetX = root.flickable.contentX;
 
         }
@@ -172,20 +207,10 @@ WheelHandler {
         target: root.flickable
     }
 
-    verticalAnim: NumberAnimation {
-        target: root.flickable
-        property: "contentY"
-        duration: 150
-        easing.type: Easing.BezierSpline
-        easing.bezierCurve: [0.31, 0.94, 0.34, 1, 1, 1]
-    }
-
-    horizontalAnim: NumberAnimation {
-        target: root.flickable
-        property: "contentX"
-        duration: 150
-        easing.type: Easing.BezierSpline
-        easing.bezierCurve: [0.31, 0.94, 0.34, 1, 1, 1]
+    /// Frame-synced physics. It only runs while a wheel gesture is settling.
+    physicsFrame: FrameAnimation {
+        running: false
+        onTriggered: root.step(frameTime)
     }
 
 }

@@ -3173,14 +3173,15 @@ by default. The fix is one scroll primitive, not a patch per surface.
 
 - `modules/Astral/Kernel/components/ScrollPhysics.js` — one place for wheel normalization
   (a 120-unit notch is 60 px; a trackpad's `pixelDelta` wins), clamping, flick physics, and
-  the fast-effects motion token.
-- `SmoothWheelHandler.qml` — a `WheelHandler` that accumulates wheel deltas into a target and
-  eases `contentY`/`contentX` there with `animExpressiveFastEffects`. It scrolls only when the
-  surface has room in that axis; at a boundary it hands the wheel to the nearest ancestor
-  `Smooth*` handler, so a nested list cannot trap the page. It consumes the event either way,
-  which keeps `Flickable`'s own jump-by-a-whole-notch `wheelEvent` from running underneath.
-  A drag or native flick stops the tween; a programmatic scroll can listen for
-  `scrollStarted()` and yield.
+  the spring-damper constants/integrator.
+- `SmoothWheelHandler.qml` — a `WheelHandler` that adds a velocity impulse and a target, then
+  integrates `contentY`/`contentX` every frame with a spring-damper: real momentum, an
+  overshoot past the target, and a rubber-band bounce at a top-level boundary. There is no
+  fixed-duration tween. It scrolls only when the surface has room in that axis; at a boundary
+  it hands the wheel to the nearest ancestor `Smooth*` handler, so a nested list cannot trap
+  the page. It consumes the event either way, which keeps `Flickable`'s own
+  jump-by-a-whole-notch `wheelEvent` from running underneath. A drag or native flick stops the
+  physics; a programmatic scroll can listen for `scrollStarted()` and yield.
 - `SmoothFlickable.qml`, `SmoothListView.qml`, `SmoothGridView.qml` — the only scroll types
   the shell should declare. Each installs the handler and the shared flick physics.
 
@@ -3199,10 +3200,11 @@ audits the migrated files for bare `Flickable`/`ListView`/`GridView` declaration
 ### Verification
 
 `tests/tst_smooth_scroll.qml` asserts the wheel delta normalization, a mid-glide offset, the
-landing target, horizontal routing, the non-interactive guard, both clamp ends, the
-boundary/ancestor rule, and the source contract. `make test` exit 0 — 1347 Rust tests,
-171 QML suites, app boundaries clean.
+landing target, the spring's overshoot and settle, the bound rubber-band, horizontal routing,
+the non-interactive guard, both clamp ends, the boundary/ancestor rule, and the source
+contract. `make test` exit 0 — 1347 Rust tests, 171 QML suites, app boundaries clean.
 
 > **Verified live**: injected a real wheel event over the settings content; the page moved
-> through the shared handler. I did not capture a mid-glide frame (Spectacle's latency is
-> longer than the 150 ms tween); the intermediate offset is asserted in `tst_smooth_scroll`.
+> through the shared handler. I did not capture a mid-glide or overshoot frame (Spectacle's
+> latency is longer than the spring's early motion); the intermediate, overshoot, and settle
+> offsets are asserted in `tst_smooth_scroll`.
