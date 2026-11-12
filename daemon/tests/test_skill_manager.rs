@@ -551,3 +551,117 @@ fn a_copy_target_receives_files_where_the_others_receive_links() {
     let items = astral_plasma::infrastructure::skill_fs::trash_list(&ctx.paths).unwrap();
     assert!(items.iter().any(|item| item.name == "alpha"), "and recoverable: {items:?}");
 }
+
+#[test]
+fn a_skill_can_be_read_without_being_installed() {
+    let fixture = Fixture::new();
+    let source = fixture.local_source("mine", &[("alpha", "first"), ("beta", "second")]);
+    let content = manager::read_skill(&fixture.ctx, source.to_str().unwrap(), "alpha").unwrap();
+
+    assert_eq!(content.source_id, "local-mine");
+    assert_eq!(content.skill.id.as_str(), "alpha");
+    assert!(content.manifest.contains("# alpha"), "the manifest is returned verbatim: {}", content.manifest);
+    assert!(
+        content.files.iter().any(|file| file.path == "notes.md"),
+        "bundled files are listed for skill_read: {:?}",
+        content.files.iter().map(|file| &file.path).collect::<Vec<_>>()
+    );
+
+    // The whole point: loading is not installing.
+    assert!(read_ledger(&fixture.ctx.paths.ledger).unwrap().links.is_empty());
+    assert!(!fixture.link(".agents/skills", "alpha").exists());
+    assert!(!fixture.link(".claude/skills", "alpha").exists());
+
+    let error = manager::read_skill(&fixture.ctx, source.to_str().unwrap(), "nope").unwrap_err();
+    assert!(error.to_string().contains("available: alpha, beta"), "got: {error}");
+}
+
+#[test]
+fn a_git_skill_can_be_read_without_being_copied_into_the_store_or_installed() {
+    let fixture = Fixture::new();
+    let repo = GitRepo::new(&[("alpha", "first")]);
+    let content = manager::read_skill(&fixture.ctx, &repo.url(), "alpha").unwrap();
+
+    assert_eq!(content.skill.id.as_str(), "alpha");
+    assert!(content.manifest.contains("# alpha"));
+    assert!(content.sha.is_some(), "a git read is pinned to the commit it read");
+    assert!(read_ledger(&fixture.ctx.paths.ledger).unwrap().links.is_empty());
+    assert!(!fixture.link(".agents/skills", "alpha").exists());
+    assert!(
+        !fixture.ctx.paths.store.exists() || fixture.ctx.paths.store.read_dir().unwrap().next().is_none(),
+        "a read must not write the immutable install store"
+    );
+}
+
+#[test]
+fn an_added_source_is_searchable_by_id_and_across_all_added_sources() {
+    let fixture = Fixture::new();
+    let source = fixture.local_source("mine", &[("alpha", "first"), ("beta", "second")]);
+    manager::add_source(&fixture.ctx, source.to_str().unwrap(), None, None, true, false).unwrap();
+
+    let hits = manager::search(&fixture.ctx, "alph", "local-mine", 10, None).unwrap();
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert_eq!(hits[0].name, "alpha");
+    assert_eq!(hits[0].source, "local-mine");
+
+    let all = manager::search(&fixture.ctx, "", "added", 10, None).unwrap();
+    let names: Vec<&str> = all.iter().map(|hit| hit.name.as_str()).collect();
+    assert_eq!(names, vec!["alpha", "beta"]);
+
+    let error = manager::search(&fixture.ctx, "", "github", 10, None).unwrap_err();
+    assert!(error.to_string().contains("query is required"), "got: {error}");
+}
+
+#[test]
+fn reading_a_skill_does_not_include_a_nested_skill_s_or_its_files() {
+    let fixture = Fixture::new();
+    let root = fixture.dir.path().join("nested");
+    std::fs::create_dir_all(root.join("parent/examples/child")).unwrap();
+    std::fs::write(root.join("parent/SKILL.md"), "---\nname: parent\ndescription: parent\n---\n").unwrap();
+    std::fs::write(root.join("parent/notes.md"), "parent notes").unwrap();
+    std::fs::write(
+        root.join("parent/examples/child/SKILL.md"),
+        "---\nname: child\ndescription: child\n---\n",
+    )
+    .unwrap();
+
+    let content = manager::read_skill(&fixture.ctx, root.to_str().unwrap(), "parent").unwrap();
+    let paths: Vec<&str> = content.files.iter().map(|file| file.path.as_str()).collect();
+    assert!(paths.contains(&"notes.md"), "{paths:?}");
+    assert!(
+        !paths.iter().any(|path| path.contains("examples/child")),
+        "the nested skill's files are its own: {paths:?}"
+    );
+    assert!(!content.manifest.contains("child"), "and its manifest is not loaded: {}", content.manifest);
+}
+
+#[test]
+fn a_root_skill_does_not_swallow_a_nested_example_s_files() {
+    let fixture = Fixture::new();
+    let root = fixture.dir.path().join("root-skill");
+    std::fs::create_dir_all(root.join("examples/child")).unwrap();
+    std::fs::write(root.join("SKILL.md"), "---\nname: whole-repo\ndescription: root\n---\n").unwrap();
+    std::fs::write(root.join("README.md"), "root readme").unwrap();
+    std::fs::write(root.join("examples/child/SKILL.md"), "---\nname: child\n---\n").unwrap();
+
+    let content = manager::read_skill(&fixture.ctx, root.to_str().unwrap(), "whole-repo").unwrap();
+    let paths: Vec<&str> = content.files.iter().map(|file| file.path.as_str()).collect();
+    assert!(paths.contains(&"README.md"), "{paths:?}");
+    assert!(
+        !paths.iter().any(|path| path.starts_with("examples/child")),
+        "the example belongs to its own skill: {paths:?}"
+    );
+}
+
+#[test]
+fn a_broken_ledger_does_not_block_loading_a_source() {
+    let fixture = Fixture::new();
+    let source = fixture.local_source("mine", &[("alpha", "first")]);
+    std::fs::create_dir_all(fixture.ctx.paths.ledger.parent().unwrap()).unwrap();
+    std::fs::write(&fixture.ctx.paths.ledger, "{ not a ledger").unwrap();
+
+    let content = manager::read_skill(&fixture.ctx, source.to_str().unwrap(), "alpha").unwrap();
+    assert_eq!(content.skill.id.as_str(), "alpha");
+    let inspection = manager::inspect(&fixture.ctx, source.to_str().unwrap()).unwrap();
+    assert_eq!(inspection.skills.len(), 1);
+}

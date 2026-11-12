@@ -14,6 +14,7 @@ use crate::domain::skill_install::{
 use crate::domain::skill_ledger::{LinkState, Origin};
 use crate::domain::skill_source::{parse_source, source_id, AddedSource, GitAuth, SourceSpec};
 use crate::domain::skill_targets::{resolve_targets, Scope, Target};
+use crate::infrastructure::skill_catalog::SearchHit;
 use crate::infrastructure::skill_fs::{self, Applied, RealFs, SkillPaths};
 use crate::infrastructure::skill_git::{FetchAuth, GitCli};
 use crate::infrastructure::skill_secrets;
@@ -249,10 +250,24 @@ pub fn list(ctx: &SkillContext) -> DynResult<Vec<InstalledSource>> {
     Ok(out)
 }
 
+/// Resolve user input to a source, accepting an added source id as well as a URL/path.
+///
+/// The MCP server and the GUI both name sources by the stable id the ledger recorded; a person
+/// at a terminal may paste `owner/repo` instead. Both are the same source, so both resolve here.
+pub fn resolve_source(ctx: &SkillContext, input: &str) -> DynResult<SourceSpec> {
+    // A read must not be blocked by a ledger from a half-finished install: an added id is a
+    // convenience, and a URL/path still resolves when the ledger cannot be parsed.
+    let ledger = read_ledger(&ctx.paths.ledger).unwrap_or_default();
+    if let Some(source) = ledger.source(input.trim()) {
+        return Ok(source.spec.clone());
+    }
+    parse_source(input).map_err(|error| error.to_string().into())
+}
+
 /// Fetch (or scan) a source and return what it contains, without writing anything.
 pub fn inspect(ctx: &SkillContext, input: &str) -> DynResult<Inspection> {
-    let spec = parse_source(input).map_err(|error| error.to_string())?;
-    let ledger = read_ledger(&ctx.paths.ledger)?;
+    let spec = resolve_source(ctx, input)?;
+    let ledger = read_ledger(&ctx.paths.ledger).unwrap_or_default();
     let id = source_id(&spec);
     let installed_ids: Vec<String> = ledger.skills_of(&id).iter().map(|s| s.as_str().to_string()).collect();
 
@@ -282,6 +297,19 @@ fn discover_source(
     ctx: &SkillContext,
     spec: &SourceSpec,
 ) -> DynResult<(Vec<SkillMeta>, Option<String>, Option<String>)> {
+    let (files, sha, ref_name) = source_tree(ctx, spec)?;
+    let skills = discover(&files, spec.subpath(), false);
+    Ok((skills, sha, ref_name))
+}
+
+/// The source's files, with the commit it was read at when it is a git remote.
+///
+/// `install` and `read_skill` both need the bytes, not just the metadata; keeping one fetch here
+/// means the content a skill is loaded from is the same tree the inspection described.
+fn source_tree(
+    ctx: &SkillContext,
+    spec: &SourceSpec,
+) -> DynResult<(Vec<(String, Vec<u8>)>, Option<String>, Option<String>)> {
     match spec {
         SourceSpec::Git(git) => {
             let auth = ctx.auth(spec);
@@ -289,18 +317,274 @@ fn discover_source(
                 .git
                 .fetch(&git.url, git.ref_name.as_deref(), &auth)
                 .map_err(|error| error.to_string())?;
-            let skills = discover(&fetched.files, git.subpath.as_deref(), false);
-            Ok((skills, Some(fetched.sha), Some(fetched.ref_name)))
+            Ok((fetched.files, Some(fetched.sha), Some(fetched.ref_name)))
         }
         SourceSpec::Local(local) => {
             if !local.path.is_dir() {
                 return Err(format!("'{}' is not a folder", local.path.display()).into());
             }
-            let files = read_local_tree(&local.path)?;
-            let skills = discover(&files, local.subpath.as_deref(), false);
-            Ok((skills, None, None))
+            Ok((read_local_tree(&local.path)?, None, None))
         }
     }
+}
+
+/// One skill's bytes, read from its source. Nothing is written to the store or the ledger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillContent {
+    /// The source as a person would type it.
+    pub source: String,
+    pub source_id: String,
+    pub sha: Option<String>,
+    pub ref_name: Option<String>,
+    pub skill: SkillMeta,
+    /// The skill's `SKILL.md`, verbatim; this is what loading returns to the agent.
+    pub manifest: String,
+    /// Every file in the skill, paths relative to the skill root (`SKILL.md`, `references/…`).
+    pub files: Vec<SkillFile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillFile {
+    pub path: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Load one skill into memory without installing it.
+///
+/// This is the MCP server's core use case: a session can ask for a skill by name, receive its
+/// `SKILL.md`, and read its references on demand. The project and the agent directories are never
+/// touched, so trying a skill cannot leave a link farm behind (the install path remains the one
+/// that owns links).
+pub fn read_skill(ctx: &SkillContext, input: &str, skill: &str) -> DynResult<SkillContent> {
+    let spec = resolve_source(ctx, input)?;
+    let (files, sha, ref_name) = source_tree(ctx, &spec)?;
+    let skills = discover(&files, spec.subpath(), false);
+    let meta = skills
+        .iter()
+        .find(|meta| meta.id.as_str() == skill)
+        .cloned()
+        .ok_or_else(|| {
+            let available: Vec<&str> = skills.iter().map(|meta| meta.id.as_str()).collect();
+            if available.is_empty() {
+                format!("{input} contains no skills (no SKILL.md found)")
+            } else {
+                format!("no skill '{skill}' in {input}; available: {}", available.join(", "))
+            }
+        })?;
+    // The shallow discovery intentionally stops at a root skill; that hides nested examples from
+    // the listing, but their files still live under the same prefix. Ask the deep pass only for
+    // the exclusion list, so the loaded manifest matches the hash `discover` computed.
+    let all_skills = discover(&files, spec.subpath(), true);
+    let owned = files_under(
+        &files,
+        &meta.subpath,
+        &all_skills
+            .iter()
+            .filter(|other| other.subpath != meta.subpath)
+            .filter(|other| {
+                meta.subpath.is_empty()
+                    || other.subpath.starts_with(&format!("{}/", meta.subpath.trim_matches('/')))
+            })
+            .map(|other| other.subpath.clone())
+            .collect::<Vec<_>>(),
+    );
+    let manifest = owned
+        .iter()
+        .find(|(path, _)| path.eq_ignore_ascii_case("SKILL.md"))
+        .map(|(_, bytes)| {
+            std::str::from_utf8(bytes)
+                .map(str::to_string)
+                .map_err(|_| format!("skill '{}' has a SKILL.md that is not UTF-8", meta.id))
+        })
+        .transpose()?
+        .ok_or_else(|| format!("skill '{}' has no SKILL.md", meta.id))?;
+    Ok(SkillContent {
+        source: spec.display(),
+        source_id: source_id(&spec),
+        sha,
+        ref_name,
+        skill: meta,
+        manifest,
+        files: owned
+            .into_iter()
+            .map(|(path, bytes)| SkillFile { path, bytes })
+            .collect(),
+    })
+}
+
+/// The files owned by one skill directory, with paths relative to that directory.
+///
+/// `nested` lists skill directories inside this one. Their files belong to those skills, not to
+/// the parent: loading a skill must not silently include an example's instructions as if they
+/// were part of its own manifest (the content hash already excludes them).
+fn files_under(
+    files: &[(String, Vec<u8>)],
+    subpath: &str,
+    nested: &[String],
+) -> Vec<(String, Vec<u8>)> {
+    let prefix = subpath.trim_matches('/');
+    let nested: Vec<String> = nested
+        .iter()
+        .filter_map(|other| {
+            let other = other.trim_matches('/');
+            if prefix.is_empty() {
+                Some(other.to_string())
+            } else {
+                other
+                    .strip_prefix(prefix)
+                    .and_then(|rest| rest.strip_prefix('/'))
+                    .map(str::to_string)
+            }
+        })
+        .filter(|path| !path.is_empty())
+        .collect();
+    files
+        .iter()
+        .filter_map(|(path, bytes)| {
+            let relative = if prefix.is_empty() {
+                if path.is_empty() {
+                    return None;
+                }
+                path.clone()
+            } else {
+                path.strip_prefix(prefix)
+                    .and_then(|rest| rest.strip_prefix('/'))
+                    .filter(|rest| !rest.is_empty())?
+                    .to_string()
+            };
+            if nested
+                .iter()
+                .any(|owner| relative == *owner || relative.starts_with(&format!("{owner}/")))
+            {
+                return None;
+            }
+            Some((relative, bytes.clone()))
+        })
+        .collect()
+}
+
+/// Search catalogs and added sources for skills. `source` is `github`, `skills.sh`, `all`,
+/// `added`, or the id of one added source.
+///
+/// The CLI and the MCP server share this: discovery is one implementation, rendered twice.
+pub fn search(
+    ctx: &SkillContext,
+    query: &str,
+    source: &str,
+    limit: usize,
+    token: Option<&str>,
+) -> DynResult<Vec<SearchHit>> {
+    use crate::infrastructure::skill_catalog as catalog;
+
+    let limit = if limit == 0 { 20 } else { limit.min(50) };
+    let query = query.trim();
+    let source = source.trim().to_ascii_lowercase();
+    if query.is_empty()
+        && matches!(source.as_str(), "github" | "skills.sh" | "skillssh" | "all" | "")
+    {
+        return Err(
+            "a search query is required for a catalog; use source 'added' to list added sources"
+                .into(),
+        );
+    }
+    let mut hits = match source.as_str() {
+        "github" => catalog::github_search(query, token)?,
+        "skills.sh" | "skillssh" => catalog::skills_sh_search(query)?,
+        "all" | "" => {
+            let mut merged = Vec::new();
+            let mut errors = Vec::new();
+            let mut answered = false;
+            match catalog::github_search(query, token) {
+                Ok(found) => {
+                    answered = true;
+                    merged.extend(found);
+                }
+                Err(error) => errors.push(error.to_string()),
+            }
+            match catalog::skills_sh_search(query) {
+                Ok(found) => {
+                    answered = true;
+                    merged.extend(found);
+                }
+                Err(error) => errors.push(error.to_string()),
+            }
+            if !answered && !errors.is_empty() {
+                return Err(format!("no catalog answered: {}", errors.join("; ")).into());
+            }
+            merged
+        }
+        "added" => search_added(ctx, None, query)?,
+        id => {
+            let ledger = read_ledger(&ctx.paths.ledger).unwrap_or_default();
+            if ledger.source(id).is_none() {
+                return Err(format!(
+                    "unknown search source '{id}'; use github, skills.sh, all, added, or an added source id"
+                )
+                .into());
+            }
+            search_added(ctx, Some(id), query)?
+        }
+    };
+    let mut deduped: Vec<SearchHit> = Vec::new();
+    for hit in hits.drain(..) {
+        if !deduped
+            .iter()
+            .any(|existing| existing.source == hit.source && existing.name == hit.name && existing.kind == hit.kind)
+        {
+            deduped.push(hit);
+        }
+    }
+    deduped.truncate(limit);
+    Ok(deduped)
+}
+
+/// Scan added sources for skills whose id or description matches the query.
+fn search_added(ctx: &SkillContext, only: Option<&str>, query: &str) -> DynResult<Vec<SearchHit>> {
+    use crate::infrastructure::skill_catalog::{HitKind, HitTrust, SearchHit};
+
+    let ledger = read_ledger(&ctx.paths.ledger).unwrap_or_default();
+    let sources: Vec<AddedSource> = match only {
+        Some(id) => ledger.source(id).cloned().into_iter().collect(),
+        None => ledger.sources.clone(),
+    };
+    let needle = query.to_lowercase();
+    let mut hits = Vec::new();
+    let mut first_error: Option<String> = None;
+    for source in &sources {
+        let skills = match discover_source(ctx, &source.spec) {
+            Ok((skills, _, _)) => skills,
+            Err(error) if only.is_some() => return Err(error),
+            Err(error) => {
+                if first_error.is_none() {
+                    first_error = Some(error.to_string());
+                }
+                continue;
+            }
+        };
+        for skill in skills {
+            if !needle.is_empty()
+                && !skill.id.as_str().to_lowercase().contains(&needle)
+                && !skill.description.to_lowercase().contains(&needle)
+            {
+                continue;
+            }
+            hits.push(SearchHit {
+                source: source.id.clone(),
+                name: skill.id.as_str().to_string(),
+                description: skill.description,
+                installs: 0,
+                url: String::new(),
+                kind: HitKind::Skill,
+                trust: HitTrust::Community,
+            });
+        }
+    }
+    if hits.is_empty() {
+        if let Some(error) = first_error {
+            return Err(error.into());
+        }
+    }
+    Ok(hits)
 }
 
 fn read_local_tree(root: &Path) -> DynResult<Vec<(String, Vec<u8>)>> {

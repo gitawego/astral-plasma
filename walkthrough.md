@@ -2898,3 +2898,51 @@ definition (it used to be four `Config` writes inline).
 > 165 QML suites.
 
 Eight of eleven apps migrated. Remaining: settings, dock — then P5's remainder, P6 and P7.
+
+---
+
+## P6 — skills MCP: find and load without installing (2026-11-12)
+
+`astral-plasma skills mcp` serves the same skill manager over MCP. **Streamable HTTP** is the
+primary transport: the shell's local API server exposes `POST http://127.0.0.1:8942/mcp`, and
+`astral-plasma skills mcp --http` runs the same endpoint standalone. Stdio remains for clients
+that launch a command. Installation is untouched; this is a second, non-mutating path for a
+session that needs one skill:
+
+- `skill_search` — GitHub, skills.sh, all catalogs, added sources, or one added id.
+- `skill_inspect` — a source's metadata and skills, from the same fetch/inspection the install
+  path uses.
+- `skill_load` — returns the skill's `SKILL.md` and a file manifest. The response *is* the load:
+  MCP has no out-of-band way to inject text into the model's context.
+- `skill_read` — a reference or script by handle, with `..`, absolute paths and backslashes
+  refused.
+
+No `~/.agents/skills` or `~/.claude/skills` link is created, no store copy is written, and no
+ledger row appears, so trying a skill cannot leave a link farm behind.
+
+> **Verified live**: drove the real binary with an `initialize` / `tools/list` / `skill_inspect` /
+> `skill_load` / `skill_read` conversation against a scratch `skills` folder. It returned the four
+> tools, listed `alpha` and `beta` as uninstalled, loaded `alpha`'s `SKILL.md` verbatim with
+> `SKILL.md` + `references/checklist.md` in the manifest, and read the reference as
+> `- one\n- two\n`; stderr was empty, and the scratch home had no `.agents`, no `.claude`, and no
+> `ledger.json`. A second probe used the current stateless revision: `server/discover` advertised
+> `2026-07-28` and `2025-11-25`, a modern `tools/list` returned `resultType: "complete"`, and an
+> unknown version got `-32022` with the supported list. The real `pi` client also registered the
+> stdio server in a throwaway home and reported `state: "connected"` with all four tools
+> (`pi mcp list --json`, `errors: []`).
+>
+> **Verified live over Streamable HTTP**: `astral-plasma skills mcp --http --port 18942` answered
+> `initialize` with an `Mcp-Session-Id`, `tools/list` with the four tools, modern
+> `server/discover` with `resultType: "complete"`, and modern `skill_load` with the manifest;
+> `GET /mcp` returned 405, and the scratch home stayed free of farms and the ledger. The same
+> endpoint mounted on `astral-plasma serve` answered `/api/status` and `/mcp` side by side, and
+> `pi mcp add astral-skills --url http://127.0.0.1:18943/mcp` then `pi mcp list --json` reported
+> `state: "connected"`, transport `http://127.0.0.1:18943/mcp`, all four tools, `errors: []`.
+> `make test` exit 0 — 1331 Rust tests, 169 QML suites, app boundaries clean.
+
+`daemon/tests/test_skill_mcp.rs` and `daemon/tests/test_mcp_http.rs` keep it honest: protocol
+purity, Streamable HTTP sessions and mirrored-header validation, Origin rejection, in-band tool
+errors, no install side effects, and traversal refused. The existing install suites still exercise
+the link farm, so the new path did not replace the old one. An MCP load is a read, so it happens
+without the install consent prompt; the server tells clients to load only requested or clearly
+relevant skills, and warns that third-party instructions are untrusted.

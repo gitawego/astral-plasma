@@ -9,28 +9,60 @@ use crate::infrastructure::launcher::DesktopLauncherAdapter;
 use crate::infrastructure::plasma_adapter::PlasmaAdapter;
 use crate::infrastructure::proc_metrics::ProcMetricsAdapter;
 use crate::infrastructure::systemd_adapter::SystemdAdapter;
+use crate::interfaces::http::{self, HttpRequest};
+use crate::interfaces::mcp_server::HttpMcp;
 use serde_json::Value;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 
 pub const DEFAULT_API_PORT: u16 = 8942;
 pub const DEFAULT_SOCKET_PATH: &str = "/tmp/astral-plasma.sock";
 
+/// The API/MCP port: `ASTRAL_API_PORT` when it is a valid non-zero port, else the default.
+///
+/// A client's MCP URL is fixed configuration, so the server never silently picks another port.
+/// The override exists so a machine can move the endpoint deliberately and configure clients to
+/// the same URL.
+pub fn api_port() -> u16 {
+    api_port_from(std::env::var("ASTRAL_API_PORT").ok().as_deref())
+}
+
+pub fn api_port_from(value: Option<&str>) -> u16 {
+    value
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .filter(|port| *port != 0)
+        .unwrap_or(DEFAULT_API_PORT)
+}
+
 pub async fn run_api_server(port: u16) -> DynResult<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let tcp_listener = TcpListener::bind(addr).await?;
-    println!("[API Server] Listening on http://{}", addr);
+    let tcp_listener = match TcpListener::bind(addr).await {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+            return Err(format!(
+                "port {port} is already in use; stop the other process, pass a different port, or set ASTRAL_API_PORT to a free port (MCP clients must use the same URL)"
+            )
+            .into())
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let bound = tcp_listener.local_addr().unwrap_or(addr);
+    println!("[API Server] Listening on http://{}", bound);
+    println!("[API Server] MCP Streamable HTTP: http://{}/mcp", bound);
 
     let _ = std::fs::remove_file(DEFAULT_SOCKET_PATH);
     let unix_listener = UnixListener::bind(DEFAULT_SOCKET_PATH)?;
     println!("[API Server] Listening on unix:{}", DEFAULT_SOCKET_PATH);
 
+    let mcp = Arc::new(HttpMcp::from_env());
     loop {
         tokio::select! {
             Ok((stream, _)) = tcp_listener.accept() => {
+                let mcp = mcp.clone();
                 tokio::spawn(async move {
-                    let _ = handle_tcp_connection(stream).await;
+                    let _ = handle_tcp_connection(stream, mcp).await;
                 });
             }
             Ok((stream, _)) = unix_listener.accept() => {
@@ -49,14 +81,20 @@ pub async fn run_api_server(port: u16) -> DynResult<()> {
     Ok(())
 }
 
-async fn handle_tcp_connection(mut stream: TcpStream) -> DynResult<()> {
-    let mut buf = [0u8; 4096];
-    let n = stream.read(&mut buf).await?;
-    if n == 0 {
+async fn handle_tcp_connection(mut stream: TcpStream, mcp: Arc<HttpMcp>) -> DynResult<()> {
+    let req_str = http::read_request(&mut stream).await?;
+    if req_str.is_empty() {
         return Ok(());
     }
 
-    let req_str = String::from_utf8_lossy(&buf[..n]);
+    // `/mcp` is the Streamable HTTP endpoint; every other path keeps the REST behaviour.
+    if let Ok(request) = HttpRequest::parse(&req_str) {
+        if request.path == "/mcp" {
+            let response = mcp.handle(request).await;
+            return http::write_response(&mut stream, &response).await;
+        }
+    }
+
     let (status_code, body) = dispatch_http_request(&req_str).await;
 
     let response = format!(
@@ -227,5 +265,20 @@ pub async fn dispatch_http_request(req: &str) -> (u16, String) {
         }
 
         _ => (404, r#"{"error":"Not Found"}"#.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_api_port_override_is_validated() {
+        assert_eq!(api_port_from(None), DEFAULT_API_PORT);
+        assert_eq!(api_port_from(Some("9000")), 9000);
+        assert_eq!(api_port_from(Some(" 9001 ")), 9001);
+        assert_eq!(api_port_from(Some("not-a-port")), DEFAULT_API_PORT);
+        assert_eq!(api_port_from(Some("0")), DEFAULT_API_PORT, "0 would be an unknown ephemeral port");
+        assert_eq!(api_port_from(Some("70000")), DEFAULT_API_PORT);
     }
 }

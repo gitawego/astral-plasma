@@ -148,6 +148,40 @@ The floor is **0.99.0** (built-in MCP); 1.x is the tested line. Below the floor,
 Copilot is optional. The pi contract itself is pinned by
 `daemon/tests/test_assistant_harness.rs`, including a captured pi 1.0 JSON stream.
 
+#### Agent skills: install, or load for one session
+
+The skills manager discovers and installs agent skills from GitHub, skills.sh, a
+local folder, or a git remote. Installation is unchanged: `skills install` writes
+the ledger and the relative links the agents already read.
+
+For a skill you only need *now*, the skills manager is also exposed over **Streamable HTTP** at
+`http://127.0.0.1:8942/mcp` (the shell and `astral-plasma serve` mount it automatically). It
+finds a skill and returns its `SKILL.md` in the current session without installing it. No project
+directory, agent directory, store, or ledger row is touched, so trying a skill cannot leave a
+link farm behind. `astral-plasma skills mcp --http --port 8942` runs the endpoint standalone;
+stdio remains available with `astral-plasma skills mcp --stdio` for clients that launch a
+command. If the port is occupied, the server fails with a sentence naming it rather than moving
+silently; set `ASTRAL_API_PORT` and use the same URL in the client.
+
+| MCP tool | What it does |
+|---|---|
+| `skill_search` | Search GitHub, skills.sh, all catalogs, added sources, or one added source |
+| `skill_inspect` | List a source's skills, hashes, and whether each is installed |
+| `skill_load` | Return one skill's `SKILL.md` and a file manifest for this session |
+| `skill_read` | Read a reference or script from a loaded skill by its handle |
+
+```bash
+# Claude Code
+claude mcp add --transport http astral-skills http://127.0.0.1:8942/mcp
+
+# Pi (the Copilot harness)
+pi mcp add astral-skills --url http://127.0.0.1:8942/mcp
+```
+
+Other clients use the same URL in their own MCP configuration; examples for
+Pi, Claude Desktop, Cursor, Codex, and OpenCode are in
+[`docs/SKILLS-MANAGER-SPEC.md`](docs/SKILLS-MANAGER-SPEC.md#12b-mcp-find-and-load-without-installing).
+
 ### 📥 Integrated Downloads Manager (Aria2 Engine)
 A dedicated, fluid download manager embedded directly inside the Central Dashboard:
 
@@ -432,6 +466,7 @@ preview <window_id>          Capture a live window thumbnail
 desktop <install|cleanup>    Manage KWin authorization desktop entries
 shortcuts <backup|bind|restore|status>
 tray <cmd>                   System tray operations
+skills <cmd>                 Agent skills: search, install, enable/disable, doctor, mcp
 doctor [--json]              Diagnose all system dependencies
 ```
 

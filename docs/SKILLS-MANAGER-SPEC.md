@@ -1,9 +1,10 @@
 # Skills Manager
 
-> **Status**: design proposal, nothing implemented.
+> **Status**: P0–P6 implemented, including the MCP find-and-load surface.
 > **Scope**: an Astral-owned manager for agent skills — discovery across sources,
 > repository-scoped install/uninstall, symlink farms that cannot corrupt a home directory,
-> and per-skill or per-repository enable/disable.
+> per-skill or per-repository enable/disable, and an MCP server that can load a skill into a
+> session without installing it.
 > **Related**: [`APPS-PLATFORM-SPEC.md`](APPS-PLATFORM-SPEC.md) (the app this ships as, and the
 > consent/registry patterns it reuses), [`ARCHITECTURE.md`](ARCHITECTURE.md) §9 (kernel, apps,
 > ports), [`LESSONS.md`](LESSONS.md) (what "prove it live" means here).
@@ -373,6 +374,7 @@ astral-plasma skills remove  <skill>[@repo] | --repo <owner/repo> [--purge]
 astral-plasma skills update  [--repo <owner/repo>] [--check] [--json]
 astral-plasma skills doctor  [--json] [--fix]
 astral-plasma skills import  [--from npx-skills] [--dry-run|--apply]  # adopt what already exists (D4)
+astral-plasma skills mcp                             # MCP: --http (Streamable HTTP) or --stdio; find + load, never install
 ```
 
 Every command is `--json`-capable (the GUI is a client, not a second implementation), and every
@@ -456,6 +458,152 @@ A new platform app, `org.astralplasma.skills`, with `integrations: [{ "kind": "s
 | Keyring locked at login | source reports `needs-auth · keyring locked`; nothing is installed silently, no token is written to disk as a "fix" |
 | Token pasted into a URL | refused by the URL validator; the field says to use the auth selector so the token cannot reach `.git/config` |
 
+## 12b. MCP: find and load without installing
+
+`astral-plasma skills mcp` is a Model Context Protocol server. **Streamable HTTP is the primary
+transport**: the running shell (and `astral-plasma serve`) exposes `POST
+http://127.0.0.1:8942/mcp`, and `astral-plasma skills mcp --http [--port N]` runs the same
+endpoint standalone. Stdio (`astral-plasma skills mcp` or `--stdio`) remains for clients that
+launch a command rather than connect to a URL. It is an **additional** discovery and loading
+surface, not a replacement for installation: links and the ledger remain the way a skill becomes
+available to an agent that only reads its own skill directory.
+
+### 12b.1 Why "load" is a tool result
+
+MCP has no API that injects text into the model's context from outside a request. The protocol's
+only channel is the response to a tool call, so `skill_load` returns the skill's `SKILL.md` as a
+content block; that response **is** the load. No file is written to the project, the agent
+directories, the store, or the ledger. The server keeps the loaded skill's bytes in memory for
+the life of the process, which is exactly the "current session" boundary. Restarting the server
+forgets loaded skills; the source can be loaded again.
+
+### 12b.2 Tools
+
+| Tool | Input | Returns | Mutates |
+| --- | --- | --- | --- |
+| `skill_search` | `query`, `source` (`github`, `skills.sh`, `all`, `added`, or one added source id), `limit` | catalog hit or skill rows: `source`, `name`, `description`, `installs`, `url`, `kind`, `trust` | nothing |
+| `skill_inspect` | `source` (owner/repo, git URL, folder, or added id) | `source`, `id`, commit SHA, ref, and each skill's id, description, hash, file count, bytes, `installed` | nothing |
+| `skill_load` | `source`, `skill` | metadata + the skill's `SKILL.md` verbatim; `handle` is `<sourceId>:<skill>`, `files` is the manifest | no project, agent, store or ledger change; a git fetch may refresh the XDG cache |
+| `skill_read` | `handle`, `path` relative to the skill root | file text, or a base64 JSON envelope for binary content | nothing |
+
+`skill_inspect` and `skill_load` accept the same source syntax as the CLI, plus the stable id an
+added source already has. `skill_search` with `source: "added"` scans every added source and
+filters by a case-insensitive match on the skill id or description; naming one added id scans
+only that source. A git source is fetched for the scan; a local source is walked live (D8).
+
+The server is dual-era: it advertises `2026-07-28` through `server/discover` and serves
+per-request `_meta` statelessly, while continuing to answer the `initialize` handshake for
+`2025-11-25`, `2025-06-18`, `2025-03-26` and `2024-11-05`. Every request is independent; a
+request with a modern `_meta` gets `resultType: "complete"` and the server identity in its
+`_meta`. An unsupported modern version gets `-32022` with the list of supported revisions.
+`tools/list` and `tools/call` keep the same shape in both eras.
+
+Over Streamable HTTP, every JSON-RPC message is its own `POST /mcp`; responses are
+`application/json` (the transport permits JSON or an SSE stream, and these tools have no progress
+to stream). The modern headers are validated against the body: `MCP-Protocol-Version` must match
+`params._meta`, `Mcp-Method` must match `method`, and `Mcp-Name` must match `params.name` for
+`tools/call`; a mismatch is `400` with `-32020`. Unknown modern methods are `404` with `-32601`.
+Legacy `initialize` returns an `Mcp-Session-Id`, later requests may carry it, and `DELETE /mcp`
+ends it. `GET /mcp` is `405`: this server has no server-initiated stream. A foreign `Origin` is
+`403`, and the endpoint binds loopback only.
+
+The server also answers `ping`, ignores notifications without replying, and returns tool
+failures in-band (`isError: true`) rather than turning them into JSON-RPC errors. Stdio carries
+only JSON-RPC; diagnostics go to stderr.
+
+### 12b.3 Limits and trust
+
+- A `SKILL.md` over 1 MiB is refused rather than truncated: half a skill's instructions are worse
+  than an error.
+- One `skill_read` file is capped at 512 KiB. Binary files are returned as
+  `{encoding:"base64", …}` rather than lossy text.
+- `skill_read` accepts only normal, relative POSIX components; `..`, absolute paths, backslashes
+  and NUL are refused, so one loaded skill cannot read another skill's files or the host's.
+- A git source is fetched through the existing shallow-clone cache under
+  `$XDG_CACHE_HOME/astral-plasma/skills/git`; the store and ledger stay untouched.
+- Loading a third-party skill gives its instructions to the model. The server's `instructions`
+  tell the client to load only requested or clearly relevant skills and to weigh their content
+  against the user's request; the tools are annotated `readOnlyHint: true`. Consent for a
+  *persistent* install is still the install flow's job (§9).
+
+### 12b.4 Client configuration
+
+The endpoint is live while the shell runs, or while `astral-plasma serve` runs:
+
+```
+http://127.0.0.1:8942/mcp
+```
+
+Claude Code:
+
+```bash
+claude mcp add --transport http astral-skills http://127.0.0.1:8942/mcp
+```
+
+Pi (the Copilot harness):
+
+```bash
+pi mcp add astral-skills --url http://127.0.0.1:8942/mcp
+```
+
+Claude Desktop, Cursor and other `mcpServers` JSON clients:
+
+```json
+{
+  "mcpServers": {
+    "astral-skills": {
+      "type": "http",
+      "url": "http://127.0.0.1:8942/mcp"
+    }
+  }
+}
+```
+
+Codex (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.astral-skills]
+url = "http://127.0.0.1:8942/mcp"
+```
+
+OpenCode (`opencode.json`):
+
+```json
+{
+  "mcp": {
+    "astral-skills": {
+      "type": "remote",
+      "url": "http://127.0.0.1:8942/mcp",
+      "enabled": true
+    }
+  }
+}
+```
+
+When the shell is not running, start the same endpoint alone:
+
+```bash
+astral-plasma skills mcp --http --port 8942
+```
+
+If the port is already in use, nothing silently moves: `skills mcp --http` exits with the
+sentence naming the port, and the shell logs the bind failure instead of pretending `/mcp`
+exists. Point the client at the process that already owns the URL, choose another standalone
+port, or set `ASTRAL_API_PORT` for the shell and configure the client to the same URL. A fixed
+URL in a client is configuration, so an automatic fallback port would be worse than a clear
+failure.
+
+Clients that can only launch a child process use the stdio fallback:
+
+```bash
+claude mcp add astral-skills -- astral-plasma skills mcp --stdio
+pi mcp add astral-skills -- astral-plasma skills mcp --stdio
+```
+
+The server uses the `$HOME`/`$XDG_*` of the process that runs it: the shell for `/mcp`, or the
+process that starts `skills mcp --http`. A sandboxed client connecting over HTTP sees the server
+process's added sources, not its own; the MCP server and the install manager read one ledger.
+
 ## 13. Tests (TDD, per repo rules)
 
 **Domain (no I/O)** — plan matrices: fresh install, correct link already present, wrong target,
@@ -470,6 +618,15 @@ creating duplicates.
 
 **CLI contract** — `--json` shapes, exit codes, and the sentence each refusal prints.
 
+**MCP contract** — the `server/discover` probe, a stateless modern request marked
+`resultType: "complete"`, an unsupported version error, initialize/tools-list/ping, tool errors
+in-band, notifications unanswered, stdout pure JSON-RPC, a local and a git skill loaded without a
+link or ledger row, `skill_read` returning a reference, and traversal (`../`) refused.
+`daemon/tests/test_skill_mcp.rs` drives the stdio binary; `daemon/tests/test_mcp_http.rs` drives
+the Streamable HTTP endpoint: session mint/validation/delete, header/body mismatch (`-32020`),
+unknown method (`404`/`-32601`), `202` notifications, `405` GET, foreign-Origin `403`, and a real
+TCP socket.
+
 **QML** — repo grouping, master/child toggle precedence, pending vs settled state, doctor rows,
 and the consent card content (source, ref, hash, file count).
 
@@ -478,7 +635,7 @@ listing the skill; a removed repo must leave no link behind (`find … -xtype l`
 
 ## 14. Phases
 
-Status: **P0–P5 implemented**, each with the tests named in §13 and the live checks recorded in
+Status: **P0–P6 implemented**, each with the tests named in §13 and the live checks recorded in
 Appendix B.
 
 | Phase | Content | Gate |
@@ -489,6 +646,7 @@ Appendix B.
 | **P3** (½ d) ✅ | GitHub repository search and skills.sh's public `/api/search` (both tokenless), consent payload. | Search returns a repo and installs from it from either source; a pasted skills.sh URL resolves through GitHub. |
 | **P4** (1 d) ✅ | The app: Settings → Skills page, daemon socket, grouping, toggles, doctor. | Live screenshots of search, install, repo toggle, doctor; QML suites green. |
 | **P5** (½ d) ✅ | Update diff/report, ref pinning UI, one-deep rollback (D11), trash/restore. | Update a pinned repo, see the per-skill diff, roll back one ref, restore a removed repo from trash. |
+| **P6** (½ d) ✅ | MCP: Streamable HTTP at `POST /mcp` (primary) and stdio; search, inspect, load and read; session-only loading; no project mutation. | `test_mcp_http.rs` (session lifecycle, header validation, Origin, real socket) and `test_skill_mcp.rs` (stdio protocol) both green; a local skill loads without a link or ledger row, a git skill reads without a store copy, traversal is refused; the install suites stay green. |
 
 ## 15. Decisions
 
@@ -508,6 +666,8 @@ Settled here so implementation has no open questions. Each is reversible; each s
 | **D10** | **Keep the ecosystem's canonical layout**: `.agents/skills` remains the canonical link farm, `.claude/skills` links into it, and content is addressed by hash the same way `skills-lock.json` does. | Users run both tools and several agents read those paths. Interop is worth more than a private layout, and matching their hash function lets us adopt and compare installs. |
 | **D11** | **One-deep rollback**: an update keeps the previous store ref until the next successful update. | Updating a skill should be recoverable for a day without a full version-history store. Two refs per repository is a bounded cost. |
 | **D12** | **No telemetry, no uploads.** | Skills are user content; nothing about them leaves the machine. |
+| **D13** | **MCP loads beside install, not instead of it.** `skills mcp` returns a skill's `SKILL.md` in a tool result and keeps it only for the server's lifetime; the link farm, ledger, store and consent flow are unchanged. | An agent that only reads its own skill directory still needs an install; a session that needs one skill should not have to mutate a project to try it. Both paths share search and inspection, and differ only in whether bytes are linked. |
+| **D14** | **Streamable HTTP at `POST /mcp` is the primary MCP transport; stdio remains as a fallback.** The shell's existing localhost API server mounts the endpoint, and `skills mcp --http` runs it standalone. | A URL-based client cannot launch a child process, and the shell already has a loopback HTTP server. Both transports share one `McpServer` handler, so tool behaviour cannot drift between them. |
 
 ---
 
@@ -549,6 +709,7 @@ filesystem disagreed with.
 | The settings page could not see `AppStates` | a relative import and a module import are two singleton registrations (C.13), and the offscreen runner cannot resolve the module at all | the shell passes `integrations` down as data; no settings file imports the host |
 | Every offscreen suite broke when a `qmldir` appeared in `Kernel/services` | a directory import becomes a module import, which instantiates Quickshell singletons eagerly | the directory stays `qmldir`-free; only `Host` is a module |
 | A local source remembered `--copy` only if typed again | `install` re-parsed the input instead of the recorded source | an already-added source's spec (copy, watch, ref) is reused |
+| The MCP server only spoke the `initialize` handshake | the current revision (`2026-07-28`) is stateless and a modern client probes `server/discover`; it would never send `initialize` | the server is dual-era: `server/discover`, per-request `_meta`, `resultType: "complete"` and `-32022` for an unknown version, while `2025-11-25` and earlier still negotiate normally |
 
 Appendix A's observation that the machine already had a **mixed** farm (real directories, relative
 links, an absolute link into a checkout, one dangling link) was the acceptance material for

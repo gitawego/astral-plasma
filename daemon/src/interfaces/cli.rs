@@ -13,7 +13,7 @@ use crate::infrastructure::launcher::DesktopLauncherAdapter;
 use crate::infrastructure::plasma_adapter::PlasmaAdapter;
 use crate::infrastructure::proc_metrics::ProcMetricsAdapter;
 use crate::infrastructure::systemd_adapter::SystemdAdapter;
-use crate::interfaces::api_server::{run_api_server, DEFAULT_API_PORT};
+use crate::interfaces::api_server::{api_port, run_api_server};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -49,7 +49,7 @@ pub async fn run_cli() -> DynResult<()> {
             run_self_contained_app().await?;
         }
         "serve" | "server" => {
-            let port = args.get(2).and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_API_PORT);
+            let port = args.get(2).and_then(|p| p.parse().ok()).unwrap_or_else(api_port);
             run_api_server(port).await?;
         }
         "extract" => {
@@ -1157,7 +1157,7 @@ pub async fn run_cli() -> DynResult<()> {
         // The skills manager (docs/SKILLS-MANAGER-SPEC.md). `skill` (singular) above is the
         // bundled desktop-tools skill; `skills` (plural) manages installed agent skills.
         "skills" => {
-            return run_skills_command(&args);
+            return run_skills_command(&args).await;
         }
 
         "metrics" => {
@@ -2342,6 +2342,7 @@ fn print_usage() {
     eprintln!("  desktop <install|cleanup> - Manage KWin authorization desktop entries");
     eprintln!("  shortcuts <cmd>         - Granular shortcut management: backup, bind, restore, status");
     eprintln!("  tray <cmd>              - System tray operations");
+    eprintln!("  skills <cmd>            - Agent skills: search, install, enable/disable, doctor, mcp (http/stdio)");
     eprintln!("  omarchy <install|remove|status> - Manage hosted Omarchy plugin package");
     eprintln!("  doctor [--json]         - Diagnose and report versions of all system dependencies");
 }
@@ -2419,7 +2420,9 @@ async fn run_self_contained_app() -> DynResult<()> {
 
     // 3. Start API server in background task
     tokio::spawn(async move {
-        let _ = run_api_server(DEFAULT_API_PORT).await;
+        if let Err(error) = run_api_server(api_port()).await {
+            eprintln!("[API Server] {error}");
+        }
     });
 
     // Discovery belongs to the daemon: shortly after login, then every six
@@ -3603,9 +3606,10 @@ fn skills_flag(args: &[String], name: &str) -> Option<String> {
 }
 
 /// Flags whose value must not be mistaken for a positional argument.
-const SKILLS_VALUE_FLAGS: [&str; 12] = [
+const SKILLS_VALUE_FLAGS: [&str; 14] = [
     "--source", "--skill", "--target", "--scope", "--ref", "--subpath",
     "--ssh-key", "--host", "--label", "--token", "--limit", "--copy-target",
+    "--port", "--transport",
 ];
 
 /// The positional arguments from `start` onwards, with flag *values* skipped.
@@ -3687,13 +3691,17 @@ fn skills_selector(
     }
 }
 
-fn run_skills_command(args: &[String]) -> DynResult<()> {
+async fn run_skills_command(args: &[String]) -> DynResult<()> {
     use crate::application::skill_manager as manager;
 
     let sub = args.get(2).map(String::as_str).unwrap_or("list");
     let is_json = args.iter().any(|arg| arg == "--json");
     let ctx = skills_context(args);
-    manager::recover(&ctx).ok();
+    // The MCP server is a read path: it must not finish a pending install as a side effect of
+    // loading a skill. Every other subcommand keeps the recovery behaviour.
+    if sub != "mcp" && sub != "serve-mcp" {
+        manager::recover(&ctx).ok();
+    }
 
     let print = |value: &serde_json::Value| -> DynResult<()> {
         println!("{}", serde_json::to_string_pretty(value)?);
@@ -3701,6 +3709,42 @@ fn run_skills_command(args: &[String]) -> DynResult<()> {
     };
 
     match sub {
+        "mcp" | "serve-mcp" => {
+            if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+                eprintln!(
+                    "Usage: astral-plasma skills mcp [--http [--port N] | --stdio]\n\n\
+                     Streamable HTTP: pass --http [--port N] (the running shell and\n\
+                     `astral-plasma serve` also expose http://127.0.0.1:8942/mcp).\n\
+                     Stdio: pass --stdio (the default when no transport is named).\n\
+                     Tools: skill_search, skill_inspect, skill_load, skill_read. Loading returns\n\
+                     a skill's SKILL.md in the current session; it never installs a link into a\n\
+                     project."
+                );
+                return Ok(());
+            }
+            let transport = skills_flag(args, "--transport").unwrap_or_else(|| {
+                if args.iter().any(|arg| arg == "--http") {
+                    "http".to_string()
+                } else {
+                    "stdio".to_string()
+                }
+            });
+            match transport.as_str() {
+                "http" | "streamable-http" => {
+                    let port = skills_flag(args, "--port")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or_else(api_port);
+                    return crate::interfaces::mcp_server::run_http(port).await;
+                }
+                "stdio" => return crate::interfaces::mcp_server::run_stdio(ctx),
+                other => {
+                    return Err(format!(
+                        "unknown MCP transport '{other}'; use --http (Streamable HTTP) or --stdio"
+                    )
+                    .into())
+                }
+            }
+        }
         "list" | "installed" => {
             let sources = manager::list(&ctx)?;
             if is_json {
@@ -3731,36 +3775,18 @@ fn run_skills_command(args: &[String]) -> DynResult<()> {
             }
         }
         "search" | "find" => {
-            use crate::infrastructure::skill_catalog as catalog;
-
             let query = skills_positional(args, 3).ok_or("usage: skills search <query>")?;
             let source = skills_flag(args, "--source").unwrap_or_else(|| "github".to_string());
-            let hits = match source.as_str() {
-                // The catalog's own search endpoint is public (their CLI uses it); no token.
-                "skills.sh" | "skillssh" => catalog::skills_sh_search(&query)?,
-                _ => {
-                    let token = skills_flag(args, "--token").or_else(|| {
-                        crate::infrastructure::skill_secrets::ambient_token("github.com")
-                            .map(|credential| credential.token)
-                    });
-                    catalog::github_search(&query, token.as_deref())?
-                }
-            };
+            let limit = skills_flag(args, "--limit")
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(20);
+            let token = skills_flag(args, "--token").or_else(|| {
+                crate::infrastructure::skill_secrets::ambient_token("github.com")
+                    .map(|credential| credential.token)
+            });
+            let hits = manager::search(&ctx, &query, &source, limit, token.as_deref())?;
             if is_json {
-                let rows: Vec<serde_json::Value> = hits
-                    .iter()
-                    .map(|hit| {
-                        serde_json::json!({
-                            "source": hit.source,
-                            "name": hit.name,
-                            "description": hit.description,
-                            "installs": hit.installs,
-                            "url": hit.url,
-                            "kind": match hit.kind { catalog::HitKind::Repository => "repository", catalog::HitKind::Skill => "skill" },
-                        })
-                    })
-                    .collect();
-                println!("{}", serde_json::to_string_pretty(&rows)?);
+                println!("{}", serde_json::to_string_pretty(&hits)?);
             } else if hits.is_empty() {
                 println!("No skills found for '{query}'.");
             } else {

@@ -225,3 +225,32 @@ fn update_rollback_and_trash_are_reachable_from_the_cli() {
     let items: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(items.is_array());
 }
+
+#[test]
+fn the_cli_searches_an_added_source_without_a_catalog() {
+    let sandbox = Sandbox::new();
+    let source = sandbox.source();
+    let (ok, output, _) = sandbox.run(&["skills", "source", "add", source.to_str().unwrap()]);
+    assert!(ok, "adding a source failed: {output}");
+
+    let (ok, stdout, stderr) = sandbox.run(&[
+        "skills", "search", "alph", "--source", "local-my-skills", "--json",
+    ]);
+    assert!(ok, "{stderr}");
+    let hits: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(hits.as_array().unwrap().len(), 1, "{stdout}");
+    assert_eq!(hits[0]["source"], "local-my-skills");
+    assert_eq!(hits[0]["name"], "alpha");
+    assert_eq!(hits[0]["kind"], "skill");
+}
+
+#[test]
+fn the_mcp_command_names_the_transport_it_offers() {
+    let sandbox = Sandbox::new();
+    let (ok, stdout, stderr) = sandbox.run(&["skills", "mcp", "--transport", "bogus"]);
+    assert!(!ok, "an unknown transport must fail: {stdout}{stderr}");
+    assert!(
+        stderr.contains("unknown MCP transport") && stderr.contains("--http"),
+        "the refusal names the two transports: {stderr}"
+    );
+}

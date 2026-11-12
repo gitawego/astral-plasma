@@ -1,15 +1,17 @@
 //! Searching for skills across sources (spec §8.3, D1).
 //!
-//! Two searchable sources exist, and they differ in a way the product must be honest about:
-//! GitHub's API works anonymously (rate-limited), while skills.sh requires a Vercel OIDC token a
-//! desktop app cannot mint. So GitHub is the default discovery path, skills.sh turns on with a
-//! token, and a pasted skills.sh *page* still installs through the repository it names.
+//! Two searchable sources exist, and both work without a credential: GitHub's repository search
+//! is anonymous (rate-limited), and skills.sh exposes the public `/api/search` endpoint its own
+//! CLI calls. skills.sh's documented `/api/v1/*` family needs a Vercel OIDC token a desktop app
+//! cannot mint, so it is not used; a pasted skills.sh *page* still installs through the
+//! repository it names.
 
 use crate::domain::ports::DynResult;
 use crate::domain::skill_source::{parse_source, SourceSpec};
+use serde::Serialize;
 
 /// One search result. A repo hit is a source; a skill hit names one skill of a source.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SearchHit {
     /// `owner/repo`.
     pub source: String,
@@ -24,13 +26,15 @@ pub struct SearchHit {
     pub trust: HitTrust,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum HitKind {
     Repository,
     Skill,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum HitTrust {
     Official,
     Community,

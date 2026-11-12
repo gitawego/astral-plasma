@@ -35,3 +35,15 @@ async fn test_api_404_endpoint() {
     assert_eq!(code, 404);
     assert!(body.contains("Not Found"));
 }
+
+#[tokio::test]
+async fn the_api_server_names_an_occupied_port_instead_of_stealing_it() {
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let error = astral_plasma::interfaces::api_server::run_api_server(port)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("already in use"), "got: {error}");
+    assert!(error.contains("ASTRAL_API_PORT"), "the sentence names the override: {error}");
+}
