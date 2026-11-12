@@ -2025,14 +2025,14 @@ ColumnLayout {
                     variant: "filled"
                     onClicked: {
                         root.addProviderOpen = true;
-                        root.jumpToZone("quotas");
+                        root.selectTab("quotas");
                     }
                 }
 
                 PillButton {
                     label: "Open quotas"
                     iconText: "arrow_upward"
-                    onClicked: root.jumpToZone("quotas")
+                    onClicked: root.selectTab("quotas")
                 }
 
             }

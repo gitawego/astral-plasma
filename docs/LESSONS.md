@@ -3294,6 +3294,12 @@ to a global that may or may not be there.** Exporting a `zoneRequested` signal
 costs one line; discovering three weeks later that a third of the UI is inert
 because a `typeof` guard swallowed every request costs a design round.
 
+> **Later:** the in-page rail itself was removed. The scaffold now exposes
+> `sectionY()` for a vertical sections page and `selectTab()` for a long page;
+> the hub reads both and chooses by the page's shape. The lesson stands: the
+> page talks to the host through an interface in its own scope, never through a
+> global that may or may not exist.
+
 ### Lesson 5: a page the harness cannot build is a page nobody tests
 
 The offscreen suite instantiates every page. One page could never be loaded:
@@ -3309,22 +3315,19 @@ pages got a real test instead of a promise.
 ### Verification
 
 - `tests/tst_settings_pages_contract.qml` - every page roots in `SettingsPage`,
-  names itself, declares zones whose anchors resolve in document order, answers
-  the hub's four members, and drops a zone when its section is hidden.
-- `tests/tst_settings_hub_rail.qml` - live hub: a short page stays on its first
-  zone; a long page's six zones ascend; **the rendered pills are pressed** (the
-  real `clicked` signal, found by walking the instantiated header) and the view
-  must move, with the token rung its distance earns; a token-less jump lands on
-  the target and lights the trailing zone.
-- `tests/tst_settings_sticky_header.qml` - the pure rules (the spy, the ladder,
-  the damping), the AI page's forwarded rail signal, plus the source contracts of
-  the hub and the page.
-- `tests/tst_settings_page_scaffold.qml` - the scaffold itself, including that a
-  press emits `zoneRequested` and that the scaffold carries no `Config` write.
-- `tests/tst_settings_pages_contract.qml` - the per-page contract, including
-  "a rail press asks the host for that zone" for every page.
-- Live check: each page's pinned header and rail, the trailing-zone jump, and the
-  audio page whose rail used to lie.
+  names itself, and declares either section anchors that resolve in document
+  order or a tab list with ids/labels/icons; a hidden section or tab leaves.
+- `tests/tst_settings_hub_rail.qml` - live hub: a sections page's deep link
+  scrolls to its anchor; a tabs page's deep link selects the tab and leaves the
+  viewport at the top; **the rendered tabs are pressed** (the real `clicked`
+  signal, found by walking the instantiated header) and the body must switch.
+- `tests/tst_settings_sticky_header.qml` - the pure scroll-spy and motion rules,
+  the AI page's tab deep links, plus the source contracts of the hub and page.
+- `tests/tst_settings_page_scaffold.qml` - both shapes: section anchors resolve
+  without a rail, tabs swap the body, and the old `zoneRequested` plumbing is
+  gone.
+- Live check: Network and Appearance as vertical sections, System as tabs, and
+  the left rail's category headings flush with the pills.
 
 ---
 

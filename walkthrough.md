@@ -3071,6 +3071,10 @@ runs while the Skills page is visible.
 
 ## Atlas settings navigation: every section is a tab (2026-11-12)
 
+> **Superseded in part by the next entry.** Tabs proved too broad a default. The final
+> split keeps them only on AI & Agents, Voice Dictation, System & Services, and Skills;
+> every other page is a vertical section stack again.
+
 The settings surface was reorganized around the **Atlas** direction. The left rail is 236 px
 wide, every rail item carries an icon and a label, and each page has a page icon plus a
 horizontal strip of icon + label tabs. Exactly one tab body is shown at a time; the active tab
@@ -3083,9 +3087,10 @@ What changed:
 - `SettingsPage` is the Atlas scaffold: `icon`, `tabs`, `currentTab`, `selectTab()`, and
   `ensureCurrentTab()`. The shared `SettingsTabBar` control renders the strip. A page with one
   section declares no tabs, because one section is not navigation.
-- Every multi-section page was migrated: Wallpaper & Style, Appearance, Network, Bluetooth,
-  Audio, Dock & Layout, Dashboard, Downloads, System & Services, World Clock, Updates, Voice,
-  and Skills. Apps and Status Icons keep a single body.
+- Every multi-section page was initially migrated: Wallpaper & Style, Appearance, Network,
+  Bluetooth, Audio, Dock & Layout, Dashboard, Downloads, System & Services, World Clock,
+  Updates, Voice, and Skills. The follow-up reverted the short pages to sections; only the
+  four long pages keep tabs. Apps and Status Icons keep a single body.
 - `AiPage` keeps its own root for absolutely positioned overlays, but now exposes the same
   `hasTabs` / `tabs` / `currentTab` / `selectTab` contract. Its legacy deep links still work:
   `voice`, `skills`, and `setup` all select the Setup tab, and selecting Setup opens the
@@ -3113,3 +3118,39 @@ sticky-header contract while asserting AiPage's tab deep links.
 > `nordic_minimal`, and `cyberpunk_neon`: the tab strip, header icon, and active underline
 > remain legible in all three, and the page content switches without scrolling. `make test`
 > exit 0 — 1347 Rust tests, 169 QML suites, app boundaries clean.
+
+---
+
+## Sections by default, tabs only for long pages (2026-11-12)
+
+The first Atlas pass put a tab strip on every multi-section page. That was too much
+navigation for pages that read in one or two screens: Wi-Fi & Network, Wallpaper & Style,
+Appearance, Bluetooth, Sound & Audio, Dock & Layout, Dashboard, Downloads, World Clock, and
+Updates are vertical section stacks again. Tabs remain only where the content genuinely runs
+several viewports:
+
+- **AI & Agents** — Quotas / Copilot / Setup.
+- **Voice Dictation** — Speech Engine / Speech Model / Audio & Mic / Preferences.
+- **System & Services** — Services / Desktop / Session / Developer / Logging.
+- **Skills** — Find / MCP server / Installed.
+
+The scaffold now documents both shapes. A sections page declares `zones` as deep-link anchors
+only; the old in-page rail and its `zoneRequested` plumbing are gone. `sectionY()` still
+resolves the anchors, so `Config.openSettings(page, section)` scrolls to the right section.
+A tabs page keeps `hasTabs`, `tabs`, `currentTab`, and `selectTab()`, and a deep link selects
+the tab instead. The hub has both routes and chooses by the loaded page's shape.
+
+The left rail's category headings were also moved flush with the left edge of the nav pills,
+instead of being indented 8 px into the rail.
+
+Regression tests: `tests/tst_settings_pages_contract.qml` now asserts the shape per page
+(section anchors in document order, or tabs with ids/labels/icons and selection);
+`tests/tst_settings_hub_rail.qml` drives a sections page deep link (scrolls) and a tabs page
+deep link (selects); `tests/tst_settings_page_scaffold.qml` covers both shapes and the absence
+of the old rail. `tests/tst_nexus_hub.qml` pins the flush-left heading.
+
+> **Verified live**: captured Network & Internet and Theming & Appearance as vertical sections
+> with no tab strip, and System & Services still with its five tabs. The rail headings
+> (`CONNECTIVITY`, `AI & VOICE`, `HARDWARE`, `DESKTOP SHELL`, `SYSTEM`) now start at the same
+> left edge as the pills. `make test` exit 0 — 1347 Rust tests, 169 QML suites, app boundaries
+> clean.

@@ -100,13 +100,23 @@ Item {
             "pageLoader must reserve a 14px scrollbar gutter to prevent content overlap");
         assert(/id:\s*scrollBarIndicator[\s\S]{0,300}?thumbTravelRange/.test(hubSrc),
             "scrollBarIndicator must use bounded thumbTravelRange math");
-        assert(/title:\s*"AI & Voice"/.test(hubSrc), "NexusHub must feature an AI & Voice category");
-        assert(/id:\s*"voice",\s*label:\s*"Voice Dictation"/.test(hubSrc),
+        assert(/["']?title["']?:\s*"AI & Voice"/.test(hubSrc),
+            "NexusHub must feature an AI & Voice category");
+        assert(/["']?id["']?:\s*"voice",?\s*["']?label["']?:\s*"Voice Dictation"/.test(hubSrc),
             "NexusHub must offer a first-class Voice Dictation navigation entry");
-        assert(/case\s*"voice":\s*return\s*voicePageComp;/.test(hubSrc),
+        assert(/case\s*"voice":[\s\S]{0,40}?return\s*voicePageComp;/.test(hubSrc),
             "NexusHub pageLoader must route 'voice' to voicePageComp");
-        assert(/Component\s*\{\s*id:\s*voicePageComp;\s*VoicePage/.test(hubSrc),
+        assert(/id:\s*voicePageComp[\s\S]{0,80}?VoicePage/.test(hubSrc),
             "NexusHub must declare voicePageComp component");
+
+        // Section headings are flush with the left edge of the nav pills, not
+        // indented into the rail: the category icon is the first thing on the
+        // line, and the pills below it start at the same x.
+        const sectionStart = hubSrc.indexOf("id: sectionRow");
+        assert(sectionStart >= 0, "the rail renders a section-heading row");
+        const sectionLead = hubSrc.substring(sectionStart, sectionStart + 220);
+        assert(!/x:\s*[1-9][0-9]*/.test(sectionLead),
+            "section headings must start at the rail's left edge, got: " + sectionLead);
 
         // Verify that sidebar delegate is decoupled from in-page scroll spy
         assert(/active:\s*root\.activePage\s*===\s*modelData\.id/.test(hubSrc),

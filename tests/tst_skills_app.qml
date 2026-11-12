@@ -163,7 +163,8 @@ Item {
             "the shell feeds the settings window with the integration map");
 
         const hub = readLocalFile("../settings_gui/NexusHub.qml");
-        assert(hub.indexOf('{ id: "skills", label: "Skills"') >= 0, "the rail has a Skills entry");
+        assert(/["']?id["']?:\s*"skills",?\s*["']?label["']?:\s*"Skills"/.test(hub),
+            "the rail has a Skills entry");
         assert(hub.indexOf("visibleSections") >= 0,
             "the rail is filtered by the integrations an enabled app declares");
 

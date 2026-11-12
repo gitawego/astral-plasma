@@ -5,16 +5,20 @@ import "../settings_gui/pages"
 // ============================================================================
 // Settings page scaffold
 // ============================================================================
-// The contract every settings page opts into: a sticky title, and the zone list
-// the hub's scroll-spy and rail are built from. These assertions are the contract
-// itself, so a page cannot half-adopt it (a rail with zones whose anchors do not
-// resolve would scroll nowhere).
+// The contract every settings page opts into. There are two shapes:
+//
+//   * **sections**: a vertical stack. `zones` names the anchors the hub scrolls
+//     a deep link to; there is no in-page navigation strip.
+//   * **tabs**: only for a page that genuinely runs several viewports. Tabs
+//     switch the body; they never scroll the reader to an anchor.
+//
+// These assertions are the contract itself, so a page cannot half-adopt it.
 Item {
     id: testRoot
     width: 900
     height: 700
 
-    // A page with three zones, at deliberately uneven offsets.
+    // A sections page with three anchors, at deliberately uneven offsets.
     SettingsPage {
         id: triPage
         width: 800
@@ -30,38 +34,55 @@ Item {
             width: parent.width
             spacing: 0
 
-            Item { id: statusAnchor; implicitHeight: 40 }
+            Item {
+                id: statusAnchor
+                implicitHeight: 40
+            }
             Item { implicitHeight: 260 }
-            Item { id: wifiAnchor; implicitHeight: 40 }
+            Item {
+                id: wifiAnchor
+                implicitHeight: 40
+            }
             Item { implicitHeight: 120 }
-            Item { id: advancedAnchor; implicitHeight: 40 }
+            Item {
+                id: advancedAnchor
+                implicitHeight: 40
+            }
         }
     }
 
-    // A page with a single zone: a title, no rail.
+    // A single-section page: a title and one body, no anchors needed.
     SettingsPage {
         id: singleZonePage
         width: 400
         title: "Sound"
-        zones: [{ id: "outputs", label: "Outputs", anchor: outputsAnchor }]
-        Item { id: outputsAnchor; implicitHeight: 20 }
+        Item {
+            id: outputsAnchor
+            implicitHeight: 20
+        }
     }
 
-    // Atlas: tabs switch the body; they do not scroll to an anchor.
+    // Tabs: switch the body; do not scroll to an anchor.
     SettingsPage {
         id: tabPage
         width: 800
         title: "Skills"
-        icon: "school"
+        icon: "extension"
         tabs: [
             { id: "find", label: "Find", icon: "search", component: findTab },
-            { id: "mcp", label: "MCP server", icon: "dns", component: mcpTab }
+            { id: "mcp", label: "MCP server", icon: "lan", component: mcpTab }
         ]
         property Component findTab: Component {
-            Item { objectName: "findTab"; implicitHeight: 40 }
+            Item {
+                objectName: "findTab"
+                implicitHeight: 40
+            }
         }
         property Component mcpTab: Component {
-            Item { objectName: "mcpTab"; implicitHeight: 40 }
+            Item {
+                objectName: "mcpTab"
+                implicitHeight: 40
+            }
         }
     }
 
@@ -84,60 +105,46 @@ Item {
         console.log("RUNNING: Settings Page Scaffold");
 
         // ------------------------------------------------------------------
-        // The declaration *is* the contract
+        // Sections: anchors for deep links, no rail
         // ------------------------------------------------------------------
         assert(triPage.title === "Network" && triPage.subtitle !== "",
             "the page carries its identity");
-        assert(triPage.zones.length === 3, "three zones declared");
-        assert(triPage.hasRail === true, "three zones means a rail");
+        assert(triPage.hasTabs === false, "a sections page declares no tabs");
+        assert(triPage.zones.length === 3, "three section anchors declared");
 
-        // Anchors resolve to real page coordinates, in order.
         const statusY = triPage.sectionY("status");
         const wifiY = triPage.sectionY("wifi");
         const advancedY = triPage.sectionY("advanced");
         assert(statusY !== undefined && wifiY !== undefined && advancedY !== undefined,
-            "every declared zone has an anchor");
+            "every declared section has an anchor");
         assert(statusY < wifiY && wifiY < advancedY,
-            "zones resolve in document order (" + statusY + ", " + wifiY + ", " + advancedY + ")");
+            "sections resolve in document order (" + statusY + ", " + wifiY + ", " + advancedY + ")");
         assert(statusY === statusAnchor.mapToItem(triPage, 0, 0).y,
             "the anchor is mapped into page coordinates, not guessed");
         assert(triPage.sectionY("nonsense") === undefined,
-            "an undeclared zone has no anchor to scroll to");
+            "an undeclared section has no anchor to scroll to");
 
-        // ------------------------------------------------------------------
-        // Highlighting and jumping
-        // ------------------------------------------------------------------
         triPage.currentSection = "wifi";
-        assert(triPage.isZoneCurrent("wifi") === true
-                && triPage.isZoneCurrent("status") === false,
-            "only the current zone is highlighted");
-        triPage.currentSection = "";
-        assert(triPage.isZoneCurrent("status") === false,
-            "before the spy reports, nothing is highlighted");
-        // A rail press must reach the host: the page emits `zoneRequested`, and
-        // the hub is the one that scrolls. It used to write
-        // `Config.settingsSection` from a file that never imported `Config` - an
-        // unimported singleton is not in a component's scope, so the guarded
-        // write was a silent no-op and the whole rail was dead.
-        let requested = "";
-        function scaffoldZoneProbe(zoneId) { requested = zoneId; }
-        triPage.zoneRequested.connect(scaffoldZoneProbe);
-        triPage.jumpToZone("advanced");
-        triPage.zoneRequested.disconnect(scaffoldZoneProbe);
-        assert(requested === "advanced", "a rail press asks the host for that zone");
+        assert(triPage.currentSection === "wifi",
+            "the hub can write the current section for its scroll-spy");
 
         // ------------------------------------------------------------------
-        // A single zone is a title, not a rail
+        // A single section needs no anchor declaration at all
         // ------------------------------------------------------------------
-        assert(singleZonePage.hasRail === false,
-            "one zone does not get a rail - a single pill is not navigation");
-        assert(singleZonePage.sectionY("outputs") !== undefined, "its anchor still resolves");
+        assert(singleZonePage.hasTabs === false,
+            "a single-section page declares no tabs");
+        assert(singleZonePage.zones.length === 0,
+            "a single-section page declares no anchors");
+        assert(singleZonePage.sectionY("outputs") === undefined,
+            "and there is no scroll target to resolve");
 
         // ------------------------------------------------------------------
-        // Atlas tabs
+        // Tabs: switch the body
         // ------------------------------------------------------------------
         assert(tabPage.hasTabs === true && tabPage.hasTabComponents === true,
             "the page declares tabs and their components");
+        assert(tabPage.zones.length === 0,
+            "a tabs page declares no scroll anchors");
         assert(tabPage.currentTab === "find", "the first tab is selected by default");
         assert(tabPage.tabContentItem !== null
                 && tabPage.tabContentItem.objectName === "findTab",
@@ -151,19 +158,20 @@ Item {
         assert(tabPage.currentTab === "mcp", "an unknown tab id is ignored");
 
         // ------------------------------------------------------------------
-        // The hub contract is present (the hub reads these four members)
+        // The scaffold's own contract
         // ------------------------------------------------------------------
         assert(triPage.stickyHeader !== null && typeof triPage.stickyHeader === "object",
             "the scaffold provides the sticky header");
-        assert(triPage.currentSection === "", "the hub can write the current section");
-        assert(typeof triPage.sectionY === "function" && typeof triPage.isZoneCurrent === "function",
-            "the scaffold answers the hub's questions");
+        assert(typeof triPage.sectionY === "function",
+            "the scaffold answers the hub's section question");
 
-        // The rail renders the shared rule, and the header is built from the
-        // declaration rather than hand-written per page.
         const src = readLocalFile("../settings_gui/pages/SettingsPage.qml") || "";
-        assert(src === "" || src.indexOf("active: root.isZoneCurrent(modelData.id)") >= 0,
-            "rail segments render the shared highlight rule");
+        assert(src === "" || src.indexOf("SettingsTabBar") >= 0,
+            "the scaffold renders the shared tab bar for a tabs page");
+        assert(src === "" || src.indexOf("isZoneCurrent") >= 0,
+            "the scaffold exposes the scroll-spy helper section pages may use");
+        assert(src === "" || src.indexOf("zoneRequested") < 0,
+            "the scaffold no longer forwards zone scrolls");
         assert(src === "" || src.indexOf("Config.settingsSection =") < 0,
             "the scaffold asks the host for a scroll instead of writing a global");
 

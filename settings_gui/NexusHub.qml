@@ -1,12 +1,12 @@
-import QtQuick
-import QtQuick.Layouts
-import "../modules/Astral/Kernel/theme"
 import "../modules/Astral/Kernel/components"
 import "../modules/Astral/Kernel/config"
-import "pages"
-import "SectionSpy.js" as SectionSpy
-import "ScrollMotion.js" as ScrollMotion
 import "../modules/Astral/Kernel/services"
+import "../modules/Astral/Kernel/theme"
+import QtQuick
+import QtQuick.Layouts
+import "ScrollMotion.js" as ScrollMotion
+import "SectionSpy.js" as SectionSpy
+import "pages"
 
 Item {
     id: root
@@ -15,22 +15,9 @@ Item {
     /// `{ "kind:id": appId }` for enabled apps, pushed by the shell. Passed as data rather than
     /// imported: a settings file importing the host module would be a second singleton
     /// registration (spec C.13), and the offscreen runner cannot resolve it at all.
-    property var integrations: ({})
+    property var integrations: ({
+    })
     property string activePage: (typeof Config !== "undefined" && Config.activeSettingsPage) ? Config.activeSettingsPage : "wallpaper"
-
-    signal closeRequested()
-
-    implicitWidth: 800
-    implicitHeight: 560
-
-    function navigateTo(pageId) {
-        if (!pageId || pageId === activePage) return;
-        activePage = pageId;
-        if (typeof Config !== "undefined") {
-            Config.activeSettingsPage = pageId;
-        }
-    }
-
     /// A deep link can name a section. Pages opt in by exposing
     /// `sectionY(name)`; the scroll waits for the page layout to settle, because
     /// the target is clamped against the content height.
@@ -39,13 +26,11 @@ Item {
     property alias railSeamItem: railSeam
     /// The page currently loaded in the content pane (introspection surface).
     readonly property alias pageItem: pageLoader.item
-
     /// A zone the reader asked for but that cannot be honoured yet: an external
     /// deep link arrives before the page is even loaded, and a page that has not
     /// been laid out reports every anchor at 0 - the same pre-layout state the
     /// zone offsets exist to defeat. The request is retried from the offsets.
     property string pendingSectionId: ""
-
     /// The zone the reader last asked for, kept as the highlight until they take
     /// over the scroll themselves.
     ///
@@ -57,32 +42,210 @@ Item {
     /// geometry is the truth again. A name the page does not declare as a zone
     /// (a legacy deep link, e.g. the AI page's `voice`) never becomes an override.
     property string requestedSectionId: ""
-
     /// True while the hub itself is moving the view, so the reader-detection does
     /// not mistake its own movement for the reader's.
     property bool programmaticScroll: false
+    /// Motion for a programmatic scroll.
+    ///
+    /// Bound to the shell's motion tokens (`Theme`, the single source of truth per
+    /// DESIGN.md); a property rather than a bare `Theme.` read for two reasons:
+    /// the offscreen harness has no Quickshell, so it cannot load `Theme` and can
+    /// supply the tokens itself - which is what lets the tween, not just its maths,
+    /// be asserted - and a future reduced-motion mode has exactly one seam.
+    property var motionTokens: Theme
+    /// Introspection surface for the content pane's scroll state (tests, and any
+    /// future scrollbar work): where the viewport is, how far it can go, and
+    /// whether a programmatic scroll is running.
+    readonly property real contentOffset: pageFlickable.contentY
+    readonly property real contentMaxOffset: Math.max(0, pageFlickable.contentHeight - pageFlickable.height)
+    readonly property bool scrollAnimating: sectionScrollAnim.running
+    readonly property int scrollAnimationDuration: sectionScrollAnim.duration
+    // --- Sticky header + scroll spy -----------------------------------------
+    // A page may provide its identity as a `stickyHeader` component: the hub then
+    // renders it *outside* the flickable, so the title and the state rail stay put
+    // while the zones scroll. The same zones drive the spy that tells the page
+    // which section the reader is in - so the rail can highlight it.
+    readonly property var pageStickyHeader: (pageLoader.item && pageLoader.item.stickyHeader) ? pageLoader.item.stickyHeader : null
+    readonly property var pageZones: (pageLoader.item && pageLoader.item.zones) ? pageLoader.item.zones : []
+    /// Anchor of every zone the loaded page declares, in page coordinates.
+    ///
+    /// Recomputed, not bound to the page's shape: a binding would snapshot the
+    /// layout at one instant, and a page that is not laid out yet reports every
+    /// anchor at y=0 - which is how the rail used to highlight the *last* zone
+    /// on a short page (all offsets 0, so the spy picks the last one). The
+    /// recompute below is therefore driven by every event that can move an
+    /// anchor: the page being installed, its zones changing with its state, its
+    /// own height settling, and the flickable's content height changing.
+    property var pageZoneOffsets: ({
+    })
+    /// The zone the reader is looking at: the one they asked for while that
+    /// request is still the reason the view is where it is, and otherwise the
+    /// geometry. 16px of slack, so a zone is current as soon as its header
+    /// touches the pinned header; `endOffset` handles the trailing section, which
+    /// cannot scroll its anchor to the top.
+    readonly property string activePageSection: {
+        const requested = root.requestedSectionId;
+        if (requested !== "" && root.pageZoneOffsets[requested] !== undefined)
+            return requested;
+
+        return SectionSpy.sectionAt(root.pageZones, root.pageZoneOffsets, pageFlickable.contentY + 16, pageFlickable.contentHeight - pageFlickable.height);
+    }
+    // Categories structure
+    /// The rail, minus the entries whose owning app is disabled (spec C.35: an app declares
+    /// its integration points, and disabling it removes all of them).
+    readonly property var visibleSections: {
+        const provided = root.integrations || ({
+        });
+        const sections = [];
+        for (let section = 0; section < root.navigationSections.length; section++) {
+            const entry = root.navigationSections[section];
+            const items = (entry.items || []).filter(function(item) {
+                if (!item.requires)
+                    return true;
+
+                return !!provided[item.requires.kind + ":" + item.requires.id];
+            });
+            if (items.length > 0)
+                sections.push({
+                "title": entry.title,
+                "icon": entry.icon,
+                "items": items
+            });
+
+        }
+        return sections;
+    }
+    readonly property var navigationSections: [{
+        "title": "Personalization",
+        "icon": "palette",
+        "items": [{
+            "id": "wallpaper",
+            "label": "Wallpaper & Style",
+            "icon": "image"
+        }, {
+            "id": "theme",
+            "label": "Appearance",
+            "icon": "palette"
+        }]
+    }, {
+        "title": "Connectivity",
+        "icon": "wifi",
+        "items": [{
+            "id": "network",
+            "label": "Wi-Fi & Network",
+            "icon": "wifi"
+        }, {
+            "id": "bluetooth",
+            "label": "Bluetooth",
+            "icon": "bluetooth"
+        }]
+    }, {
+        "title": "AI & Voice",
+        "icon": "psychology",
+        "items": [{
+            "id": "ai",
+            "label": "AI & Agents",
+            "icon": "psychology"
+        }, {
+            "id": "voice",
+            "label": "Voice Dictation",
+            "icon": "volume_up"
+        }]
+    }, {
+        "title": "Hardware",
+        "icon": "volume_up",
+        "items": [{
+            "id": "audio",
+            "label": "Sound & Audio",
+            "icon": "volume_up"
+        }]
+    }, {
+        "title": "Desktop Shell",
+        "icon": "dashboard",
+        "items": [{
+            "id": "dock",
+            "label": "Dock & Layout",
+            "icon": "dashboard"
+        }, {
+            "id": "status",
+            "label": "Status Icons",
+            "icon": "tune"
+        }, {
+            "id": "dashboard",
+            "label": "Dashboard Tabs",
+            "icon": "calendar_month"
+        }, {
+            "id": "downloads",
+            "label": "Downloads",
+            "icon": "download"
+        }, {
+            "id": "skills",
+            "label": "Skills",
+            "icon": "extension",
+            "requires": {
+                "kind": "settingsPage",
+                "id": "skills"
+            }
+        }, {
+            "id": "apps",
+            "label": "Apps",
+            "icon": "grid_view"
+        }]
+    }, {
+        "title": "System",
+        "icon": "settings",
+        "items": [{
+            "id": "time",
+            "label": "World Clock",
+            "icon": "clock"
+        }, {
+            "id": "system",
+            "label": "System & Services",
+            "icon": "memory"
+        }, {
+            "id": "updates",
+            "label": "Updates & About",
+            "icon": "system_update"
+        }]
+    }]
+
+    signal closeRequested()
+
+    function navigateTo(pageId) {
+        if (!pageId || pageId === activePage)
+            return ;
+
+        activePage = pageId;
+        if (typeof Config !== "undefined")
+            Config.activeSettingsPage = pageId;
+
+    }
 
     function applyPendingSettingsSection() {
-        if (typeof Config === "undefined" || !Config.settingsSection) return;
+        if (typeof Config === "undefined" || !Config.settingsSection)
+            return ;
+
         const section = Config.settingsSection;
         Config.settingsSection = "";
         root.scrollToSection(section);
     }
 
-    /// Bring a zone of the loaded page into view. One entry point for both the
-    /// page's own rail (`zoneRequested`) and external deep links
-    /// (`Config.openSettings(page, section)`), so the two cannot diverge.
+    /// Bring a section of the loaded page into view, or select its tab. One
+    /// entry point for external deep links (`Config.openSettings(page, section)`).
     ///
-    /// The request is parked and honoured from the recomputed offsets - the first
-    /// moment we know the page's layout has settled, so its anchors are real.
+    /// A sections page parks the request and honours it from the recomputed
+    /// offsets - the first moment we know the page's layout has settled, so its
+    /// anchors are real. A tabs page selects the tab immediately.
     function scrollToSection(zoneId) {
-        if (!zoneId) return;
+        if (!zoneId)
+            return ;
+
         const page = pageLoader.item;
         // Atlas: a tab is selected, not scrolled to.
         if (page && typeof page.selectTab === "function" && page.hasTabs) {
             page.selectTab(zoneId);
             root.requestedSectionId = zoneId;
-            return;
+            return ;
         }
         root.pendingSectionId = zoneId;
         root.refreshZoneOffsets();
@@ -96,13 +259,15 @@ Item {
     /// resolve more (the AI page's legacy `voice` deep link lands on `setup`).
     function applyPendingSection() {
         const zoneId = root.pendingSectionId;
-        if (zoneId === "") return;
+        if (zoneId === "")
+            return ;
+
         const page = pageLoader.item;
         if (page && typeof page.selectTab === "function" && page.hasTabs) {
             root.pendingSectionId = "";
             root.requestedSectionId = zoneId;
             page.selectTab(zoneId);
-            return;
+            return ;
         }
         if (page && typeof page.sectionY === "function") {
             const y = page.sectionY(zoneId);
@@ -110,49 +275,15 @@ Item {
                 root.pendingSectionId = "";
                 root.requestedSectionId = zoneId;
                 root.scrollTo(y);
-                return;
+                return ;
             }
         }
         // A loaded page that declares zones and does not resolve this name will
         // never honour the request; drop it. A page that is not loaded yet can,
         // so the request waits for it instead.
-        if (page !== null && root.pageZones.length > 0) {
+        if (page !== null && root.pageZones.length > 0)
             root.pendingSectionId = "";
-        }
-    }
 
-    /// Wire the loaded page's rail to the hub.
-    ///
-    /// The page emits `zoneRequested` when a pill is pressed; the hub owns the
-    /// scroll area, so it is the one that moves it. Connecting here (rather than
-    /// having pages write a global the hub polls) is what makes a dead rail a
-    /// test failure instead of a silent no-op.
-    function bindPageNavigation() {
-        const page = pageLoader.item;
-        if (page && page.zoneRequested !== undefined
-                && typeof page.zoneRequested.connect === "function") {
-            page.zoneRequested.connect(root.scrollToSection);
-        }
-    }
-
-    Connections {
-        target: (typeof Config !== "undefined") ? Config : null
-        function onSettingsSectionChanged() { root.applyPendingSettingsSection(); }
-    }
-
-    Connections {
-        target: pageFlickable
-        function onContentHeightChanged() {
-            root.refreshZoneOffsets();
-        }
-        /// Anything but the hub's own movement means the reader is scrolling: the
-        /// request highlight is dropped and the geometry takes over again.
-        function onContentYChanged() {
-            if (!root.programmaticScroll) root.requestedSectionId = "";
-        }
-        function onMovingChanged() {
-            if (pageFlickable.moving) root.requestedSectionId = "";
-        }
     }
 
     /// Smoothly bring `y` to the top of the viewport.
@@ -170,14 +301,14 @@ Item {
         const distance = target - pageFlickable.contentY;
         if (Math.abs(distance) < 2) {
             pageFlickable.contentY = target;
-            return;
+            return ;
         }
         const motion = ScrollMotion.motionFor(root.motionTokens, distance);
         if (!motion) {
             root.programmaticScroll = true;
             pageFlickable.contentY = target;
             root.programmaticScroll = false;
-            return;
+            return ;
         }
         sectionScrollAnim.stop();
         sectionScrollAnim.from = pageFlickable.contentY;
@@ -194,65 +325,20 @@ Item {
     function userScrolled(deltaY) {
         sectionScrollAnim.stop();
         root.requestedSectionId = "";
-        pageFlickable.contentY = Math.max(0, Math.min(root.contentMaxOffset,
-                                                     pageFlickable.contentY - deltaY));
+        pageFlickable.contentY = Math.max(0, Math.min(root.contentMaxOffset, pageFlickable.contentY - deltaY));
     }
-
-    /// The scroll animation. `NumberAnimation` on the flickable's own contentY is
-    /// the one property that can be animated without touching its bounds handling.
-    NumberAnimation {
-        id: sectionScrollAnim
-        target: pageFlickable
-        property: "contentY"
-        easing.type: Easing.BezierSpline
-        onStopped: root.programmaticScroll = false
-    }
-
-    /// Motion for a programmatic scroll.
-    ///
-    /// Bound to the shell's motion tokens (`Theme`, the single source of truth per
-    /// DESIGN.md); a property rather than a bare `Theme.` read for two reasons:
-    /// the offscreen harness has no Quickshell, so it cannot load `Theme` and can
-    /// supply the tokens itself - which is what lets the tween, not just its maths,
-    /// be asserted - and a future reduced-motion mode has exactly one seam.
-    property var motionTokens: Theme
-
-    /// Introspection surface for the content pane's scroll state (tests, and any
-    /// future scrollbar work): where the viewport is, how far it can go, and
-    /// whether a programmatic scroll is running.
-    readonly property real contentOffset: pageFlickable.contentY
-    readonly property real contentMaxOffset: Math.max(0, pageFlickable.contentHeight - pageFlickable.height)
-    readonly property bool scrollAnimating: sectionScrollAnim.running
-    readonly property int scrollAnimationDuration: sectionScrollAnim.duration
-
-    // --- Sticky header + scroll spy -----------------------------------------
-    // A page may provide its identity as a `stickyHeader` component: the hub then
-    // renders it *outside* the flickable, so the title and the state rail stay put
-    // while the zones scroll. The same zones drive the spy that tells the page
-    // which section the reader is in - so the rail can highlight it.
-    readonly property var pageStickyHeader: (pageLoader.item && pageLoader.item.stickyHeader)
-        ? pageLoader.item.stickyHeader : null
-    readonly property var pageZones: (pageLoader.item && pageLoader.item.zones) ? pageLoader.item.zones : []
-
-    /// Anchor of every zone the loaded page declares, in page coordinates.
-    ///
-    /// Recomputed, not bound to the page's shape: a binding would snapshot the
-    /// layout at one instant, and a page that is not laid out yet reports every
-    /// anchor at y=0 - which is how the rail used to highlight the *last* zone
-    /// on a short page (all offsets 0, so the spy picks the last one). The
-    /// recompute below is therefore driven by every event that can move an
-    /// anchor: the page being installed, its zones changing with its state, its
-    /// own height settling, and the flickable's content height changing.
-    property var pageZoneOffsets: ({})
 
     function recomputeZoneOffsets() {
         const page = pageLoader.item;
         const zones = root.pageZones;
-        const offsets = {};
+        const offsets = {
+        };
         if (page && zones && typeof page.sectionY === "function") {
             for (let i = 0; i < zones.length; ++i) {
                 const y = page.sectionY(zones[i].id);
-                if (y !== undefined && y !== null && !isNaN(y)) offsets[zones[i].id] = y;
+                if (y !== undefined && y !== null && !isNaN(y))
+                    offsets[zones[i].id] = y;
+
             }
         }
         root.pageZoneOffsets = offsets;
@@ -265,65 +351,26 @@ Item {
         Qt.callLater(root.recomputeZoneOffsets);
     }
 
-    onPageZonesChanged: root.refreshZoneOffsets()
-
-    /// The recompute is what tells a parked zone request that the page's layout
-    /// is now known - the offsets always arrive as a fresh object, so this fires
-    /// even when the numbers are unchanged (a rail click on an already-settled
-    /// page).
-    onPageZoneOffsetsChanged: root.applyPendingSection()
-
-    Connections {
-        target: pageLoader
-        function onItemChanged() {
-            root.requestedSectionId = "";
-            // A new page opens at its top: keeping the previous page's offset
-            // would drop the reader into the middle (or the clamped end) of a page
-            // they have not seen. A deep link's section request is parked, so it
-            // survives this reset and scrolls once the layout settles.
-            pageFlickable.contentY = 0;
-            root.bindPageNavigation();
-            root.refreshZoneOffsets();
-            root.syncSectionToPage();
-        }
-    }
-
-    Connections {
-        target: pageLoader.item
-        function onImplicitHeightChanged() { root.refreshZoneOffsets(); }
-    }
-
-    /// The zone the reader is looking at: the one they asked for while that
-    /// request is still the reason the view is where it is, and otherwise the
-    /// geometry. 16px of slack, so a zone is current as soon as its header
-    /// touches the pinned header; `endOffset` handles the trailing section, which
-    /// cannot scroll its anchor to the top.
-    readonly property string activePageSection: {
-        const requested = root.requestedSectionId;
-        if (requested !== "" && root.pageZoneOffsets[requested] !== undefined) return requested;
-        return SectionSpy.sectionAt(root.pageZones, root.pageZoneOffsets,
-                                    pageFlickable.contentY + 16,
-                                    pageFlickable.contentHeight - pageFlickable.height);
-    }
-
     function syncSectionToPage() {
         const page = pageLoader.item;
-        if (page && page.currentSection !== undefined) {
+        if (page && page.currentSection !== undefined)
             page.currentSection = root.activePageSection;
-        }
-    }
 
-    onActivePageSectionChanged: root.syncSectionToPage()
+    }
 
     /// Nearest ancestor navigation pill that is the active page.
     function activeNavPill(node) {
-        if (!node || node.children === undefined) return null;
-        if (node.label !== undefined && node.iconText !== undefined && node.active === true) {
+        if (!node || node.children === undefined)
+            return null;
+
+        if (node.label !== undefined && node.iconText !== undefined && node.active === true)
             return node;
-        }
+
         for (let i = 0; i < node.children.length; ++i) {
             const hit = root.activeNavPill(node.children[i]);
-            if (hit) return hit;
+            if (hit)
+                return hit;
+
         }
         return null;
     }
@@ -331,114 +378,125 @@ Item {
     /// Bring the active pill fully into view, one event-loop turn after the
     /// page changed (a just-created delegate has no geometry yet).
     function revealActiveNavPill() {
-        if (typeof navFlick === "undefined" || !navFlick) return;
+        if (typeof navFlick === "undefined" || !navFlick)
+            return ;
+
         Qt.callLater(function() {
             const pill = root.activeNavPill(navCol);
-            if (!pill) return;
+            if (!pill)
+                return ;
+
             const top = pill.mapToItem(navCol, 0, 0).y;
             const bottom = top + pill.height;
             const viewTop = navFlick.contentY;
             const viewBottom = viewTop + navFlick.height;
             const maxY = Math.max(0, navFlick.contentHeight - navFlick.height);
-            if (top < viewTop) {
+            if (top < viewTop)
                 navFlick.contentY = Math.max(0, Math.min(maxY, top - 8));
-            } else if (bottom > viewBottom) {
+            else if (bottom > viewBottom)
                 navFlick.contentY = Math.max(0, Math.min(maxY, bottom - navFlick.height + 8));
-            }
         });
     }
 
+    implicitWidth: 800
+    implicitHeight: 560
+    onPageZonesChanged: root.refreshZoneOffsets()
+    /// The recompute is what tells a parked zone request that the page's layout
+    /// is now known - the offsets always arrive as a fresh object, so this fires
+    /// even when the numbers are unchanged (a rail click on an already-settled
+    /// page).
+    onPageZoneOffsetsChanged: root.applyPendingSection()
+    onActivePageSectionChanged: root.syncSectionToPage()
     onActivePageChanged: root.revealActiveNavPill()
     Component.onCompleted: root.revealActiveNavPill()
 
-    // Categories structure
-    /// The rail, minus the entries whose owning app is disabled (spec C.35: an app declares
-    /// its integration points, and disabling it removes all of them).
-    readonly property var visibleSections: {
-        const provided = root.integrations || ({});
-        const sections = [];
-        for (let section = 0; section < root.navigationSections.length; section++) {
-            const entry = root.navigationSections[section];
-            const items = (entry.items || []).filter(function (item) {
-                if (!item.requires) return true;
-                return !!provided[item.requires.kind + ":" + item.requires.id];
-            });
-            if (items.length > 0) sections.push({ title: entry.title, icon: entry.icon, items: items });
+    Connections {
+        function onSettingsSectionChanged() {
+            root.applyPendingSettingsSection();
         }
-        return sections;
+
+        target: (typeof Config !== "undefined") ? Config : null
     }
 
-    readonly property var navigationSections: [
-        {
-            title: "Personalization", icon: "palette",
-            items: [
-                { id: "wallpaper", label: "Wallpaper & Style", icon: "image" },
-                { id: "theme", label: "Appearance", icon: "palette" }
-            ]
-        },
-        {
-            title: "Connectivity", icon: "wifi",
-            items: [
-                { id: "network", label: "Wi-Fi & Network", icon: "wifi" },
-                { id: "bluetooth", label: "Bluetooth", icon: "bluetooth" }
-            ]
-        },
-        {
-            title: "AI & Voice", icon: "psychology",
-            items: [
-                { id: "ai", label: "AI & Agents", icon: "psychology" },
-                { id: "voice", label: "Voice Dictation", icon: "volume_up" }
-            ]
-        },
-        {
-            title: "Hardware", icon: "volume_up",
-            items: [
-                { id: "audio", label: "Sound & Audio", icon: "volume_up" }
-            ]
-        },
-        {
-            title: "Desktop Shell", icon: "dashboard",
-            items: [
-                { id: "dock", label: "Dock & Layout", icon: "dashboard" },
-                { id: "status", label: "Status Icons", icon: "tune" },
-                { id: "dashboard", label: "Dashboard Tabs", icon: "calendar_month" },
-                { id: "downloads", label: "Downloads", icon: "download" },
-                { id: "skills", label: "Skills", icon: "extension",
-                  requires: { kind: "settingsPage", id: "skills" } },
-                { id: "apps", label: "Apps", icon: "grid_view" }
-            ]
-        },
-        {
-            title: "System", icon: "settings",
-            items: [
-                { id: "time", label: "World Clock", icon: "clock" },
-                { id: "system", label: "System & Services", icon: "memory" },
-                { id: "updates", label: "Updates & About", icon: "system_update" }
-            ]
+    Connections {
+        function onContentHeightChanged() {
+            root.refreshZoneOffsets();
         }
-    ]
+
+        /// Anything but the hub's own movement means the reader is scrolling: the
+        /// request highlight is dropped and the geometry takes over again.
+        function onContentYChanged() {
+            if (!root.programmaticScroll)
+                root.requestedSectionId = "";
+
+        }
+
+        function onMovingChanged() {
+            if (pageFlickable.moving)
+                root.requestedSectionId = "";
+
+        }
+
+        target: pageFlickable
+    }
+
+    /// The scroll animation. `NumberAnimation` on the flickable's own contentY is
+    /// the one property that can be animated without touching its bounds handling.
+    NumberAnimation {
+        id: sectionScrollAnim
+
+        target: pageFlickable
+        property: "contentY"
+        easing.type: Easing.BezierSpline
+        onStopped: root.programmaticScroll = false
+    }
+
+    Connections {
+        function onItemChanged() {
+            root.requestedSectionId = "";
+            // A new page opens at its top: keeping the previous page's offset
+            // would drop the reader into the middle (or the clamped end) of a page
+            // they have not seen. A deep link's section request is parked, so it
+            // survives this reset and scrolls once the layout settles.
+            pageFlickable.contentY = 0;
+            root.refreshZoneOffsets();
+            root.syncSectionToPage();
+        }
+
+        target: pageLoader
+    }
+
+    Connections {
+        function onImplicitHeightChanged() {
+            root.refreshZoneOffsets();
+        }
+
+        target: pageLoader.item
+    }
 
     RowLayout {
+        // Left Navigation Rail.
+        // Right Content Pane.
+
         anchors.fill: parent
         spacing: 0
 
-        // Left Navigation Rail.
-        //
         // A rail, not a card: it is a tinted strip inside the window's single
         // plate, closed by one hairline. Giving it its own radius and substrate
         // made it a second panel butted against the content, with the wallpaper
         // showing through the corner notches between them.
         Rectangle {
             id: navRail
+
             Layout.preferredWidth: 236
             Layout.minimumWidth: 236
             Layout.fillHeight: true
-            color: (typeof Colors !== "undefined")
-                ? (Colors.isDarkMode ? Qt.rgba(1, 1, 1, 0.03) : Qt.rgba(0, 0, 0, 0.02))
-                : "transparent"
+            color: (typeof Colors !== "undefined") ? (Colors.isDarkMode ? Qt.rgba(1, 1, 1, 0.03) : Qt.rgba(0, 0, 0, 0.02)) : "transparent"
             clip: true
 
             ColumnLayout {
+                // Categorized Navigation List
+
                 anchors.fill: parent
                 anchors.margins: Theme.padLarge
                 spacing: Theme.spaceMedium
@@ -473,18 +531,28 @@ Item {
                             text: "drag_indicator"
                             size: 18
                             color: hubHeaderHover.containsMouse ? Colors.primary : Colors.m3onSurfaceVariant
-                            opacity: hubHeaderHover.containsMouse ? 1.0 : 0.4
-                            Behavior on opacity { NumberAnimation { duration: 150 } }
+                            opacity: hubHeaderHover.containsMouse ? 1 : 0.4
+
+                            Behavior on opacity {
+                                NumberAnimation {
+                                    duration: 150
+                                }
+
+                            }
+
                         }
+
                     }
 
                     MouseArea {
                         id: hubHeaderHover
+
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.OpenHandCursor
                         acceptedButtons: Qt.NoButton
                     }
+
                 }
 
                 Rectangle {
@@ -493,14 +561,13 @@ Item {
                     color: Theme.borderSubtle
                 }
 
-                // Categorized Navigation List
-                //
                 // The rail grows with every page and the window does not, so it
                 // scrolls - and it scrolls to the active page. Without that, a
                 // newly added page can be the one page the reader cannot see in
                 // the rail that is supposed to lead to it.
                 Flickable {
                     id: navFlick
+
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     contentHeight: navCol.implicitHeight
@@ -509,14 +576,17 @@ Item {
 
                     Column {
                         id: navCol
+
                         width: parent.width - 4
                         x: 2
                         spacing: 12
 
                         Repeater {
                             model: root.visibleSections
+
                             delegate: Column {
                                 required property var modelData
+
                                 width: parent.width
                                 spacing: 4
 
@@ -527,7 +597,7 @@ Item {
 
                                     Row {
                                         id: sectionRow
-                                        x: 8
+
                                         y: 3
                                         spacing: 6
 
@@ -536,6 +606,7 @@ Item {
                                             size: 12
                                             color: Colors.m3onSurfaceVariant
                                         }
+
                                         Text {
                                             text: modelData.title.toUpperCase()
                                             font.family: Theme.fontFamily
@@ -543,13 +614,17 @@ Item {
                                             font.weight: Font.Bold
                                             color: Colors.m3onSurfaceVariant
                                         }
+
                                     }
+
                                 }
 
                                 Repeater {
                                     model: modelData.items
+
                                     delegate: PillButton {
                                         required property var modelData
+
                                         width: parent.width
                                         label: modelData.label
                                         iconText: modelData.icon
@@ -558,16 +633,18 @@ Item {
                                         // leads to it says so. Never in tests,
                                         // where the singleton would spawn
                                         // processes against the host.
-                                        badgeVisible: !root.testMode
-                                            && modelData.id === "updates"
-                                            && typeof Updates !== "undefined"
-                                            && Updates.updateAvailable
+                                        badgeVisible: !root.testMode && modelData.id === "updates" && typeof Updates !== "undefined" && Updates.updateAvailable
                                         onClicked: root.navigateTo(modelData.id)
                                     }
+
                                 }
+
                             }
+
                         }
+
                     }
+
                 }
 
                 Rectangle {
@@ -584,13 +661,16 @@ Item {
                     active: false
                     onClicked: root.closeRequested()
                 }
+
             }
+
         }
 
         // The seam: one hairline, inset from the plate's edges, in the same
         // specular family as every other divider in the shell.
         Rectangle {
             id: railSeam
+
             Layout.fillHeight: true
             Layout.topMargin: Theme.padLarge
             Layout.bottomMargin: Theme.padLarge
@@ -598,13 +678,12 @@ Item {
             color: (typeof Colors !== "undefined") ? Qt.alpha(Colors.glassBorderSpecular, 0.35) : "#33ffffff"
         }
 
-        // Right Content Pane.
-        //
         // It carries the same readable substrate as the Copilot card: a page of
         // options behind a fully transparent block disappears into a bright
         // wallpaper, which is exactly how the settings page read before.
         Rectangle {
             id: contentPane
+
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: "transparent"
@@ -621,6 +700,7 @@ Item {
                 // the header, not through it.
                 Rectangle {
                     id: stickyHeaderSurface
+
                     Layout.fillWidth: true
                     visible: root.pageStickyHeader !== null
                     implicitHeight: stickyHeaderLoader.implicitHeight + Theme.spaceSmall * 2
@@ -636,6 +716,7 @@ Item {
 
                     Loader {
                         id: stickyHeaderLoader
+
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.rightMargin: 14
@@ -643,11 +724,13 @@ Item {
                         anchors.topMargin: Theme.spaceSmall
                         sourceComponent: root.pageStickyHeader
                     }
+
                 }
 
                 // Page Scrollable Content Container
                 Flickable {
                     id: pageFlickable
+
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     contentWidth: width
@@ -658,11 +741,14 @@ Item {
                     WheelHandler {
                         target: pageFlickable
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onWheel: (event) => root.userScrolled(event.angleDelta.y)
+                        onWheel: (event) => {
+                            return root.userScrolled(event.angleDelta.y);
+                        }
                     }
 
                     Loader {
                         id: pageLoader
+
                         width: parent.width - 14
                         height: item ? item.implicitHeight : implicitHeight
                         onLoaded: {
@@ -671,25 +757,42 @@ Item {
                         }
                         sourceComponent: {
                             switch (root.activePage) {
-                                case "wallpaper":
-                                case "wallpaper_style": return wallpaperPageComp;
-                                case "theme":
-                                case "appearance": return themePageComp;
-                                case "network": return networkPageComp;
-                                case "bluetooth": return bluetoothPageComp;
-                                case "ai": return aiPageComp;
-                                case "voice": return voicePageComp;
-                                case "audio": return audioPageComp;
-                                case "dock": return dockPageComp;
-                                case "status": return statusPageComp;
-                                case "dashboard": return dashPageComp;
-                                case "downloads": return downloadsPageComp;
-                                case "skills": return skillsPageComp;
-                                case "apps": return appsPageComp;
-                                case "time": return timePageComp;
-                                case "system": return systemPageComp;
-                                case "updates": return updatesPageComp;
-                                default: return wallpaperPageComp;
+                            case "wallpaper":
+                            case "wallpaper_style":
+                                return wallpaperPageComp;
+                            case "theme":
+                            case "appearance":
+                                return themePageComp;
+                            case "network":
+                                return networkPageComp;
+                            case "bluetooth":
+                                return bluetoothPageComp;
+                            case "ai":
+                                return aiPageComp;
+                            case "voice":
+                                return voicePageComp;
+                            case "audio":
+                                return audioPageComp;
+                            case "dock":
+                                return dockPageComp;
+                            case "status":
+                                return statusPageComp;
+                            case "dashboard":
+                                return dashPageComp;
+                            case "downloads":
+                                return downloadsPageComp;
+                            case "skills":
+                                return skillsPageComp;
+                            case "apps":
+                                return appsPageComp;
+                            case "time":
+                                return timePageComp;
+                            case "system":
+                                return systemPageComp;
+                            case "updates":
+                                return updatesPageComp;
+                            default:
+                                return wallpaperPageComp;
                             }
                         }
                     }
@@ -697,46 +800,178 @@ Item {
                     // Slim Material 3 Scroll Indicator
                     Rectangle {
                         id: scrollBarIndicator
-                        anchors.right: parent.right
-                        anchors.rightMargin: 4
+
                         readonly property real scrollableRange: Math.max(1, pageFlickable.contentHeight - pageFlickable.height)
                         readonly property real thumbTravelRange: Math.max(0, pageFlickable.height - height)
-                        y: pageFlickable.contentY + (pageFlickable.contentHeight > pageFlickable.height 
-                            ? (pageFlickable.contentY / scrollableRange) * thumbTravelRange 
-                            : 0)
+
+                        anchors.right: parent.right
+                        anchors.rightMargin: 4
+                        y: pageFlickable.contentY + (pageFlickable.contentHeight > pageFlickable.height ? (pageFlickable.contentY / scrollableRange) * thumbTravelRange : 0)
                         width: 4
-                        height: pageFlickable.contentHeight > pageFlickable.height 
-                            ? Math.max(28, (pageFlickable.height / pageFlickable.contentHeight) * pageFlickable.height) 
-                            : 0
+                        height: pageFlickable.contentHeight > pageFlickable.height ? Math.max(28, (pageFlickable.height / pageFlickable.contentHeight) * pageFlickable.height) : 0
                         radius: 2
                         color: Colors.primary
-                        opacity: pageFlickable.moving || pageFlickable.contentHeight > pageFlickable.height ? 0.45 : 0.0
+                        opacity: pageFlickable.moving || pageFlickable.contentHeight > pageFlickable.height ? 0.45 : 0
                         visible: pageFlickable.contentHeight > pageFlickable.height
-                        Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: 150
+                            }
+
+                        }
+
                     }
+
                 }
+
             }
+
         }
+
     }
 
     // Lazy Loaded Page Components
-    Component { id: wallpaperPageComp; WallpaperAndStylePage { testMode: root.testMode } }
-    Component { id: themePageComp; ThemePage {} }
-    Component { id: networkPageComp; NetworkPage { testMode: root.testMode } }
-    Component { id: bluetoothPageComp; BluetoothPage { testMode: root.testMode } }
-    Component { id: aiPageComp; AiPage { testMode: root.testMode } }
-    Component { id: voicePageComp; VoicePage { testMode: root.testMode } }
-    Component { id: audioPageComp; AudioPage { testMode: root.testMode } }
-    Component { id: dockPageComp; DockPage {} }
-    Component { id: statusPageComp; StatusIconsPage {} }
-    Component { id: dashPageComp; DashboardPage { testMode: root.testMode } }
-    Component { id: downloadsPageComp; DownloadsPage { testMode: root.testMode } }
+    Component {
+        id: wallpaperPageComp
+
+        WallpaperAndStylePage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: themePageComp
+
+        ThemePage {
+        }
+
+    }
+
+    Component {
+        id: networkPageComp
+
+        NetworkPage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: bluetoothPageComp
+
+        BluetoothPage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: aiPageComp
+
+        AiPage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: voicePageComp
+
+        VoicePage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: audioPageComp
+
+        AudioPage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: dockPageComp
+
+        DockPage {
+        }
+
+    }
+
+    Component {
+        id: statusPageComp
+
+        StatusIconsPage {
+        }
+
+    }
+
+    Component {
+        id: dashPageComp
+
+        DashboardPage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: downloadsPageComp
+
+        DownloadsPage {
+            testMode: root.testMode
+        }
+
+    }
+
     Component {
         id: skillsPageComp
-        SkillsPage { testMode: root.testMode; integrations: root.integrations }
+
+        SkillsPage {
+            testMode: root.testMode
+            integrations: root.integrations
+        }
+
     }
-    Component { id: appsPageComp; AppsPage { testMode: root.testMode } }
-    Component { id: timePageComp; TimePage { testMode: root.testMode } }
-    Component { id: systemPageComp; SystemPage { testMode: root.testMode } }
-    Component { id: updatesPageComp; UpdatesPage { testMode: root.testMode } }
+
+    Component {
+        id: appsPageComp
+
+        AppsPage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: timePageComp
+
+        TimePage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: systemPageComp
+
+        SystemPage {
+            testMode: root.testMode
+        }
+
+    }
+
+    Component {
+        id: updatesPageComp
+
+        UpdatesPage {
+            testMode: root.testMode
+        }
+
+    }
+
 }

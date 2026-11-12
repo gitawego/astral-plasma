@@ -1,18 +1,20 @@
 // ============================================================================
-// Settings page scaffold — Atlas
+// Settings page scaffold
 // ============================================================================
-// A page has one identity and, when it has more than one part, a tab bar. Tabs
-// switch content; they never scroll the reader to an anchor. The old `zones`
-// rail is kept only as a compatibility path for a page that has not been
-// migrated yet.
+// A page has one identity and one of two shapes:
+//   * **sections** (the default): a vertical stack. `zones` names the section
+//     anchors so a deep link can scroll to one; no in-page navigation strip is
+//     drawn. Most settings pages are short enough to read by scrolling.
+//   * **tabs**: only for a page whose content genuinely runs several viewports.
+//     Tabs switch the body; they never scroll the reader to an anchor.
 //     SettingsPage {
-//         title: "Dock & Layout"
-//         icon: "dashboard"
+//         title: "AI & Agents"
+//         icon: "psychology"
 //         tabs: [
-//             { id: "dock", label: "Dock", icon: "dashboard", component: dockTab },
-//             { id: "tray", label: "Tray", icon: "tray", component: trayTab }
+//             { id: "quotas", label: "Quotas", icon: "performance" },
+//             { id: "copilot", label: "Copilot", icon: "psychology" }
 //         ]
-//         property Component dockTab: Component { ColumnLayout { … } }
+//         property string currentTab: "quotas"
 //     }
 
 import "../../modules/Astral/Kernel/components"
@@ -35,13 +37,12 @@ ColumnLayout {
     property var tabs: []
     /// The active tab id. Pages with stateful content bind to this.
     property string currentTab: ""
-    /// Legacy: `[{ id, label, anchor }]` for a page not migrated to tabs.
+    /// Section anchors for a vertical page: `[{ id, label, anchor }]`. The hub
+    /// scrolls a deep link to one; the page draws no rail for them.
     property var zones: []
-    /// The legacy scroll-spy value.
+    /// The section the hub's scroll-spy reports as current.
     property string currentSection: ""
     readonly property bool hasTabs: root.tabs.length > 0
-    /// Legacy: the old zone rail. Kept so an unmigrated page still works.
-    readonly property bool hasRail: !root.hasTabs && root.zones.length >= 2
     readonly property bool hasTabComponents: root.hasTabs && root.tabs.some(function(tab) {
         return tab && tab.component !== undefined && tab.component !== null;
     })
@@ -57,6 +58,62 @@ ColumnLayout {
     readonly property var tabContentItem: tabLoader.item
     /// The page header, rendered by the hub above the scroll area.
     property Component stickyHeader
+
+    function selectTab(tabId) {
+        if (!tabId)
+            return ;
+
+        for (let index = 0; index < root.tabs.length; ++index) {
+            if (root.tabs[index] && root.tabs[index].id === tabId) {
+                root.currentTab = tabId;
+                return ;
+            }
+        }
+    }
+
+    /// A page may compute its tab list from live state. If the active tab
+    /// disappears, the body would have no `currentTab` to show; fall back to the
+    /// first tab that still exists.
+    function ensureCurrentTab() {
+        if (!root.hasTabs)
+            return ;
+
+        for (let index = 0; index < root.tabs.length; ++index) {
+            if (root.tabs[index] && root.tabs[index].id === root.currentTab)
+                return ;
+
+        }
+        root.currentTab = root.tabs[0].id;
+    }
+
+    /// Is this section the one the hub's scroll-spy reports? Section pages may
+    /// use it to refine the active card; there is no rail to highlight.
+    function isZoneCurrent(zoneId) {
+        return root.currentSection === zoneId;
+    }
+
+    function sectionY(name) {
+        for (let i = 0; i < root.zones.length; ++i) {
+            const zone = root.zones[i];
+            if (zone && zone.id === name && zone.anchor)
+                return zone.anchor.mapToItem(root, 0, 0).y;
+
+        }
+        return undefined;
+    }
+
+    onTabsChanged: root.ensureCurrentTab()
+    Component.onCompleted: root.ensureCurrentTab()
+
+    // A tabs page has no direct visual children: its tabs own the content.
+    Loader {
+        id: tabLoader
+
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        visible: root.hasTabComponents
+        sourceComponent: root.activeTab && root.activeTab.component ? root.activeTab.component : null
+    }
 
     stickyHeader: Component {
         ColumnLayout {
@@ -125,89 +182,8 @@ ColumnLayout {
                 }
             }
 
-            // Legacy zone rail, only for a page not migrated yet.
-            Flow {
-                Layout.fillWidth: true
-                spacing: Theme.spaceSmall
-                visible: !root.hasTabs && root.zones.length >= 2
-
-                Repeater {
-                    model: !root.hasTabs && root.zones.length >= 2 ? root.zones : []
-
-                    delegate: PillButton {
-                        required property var modelData
-
-                        label: modelData.label
-                        active: root.isZoneCurrent(modelData.id)
-                        onClicked: root.jumpToZone(modelData.id)
-                    }
-
-                }
-
-            }
-
         }
 
-    }
-
-    /// Legacy zone navigation, kept for a page that still declares `zones`.
-    signal zoneRequested(string zoneId)
-
-    function selectTab(tabId) {
-        if (!tabId)
-            return ;
-
-        for (let index = 0; index < root.tabs.length; ++index) {
-            if (root.tabs[index] && root.tabs[index].id === tabId) {
-                root.currentTab = tabId;
-                return ;
-            }
-        }
-    }
-
-    /// A tab can disappear with the state it described (Wi-Fi off, no app
-    /// streams). The body is chosen by `currentTab`, so an invalid id would show
-    /// nothing at all; fall back to the first tab that still exists.
-    function ensureCurrentTab() {
-        if (!root.hasTabs)
-            return ;
-
-        for (let index = 0; index < root.tabs.length; ++index) {
-            if (root.tabs[index] && root.tabs[index].id === root.currentTab)
-                return ;
-
-        }
-        root.currentTab = root.tabs[0].id;
-    }
-
-    function isZoneCurrent(zoneId) {
-        return root.currentSection === zoneId;
-    }
-
-    function jumpToZone(zoneId) {
-        root.zoneRequested(zoneId);
-    }
-
-    function sectionY(name) {
-        for (let i = 0; i < root.zones.length; ++i) {
-            const zone = root.zones[i];
-            if (zone && zone.id === name && zone.anchor)
-                return zone.anchor.mapToItem(root, 0, 0).y;
-
-        }
-        return undefined;
-    }
-
-    onTabsChanged: root.ensureCurrentTab()
-    Component.onCompleted: root.ensureCurrentTab()
-    // A migrated page has no direct visual children: its tabs own the content.
-    Loader {
-        id: tabLoader
-
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        visible: root.hasTabComponents
-        sourceComponent: root.activeTab && root.activeTab.component ? root.activeTab.component : null
     }
 
 }

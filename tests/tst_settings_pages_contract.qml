@@ -2,27 +2,29 @@ import QtQuick
 import "../settings_gui/pages"
 
 // ============================================================================
-// Every settings page adopts the hub contract — Atlas
+// Every settings page adopts the hub contract
 // ============================================================================
-// The hub pins each page's identity (icon, title, subtitle and its tab strip)
-// above the scroll area, and a section is a tab rather than a scroll target. A
-// page that hand-writes its own header or keeps its sections private silently
-// falls back to the old behaviour: the title scrolls away, there is no tab
-// strip, and the deep links in `Config.settingsSection` land nowhere.
+// The hub pins each page's identity (icon, title, subtitle) above the scroll
+// area. Pages then choose one of two shapes:
 //
-// So the contract is asserted per page, not per component:
+//   * **sections** (most pages): a vertical stack. `zones` names the anchors the
+//     hub scrolls a deep link to; no in-page navigation strip is drawn.
+//   * **tabs** (only pages that genuinely run several viewports): a horizontal
+//     icon + label strip that swaps the body.
 //
-//   * the root *is* `SettingsPage` (identity and tabs declared, never redrawn
-//     by hand);
+// The contract is asserted per page, not per component:
+//
+//   * the root *is* `SettingsPage`;
 //   * every page names itself, says what it is for, and carries an icon;
-//   * every tab has an id, a label and an icon, in declaration order;
-//   * the first tab is selected by default, `selectTab` switches the body, and
-//     an unknown id is ignored;
-//   * a tab that disappears with its live state (no streams, Wi-Fi off, adapter
-//     off) hands the selection back to a tab that still exists.
+//   * a sections page declares anchors in document order, and `sectionY`
+//     resolves them;
+//   * a tabs page declares id/label/icon tabs, selects the first by default,
+//     and ignores unknown ids;
+//   * live sections and tabs leave when their state disappears.
 //
 // The AiPage keeps its own root (it hosts absolutely positioned overlays) and is
-// covered by `tst_settings_sticky_header.qml`.
+// covered by `tst_settings_sticky_header.qml`; SkillsPage is covered by
+// `tst_skills_app.qml`.
 Item {
     id: testRoot
     width: 900
@@ -115,75 +117,75 @@ Item {
         testMode: true
     }
 
-    /// `[page, source path, expected tab ids]` - the document, in one table, so
+    /// `[page, source path, sections or tabs]` - the document, in one table, so
     /// a page cannot satisfy the contract by accident of a similar neighbour.
-    /// An empty list is a page with one section: one section is not navigation.
+    /// An empty section list is a single-body page.
     readonly property var pages: [
         {
             name: "WallpaperAndStylePage",
             source: "../settings_gui/pages/WallpaperAndStylePage.qml",
             page: wallpaperPage,
-            tabs: ["wallpaper", "palette", "mode", "gallery"]
+            sections: ["wallpaper", "palette", "mode", "gallery"]
         },
         {
             name: "UpdatesPage",
             source: "../settings_gui/pages/UpdatesPage.qml",
             page: updatesPage,
-            tabs: ["version", "update", "notes", "maintenance"]
+            sections: ["version", "update", "notes", "maintenance"]
         },
         {
             name: "ThemePage",
             source: "../settings_gui/pages/ThemePage.qml",
             page: themePage,
-            tabs: ["style", "colors", "shape", "preview"]
+            sections: ["style", "colors", "shape", "preview"]
         },
         {
             name: "NetworkPage",
             source: "../settings_gui/pages/NetworkPage.qml",
             page: networkPage,
-            tabs: ["wifi", "networks"]
+            sections: ["wifi", "networks"]
         },
         {
             name: "BluetoothPage",
             source: "../settings_gui/pages/BluetoothPage.qml",
             page: bluetoothPage,
-            tabs: ["power", "devices"]
+            sections: ["power", "devices"]
         },
         {
             name: "AudioPage",
             source: "../settings_gui/pages/AudioPage.qml",
             page: audioPage,
-            tabs: ["output", "visualizer", "apps"]
+            sections: ["output", "visualizer", "apps"]
         },
         {
             name: "DockPage",
             source: "../settings_gui/pages/DockPage.qml",
             page: dockPage,
-            tabs: ["dock", "tray", "topbar"]
+            sections: ["dock", "tray", "topbar"]
         },
         {
             name: "StatusIconsPage",
             source: "../settings_gui/pages/StatusIconsPage.qml",
             page: statusPage,
-            tabs: []
+            sections: []
         },
         {
             name: "DashboardPage",
             source: "../settings_gui/pages/DashboardPage.qml",
             page: dashboardPage,
-            tabs: ["tabs", "calendar", "visualizer", "avatars"]
+            sections: ["tabs", "calendar", "visualizer", "avatars"]
         },
         {
             name: "DownloadsPage",
             source: "../settings_gui/pages/DownloadsPage.qml",
             page: downloadsPage,
-            tabs: ["engine", "destination", "settings"]
+            sections: ["engine", "destination", "settings"]
         },
         {
             name: "AppsPage",
             source: "../settings_gui/pages/AppsPage.qml",
             page: appsPage,
-            tabs: []
+            sections: []
         },
         {
             name: "SystemPage",
@@ -195,7 +197,7 @@ Item {
             name: "TimePage",
             source: "../settings_gui/pages/TimePage.qml",
             page: timePage,
-            tabs: ["cities", "local"]
+            sections: ["cities", "local"]
         },
         {
             name: "VoicePage",
@@ -234,6 +236,7 @@ Item {
         for (let i = 0; i < testRoot.pages.length; ++i) {
             const row = testRoot.pages[i];
             const page = row.page;
+            const isTabs = row.tabs !== undefined;
 
             // ------------------------------------------------------------------
             // The declaration lives in the page, not in a redrawn header
@@ -241,11 +244,9 @@ Item {
             const src = readLocalFile(row.source);
             assert(src !== "", row.name + ": source is readable");
             assert(/\nSettingsPage \{/.test(src),
-                row.name + ": the root is SettingsPage (identity and tabs declared once)");
+                row.name + ": the root is SettingsPage (identity declared once)");
             assert(src.indexOf("property Component stickyHeader") < 0,
                 row.name + ": it does not hand-write the sticky header SettingsPage provides");
-            assert(src.indexOf("zones:") < 0,
-                row.name + ": it does not declare the legacy zone rail");
 
             // ------------------------------------------------------------------
             // Identity
@@ -255,19 +256,63 @@ Item {
             assert(page.icon !== "", row.name + ": it carries a page icon");
             assert(page.stickyHeader !== null && typeof page.stickyHeader === "object",
                 row.name + ": the hub has a header to pin");
-            assert(page.hasRail === false,
-                row.name + ": no page uses the legacy scroll rail");
+
+            // ------------------------------------------------------------------
+            // Sections: anchors for deep links, no in-page navigation strip
+            // ------------------------------------------------------------------
+            if (!isTabs) {
+                const ids = row.sections;
+                assert(page.hasTabs === false,
+                    row.name + ": a sections page declares no tabs");
+                assert(page.zones.length === ids.length,
+                    row.name + ": " + ids.length + " section anchors (got " + page.zones.length + ")");
+                assert(src.indexOf("tabs:") < 0,
+                    row.name + ": its source declares no tabs");
+                assert(src.indexOf("root.currentTab") < 0,
+                    row.name + ": its source has no tab-switched bodies");
+                assert(src.indexOf("zoneRequested") < 0,
+                    row.name + ": it does not draw the old rail");
+
+                let previousY = -1;
+                for (let s = 0; s < ids.length; ++s) {
+                    const id = ids[s];
+                    const zone = page.zones[s];
+                    assert(zone && zone.id === id,
+                        row.name + ": section " + s + " is \"" + id + "\" (got "
+                            + (zone ? zone.id : "none") + ")");
+                    assert(zone.label && zone.label !== "",
+                        row.name + ": section \"" + id + "\" carries a label");
+                    const y = page.sectionY(id);
+                    assert(y !== undefined && y !== null && !isNaN(y),
+                        row.name + ": section \"" + id + "\" resolves to a page offset");
+                    assert(y > previousY,
+                        row.name + ": section \"" + id + "\" is anchored below the previous one ("
+                            + previousY + " -> " + y + ")");
+                    previousY = y;
+                }
+                assert(page.sectionY("nonsense") === undefined,
+                    row.name + ": an undeclared section has no anchor");
+                page.currentSection = ids.length > 0 ? ids[0] : "";
+                assert(page.currentSection === (ids.length > 0 ? ids[0] : ""),
+                    row.name + ": the hub can write the current section");
+                continue;
+            }
 
             // ------------------------------------------------------------------
             // Tabs: declared, labelled, iconed, in order
             // ------------------------------------------------------------------
-            assert(page.hasTabs === (row.tabs.length > 0),
-                row.name + ": tabs appear exactly when there is more than one section");
-            assert(page.tabs.length === row.tabs.length,
-                row.name + ": " + row.tabs.length + " tabs declared (got " + page.tabs.length + ")");
+            const ids = row.tabs;
+            assert(page.hasTabs === true,
+                row.name + ": a tabs page declares tabs");
+            assert(page.zones.length === 0,
+                row.name + ": a tabs page declares no scroll anchors");
+            assert(src.indexOf("tabs:") >= 0,
+                row.name + ": its source declares tabs");
+            assert(page.tabs.length === ids.length,
+                row.name + ": " + ids.length + " tabs declared (got " + page.tabs.length + ")");
 
-            for (let t = 0; t < row.tabs.length; ++t) {
-                const id = row.tabs[t];
+            for (let t = 0; t < ids.length; ++t) {
+                const id = ids[t];
                 const tab = page.tabs[t];
                 assert(tab && tab.id === id,
                     row.name + ": tab " + t + " is \"" + id + "\" (got " + (tab ? tab.id : "none") + ")");
@@ -277,67 +322,48 @@ Item {
                     row.name + ": tab \"" + id + "\" carries an icon");
             }
 
-            if (row.tabs.length > 0) {
-                assert(page.currentTab === row.tabs[0],
-                    row.name + ": the first tab is selected by default (got \"" + page.currentTab + "\")");
-
-                const last = row.tabs[row.tabs.length - 1];
-                page.selectTab(last);
-                assert(page.currentTab === last,
-                    row.name + ": selectTab switches to \"" + last + "\"");
-                page.selectTab("nonsense");
-                assert(page.currentTab === last,
-                    row.name + ": an unknown tab id is ignored");
-                page.selectTab(row.tabs[0]);
-            } else {
-                assert(page.currentTab === "",
-                    row.name + ": a single-section page has no tab selected");
-                page.selectTab("nonsense");
-                assert(page.currentTab === "",
-                    row.name + ": and selectTab is a no-op");
-            }
+            assert(page.currentTab === ids[0],
+                row.name + ": the first tab is selected by default (got \"" + page.currentTab + "\")");
+            const last = ids[ids.length - 1];
+            page.selectTab(last);
+            assert(page.currentTab === last,
+                row.name + ": selectTab switches to \"" + last + "\"");
+            page.selectTab("nonsense");
+            assert(page.currentTab === last,
+                row.name + ": an unknown tab id is ignored");
+            page.selectTab(ids[0]);
         }
 
         // ------------------------------------------------------------------
-        // A tab whose section cannot be shown is not offered
+        // A section whose content cannot be shown is not offered
         // ------------------------------------------------------------------
-        // The tab strip is the page's live state, not a static menu: when a
-        // section is hidden (no streams, Wi-Fi off, adapter off) its tab goes
-        // too, and the selection falls back to a tab that still exists.
-        assert(audioPage.tabs.length === 3, "audio: the apps tab is offered while a stream plays");
-        audioPage.selectTab("apps");
+        assert(audioPage.zones.length === 3, "audio: the apps section is offered while a stream plays");
         audioPage.testAppStreams = [];
-        assert(audioPage.tabs.length === 2,
-            "audio: the apps tab leaves with the streams");
-        assert(audioPage.currentTab === "output",
-            "audio: a vanished tab hands the selection back to Output");
+        assert(audioPage.zones.length === 2 && audioPage.sectionY("apps") === undefined,
+            "audio: the apps section leaves with the streams");
 
-        assert(networkPage.tabs.length === 2, "network: the networks tab is offered while Wi-Fi is on");
-        networkPage.selectTab("networks");
+        assert(networkPage.zones.length === 2, "network: the networks section is offered while Wi-Fi is on");
         networkPage.testWifiEnabled = false;
-        assert(networkPage.tabs.length === 1,
-            "network: the networks tab leaves when Wi-Fi is off");
-        assert(networkPage.currentTab === "wifi",
-            "network: a vanished tab hands the selection back to Wi-Fi");
+        assert(networkPage.zones.length === 1 && networkPage.sectionY("networks") === undefined,
+            "network: the networks section leaves when Wi-Fi is off");
 
-        assert(bluetoothPage.tabs.length === 2, "bluetooth: the devices tab is offered while powered on");
-        bluetoothPage.selectTab("devices");
+        assert(bluetoothPage.zones.length === 2, "bluetooth: the devices section is offered while powered on");
         bluetoothPage.testPowered = false;
-        assert(bluetoothPage.tabs.length === 1,
-            "bluetooth: the devices tab leaves when the adapter is off");
-        assert(bluetoothPage.currentTab === "power",
-            "bluetooth: a vanished tab hands the selection back to Power");
+        assert(bluetoothPage.zones.length === 1 && bluetoothPage.sectionY("devices") === undefined,
+            "bluetooth: the devices section leaves when the adapter is off");
 
         // ------------------------------------------------------------------
-        // The hub routes sections through selectTab, not through scrollTo
+        // The hub routes sections through scrollTo and tabs through selectTab
         // ------------------------------------------------------------------
         const hub = readLocalFile("../settings_gui/NexusHub.qml");
         assert(hub.indexOf("function scrollToSection") >= 0,
             "the hub keeps one entry point for deep links");
         assert(hub.indexOf("page.selectTab(zoneId)") >= 0,
-            "a deep link selects the page's tab");
+            "a deep link selects a tabs page's tab");
         assert(hub.indexOf("page.hasTabs") >= 0,
-            "the hub recognizes an Atlas page");
+            "the hub recognizes a tabs page");
+        assert(hub.indexOf("page.sectionY(zoneId)") >= 0,
+            "a deep link scrolls a sections page to its anchor");
         assert(hub.indexOf("Config.settingsSection") >= 0,
             "external deep links still arrive through Config.openSettings");
         assert(hub.indexOf("id: stickyHeaderLoader") >= 0,
