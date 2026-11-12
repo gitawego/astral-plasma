@@ -582,6 +582,8 @@ Item {
                         spacing: 12
 
                         Repeater {
+                            // Section Title
+
                             model: root.visibleSections
 
                             delegate: Column {
@@ -590,31 +592,23 @@ Item {
                                 width: parent.width
                                 spacing: 4
 
-                                // Section Title
+                                // Text first, flush with the pill's left edge.
+                                // A leading icon indented the label by its own
+                                // width and read as a misalignment.
                                 Item {
                                     width: parent.width
-                                    height: sectionRow.implicitHeight + 6
+                                    height: sectionTitle.implicitHeight + 6
 
-                                    Row {
-                                        id: sectionRow
+                                    Text {
+                                        id: sectionTitle
 
+                                        x: 0
                                         y: 3
-                                        spacing: 6
-
-                                        MaterialIcon {
-                                            iconName: modelData.icon || ""
-                                            size: 12
-                                            color: Colors.m3onSurfaceVariant
-                                        }
-
-                                        Text {
-                                            text: modelData.title.toUpperCase()
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 10
-                                            font.weight: Font.Bold
-                                            color: Colors.m3onSurfaceVariant
-                                        }
-
+                                        text: modelData.title.toUpperCase()
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 10
+                                        font.weight: Font.Bold
+                                        color: Colors.m3onSurfaceVariant
                                     }
 
                                 }

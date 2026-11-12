@@ -3140,8 +3140,9 @@ resolves the anchors, so `Config.openSettings(page, section)` scrolls to the rig
 A tabs page keeps `hasTabs`, `tabs`, `currentTab`, and `selectTab()`, and a deep link selects
 the tab instead. The hub has both routes and chooses by the loaded page's shape.
 
-The left rail's category headings were also moved flush with the left edge of the nav pills,
-instead of being indented 8 px into the rail.
+The left rail's category headings are text-first now: the tiny leading icon was removed so the
+label itself starts at the nav pill's left edge. An icon before the text indented the heading by
+its own width, which read as a misalignment no matter how small the row's x offset was.
 
 Regression tests: `tests/tst_settings_pages_contract.qml` now asserts the shape per page
 (section anchors in document order, or tabs with ids/labels/icons and selection);
@@ -3151,6 +3152,6 @@ of the old rail. `tests/tst_nexus_hub.qml` pins the flush-left heading.
 
 > **Verified live**: captured Network & Internet and Theming & Appearance as vertical sections
 > with no tab strip, and System & Services still with its five tabs. The rail headings
-> (`CONNECTIVITY`, `AI & VOICE`, `HARDWARE`, `DESKTOP SHELL`, `SYSTEM`) now start at the same
-> left edge as the pills. `make test` exit 0 — 1347 Rust tests, 169 QML suites, app boundaries
-> clean.
+> (`CONNECTIVITY`, `AI & VOICE`, `HARDWARE`, `DESKTOP SHELL`, `SYSTEM`) are now plain labels
+> starting at the pills' left edge, with no leading icon. `make test` exit 0 — 1347 Rust tests,
+> 169 QML suites, app boundaries clean.

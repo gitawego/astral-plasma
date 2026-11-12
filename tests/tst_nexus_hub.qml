@@ -112,9 +112,11 @@ Item {
         // Section headings are flush with the left edge of the nav pills, not
         // indented into the rail: the category icon is the first thing on the
         // line, and the pills below it start at the same x.
-        const sectionStart = hubSrc.indexOf("id: sectionRow");
-        assert(sectionStart >= 0, "the rail renders a section-heading row");
+        const sectionStart = hubSrc.indexOf("id: sectionTitle");
+        assert(sectionStart >= 0, "the rail renders a section-heading label");
         const sectionLead = hubSrc.substring(sectionStart, sectionStart + 220);
+        assert(!/MaterialIcon/.test(sectionLead),
+            "the heading starts with text, not an icon that indents it");
         assert(!/x:\s*[1-9][0-9]*/.test(sectionLead),
             "section headings must start at the rail's left edge, got: " + sectionLead);
 
