@@ -3140,18 +3140,23 @@ resolves the anchors, so `Config.openSettings(page, section)` scrolls to the rig
 A tabs page keeps `hasTabs`, `tabs`, `currentTab`, and `selectTab()`, and a deep link selects
 the tab instead. The hub has both routes and chooses by the loaded page's shape.
 
-The left rail's category headings are text-first now: the tiny leading icon was removed so the
-label itself starts at the nav pill's left edge. An icon before the text indented the heading by
-its own width, which read as a misalignment no matter how small the row's x offset was.
+The left rail now sits on one content grid. `PillButton` gained opt-in
+`contentAlignment: Qt.AlignLeft` and `contentLeftPadding`; the rail sets both, so every pill's
+icon starts at the same inset instead of drifting with the label width. Section headings use
+the same `navContentInset` (2 × `Theme.padLarge`), which puts the heading text on the pill icon
+column. The default `PillButton` alignment remains centered, so every other consumer is
+unchanged.
 
 Regression tests: `tests/tst_settings_pages_contract.qml` now asserts the shape per page
 (section anchors in document order, or tabs with ids/labels/icons and selection);
 `tests/tst_settings_hub_rail.qml` drives a sections page deep link (scrolls) and a tabs page
 deep link (selects); `tests/tst_settings_page_scaffold.qml` covers both shapes and the absence
-of the old rail. `tests/tst_nexus_hub.qml` pins the flush-left heading.
+of the old rail; `tests/tst_nexus_hub.qml` pins the shared grid in source; and
+`tests/tst_settings_rail_alignment.qml` measures the rendered geometry, asserting that every
+heading and every pill icon share the same x.
 
 > **Verified live**: captured Network & Internet and Theming & Appearance as vertical sections
-> with no tab strip, and System & Services still with its five tabs. The rail headings
-> (`CONNECTIVITY`, `AI & VOICE`, `HARDWARE`, `DESKTOP SHELL`, `SYSTEM`) are now plain labels
-> starting at the pills' left edge, with no leading icon. `make test` exit 0 — 1347 Rust tests,
-> 169 QML suites, app boundaries clean.
+> with no tab strip, and System & Services still with its five tabs. In the rail, the headings
+> (`CONNECTIVITY`, `AI & VOICE`, `HARDWARE`, `DESKTOP SHELL`, `SYSTEM`) and the leading icon of
+> every pill now share the same left x. `make test` exit 0 — 1347 Rust tests, 170 QML suites,
+> app boundaries clean.

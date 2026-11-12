@@ -115,10 +115,16 @@ Item {
         const sectionStart = hubSrc.indexOf("id: sectionTitle");
         assert(sectionStart >= 0, "the rail renders a section-heading label");
         const sectionLead = hubSrc.substring(sectionStart, sectionStart + 220);
-        assert(!/MaterialIcon/.test(sectionLead),
-            "the heading starts with text, not an icon that indents it");
-        assert(!/x:\s*[1-9][0-9]*/.test(sectionLead),
-            "section headings must start at the rail's left edge, got: " + sectionLead);
+        assert(/x:\s*root\.navContentInset/.test(sectionLead),
+            "section headings sit on the rail's shared left grid, got: " + sectionLead);
+
+        const pillStart = hubSrc.indexOf("delegate: PillButton");
+        assert(pillStart >= 0, "the rail renders PillButton delegates");
+        const pillLead = hubSrc.substring(pillStart, pillStart + 700);
+        assert(/contentAlignment:\s*Qt\.AlignLeft/.test(pillLead),
+            "the rail's pill content is left-aligned, not centered per label");
+        assert(/contentLeftPadding:\s*root\.navContentInset/.test(pillLead),
+            "the pill icon starts on the same grid as the section heading");
 
         // Verify that sidebar delegate is decoupled from in-page scroll spy
         assert(/active:\s*root\.activePage\s*===\s*modelData\.id/.test(hubSrc),

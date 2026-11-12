@@ -18,6 +18,9 @@ Item {
     property var integrations: ({
     })
     property string activePage: (typeof Config !== "undefined" && Config.activeSettingsPage) ? Config.activeSettingsPage : "wallpaper"
+    /// One left grid for the rail: section headings and the icon at the start
+    /// of every pill share this inset from the pill's left border.
+    readonly property real navContentInset: (typeof Theme !== "undefined" && Theme.padLarge !== undefined) ? Theme.padLarge * 2 : 32
     /// A deep link can name a section. Pages opt in by exposing
     /// `sectionY(name)`; the scroll waits for the page layout to settle, because
     /// the target is clamped against the content height.
@@ -602,7 +605,7 @@ Item {
                                     Text {
                                         id: sectionTitle
 
-                                        x: 0
+                                        x: root.navContentInset
                                         y: 3
                                         text: modelData.title.toUpperCase()
                                         font.family: Theme.fontFamily
@@ -622,6 +625,8 @@ Item {
                                         width: parent.width
                                         label: modelData.label
                                         iconText: modelData.icon
+                                        contentAlignment: Qt.AlignLeft
+                                        contentLeftPadding: root.navContentInset
                                         active: root.activePage === modelData.id
                                         // A release is waiting: the entry that
                                         // leads to it says so. Never in tests,
@@ -652,6 +657,8 @@ Item {
                     Layout.fillWidth: true
                     label: "Close"
                     iconText: "close"
+                    contentAlignment: Qt.AlignLeft
+                    contentLeftPadding: root.navContentInset
                     active: false
                     onClicked: root.closeRequested()
                 }

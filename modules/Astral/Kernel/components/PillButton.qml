@@ -1,97 +1,94 @@
-import QtQuick
 import "../theme"
+import QtQuick
 
 Rectangle {
-    id: root
+    // "tonal" | "filled" | "outlined" | "ghost"
 
-    signal clicked()
-    signal rightClicked()
-    signal middleClicked()
+    id: root
 
     /// A small attention dot at the trailing edge. Off by default: this is an
     /// opt-in decoration for navigation entries that lead somewhere new, not a
     /// change to how any existing pill looks.
     property bool badgeVisible: false
-
     // Semantic Design System Properties
-    property string accent: "primary" // "primary" | "secondary" | "error" | "danger" | "destructive" | "warning" | "info" | "success" | "neutral" | "surface"
-    property string variant: "tonal"  // "tonal" | "filled" | "outlined" | "ghost"
-
-    readonly property bool isDark: (typeof Colors !== "undefined" && typeof Colors.isDarkMode !== "undefined")
-        ? Colors.isDarkMode : true
-
+    property string accent: "primary"
+    // "primary" | "secondary" | "error" | "danger" | "destructive" | "warning" | "info" | "success" | "neutral" | "surface"
+    property string variant: "tonal"
+    readonly property bool isDark: (typeof Colors !== "undefined" && typeof Colors.isDarkMode !== "undefined") ? Colors.isDarkMode : true
     // Internal normalized accent key
     readonly property string resolvedAccent: {
         const a = (accent || "primary").toLowerCase();
-        if (a === "danger" || a === "destructive") return "error";
-        if (a === "surface") return "neutral";
+        if (a === "danger" || a === "destructive")
+            return "error";
+
+        if (a === "surface")
+            return "neutral";
+
         return a;
     }
-
     // Palette lookup for current accent
     readonly property var accentPalette: {
         const dark = root.isDark;
         switch (resolvedAccent) {
         case "error":
             return {
-                base: (typeof Colors !== "undefined" && Colors.error) ? Colors.error : (dark ? "#FFB4AB" : "#BA1A1A"),
-                onBase: (typeof Colors !== "undefined" && Colors.textOnError) ? Colors.textOnError : (dark ? "#690005" : "#FFFFFF"),
-                container: (typeof Colors !== "undefined" && Colors.errorContainer) ? Colors.errorContainer : (dark ? "#93000A" : "#FFDAD6"),
-                onContainer: (typeof Colors !== "undefined" && Colors.textOnErrorContainer) ? Colors.textOnErrorContainer : (dark ? "#FFDAD6" : "#410002"),
-                border: (typeof Colors !== "undefined" && Colors.error) ? Qt.alpha(Colors.error, 0.40) : (dark ? "#99FFB4AB" : "#66BA1A1A")
+                "base": (typeof Colors !== "undefined" && Colors.error) ? Colors.error : (dark ? "#FFB4AB" : "#BA1A1A"),
+                "onBase": (typeof Colors !== "undefined" && Colors.textOnError) ? Colors.textOnError : (dark ? "#690005" : "#FFFFFF"),
+                "container": (typeof Colors !== "undefined" && Colors.errorContainer) ? Colors.errorContainer : (dark ? "#93000A" : "#FFDAD6"),
+                "onContainer": (typeof Colors !== "undefined" && Colors.textOnErrorContainer) ? Colors.textOnErrorContainer : (dark ? "#FFDAD6" : "#410002"),
+                "border": (typeof Colors !== "undefined" && Colors.error) ? Qt.alpha(Colors.error, 0.4) : (dark ? "#99FFB4AB" : "#66BA1A1A")
             };
         case "warning":
             return {
-                base: (typeof Colors !== "undefined" && Colors.warning) ? Colors.warning : (dark ? "#FFBA28" : "#785900"),
-                onBase: (typeof Colors !== "undefined" && Colors.textOnWarning) ? Colors.textOnWarning : (dark ? "#422C00" : "#FFFFFF"),
-                container: (typeof Colors !== "undefined" && Colors.warningContainer) ? Colors.warningContainer : (dark ? "#5F4100" : "#FFDEA3"),
-                onContainer: (typeof Colors !== "undefined" && Colors.textOnWarningContainer) ? Colors.textOnWarningContainer : (dark ? "#FFDEA3" : "#261900"),
-                border: (typeof Colors !== "undefined" && Colors.warning) ? Qt.alpha(Colors.warning, 0.40) : (dark ? "#99FFBA28" : "#66785900")
+                "base": (typeof Colors !== "undefined" && Colors.warning) ? Colors.warning : (dark ? "#FFBA28" : "#785900"),
+                "onBase": (typeof Colors !== "undefined" && Colors.textOnWarning) ? Colors.textOnWarning : (dark ? "#422C00" : "#FFFFFF"),
+                "container": (typeof Colors !== "undefined" && Colors.warningContainer) ? Colors.warningContainer : (dark ? "#5F4100" : "#FFDEA3"),
+                "onContainer": (typeof Colors !== "undefined" && Colors.textOnWarningContainer) ? Colors.textOnWarningContainer : (dark ? "#FFDEA3" : "#261900"),
+                "border": (typeof Colors !== "undefined" && Colors.warning) ? Qt.alpha(Colors.warning, 0.4) : (dark ? "#99FFBA28" : "#66785900")
             };
         case "info":
             return {
-                base: (typeof Colors !== "undefined" && Colors.info) ? Colors.info : (dark ? "#97CBFF" : "#0061A4"),
-                onBase: (typeof Colors !== "undefined" && Colors.textOnInfo) ? Colors.textOnInfo : (dark ? "#003355" : "#FFFFFF"),
-                container: (typeof Colors !== "undefined" && Colors.infoContainer) ? Colors.infoContainer : (dark ? "#004A75" : "#CEE5FF"),
-                onContainer: (typeof Colors !== "undefined" && Colors.textOnInfoContainer) ? Colors.textOnInfoContainer : (dark ? "#CEE5FF" : "#001D33"),
-                border: (typeof Colors !== "undefined" && Colors.info) ? Qt.alpha(Colors.info, 0.40) : (dark ? "#9997CBFF" : "#660061A4")
+                "base": (typeof Colors !== "undefined" && Colors.info) ? Colors.info : (dark ? "#97CBFF" : "#0061A4"),
+                "onBase": (typeof Colors !== "undefined" && Colors.textOnInfo) ? Colors.textOnInfo : (dark ? "#003355" : "#FFFFFF"),
+                "container": (typeof Colors !== "undefined" && Colors.infoContainer) ? Colors.infoContainer : (dark ? "#004A75" : "#CEE5FF"),
+                "onContainer": (typeof Colors !== "undefined" && Colors.textOnInfoContainer) ? Colors.textOnInfoContainer : (dark ? "#CEE5FF" : "#001D33"),
+                "border": (typeof Colors !== "undefined" && Colors.info) ? Qt.alpha(Colors.info, 0.4) : (dark ? "#9997CBFF" : "#660061A4")
             };
         case "success":
             return {
-                base: (typeof Colors !== "undefined" && Colors.success) ? Colors.success : (dark ? "#95D598" : "#206B33"),
-                onBase: (typeof Colors !== "undefined" && Colors.textOnSuccess) ? Colors.textOnSuccess : (dark ? "#003912" : "#FFFFFF"),
-                container: (typeof Colors !== "undefined" && Colors.successContainer) ? Colors.successContainer : (dark ? "#125222" : "#B0F2B2"),
-                onContainer: (typeof Colors !== "undefined" && Colors.textOnSuccessContainer) ? Colors.textOnSuccessContainer : (dark ? "#B0F2B2" : "#002107"),
-                border: (typeof Colors !== "undefined" && Colors.success) ? Qt.alpha(Colors.success, 0.40) : (dark ? "#9995D598" : "#66206B33")
+                "base": (typeof Colors !== "undefined" && Colors.success) ? Colors.success : (dark ? "#95D598" : "#206B33"),
+                "onBase": (typeof Colors !== "undefined" && Colors.textOnSuccess) ? Colors.textOnSuccess : (dark ? "#003912" : "#FFFFFF"),
+                "container": (typeof Colors !== "undefined" && Colors.successContainer) ? Colors.successContainer : (dark ? "#125222" : "#B0F2B2"),
+                "onContainer": (typeof Colors !== "undefined" && Colors.textOnSuccessContainer) ? Colors.textOnSuccessContainer : (dark ? "#B0F2B2" : "#002107"),
+                "border": (typeof Colors !== "undefined" && Colors.success) ? Qt.alpha(Colors.success, 0.4) : (dark ? "#9995D598" : "#66206B33")
             };
         case "secondary":
             return {
-                base: (typeof Colors !== "undefined" && Colors.secondary) ? Colors.secondary : (dark ? "#CBC2DB" : "#625B71"),
-                onBase: (typeof Colors !== "undefined" && Colors.m3onSecondary) ? Colors.m3onSecondary : (dark ? "#332D41" : "#FFFFFF"),
-                container: (typeof Colors !== "undefined" && Colors.secondaryContainer) ? Colors.secondaryContainer : (dark ? "#4A4458" : "#E8DEF8"),
-                onContainer: (typeof Colors !== "undefined" && Colors.m3onSecondaryContainer) ? Colors.m3onSecondaryContainer : (dark ? "#E8DEF8" : "#1D192B"),
-                border: (typeof Colors !== "undefined" && Colors.secondary) ? Qt.alpha(Colors.secondary, 0.40) : (dark ? "#99CBC2DB" : "#66625B71")
+                "base": (typeof Colors !== "undefined" && Colors.secondary) ? Colors.secondary : (dark ? "#CBC2DB" : "#625B71"),
+                "onBase": (typeof Colors !== "undefined" && Colors.m3onSecondary) ? Colors.m3onSecondary : (dark ? "#332D41" : "#FFFFFF"),
+                "container": (typeof Colors !== "undefined" && Colors.secondaryContainer) ? Colors.secondaryContainer : (dark ? "#4A4458" : "#E8DEF8"),
+                "onContainer": (typeof Colors !== "undefined" && Colors.m3onSecondaryContainer) ? Colors.m3onSecondaryContainer : (dark ? "#E8DEF8" : "#1D192B"),
+                "border": (typeof Colors !== "undefined" && Colors.secondary) ? Qt.alpha(Colors.secondary, 0.4) : (dark ? "#99CBC2DB" : "#66625B71")
             };
         case "neutral":
             return {
-                base: (typeof Colors !== "undefined" && Colors.outline) ? Colors.outline : (dark ? "#8F9099" : "#79747E"),
-                onBase: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : (dark ? "#F3EDF6" : "#1D1B20"),
-                container: (typeof Colors !== "undefined" && Colors.surfaceContainerHigh) ? Colors.surfaceContainerHigh : (dark ? "#2B2930" : "#ECE6F0"),
-                onContainer: (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : (dark ? "#F3EDF6" : "#1D1B20"),
-                border: (typeof Colors !== "undefined" && Colors.outlineVariant) ? Qt.alpha(Colors.outlineVariant, 0.50) : (dark ? "#6649454F" : "#66CAC4D0")
+                "base": (typeof Colors !== "undefined" && Colors.outline) ? Colors.outline : (dark ? "#8F9099" : "#79747E"),
+                "onBase": (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : (dark ? "#F3EDF6" : "#1D1B20"),
+                "container": (typeof Colors !== "undefined" && Colors.surfaceContainerHigh) ? Colors.surfaceContainerHigh : (dark ? "#2B2930" : "#ECE6F0"),
+                "onContainer": (typeof Colors !== "undefined" && Colors.m3onSurface) ? Colors.m3onSurface : (dark ? "#F3EDF6" : "#1D1B20"),
+                "border": (typeof Colors !== "undefined" && Colors.outlineVariant) ? Qt.alpha(Colors.outlineVariant, 0.5) : (dark ? "#6649454F" : "#66CAC4D0")
             };
         case "primary":
         default:
             return {
-                base: (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : (dark ? "#CFBCFF" : "#6750A4"),
-                onBase: (typeof Colors !== "undefined" && Colors.m3onPrimary) ? Colors.m3onPrimary : (dark ? "#381E72" : "#FFFFFF"),
-                container: (typeof Colors !== "undefined" && Colors.primaryContainer) ? Colors.primaryContainer : (dark ? "#4F378B" : "#EADDFF"),
-                onContainer: (typeof Colors !== "undefined" && Colors.m3onPrimaryContainer) ? Colors.m3onPrimaryContainer : (dark ? "#EADDFF" : "#21005D"),
-                border: (typeof Colors !== "undefined" && Colors.primary) ? Qt.alpha(Colors.primary, 0.50) : (dark ? "#80CFBCFF" : "#806750A4")
+                "base": (typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : (dark ? "#CFBCFF" : "#6750A4"),
+                "onBase": (typeof Colors !== "undefined" && Colors.m3onPrimary) ? Colors.m3onPrimary : (dark ? "#381E72" : "#FFFFFF"),
+                "container": (typeof Colors !== "undefined" && Colors.primaryContainer) ? Colors.primaryContainer : (dark ? "#4F378B" : "#EADDFF"),
+                "onContainer": (typeof Colors !== "undefined" && Colors.m3onPrimaryContainer) ? Colors.m3onPrimaryContainer : (dark ? "#EADDFF" : "#21005D"),
+                "border": (typeof Colors !== "undefined" && Colors.primary) ? Qt.alpha(Colors.primary, 0.5) : (dark ? "#80CFBCFF" : "#806750A4")
             };
         }
     }
-
     readonly property color defaultActiveColor: {
         switch (root.variant) {
         case "filled":
@@ -105,7 +102,6 @@ Rectangle {
             return root.accentPalette.container;
         }
     }
-
     readonly property color defaultActiveTextColor: {
         switch (root.variant) {
         case "filled":
@@ -118,11 +114,10 @@ Rectangle {
             return root.accentPalette.onContainer;
         }
     }
-
     readonly property color defaultActiveBorderColor: {
         switch (root.variant) {
         case "filled":
-            return Qt.alpha(root.accentPalette.base, 0.80);
+            return Qt.alpha(root.accentPalette.base, 0.8);
         case "outlined":
             return root.accentPalette.base;
         case "ghost":
@@ -132,16 +127,14 @@ Rectangle {
             return root.accentPalette.border;
         }
     }
-
     readonly property color defaultInactiveTextColor: {
         if (root.variant === "outlined" || root.variant === "ghost") {
-            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral") {
+            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral")
                 return root.accentPalette.base;
-            }
+
         }
         return (typeof Colors !== 'undefined' && Colors.m3onSurface) ? Colors.m3onSurface : (root.isDark ? "#F3EDF6" : "#1D1B20");
     }
-
     property string iconText: ""
     property string iconName: ""
     property string label: ""
@@ -152,23 +145,16 @@ Rectangle {
     property color inactiveColor: "transparent"
     property color inactiveTextColor: defaultInactiveTextColor
     property int iconSize: 18
-
+    /// Horizontal alignment of the icon+label row. Center is the historical
+    /// behavior. A navigation rail opts into left so every item starts on the
+    /// same vertical grid as its section headings.
+    property int contentAlignment: Qt.AlignHCenter
+    property real contentLeftPadding: (typeof Theme !== "undefined" && Theme.padLarge !== undefined) ? Theme.padLarge : 16
     // Liquid Glass elevation & optics
     property bool showShadow: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true
     property real elevation: 5
-
     // Sizing & Geometry
     property int customRadius: -1
-    radius: customRadius >= 0 
-        ? customRadius 
-        : ((typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) 
-            ? Math.min(Theme.radiusGlassPill, Math.round(height / 2)) 
-            : ((typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : Math.round(height / 2)))
-    implicitWidth: label 
-        ? labelText.implicitWidth + (iconText ? icon.width + ((typeof Theme !== "undefined" && Theme.spaceSmall) ? Theme.spaceSmall : 6) : 0) + ((typeof Theme !== "undefined" && Theme.padLarge) ? Theme.padLarge : 16) * 2 
-        : 40
-    implicitHeight: 40
-
     // Component exposure aliases
     readonly property alias contactShadowItem: contactShadow
     readonly property alias topGlareItem: topGlare
@@ -176,75 +162,72 @@ Rectangle {
     readonly property alias labelItem: labelText
     readonly property alias textShadowItem: labelShadow
     readonly property alias iconItem: icon
-
-    // Base Translucent Substrate Fill
-    color: {
-        if (active) return activeColor;
-        if (mouseArea.containsPress) {
-            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral") {
-                return Qt.alpha(root.accentPalette.base, root.isDark ? 0.24 : 0.18);
-            }
-            return (typeof Colors !== "undefined" && Colors.isDarkMode) 
-                ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.60);
-        }
-        if (mouseArea.containsMouse) {
-            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral") {
-                return Qt.alpha(root.accentPalette.base, root.isDark ? 0.15 : 0.10);
-            }
-            return (typeof Colors !== "undefined" && Colors.isDarkMode) 
-                ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.50);
-        }
-        if (inactiveColor !== "transparent") return inactiveColor;
-        if (root.variant === "ghost") return "transparent";
-        if (root.variant === "outlined") {
-            return root.isDark ? Qt.rgba(1, 1, 1, 0.03) : Qt.rgba(1, 1, 1, 0.15);
-        }
-        return (typeof Colors !== "undefined" && Colors.isDarkMode) 
-            ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(1, 1, 1, 0.35);
-    }
-
-    border.color: {
-        if (active) return root.activeBorderColor;
-        if (root.variant === "ghost") {
-            return mouseArea.containsMouse ? Qt.alpha(root.accentPalette.base, 0.30) : "transparent";
-        }
-        if (root.variant === "outlined") {
-            return mouseArea.containsMouse ? root.accentPalette.base : Qt.alpha(root.accentPalette.base, 0.60);
-        }
-        if (mouseArea.containsMouse) {
-            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral") {
-                return Qt.alpha(root.accentPalette.base, 0.50);
-            }
-            return (typeof Colors !== "undefined" && Colors.glassBorderSpecular) 
-                ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.65);
-        }
-        if (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber") {
-            return Qt.alpha(root.accentPalette.base, 0.40);
-        }
-        return (typeof Colors !== "undefined" && Colors.glassBorderSubtle) 
-            ? Colors.glassBorderSubtle : Qt.rgba(1, 1, 1, 0.14);
-    }
-    border.width: active 
-        ? ((typeof Theme !== "undefined" && Theme.glassBorderWidth) ? Math.max(1.2, Theme.glassBorderWidth) : 1.2)
-        : ((typeof Theme !== "undefined" && Theme.glassBorderWidth) ? Theme.glassBorderWidth : 1.0)
-
     // Tactile Spring Micro-Physics (Depression compression on press; no boundary expansion on hover to prevent clipping)
     property bool hoverScale: false
-    scale: mouseArea.containsPress ? 0.95 : (hoverScale && mouseArea.containsMouse ? 1.02 : 1.0)
 
-    Behavior on color { ColorAnimation { duration: 150 } }
-    Behavior on border.color { ColorAnimation { duration: 150 } }
-    Behavior on scale { 
-        NumberAnimation { 
-            duration: mouseArea.containsPress ? 100 : 200 
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: (typeof Theme !== "undefined" && Theme.curveGlassElastic) ? Theme.curveGlassElastic : [0.34, 1.56, 0.64, 1]
-        } 
+    signal clicked()
+    signal rightClicked()
+    signal middleClicked()
+
+    radius: customRadius >= 0 ? customRadius : ((typeof Theme !== "undefined" && Theme.radiusGlassPill !== undefined) ? Math.min(Theme.radiusGlassPill, Math.round(height / 2)) : ((typeof Theme !== "undefined" && Theme.radiusFull) ? Theme.radiusFull : Math.round(height / 2)))
+    implicitWidth: label ? labelText.implicitWidth + (iconText ? icon.width + ((typeof Theme !== "undefined" && Theme.spaceSmall) ? Theme.spaceSmall : 6) : 0) + ((typeof Theme !== "undefined" && Theme.padLarge) ? Theme.padLarge : 16) * 2 : 40
+    implicitHeight: 40
+    // Base Translucent Substrate Fill
+    color: {
+        if (active)
+            return activeColor;
+
+        if (mouseArea.containsPress) {
+            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral")
+                return Qt.alpha(root.accentPalette.base, root.isDark ? 0.24 : 0.18);
+
+            return (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.6);
+        }
+        if (mouseArea.containsMouse) {
+            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral")
+                return Qt.alpha(root.accentPalette.base, root.isDark ? 0.15 : 0.1);
+
+            return (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.5);
+        }
+        if (inactiveColor !== "transparent")
+            return inactiveColor;
+
+        if (root.variant === "ghost")
+            return "transparent";
+
+        if (root.variant === "outlined")
+            return root.isDark ? Qt.rgba(1, 1, 1, 0.03) : Qt.rgba(1, 1, 1, 0.15);
+
+        return (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(1, 1, 1, 0.35);
     }
+    border.color: {
+        if (active)
+            return root.activeBorderColor;
+
+        if (root.variant === "ghost")
+            return mouseArea.containsMouse ? Qt.alpha(root.accentPalette.base, 0.3) : "transparent";
+
+        if (root.variant === "outlined")
+            return mouseArea.containsMouse ? root.accentPalette.base : Qt.alpha(root.accentPalette.base, 0.6);
+
+        if (mouseArea.containsMouse) {
+            if (root.resolvedAccent !== "primary" && root.resolvedAccent !== "neutral")
+                return Qt.alpha(root.accentPalette.base, 0.5);
+
+            return (typeof Colors !== "undefined" && Colors.glassBorderSpecular) ? Colors.glassBorderSpecular : Qt.rgba(1, 1, 1, 0.65);
+        }
+        if (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber")
+            return Qt.alpha(root.accentPalette.base, 0.4);
+
+        return (typeof Colors !== "undefined" && Colors.glassBorderSubtle) ? Colors.glassBorderSubtle : Qt.rgba(1, 1, 1, 0.14);
+    }
+    border.width: active ? ((typeof Theme !== "undefined" && Theme.glassBorderWidth) ? Math.max(1.2, Theme.glassBorderWidth) : 1.2) : ((typeof Theme !== "undefined" && Theme.glassBorderWidth) ? Theme.glassBorderWidth : 1)
+    scale: mouseArea.containsPress ? 0.95 : (hoverScale && mouseArea.containsMouse ? 1.02 : 1)
 
     // 0. Ambient Contact Drop Shadow (Physical surface separation)
     Rectangle {
         id: contactShadow
+
         visible: root.showShadow
         z: -1
         anchors.fill: parent
@@ -256,32 +239,42 @@ Rectangle {
         color: "transparent"
         border.color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.32) : Qt.rgba(0, 0, 0, 0.12)
         border.width: Math.max(2, Math.round(root.elevation * 0.45))
-        opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.35 : 0.20
+        opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.35 : 0.2
     }
 
     // 1. Refractive Optical Gradient
     Rectangle {
         id: refractionGradient
+
         anchors.fill: parent
         radius: root.radius
         color: "transparent"
+
         gradient: Gradient {
-            GradientStop { 
-                position: 0.0 
-                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(1, 1, 1, 0.40) 
+            GradientStop {
+                position: 0
+                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(1, 1, 1, 0.4)
             }
-            GradientStop { position: 0.50; color: "transparent" }
-            GradientStop { 
-                position: 1.0 
-                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.06) : Qt.rgba(1, 1, 1, 0.15) 
+
+            GradientStop {
+                position: 0.5
+                color: "transparent"
             }
+
+            GradientStop {
+                position: 1
+                color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.06) : Qt.rgba(1, 1, 1, 0.15)
+            }
+
         }
+
     }
 
     // 2. Dual Specular Hairline Glare (Horizontal light catch along flat top edge)
     // Anti-overhang: only visible when parent has flat top edge (width > radius * 2 + 8) and specular enabled
     Rectangle {
         id: topGlare
+
         visible: ((typeof Theme !== "undefined" && Theme.material) ? Theme.material.specularEnabled : true) && (parent.width > (root.radius * 2 + 8))
         anchors.top: parent.top
         anchors.topMargin: 0.5
@@ -290,21 +283,44 @@ Rectangle {
         anchors.leftMargin: Math.max(root.radius + 2, 14)
         anchors.rightMargin: Math.max(root.radius + 2, 14)
         height: 1
-        opacity: mouseArea.containsMouse ? 1.0 : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.70 : 0.85)
+        opacity: mouseArea.containsMouse ? 1 : ((typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.7 : 0.85)
 
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 0.20; color: Qt.rgba(1, 1, 1, 0.5) }
-            GradientStop { position: 0.50; color: "#FFFFFF" }
-            GradientStop { position: 0.80; color: Qt.rgba(1, 1, 1, 0.5) }
-            GradientStop { position: 1.0; color: "transparent" }
+
+            GradientStop {
+                position: 0
+                color: "transparent"
+            }
+
+            GradientStop {
+                position: 0.2
+                color: Qt.rgba(1, 1, 1, 0.5)
+            }
+
+            GradientStop {
+                position: 0.5
+                color: "#FFFFFF"
+            }
+
+            GradientStop {
+                position: 0.8
+                color: Qt.rgba(1, 1, 1, 0.5)
+            }
+
+            GradientStop {
+                position: 1
+                color: "transparent"
+            }
+
         }
+
     }
 
     // 3. Bottom Caustic Reflection Rim
     Rectangle {
         id: bottomRim
+
         visible: ((typeof Theme !== "undefined" && Theme.material) ? Theme.material.causticEnabled : true) && (parent.width > (root.radius * 2 + 8))
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 0.5
@@ -313,24 +329,39 @@ Rectangle {
         anchors.leftMargin: Math.max(root.radius + 2, 14)
         anchors.rightMargin: Math.max(root.radius + 2, 14)
         height: 1
-        opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.25 : 0.40
+        opacity: (typeof Colors !== "undefined" && Colors.isDarkMode) ? 0.25 : 0.4
 
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.45) }
-            GradientStop { position: 1.0; color: "transparent" }
+
+            GradientStop {
+                position: 0
+                color: "transparent"
+            }
+
+            GradientStop {
+                position: 0.5
+                color: Qt.rgba(1, 1, 1, 0.45)
+            }
+
+            GradientStop {
+                position: 1
+                color: "transparent"
+            }
+
         }
+
     }
 
     // 4. Floating Content with 3D Depth Shadow
     Row {
         id: shadowRow
+
         visible: (typeof Theme !== "undefined" && Theme.material) ? Theme.material.shadowsEnabled : true
-        anchors.centerIn: parent
-        anchors.verticalCenterOffset: 2.0
+        x: root.contentAlignment === Qt.AlignLeft ? root.contentLeftPadding : (root.width - width) / 2
+        y: (root.height - height) / 2 + 2
         spacing: (typeof Theme !== "undefined" && Theme.spaceSmall) ? Theme.spaceSmall : 6
-        opacity: 0.70
+        opacity: 0.7
 
         MaterialIcon {
             visible: root.iconText !== "" || root.iconName !== ""
@@ -343,25 +374,28 @@ Rectangle {
 
         Text {
             id: labelShadow
+
             visible: root.label !== ""
             text: root.label
-            font.family: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber" && Theme.fontMonospace)
-                ? Theme.fontMonospace
-                : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
+            font.family: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber" && Theme.fontMonospace) ? Theme.fontMonospace : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
             font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 13
             font.weight: root.active ? Font.DemiBold : Font.Normal
             color: (typeof Colors !== "undefined" && Colors.isDarkMode) ? Qt.rgba(0, 0, 0, 0.5) : Qt.rgba(0, 0, 0, 0.2)
             anchors.verticalCenter: parent.verticalCenter
         }
+
     }
 
     Row {
         id: contentRow
-        anchors.centerIn: parent
+
+        x: root.contentAlignment === Qt.AlignLeft ? root.contentLeftPadding : (root.width - width) / 2
+        y: (root.height - height) / 2
         spacing: (typeof Theme !== "undefined" && Theme.spaceSmall) ? Theme.spaceSmall : 6
 
         MaterialIcon {
             id: icon
+
             visible: root.iconText !== "" || root.iconName !== ""
             text: root.iconText
             iconName: root.iconName
@@ -372,21 +406,22 @@ Rectangle {
 
         Text {
             id: labelText
+
             visible: root.label !== ""
             text: root.label
-            font.family: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber" && Theme.fontMonospace)
-                ? Theme.fontMonospace
-                : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
+            font.family: (typeof Theme !== "undefined" && Theme.surfaceStyle === "neon_cyber" && Theme.fontMonospace) ? Theme.fontMonospace : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
             font.pixelSize: (typeof Theme !== "undefined" && Theme.fontBodyMedium) ? Theme.fontBodyMedium : 13
             font.weight: root.active ? Font.DemiBold : Font.Normal
             color: root.active ? root.activeTextColor : root.inactiveTextColor
             anchors.verticalCenter: parent.verticalCenter
         }
+
     }
 
     // 4b. Attention dot (opt-in)
     Rectangle {
         id: badgeDot
+
         visible: root.badgeVisible
         width: 8
         height: 8
@@ -400,18 +435,42 @@ Rectangle {
     // 5. Interactive MouseArea
     MouseArea {
         id: mouseArea
+
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-        onClicked: mouse => {
-            if (mouse.button === Qt.RightButton) {
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.RightButton)
                 root.rightClicked();
-            } else if (mouse.button === Qt.MiddleButton) {
+            else if (mouse.button === Qt.MiddleButton)
                 root.middleClicked();
-            } else {
+            else
                 root.clicked();
-            }
         }
     }
+
+    Behavior on color {
+        ColorAnimation {
+            duration: 150
+        }
+
+    }
+
+    Behavior on border.color {
+        ColorAnimation {
+            duration: 150
+        }
+
+    }
+
+    Behavior on scale {
+        NumberAnimation {
+            duration: mouseArea.containsPress ? 100 : 200
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: (typeof Theme !== "undefined" && Theme.curveGlassElastic) ? Theme.curveGlassElastic : [0.34, 1.56, 0.64, 1]
+        }
+
+    }
+
 }
