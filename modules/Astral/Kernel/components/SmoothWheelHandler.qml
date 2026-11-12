@@ -27,6 +27,10 @@ WheelHandler {
     required property Flickable flickable
     property real speed: 1
     property real velocity: 0
+    /// Gesture cadence/velocity estimate used by the acceleration curve.
+    property real gestureSpeed: 0
+    property real acceleration: 1
+    property real lastWheelMs: 0
     /// Unbounded position on the active axis. The displayed content offset is
     /// this value mapped through the rubber band at the edges.
     property real rawY: root.flickable ? root.flickable.contentY : 0
@@ -36,6 +40,7 @@ WheelHandler {
     property int wheelEvents: 0
     property Connections flickableConnections
     property FrameAnimation physicsFrame
+    property Timer gestureResetTimer
     readonly property bool animating: physicsFrame.running
     readonly property bool scrollable: root.flickable !== null && root.flickable.interactive && root.flickable.enabled
     readonly property bool canScrollVertically: root.scrollable && root.flickable.contentHeight > root.flickable.height + 0.5 && root.flickable.flickableDirection !== Flickable.HorizontalFlick
@@ -53,6 +58,22 @@ WheelHandler {
 
     function maxY() {
         return root.flickable ? Math.max(0, root.flickable.contentHeight - root.flickable.height) : 0;
+    }
+
+    /// Apply the acceleration curve for this event, then scroll. `dt` is the
+    /// time since the previous wheel event in seconds. A slow cadence stays at
+    /// 1x; a fast spin raises the impulse up to the ceiling.
+    function scrollWithAcceleration(dx, dy, dt) {
+        const elapsed = Math.max(0.008, Math.min(dt > 0 ? dt : 0.1, 0.25));
+        const raw = Math.max(Math.abs(dx), Math.abs(dy));
+        const speed = raw / elapsed;
+        if (root.gestureSpeed <= 0)
+            root.gestureSpeed = Physics.SCROLL_ACCEL_BASE_SPEED;
+        else
+            root.gestureSpeed += (speed - root.gestureSpeed) * 0.5;
+        root.acceleration = Physics.accelerationFor(root.gestureSpeed);
+        gestureResetTimer.restart();
+        return root.scrollBy(dx * root.acceleration, dy * root.acceleration);
     }
 
     /// Public seam for tests and for callers that already normalized a delta.
@@ -114,6 +135,7 @@ WheelHandler {
         root.velocity = 0;
         if (wasRunning)
             root.scrollEnded();
+
     }
 
     /// One frame of momentum + edge return. `dt` comes from FrameAnimation,
@@ -162,15 +184,29 @@ WheelHandler {
             return ;
 
         root.wheelEvents += 1;
+        const now = Date.now();
+        const dt = root.lastWheelMs > 0 ? (now - root.lastWheelMs) / 1000 : 0.1;
+        root.lastWheelMs = now;
         const dx = Physics.axisDelta(event, "x");
         const dy = Physics.axisDelta(event, "y");
-        if (!root.scrollBy(dx, dy))
-            root.scrollAncestor(dx, dy);
+        if (!root.scrollWithAcceleration(dx, dy, dt))
+            root.scrollAncestor(dx * root.acceleration, dy * root.acceleration);
 
         // Flickable has its own wheelEvent that jumps by a whole angle delta.
         // The handler is the one scroll path, so consume the event even when
         // this surface (and its ancestors) cannot use it.
         event.accepted = true;
+    }
+
+    /// A gesture ends when the wheel has been quiet for a moment; the next
+    /// gesture starts at 1x acceleration again.
+    gestureResetTimer: Timer {
+        interval: 220
+        onTriggered: {
+            root.gestureSpeed = 0;
+            root.acceleration = 1;
+            root.lastWheelMs = 0;
+        }
     }
 
     /// A drag or a native flick owns the position; stop fighting it.

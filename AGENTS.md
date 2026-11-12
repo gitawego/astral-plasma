@@ -385,6 +385,9 @@ This was learned the hard way:
 - **Do not** add a wheel delta to a target and spring `contentY` toward it on every event.
   Under fast input the target runs ahead, the spring overshoots or lags, and the result is
   clunky.
+- **Do** accelerate with cadence: measure the time between events, raise a gesture-speed
+  estimate as the input gets faster, and scale the impulse by a capped power curve. A constant
+  impulse per event feels flat no matter how fast you spin.
 - **Do** add the delta as a velocity impulse, decay velocity exponentially, and integrate the
   position exactly:
   `position += velocity * (1 - exp(-k * dt)) / k`.

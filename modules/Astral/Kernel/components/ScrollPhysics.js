@@ -5,7 +5,8 @@
 // ============================================================================
 // macOS-style scrolling, not a target spring:
 //
-//   * a wheel/trackpad delta adds an impulse to the velocity;
+//   * a wheel/trackpad delta adds an impulse to the velocity, amplified by the
+//     gesture's cadence;
 //   * velocity decays exponentially (momentum), so fast input goes farther and
 //     then eases out instead of oscillating around a target;
 //   * at an edge the raw position is mapped through the UIScrollView
@@ -30,6 +31,13 @@ var MAXIMUM_FLICK_VELOCITY = 4000;
 var SCROLL_IMPULSE = 24;
 var SCROLL_DECELERATION = 12;
 var SCROLL_MAX_VELOCITY = 6000;
+
+/// Wheel acceleration. A normal notch cadence is roughly one event per 100 ms
+/// (600 px/s of raw input). Faster repeated input raises the gesture speed and
+/// the impulse multiplier, capped so a spin cannot fling the view into orbit.
+var SCROLL_ACCEL_BASE_SPEED = 600;
+var SCROLL_ACCEL_EXPONENT = 0.55;
+var SCROLL_ACCEL_MAX = 3;
 
 /// Edge return. The raw position may sit outside the bounds; this spring pulls
 /// it back after the momentum has decayed.
@@ -56,6 +64,13 @@ function axisDelta(event, axis) {
 /// Clamp a value to a range.
 function clamp(value, minimum, maximum) {
     return Math.max(minimum, Math.min(maximum, value));
+}
+
+/// How much a gesture's current speed amplifies the next wheel impulse. 1x at
+/// the base cadence, rising sublinearly to a hard ceiling.
+function accelerationFor(speed) {
+    const ratio = Math.max(1, speed / SCROLL_ACCEL_BASE_SPEED);
+    return clamp(Math.pow(ratio, SCROLL_ACCEL_EXPONENT), 1, SCROLL_ACCEL_MAX);
 }
 
 /// Exponential momentum decay for one frame.

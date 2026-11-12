@@ -76,6 +76,15 @@ Item {
             angleDelta: { x: 0, y: 120 }
         }, "y") === 3, "a trackpad pixel delta is used as-is");
 
+        // The acceleration curve: 1x at a normal cadence, rising with faster
+        // repeated input, capped so a spin cannot destabilise.
+        assert(Physics.accelerationFor(600) === 1,
+            "a normal cadence is 1x");
+        assert(Physics.accelerationFor(2400) > 1.5,
+            "fast input is amplified");
+        assert(Physics.accelerationFor(1000000) === 3,
+            "acceleration has a hard ceiling");
+
         // Momentum decays every frame instead of easing to a target.
         assert(Physics.decay(600, 1 / 60) < 600,
             "velocity decays with momentum");
@@ -187,6 +196,23 @@ Item {
         assert(vertical.wheelHandler.animating === false,
             "the physics frame loop stops at rest");
         assert(testRoot.scrollEnds === 1, "the scroll-end signal fires once");
+
+        // Faster repeated input gets a larger impulse; a slow first event does
+        // not jump straight to the ceiling.
+        vertical.wheelHandler.stopPhysics();
+        vertical.wheelHandler.syncPosition();
+        vertical.wheelHandler.gestureSpeed = 0;
+        vertical.wheelHandler.acceleration = 1;
+        vertical.wheelHandler.scrollWithAcceleration(0, -60, 0.1);
+        const firstAcceleration = vertical.wheelHandler.acceleration;
+        vertical.wheelHandler.scrollWithAcceleration(0, -60, 0.03);
+        const secondAcceleration = vertical.wheelHandler.acceleration;
+        assert(firstAcceleration === 1,
+            "the first event of a gesture is 1x (got " + firstAcceleration + ")");
+        assert(secondAcceleration > firstAcceleration,
+            "a faster second event accelerates (" + firstAcceleration + " -> "
+                + secondAcceleration + ")");
+        vertical.wheelHandler.stopPhysics();
 
         // Horizontal-only surfaces route the wheel to contentX.
         assert(horizontal.wheelHandler.scrollBy(-120, 0) === true,

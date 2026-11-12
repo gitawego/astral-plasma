@@ -3175,7 +3175,8 @@ by default. The fix is one scroll primitive, not a patch per surface.
   (a 120-unit notch is 60 px; a trackpad's `pixelDelta` wins), clamping, flick physics, and
   the spring-damper constants/integrator.
 - `SmoothWheelHandler.qml` — a `WheelHandler` that follows the macOS model: a wheel delta is a
-  velocity impulse, velocity decays exponentially, and the raw position is mapped through the
+  cadence-amplified velocity impulse (faster repeated input gets a larger push), velocity
+  decays exponentially, and the raw position is mapped through the
   UIScrollView rubber-band curve at the edges with a damped return. There is no target spring
   and no fixed-duration tween, so fast input accumulates velocity instead of fighting a lagging
   target. One axis is latched per gesture; a cross-axis wheel delegates to an ancestor, while a
@@ -3203,7 +3204,8 @@ audits the migrated files for bare `Flickable`/`ListView`/`GridView` declaration
 ### Verification
 
 `tests/tst_smooth_scroll.qml` asserts the wheel delta normalization, a mid-glide offset,
-momentum decay, fast-input accumulation, the rubber-band compression, the edge return/snap,
+momentum decay, cadence acceleration, fast-input accumulation, the rubber-band compression,
+the edge return/snap,
 horizontal routing, the non-interactive guard, the boundary/ancestor rule, and the source
 contract. `tests/tst_scroll_indicator_macos.qml` asserts the fade-in during a wheel glide, the
 post-momentum hold, and the fade-out. `make test` exit 0 — 1347 Rust tests, 172 QML suites,
