@@ -9,6 +9,7 @@ import "../../Kernel/components"
 import "../../Kernel/theme"
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "SkillsModel.js" as Model
 
@@ -264,6 +265,8 @@ Item {
                             border.color: Theme.borderSubtle
 
                             TextField {
+                                id: sourcePathField
+
                                 anchors.fill: parent
                                 anchors.leftMargin: 12
                                 anchors.rightMargin: 12
@@ -303,6 +306,15 @@ Item {
                                 onAccepted: root.addSource()
                             }
 
+                        }
+
+                        ActionPill {
+                            text: "Browse…"
+                            fixedHeight: 28
+                            paddingHorizontal: 12
+                            fontPixelSize: 10
+                            variant: "secondary"
+                            onClicked: sourceFolderDialog.open()
                         }
 
                         ActionPill {
@@ -1001,6 +1013,20 @@ Item {
 
         }
 
+    }
+
+    // The add-source path can be typed or picked. Qt 6 separates the folder
+    // picker into FolderDialog; FileDialog has no directory mode.
+    FolderDialog {
+        id: sourceFolderDialog
+
+        title: "Add a skills folder"
+        onAccepted: {
+            const picked = String(selectedFolder).replace(/^file:\/\//, "");
+            sourcePathField.text = picked;
+            root.newSource = picked;
+            root.newSourceRef = "";
+        }
     }
 
 }

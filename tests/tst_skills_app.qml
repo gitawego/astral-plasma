@@ -154,6 +154,12 @@ Item {
             "the app can ask the page to switch tabs");
         assert(app.indexOf('root.tabRequested("find")') >= 0,
             "the Installed empty state opens the Find tab's add-source form");
+        assert(app.indexOf("FolderDialog") >= 0,
+            "the add-source form offers a native folder picker");
+        assert(app.indexOf("sourceFolderDialog.open()") >= 0,
+            "the Browse button opens it");
+        assert(app.indexOf("sourcePathField.text = picked") >= 0,
+            "the picked folder fills the path field");
         const page = readLocalFile("../settings_gui/pages/SkillsPage.qml");
         assert(page.indexOf("tabs: [") >= 0,
             "the page declares Atlas tabs");
