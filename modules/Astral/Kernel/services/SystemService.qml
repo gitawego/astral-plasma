@@ -286,7 +286,11 @@ Singleton {
     // 1-second cadence timer: active ONLY while isMonitoringActive is true
     Timer {
         id: monitoringTimer
-        interval: 1000
+        // The Performance tab needs a 1 s live graph; the dashboard summary does
+        // not. A 1 s `metrics` subprocess + JSON parse on the GUI thread was the
+        // measured ~1 s 140% spike while the dashboard was open (the telemetry
+        // card is a monitoring client). Keep 1 s for Performance, 5 s elsewhere.
+        interval: root.isPerfTabVisibleInConfig ? 1000 : 5000
         running: root.isMonitoringActive
         repeat: true
         triggeredOnStart: false

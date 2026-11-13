@@ -107,7 +107,17 @@ Item {
                 root.currentDate = new Date();
             }
         }
-        onTriggered: root.currentDate = new Date()
+        onTriggered: {
+            const now = new Date();
+            // The clock shows HH:mm and the calendar/day label only changes at
+            // midnight. Reassigning currentDate every second invalidated all 42
+            // day cells (and the layered cards around them) on a 1s cadence -
+            // the measured periodic 140% spike while the dashboard was open.
+            // Reassign only when the displayed minute (or day) actually changes.
+            if (Qt.formatDateTime(now, "yyyy-MM-dd HH:mm") !== Qt.formatDateTime(root.currentDate, "yyyy-MM-dd HH:mm")) {
+                root.currentDate = now;
+            }
+        }
     }
 
     Component.onCompleted: {

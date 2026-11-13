@@ -39,6 +39,7 @@ ShellRoot {
         aiDefaultAgent: Config.aiDefaultAgent
         dashboardVisible: Config.dashboardVisible
         dashboardWidth: Config.dashboardWidth
+        dashboardMotion: Config.dashboardMotion
         // Only the tabs an enabled app provides: disabling an app removes its tab from the
         // strip instead of leaving a pane that apologises (spec C.35).
         //
@@ -252,6 +253,7 @@ ShellRoot {
         function toggle(): void { Config.dashboardVisible = !Config.dashboardVisible; }
         function open(): void { Config.dashboardVisible = true; }
         function close(): void { Config.dashboardVisible = false; }
+        function setMotion(mode: string): void { Config.setDashboardMotion(mode); }
         function setTab(tab: string): void {
             Config.activeDashboardTab = tab;
             Config.dashboardVisible = true;

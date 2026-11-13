@@ -11,12 +11,62 @@ Item {
 
     property real dropX: (parent.width - dropW) / 2
     property real dropW: (root.shellState && root.shellState.dashboardWidth) || 980
+    /// Layout padding, guarded for the offscreen harness (which does not resolve
+    /// the Theme singleton the same way the shell does).
+    readonly property real padLarge: (typeof Theme !== "undefined" && Theme.padLarge !== undefined)
+        ? Theme.padLarge : 16
     readonly property real targetDropH: cardLayout.implicitHeight > 0
-        ? (cardLayout.implicitHeight + Theme.padLarge * 2)
+        ? (cardLayout.implicitHeight + root.padLarge * 2)
         : 440
+    // The envelope follows the content while the drawer is opening/closing or
+    // a tab changes. Once settled the live binding is broken (freezeDropH): a
+    // media title, clock tick, or metrics sample changing the content's
+    // implicit height must not re-run the 500ms height Behavior and repaint
+    // the whole glass card - that was the periodic stutter under load.
     property real dropH: targetDropH
+    property bool tabSwitchHold: false
+    property bool dropHFrozen: false
+    /// False during component construction: the initial activeTab fallback must
+    /// not look like a user tab switch (it would override a caller-set dropH).
+    property bool ready: false
+
+    Component.onCompleted: root.ready = true
+
+    function freezeDropH() {
+        if (root.dropHFrozen) return;
+        root.dropH = root.dropH; // assignment removes the binding
+        root.dropHFrozen = true;
+    }
+
+    function restoreDropH() {
+        if (!root.dropHFrozen) return;
+        root.dropH = Qt.binding(function () { return root.targetDropH; });
+        root.dropHFrozen = false;
+    }
+
+    onOffsetProgressChanged: {
+        if (root.isOpen && root.offsetProgress >= 0.999) root.freezeDropH();
+    }
+
+    onIsOpenChanged: {
+        if (!root.isOpen) root.restoreDropH();
+    }
+
+    onTargetDropHChanged: {
+        if (root.tabSwitchHold && root.isOpen) root.dropH = Math.max(1, root.targetDropH);
+    }
+
+    Timer {
+        id: tabSwitchTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.tabSwitchHold = false
+    }
 
     Behavior on dropH {
+        // Animate the envelope only while the drawer is opening/closing, or for
+        // the one deliberate tab-switch resize. While settled it is frozen.
+        enabled: root.tabSwitchHold || !root.isOpen || root.offsetProgress < 0.999
         NumberAnimation {
             duration: (typeof Theme !== "undefined" && Theme.animExpressiveDefaultSpatial) ? Theme.animExpressiveDefaultSpatial : 500
             easing.type: Easing.BezierSpline
@@ -27,6 +77,24 @@ Item {
     property bool isOpen: root.shellState !== null && root.shellState.dashboardVisible
     readonly property real currentDropH: dropH * offsetProgress
     property real offsetProgress: isOpen ? 1.0 : 0.0
+
+    /// Content choreography during open/close. Both variants keep the fused
+    /// card envelope morph (the frame grows and its shoulder fillets weld to
+    /// the top border); only the content's own path differs:
+    ///
+    /// - "slide": the content slides down with the growing card. This is the
+    ///   original Astral motion, now on its own y track instead of anchor
+    ///   margins, so the layout is not reflowed on every frame.
+    /// - "reveal": the content stays at its final position and the growing
+    ///   card reveals it from the top. This is the reference shell's static-content
+    ///   approach adapted to Astral's fused envelope.
+    ///
+    /// Neither variant animates the content's height: the content is laid out
+    /// once at its final size, and only the card's clip and the content's y
+    /// move. Animating height/clip layout was the measured 150% of a core.
+    readonly property string motion: (root.shellState && root.shellState.dashboardMotion)
+        ? root.shellState.dashboardMotion : "slide"
+    readonly property bool revealMotion: motion === "reveal"
 
     Connections {
         target: root.shellState
@@ -76,6 +144,13 @@ Item {
     property string activeTab: DashboardTabs.fallbackActiveTab(root.visibleTabs,
         (root.shellState && root.shellState.activeDashboardTab) ? root.shellState.activeDashboardTab : "dashboard")
     onActiveTabChanged: {
+        // Let the new pane measure once; the timer then freezes the envelope
+        // again. This is the only live content change allowed to resize the card.
+        // Not during construction: the initial fallback is not a user switch.
+        if (root.ready && root.isOpen && root.offsetProgress >= 0.999) {
+            root.tabSwitchHold = true;
+            tabSwitchTimer.restart();
+        }
         // Only a *selected* tab is worth persisting. Writing the fallback back
         // would overwrite the user's choice with the fallback and lose it as soon
         // as the tab becomes available again.
@@ -114,12 +189,10 @@ Item {
     /// Mount every tab pane. Called when this dashboard is shown: that is the moment it may
     /// take an app item from a hidden instance on another screen, and the moment a stale
     /// item left behind by a disabled app must be replaced.
+    /// Kept as the show hook, but it no longer mounts every pane: each pane
+    /// mounts itself from `onVisibleChanged` while it is the active tab.
     function mountAllTabs() {
-        mountTab("media", mediaAppSurface);
-        mountTab("performance", perfAppSurface);
-        mountTab("ai", aiAppSurface);
-        mountTab("workspaces", wsAppSurface);
-        mountTab("downloads", dlAppHostSurface);
+        // The active app pane is already visible (and has mounted itself).
     }
 
     onIsShownChanged: if (root.isShown) root.mountAllTabs()
@@ -212,11 +285,18 @@ Item {
 
     ColumnLayout {
         id: cardLayout
-        anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.margins: Theme.padLarge
-        anchors.topMargin: Theme.padLarge + Math.min(0, root.currentDropH - root.dropH)
+        anchors.margins: root.padLarge
+        // A transform, not an anchor margin: `anchors.topMargin` takes the
+        // layout path every frame and reflows the whole dashboard.
+        y: root.padLarge + (root.revealMotion
+            ? 0
+            : Math.min(0, root.currentDropH - root.dropH))
+        // Laid out once at the final content height for the whole transition.
+        // The card's clip reveals it (reveal) or it slides past that clip
+        // (slide); neither path re-measures the content.
+        height: Math.max(0, root.dropH - root.padLarge * 2)
         spacing: Theme.spaceMedium
 
         // Tabs Header with Fluid Sliding Indicator & Quick Settings Button
@@ -492,8 +572,14 @@ Item {
                             return root.appHost.loaderCount * 1000
                                 + Object.keys(root.appHost.tabProviders).length;
                         }
-                        onHostReadinessChanged: mountApp()
-                        Component.onCompleted: mountApp()
+                        // Lazy: an app pane mounts only while it is the visible
+                        // tab. Mounting every pane eagerly let hidden apps keep
+                        // processing live window/media data and repaint the glass
+                        // surface on a ~1s cadence (the reference shell loads only the
+                        // current/visible pane for the same reason).
+                        onHostReadinessChanged: if (visible) mountApp()
+                        onVisibleChanged: if (visible) mountApp()
+                        Component.onCompleted: if (visible) mountApp()
 
                         function mountApp() {
                             if (!root.appHost) return;
@@ -538,8 +624,14 @@ Item {
                             return root.appHost.loaderCount * 1000
                                 + Object.keys(root.appHost.tabProviders).length;
                         }
-                        onHostReadinessChanged: mountApp()
-                        Component.onCompleted: mountApp()
+                        // Lazy: an app pane mounts only while it is the visible
+                        // tab. Mounting every pane eagerly let hidden apps keep
+                        // processing live window/media data and repaint the glass
+                        // surface on a ~1s cadence (the reference shell loads only the
+                        // current/visible pane for the same reason).
+                        onHostReadinessChanged: if (visible) mountApp()
+                        onVisibleChanged: if (visible) mountApp()
+                        Component.onCompleted: if (visible) mountApp()
 
                         function mountApp() {
                             if (!root.appHost) return;
@@ -584,8 +676,14 @@ Item {
                             return root.appHost.loaderCount * 1000
                                 + Object.keys(root.appHost.tabProviders).length;
                         }
-                        onHostReadinessChanged: mountApp()
-                        Component.onCompleted: mountApp()
+                        // Lazy: an app pane mounts only while it is the visible
+                        // tab. Mounting every pane eagerly let hidden apps keep
+                        // processing live window/media data and repaint the glass
+                        // surface on a ~1s cadence (the reference shell loads only the
+                        // current/visible pane for the same reason).
+                        onHostReadinessChanged: if (visible) mountApp()
+                        onVisibleChanged: if (visible) mountApp()
+                        Component.onCompleted: if (visible) mountApp()
 
                         function mountApp() {
                             if (!root.appHost) return;
@@ -630,8 +728,14 @@ Item {
                             return root.appHost.loaderCount * 1000
                                 + Object.keys(root.appHost.tabProviders).length;
                         }
-                        onHostReadinessChanged: mountApp()
-                        Component.onCompleted: mountApp()
+                        // Lazy: an app pane mounts only while it is the visible
+                        // tab. Mounting every pane eagerly let hidden apps keep
+                        // processing live window/media data and repaint the glass
+                        // surface on a ~1s cadence (the reference shell loads only the
+                        // current/visible pane for the same reason).
+                        onHostReadinessChanged: if (visible) mountApp()
+                        onVisibleChanged: if (visible) mountApp()
+                        Component.onCompleted: if (visible) mountApp()
 
                         function mountApp() {
                             root.mountTab("workspaces", wsAppSurface);
@@ -675,8 +779,14 @@ Item {
                             return root.appHost.loaderCount * 1000
                                 + Object.keys(root.appHost.tabProviders).length;
                         }
-                        onHostReadinessChanged: mountApp()
-                        Component.onCompleted: mountApp()
+                        // Lazy: an app pane mounts only while it is the visible
+                        // tab. Mounting every pane eagerly let hidden apps keep
+                        // processing live window/media data and repaint the glass
+                        // surface on a ~1s cadence (the reference shell loads only the
+                        // current/visible pane for the same reason).
+                        onHostReadinessChanged: if (visible) mountApp()
+                        onVisibleChanged: if (visible) mountApp()
+                        Component.onCompleted: if (visible) mountApp()
 
                         function mountApp() {
                             if (!root.appHost) return;

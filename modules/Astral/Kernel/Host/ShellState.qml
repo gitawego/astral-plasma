@@ -32,6 +32,8 @@ QtObject {
     property bool dashboardVisible: false
     /// The dashboard's width, as the user set it.
     property real dashboardWidth: 980
+    /// Dashboard open/close choreography ("slide" or "reveal").
+    property string dashboardMotion: "slide"
     /// Which tabs the user enabled, in order.
     property var dashboardTabs: []
     /// Which device the performance surface shows (`cpu`, `gpu`, …).

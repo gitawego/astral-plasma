@@ -77,6 +77,10 @@ Singleton {
         "dashboard": {
             "enabled": true,
             "defaultTab": "dashboard",
+            // Open/close choreography. Both keep the fused card envelope morph;
+            // only the content path differs: "slide" moves it with the card,
+            // "reveal" leaves it at its final position and lets the clip reveal it.
+            "motion": "slide",
             // "" = follow the system's XDG MIME default for text/calendar.
             "calendarApp": "",
             "mediaAvatar": "",
@@ -193,6 +197,9 @@ Singleton {
     readonly property bool topBarShowWeather: true
     readonly property bool dashboardShowOnHover: root.settings.dashboard ? (root.settings.dashboard.showOnHover ?? true) : true
     readonly property int dashboardWidth: root.settings.dashboard ? (root.settings.dashboard.width ?? 980) : 980
+    /// Dashboard open/close choreography: "slide" or "reveal" (see DEFAULT_SETTINGS).
+    readonly property string dashboardMotion: root.settings.dashboard
+        ? (root.settings.dashboard.motion ?? "slide") : "slide"
     // Dashboard calendar app override ("" = system default via XDG MIME)
     readonly property string calendarApp: (root.settings.dashboard && typeof root.settings.dashboard.calendarApp === "string")
         ? root.settings.dashboard.calendarApp : ""
@@ -824,6 +831,15 @@ Singleton {
         updateSettings(cfg => {
             if (!cfg.dashboard) cfg.dashboard = {};
             cfg.dashboard.enabled = enabled;
+        });
+    }
+
+    /// "slide" (content moves with the fused card) or "reveal" (static content,
+    /// the growing card reveals it). Unknown values fall back to "slide".
+    function setDashboardMotion(mode) {
+        updateSettings(cfg => {
+            if (!cfg.dashboard) cfg.dashboard = {};
+            cfg.dashboard.motion = (mode === "reveal") ? "reveal" : "slide";
         });
     }
 
