@@ -122,6 +122,25 @@ fn install_list_disable_enable_and_remove_a_whole_source() {
 }
 
 #[test]
+fn a_source_id_printed_by_source_add_installs_its_skills() {
+    let sandbox = Sandbox::new();
+    let source = sandbox.source();
+    let source_str = source.to_str().unwrap();
+
+    let (ok, stdout, stderr) = sandbox.run(&["skills", "source", "add", source_str]);
+    assert!(ok, "source add failed: {stderr}");
+    assert!(stdout.contains("local-my-skills"), "{stdout}");
+
+    // The id printed by `source add` is an install target, not just a display label.
+    let (ok, _, stderr) = sandbox.run(&[
+        "skills", "install", "local-my-skills", "--accept", "--target", "codex",
+    ]);
+    assert!(ok, "installing by source id failed: {stderr}");
+    assert!(sandbox.link(".agents/skills", "alpha").is_symlink());
+    assert!(sandbox.link(".agents/skills", "beta").is_symlink());
+}
+
+#[test]
 fn the_doctor_reports_an_unmanaged_farm_and_the_cli_can_adopt_it() {
     let sandbox = Sandbox::new();
     let legacy = sandbox.link(".agents/skills", "legacy");

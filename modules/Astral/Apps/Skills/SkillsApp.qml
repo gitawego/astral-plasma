@@ -743,6 +743,21 @@ Item {
                                 }
 
                                 ActionPill {
+                                    // A source can be added before its skills are linked; this is
+                                    // the explicit install step for a local folder or a new repo.
+                                    text: "Install all"
+                                    fixedHeight: 26
+                                    paddingHorizontal: 10
+                                    fontPixelSize: 10
+                                    variant: "primary"
+                                    onClicked: {
+                                        if (root.skills)
+                                            root.skills.install(modelData.id, []);
+
+                                    }
+                                }
+
+                                ActionPill {
                                     // One toggle for the whole repository: the operation the
                                     // ecosystem's CLI cannot do.
                                     text: modelData.enabled ? "Disable all" : "Enable all"

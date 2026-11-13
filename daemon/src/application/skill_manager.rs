@@ -731,11 +731,15 @@ pub fn install(
     scope: &Scope,
     accept: bool,
 ) -> DynResult<InstallReport> {
-    let parsed = parse_source(input).map_err(|error| error.to_string())?;
-    let id = source_id(&parsed);
-    let mut ledger = read_ledger(&ctx.paths.ledger)?;
     // A source that is already known carries settings the typed string does not (`--copy`,
-    // `--watch`, a pinned ref chosen when it was added).
+    // `--watch`, a pinned ref chosen when it was added). It is also addressed by its id, so
+    // `source add <folder>` followed by the printed `install <id>` is a valid flow.
+    let mut ledger = read_ledger(&ctx.paths.ledger)?;
+    let parsed = match ledger.source(input.trim()) {
+        Some(source) => source.spec.clone(),
+        None => parse_source(input).map_err(|error| error.to_string())?,
+    };
+    let id = source_id(&parsed);
     let spec = ledger.source(&id).map(|source| source.spec.clone()).unwrap_or(parsed);
     let known_source = ledger.source(&id).is_some();
     if !known_source && !accept {
