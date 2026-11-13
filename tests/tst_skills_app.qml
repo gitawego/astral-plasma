@@ -150,13 +150,22 @@ Item {
             "removal asks for a second, confirming click");
         assert(app.indexOf('property string tab: "find"') >= 0,
             "the app reacts to the scaffold's selected tab");
+        assert(app.indexOf("signal tabRequested") >= 0,
+            "the app can ask the page to switch tabs");
+        assert(app.indexOf('root.tabRequested("find")') >= 0,
+            "the Installed empty state opens the Find tab's add-source form");
         const page = readLocalFile("../settings_gui/pages/SkillsPage.qml");
         assert(page.indexOf("tabs: [") >= 0,
             "the page declares Atlas tabs");
         assert(page.indexOf("skills: SkillsService") >= 0, "the page injects the service as the port");
-        assert(page.indexOf('{ id: "find", label: "Find"') >= 0, "the page exposes a Find zone");
-        assert(page.indexOf('{ id: "mcp", label: "MCP server"') >= 0, "the page exposes an MCP zone");
-        assert(page.indexOf('{ id: "installed", label: "Installed"') >= 0, "the page exposes an Installed zone");
+        assert(page.indexOf("onTabRequested:") >= 0,
+            "the page honours the app's tab request");
+        assert(/["']?id["']?:\s*"find"[\s\S]{0,80}?["']?label["']?:\s*"Find"/.test(page),
+            "the page exposes a Find zone");
+        assert(/["']?id["']?:\s*"mcp"[\s\S]{0,80}?["']?label["']?:\s*"MCP server"/.test(page),
+            "the page exposes an MCP zone");
+        assert(/["']?id["']?:\s*"installed"[\s\S]{0,80}?["']?label["']?:\s*"Installed"/.test(page),
+            "the page exposes an Installed zone");
         assert(page.indexOf('root.integrations["settingsPage:skills"]') >= 0,
             "and hides itself when the app is disabled");
         assert(readLocalFile("../shell.qml").indexOf("integrations: AppStates.integrations") >= 0,

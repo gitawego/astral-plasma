@@ -43,6 +43,10 @@ Item {
     property string newSource: ""
     property string newSourceRef: ""
 
+    /// An action inside a tab may need to send the reader to another tab (the Installed
+    /// empty state opens the Find tab's add-source form).
+    signal tabRequested(string tabId)
+
     function install(source) {
         if (root.skills)
             root.skills.install(source, []);
@@ -685,7 +689,10 @@ Item {
                             paddingHorizontal: 10
                             fontPixelSize: 9
                             variant: "secondary"
-                            onClicked: root.addingSource = true
+                            onClicked: {
+                                root.addingSource = true;
+                                root.tabRequested("find");
+                            }
                         }
 
                     }
