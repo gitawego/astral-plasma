@@ -225,6 +225,13 @@ fn mcp_finds_and_loads_a_skill_without_installing_it() {
     let metadata = result_json(loaded);
     assert_eq!(metadata["handle"], "local-my-skills:alpha");
     assert_eq!(metadata["name"], "alpha");
+    let checkout = metadata["path"].as_str().expect("skill_load returns a local path");
+    assert_eq!(
+        std::path::Path::new(checkout),
+        source.join("alpha"),
+        "the local path is the skill root, not the source root"
+    );
+    assert!(std::path::Path::new(checkout).is_dir(), "the checkout exists");
     assert!(
         metadata["files"]
             .as_array()

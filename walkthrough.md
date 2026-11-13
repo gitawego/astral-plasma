@@ -3215,3 +3215,41 @@ app boundaries clean.
 > through the shared handler. I did not capture a mid-glide or edge-bounce frame (Spectacle's
 > latency is longer than the early motion); the intermediate, momentum, rubber-band, and settle
 > offsets are asserted in `tst_smooth_scroll`.
+
+---
+
+## MCP loads a shallow local checkout (2026-11-13)
+
+The MCP server was already installing nothing: `skill_load` fetched a source, returned its
+`SKILL.md`, and kept the bytes in the session. The gap was that it threw away *where* the
+checkout lived, so a skill whose instructions call a script had no local directory to run it
+from.
+
+The fetch is a depth-1 shallow checkout, matching the `skills.sh` CLI's intent:
+
+```text
+git init
+git remote add origin <url>
+git fetch --depth 1 --no-tags origin <ref-or-sha>
+git checkout FETCH_HEAD
+```
+
+Depth 1 means one commit and one tree, no history. The fetch form is deliberate: it supports
+branches, tags, and full SHAs, while `git clone --branch` cannot check out an arbitrary SHA.
+The checkout lives under the XDG cache at
+`~/.cache/astral-plasma/skills/git/<source-key>`.
+
+`skill_load` now returns a `path` field: the absolute skill root inside that checkout (or the
+skill's own folder for a local source). `skill_read` still returns reference/script bytes for
+context; the `path` is what an agent uses when the skill asks it to execute a script with its
+own shell tool. The MCP server itself does not execute scripts: turning discovery into an
+arbitrary-code endpoint would be a different security decision, and the agent already owns the
+execution boundary.
+
+For an installed skill, the store copy now comes from the checked-out directory via
+`copy_tree`, so executable bits and symlinks survive. The in-memory writer remains only as a
+fallback if the cache disappears between discovery and materialisation.
+
+Tests: `the_checkout_is_shallow_and_has_no_history` asserts `.git/shallow` and a one-commit
+`rev-list`; `test_skill_mcp` asserts `skill_load` returns the real local skill root, not the
+source root. `make test` exit 0 — 1348 Rust tests, 172 QML suites, app boundaries clean.

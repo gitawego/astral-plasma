@@ -130,7 +130,9 @@ impl GitCli {
         // A full SHA cannot be cloned with `--branch`; fetching it and checking out FETCH_HEAD
         // works for branches, tags and SHAs alike.
         let reference = want.clone().unwrap_or_else(|| "HEAD".to_string());
-        run(&workdir, &["fetch", "--depth", "1", "--quiet", "origin", &reference], auth)?;
+        // Depth 1 is the same shallow checkout `git clone --depth 1` makes: one commit,
+        // one tree, no history. `--no-tags` keeps a tag farm out of a discovery cache.
+        run(&workdir, &["fetch", "--depth", "1", "--no-tags", "--quiet", "origin", &reference], auth)?;
         run(&workdir, &["checkout", "--quiet", "FETCH_HEAD"], auth)?;
 
         let sha = capture(&workdir, &["rev-parse", "HEAD"], auth)?;
@@ -423,6 +425,24 @@ mod tests {
         let skills = discover(&fetched.files, None, false);
         let ids: Vec<&str> = skills.iter().map(|skill| skill.id.as_str()).collect();
         assert_eq!(ids, vec!["secure-llm-apps", "web-design"]);
+    }
+
+    #[test]
+    fn the_checkout_is_shallow_and_has_no_history() {
+        let repo = Repo::new(&[("a/SKILL.md", "x")]);
+        repo.commit(&[("b/SKILL.md", "y")], "second");
+        let (_cache, cli) = cli();
+        let fetched = cli.fetch(&repo.url(), None, &FetchAuth::default()).unwrap();
+        assert!(
+            fetched.workdir.join(".git/shallow").is_file(),
+            "depth-1 fetch must leave a shallow marker"
+        );
+        let output = Command::new("git")
+            .current_dir(&fetched.workdir)
+            .args(["rev-list", "--count", "HEAD"])
+            .output()
+            .expect("git rev-list runs");
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "1");
     }
 
     #[test]

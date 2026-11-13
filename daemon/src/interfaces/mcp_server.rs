@@ -55,8 +55,9 @@ Flow:
 1. skill_search — find a repository or skill by intent. `source` is github, skills.sh, all, \
 added, or the id of a source the user added.
 2. skill_inspect — list the skills in a source (owner/repo, a git URL, a folder, or an added id).
-3. skill_load — return one skill's SKILL.md and a file manifest. No project or agent directory \
-is modified. Follow the returned instructions when they are relevant to the user's request.
+3. skill_load — return one skill's SKILL.md, a file manifest, and the local checkout path. No \
+project or agent directory is modified. Follow the returned instructions when they are relevant \
+to the user's request. If the skill needs to run a script, use the returned local path.
 4. skill_read — read a reference or script named in the manifest by its handle.
 
 Only load a skill the user asked for, or one whose description clearly matches the task. \
@@ -287,11 +288,12 @@ impl McpServer {
             "sha": content.sha,
             "ref": content.ref_name,
             "hash": content.skill.hash,
+            "path": content.local_path.to_string_lossy(),
             "files": content.files.iter().map(|file| json!({
                 "path": file.path,
                 "bytes": file.bytes.len()
             })).collect::<Vec<_>>(),
-            "next": "The next content block is this skill's SKILL.md verbatim: follow it for the current session. Use skill_read with the handle and a file path for its references or scripts."
+            "next": "The next content block is this skill's SKILL.md verbatim: follow it for the current session. Use skill_read with the handle and a file path for its references or scripts. The shallow local checkout is at `path`; run scripts from there when the skill asks for it."
         });
         let mut blocks = text_block(pretty(&metadata)?);
         // The manifest is returned verbatim, not wrapped or summarised: an agent loads a skill by
@@ -792,7 +794,7 @@ fn tool_definitions() -> Vec<Value> {
         json!({
             "name": "skill_load",
             "title": "Load a skill into this session",
-            "description": "Load one skill by returning its SKILL.md and a file manifest. No project or agent directory is modified; this is not an install. The returned instructions apply to the current session. Use skill_read for the files in the manifest.",
+            "description": "Load one skill by returning its SKILL.md, a file manifest, and the local checkout path. The repository is fetched as a shallow depth-1 checkout; no project or agent directory is modified. Use the path to run scripts the skill needs.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -813,7 +815,7 @@ fn tool_definitions() -> Vec<Value> {
         json!({
             "name": "skill_read",
             "title": "Read a loaded skill's file",
-            "description": "Read one bundled file from a skill loaded in this session. Paths are relative to the skill root; absolute paths and '..' are refused. Text is returned as text, binary as a base64 JSON envelope.",
+            "description": "Read one bundled file from a skill loaded in this session. Paths are relative to the skill root; absolute paths and '..' are refused. Text is returned as text, binary as a base64 JSON envelope. The local checkout path from skill_load is the directory for scripts that need execution.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

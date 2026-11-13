@@ -297,19 +297,24 @@ fn discover_source(
     ctx: &SkillContext,
     spec: &SourceSpec,
 ) -> DynResult<(Vec<SkillMeta>, Option<String>, Option<String>)> {
-    let (files, sha, ref_name) = source_tree(ctx, spec)?;
-    let skills = discover(&files, spec.subpath(), false);
-    Ok((skills, sha, ref_name))
+    let tree = source_tree(ctx, spec)?;
+    let skills = discover(&tree.files, spec.subpath(), false);
+    Ok((skills, tree.sha, tree.ref_name))
+}
+
+/// A source tree, plus the local directory it was read from.
+struct SourceTree {
+    files: Vec<(String, Vec<u8>)>,
+    sha: Option<String>,
+    ref_name: Option<String>,
+    root: PathBuf,
 }
 
 /// The source's files, with the commit it was read at when it is a git remote.
 ///
 /// `install` and `read_skill` both need the bytes, not just the metadata; keeping one fetch here
 /// means the content a skill is loaded from is the same tree the inspection described.
-fn source_tree(
-    ctx: &SkillContext,
-    spec: &SourceSpec,
-) -> DynResult<(Vec<(String, Vec<u8>)>, Option<String>, Option<String>)> {
+fn source_tree(ctx: &SkillContext, spec: &SourceSpec) -> DynResult<SourceTree> {
     match spec {
         SourceSpec::Git(git) => {
             let auth = ctx.auth(spec);
@@ -317,15 +322,46 @@ fn source_tree(
                 .git
                 .fetch(&git.url, git.ref_name.as_deref(), &auth)
                 .map_err(|error| error.to_string())?;
-            Ok((fetched.files, Some(fetched.sha), Some(fetched.ref_name)))
+            Ok(SourceTree {
+                files: fetched.files,
+                sha: Some(fetched.sha),
+                ref_name: Some(fetched.ref_name),
+                root: fetched.workdir,
+            })
         }
         SourceSpec::Local(local) => {
             if !local.path.is_dir() {
                 return Err(format!("'{}' is not a folder", local.path.display()).into());
             }
-            Ok((read_local_tree(&local.path)?, None, None))
+            Ok(SourceTree {
+                files: read_local_tree(&local.path)?,
+                sha: None,
+                ref_name: None,
+                root: local.path.clone(),
+            })
         }
     }
+}
+
+/// The local directory for one skill inside a source tree. Reject `..` from a pasted web URL:
+/// the checkout root is a cache, but a path that escapes it is still a path traversal.
+fn skill_root(root: &Path, source_subpath: Option<&str>, skill_subpath: &str) -> DynResult<PathBuf> {
+    let mut path = root.to_path_buf();
+    for subpath in [source_subpath.unwrap_or(""), skill_subpath] {
+        for component in subpath.split('/') {
+            if component.is_empty() || component == "." {
+                continue;
+            }
+            if component == ".." {
+                return Err("skill path escapes its checkout".into());
+            }
+            path.push(component);
+        }
+    }
+    if !path.is_dir() {
+        return Err(format!("skill checkout is missing at {}", path.display()).into());
+    }
+    Ok(path)
 }
 
 /// One skill's bytes, read from its source. Nothing is written to the store or the ledger.
@@ -339,6 +375,9 @@ pub struct SkillContent {
     pub skill: SkillMeta,
     /// The skill's `SKILL.md`, verbatim; this is what loading returns to the agent.
     pub manifest: String,
+    /// The local directory containing this skill: a shallow git checkout, or the source folder
+    /// for a local source. Scripts in the skill can be run from here.
+    pub local_path: PathBuf,
     /// Every file in the skill, paths relative to the skill root (`SKILL.md`, `references/…`).
     pub files: Vec<SkillFile>,
 }
@@ -357,7 +396,8 @@ pub struct SkillFile {
 /// that owns links).
 pub fn read_skill(ctx: &SkillContext, input: &str, skill: &str) -> DynResult<SkillContent> {
     let spec = resolve_source(ctx, input)?;
-    let (files, sha, ref_name) = source_tree(ctx, &spec)?;
+    let tree = source_tree(ctx, &spec)?;
+    let files = tree.files;
     let skills = discover(&files, spec.subpath(), false);
     let meta = skills
         .iter()
@@ -398,13 +438,15 @@ pub fn read_skill(ctx: &SkillContext, input: &str, skill: &str) -> DynResult<Ski
         })
         .transpose()?
         .ok_or_else(|| format!("skill '{}' has no SKILL.md", meta.id))?;
+    let local_path = skill_root(&tree.root, spec.subpath(), &meta.subpath)?;
     Ok(SkillContent {
         source: spec.display(),
         source_id: source_id(&spec),
-        sha,
-        ref_name,
+        sha: tree.sha,
+        ref_name: tree.ref_name,
         skill: meta,
         manifest,
+        local_path,
         files: owned
             .into_iter()
             .map(|(path, bytes)| SkillFile { path, bytes })
@@ -840,15 +882,28 @@ fn materialise(
         SourceSpec::Git(git) => {
             let origin = ctx.git.fetch(&git.url, git.ref_name.as_deref(), &ctx.auth(spec));
             // `install` fetched already; reuse that tree rather than cloning twice.
-            let files = match origin {
-                Ok(fetched) => fetched.files,
-                Err(_) => read_local_tree(&ctx.paths.git_cache).unwrap_or_default(),
+            let (files, workdir) = match origin {
+                Ok(fetched) => (fetched.files, Some(fetched.workdir)),
+                Err(_) => (read_local_tree(&ctx.paths.git_cache).unwrap_or_default(), None),
             };
             let sha_label = sha.unwrap_or("unknown");
             let short = &sha_label[..sha_label.len().min(12)];
             let path = store_dir(ctx, &git.url, ref_label, short, &skill.id);
             if path.exists() {
                 std::fs::remove_dir_all(&path)?;
+            }
+            // Copy the checked-out skill directory when we have it, so scripts keep their
+            // executable bit and symlinks. The in-memory fallback is only for a cache that
+            // vanished between discovery and materialisation.
+            if let Some(workdir) = workdir {
+                if let Ok(source) = skill_root(&workdir, git.subpath.as_deref(), &skill.subpath) {
+                    skill_fs::copy_tree(&source, &path)?;
+                    return Ok(Origin::Store {
+                        ref_name: ref_label.to_string(),
+                        sha: sha_label.to_string(),
+                        path,
+                    });
+                }
             }
             write_skill_files(&path, &files, &skill.subpath)?;
             Ok(Origin::Store {
