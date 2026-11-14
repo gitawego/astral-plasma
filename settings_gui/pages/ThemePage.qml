@@ -89,6 +89,7 @@ SettingsPage {
     readonly property alias previewFilledSample: previewFilled
     readonly property alias previewTonalSample: previewTonal
     readonly property alias previewChipLabel: sampleChipText
+    readonly property alias previewPaletteButton: previewPaletteButtonItem
 
     function setDarkMode(val) {
         if (testMode) {
@@ -779,7 +780,15 @@ SettingsPage {
                 Item { Layout.fillWidth: true }
 
                 Row {
+                    id: previewPaletteRow
                     spacing: 8
+
+                    TapHandler {
+                        onTapped: root.openColorsSection()
+                    }
+                    HoverHandler {
+                        cursorShape: Qt.PointingHandCursor
+                    }
 
                     Rectangle {
                         width: 24; height: 24; radius: 12
@@ -893,12 +902,26 @@ SettingsPage {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Preview only — change the palette with the swatches in Colors, and the surface style with the cards in Style."
+                    text: "Preview only — use Change palette, or the preset swatches in Colors, to change the theme."
                     wrapMode: Text.WordWrap
                     font.family: root.valFontFamily
                     font.pixelSize: 11
                     color: root.colOnSurfaceVariant
                 }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                PillButton {
+                    id: previewPaletteButtonItem
+                    label: "Change palette"
+                    variant: "filled"
+                    iconText: "palette"
+                    onClicked: root.openColorsSection()
+                }
+
+                Item { Layout.fillWidth: true }
             }
         }
     }

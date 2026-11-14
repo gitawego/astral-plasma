@@ -51,6 +51,10 @@ Item {
             "the chip must read as a sample, not a shell/theme option");
         assert(themePage.previewHeaderItem.eyebrow.toLowerCase().indexOf("read-only") !== -1,
             "the section eyebrow must say the preview is read-only");
+        assert(themePage.previewPaletteButton.interactive !== false,
+            "the preview must offer one real action to reach the palette");
+        assert(themePage.previewPaletteButton.label === "Change palette",
+            "that action is explicitly labelled Change palette");
 
         // The real theme controls remain functional and update the page state.
         themePage.setThemePreset("nord");
