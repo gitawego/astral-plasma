@@ -2,16 +2,17 @@ import QtQuick
 import "../modules/Astral/Apps/Dashboard"
 import "../modules/Astral/Kernel/theme"
 
-// The dashboard open/close has two content choreographies, and both must keep
-// the fused card envelope morph while leaving the content layout static:
+// The dashboard open/close has three choreographies. All must leave the
+// content layout static (the measured 150%-of-a-core regression), and they
+// differ only in how the content is revealed:
 //
-//   slide  - content y moves with the growing card;
-//   reveal - content y stays at its final position and the clip reveals it.
+//   slide     - content y moves with the growing fused card;
+//   reveal    - content y stays at its final position and the clip reveals it;
+//   slideBody - the frame's welded header is static and the dashboard content
+//               starts below frameInset, sliding in under the top border.
 //
-// The regression this guards is the one measured live: binding the content's
-// height/margins to the animated envelope reflowed the whole dashboard every
-// frame (150% of a core) and made the drawer lag under load. The content height
-// must therefore be independent of offsetProgress in both modes.
+// In slideBody the dashboard root itself is inset below the top border, so the
+// content can never overlap the edge; currentDropH stays at its final height.
 Item {
     id: testRoot
     width: 2560
@@ -54,7 +55,19 @@ Item {
         appHost: testRoot.host("reveal")
     }
 
+    DashboardApp {
+        id: bodySlide
+        dropX: 0
+        dropW: 980
+        frameInset: 14
+        visible: false
+        appHost: testRoot.host("slideBody")
+    }
+
     property int stage: 0
+    property real slideMid: 0
+    property real revealMid: 0
+    property real bodySlideMid: 0
 
     Timer {
         interval: 50
@@ -63,6 +76,7 @@ Item {
         onTriggered: {
             slide.offsetProgress = 0.5;
             reveal.offsetProgress = 0.5;
+            bodySlide.offsetProgress = 0.5;
             settle.start();
         }
     }
@@ -91,14 +105,18 @@ Item {
 
             assert(slide.motion === "slide", "slide instance selects the slide choreography");
             assert(reveal.motion === "reveal", "reveal instance selects the reveal choreography");
+            assert(bodySlide.motion === "slideBody", "slideBody instance selects the static-header choreography");
+            assert(bodySlide.slideBodyMotion === true, "slideBody flag is on");
 
-            // The frame envelope still morphs in both variants.
+            // The fused envelope morphs in slide/reveal, but is static in slideBody.
             assert(Math.abs(slide.currentDropH - slide.dropH * 0.5) < 0.01,
                 "slide frame envelope follows offsetProgress (got " + slide.currentDropH + ")");
             assert(Math.abs(reveal.currentDropH - reveal.dropH * 0.5) < 0.01,
                 "reveal frame envelope follows offsetProgress (got " + reveal.currentDropH + ")");
+            assert(Math.abs(bodySlide.currentDropH - bodySlide.dropH) < 0.01,
+                "slideBody envelope keeps its final height (got " + bodySlide.currentDropH + ")");
 
-            // The content height is final-size in both modes, at mid transition.
+            // The content height is final-size in all three at mid transition.
             const expectedHeight = Math.max(0, slide.dropH - slide.padLarge * 2);
             assert(Math.abs(slide.layoutItem.height - expectedHeight) < 0.01,
                 "slide content keeps its final height during the transition (got "
@@ -106,40 +124,68 @@ Item {
             assert(Math.abs(reveal.layoutItem.height - expectedHeight) < 0.01,
                 "reveal content keeps its final height during the transition (got "
                     + reveal.layoutItem.height + ")");
+            assert(Math.abs(bodySlide.layoutItem.height - expectedHeight) < 0.01,
+                "slideBody content keeps its final height during the transition (got "
+                    + bodySlide.layoutItem.height + ")");
 
-            // Only the content's y differs between the two choreographies.
+            // slide/reveal content paths.
             const slideY = slide.padLarge + Math.min(0, slide.currentDropH - slide.dropH);
             assert(Math.abs(slide.layoutItem.y - slideY) < 0.01,
                 "slide content y follows the card (got " + slide.layoutItem.y
                     + ", expected " + slideY + ")");
-            assert(Math.abs(reveal.layoutItem.y - slide.padLarge) < 0.01,
+            assert(Math.abs(reveal.layoutItem.y - reveal.padLarge) < 0.01,
                 "reveal content y stays at its final position (got " + reveal.layoutItem.y + ")");
 
-            const midHeight = slide.layoutItem.height;
+            // slideBody: the dashboard itself is clipped below the welded top
+            // border, and its content is still above the clip at half progress.
+            const bodyHeight = Math.max(0, bodySlide.dropH - bodySlide.frameInset);
+            assert(Math.abs(bodySlide.y - bodySlide.frameInset) < 0.01,
+                "slideBody dashboard starts below the top border (got " + bodySlide.y + ")");
+            assert(Math.abs(bodySlide.height - bodyHeight) < 0.01,
+                "slideBody dashboard is clipped to the body height (got " + bodySlide.height + ")");
+            const bodySlideY = bodySlide.padLarge - bodySlide.frameInset
+                - bodyHeight * (1.0 - 0.5);
+            assert(Math.abs(bodySlide.layoutItem.y - bodySlideY) < 0.01,
+                "slideBody content slides under the header (got " + bodySlide.layoutItem.y
+                    + ", expected " + bodySlideY + ")");
+
+            testRoot.slideMid = slide.layoutItem.height;
+            testRoot.revealMid = reveal.layoutItem.height;
+            testRoot.bodySlideMid = bodySlide.layoutItem.height;
 
             slide.offsetProgress = 1.0;
             reveal.offsetProgress = 1.0;
+            bodySlide.offsetProgress = 1.0;
             settle.start();
-            testRoot.midHeight = midHeight;
             return;
         }
 
-        // Settled: both content paths land on the same geometry, and the height
-        // never depended on the animated envelope.
+        // Settled: all land on their final geometry; heights never depended on
+        // the animated envelope.
         assert(Math.abs(slide.layoutItem.y - slide.padLarge) < 0.01,
             "slide content lands at its final y (got " + slide.layoutItem.y + ")");
-        assert(Math.abs(reveal.layoutItem.y - slide.padLarge) < 0.01,
+        assert(Math.abs(reveal.layoutItem.y - reveal.padLarge) < 0.01,
             "reveal content lands at its final y (got " + reveal.layoutItem.y + ")");
-        assert(Math.abs(slide.layoutItem.height - midHeight) < 0.01,
+        assert(Math.abs(bodySlide.layoutItem.y - (bodySlide.padLarge - bodySlide.frameInset)) < 0.01,
+            "slideBody content lands just below the header (got " + bodySlide.layoutItem.y + ")");
+        assert(Math.abs(bodySlide.y - bodySlide.frameInset) < 0.01,
+            "slideBody dashboard stays inset below the top border (got " + bodySlide.y + ")");
+        assert(Math.abs(bodySlide.height - Math.max(0, bodySlide.dropH - bodySlide.frameInset)) < 0.01,
+            "slideBody dashboard height is invariant (got " + bodySlide.height + ")");
+        assert(Math.abs(bodySlide.currentDropH - bodySlide.dropH) < 0.01,
+            "slideBody envelope is still its final height (got " + bodySlide.currentDropH + ")");
+
+        assert(Math.abs(slide.layoutItem.height - testRoot.slideMid) < 0.01,
             "slide content height is invariant across the transition (got "
-                + slide.layoutItem.height + ", was " + midHeight + ")");
-        assert(Math.abs(reveal.layoutItem.height - midHeight) < 0.01,
+                + slide.layoutItem.height + ", was " + testRoot.slideMid + ")");
+        assert(Math.abs(reveal.layoutItem.height - testRoot.revealMid) < 0.01,
             "reveal content height is invariant across the transition (got "
-                + reveal.layoutItem.height + ", was " + midHeight + ")");
+                + reveal.layoutItem.height + ", was " + testRoot.revealMid + ")");
+        assert(Math.abs(bodySlide.layoutItem.height - testRoot.bodySlideMid) < 0.01,
+            "slideBody content height is invariant across the transition (got "
+                + bodySlide.layoutItem.height + ", was " + testRoot.bodySlideMid + ")");
 
         console.log("PASS: Dashboard Motion Tests");
         Qt.exit(0);
     }
-
-    property real midHeight: 0
 }

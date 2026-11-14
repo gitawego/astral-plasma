@@ -20,6 +20,9 @@ Item {
     required property real dropW
     required property real currentDropH
     required property real dropdownOffsetProgress
+    /// "slide" / "reveal" use the growing fused envelope; "slideBody" uses a
+    /// static welded header + sliding body from FusedEdgePanel.
+    property string dropdownMotion: "slide"
 
     // Bottom popout geometry
     property bool enablePopoutSurface: true
@@ -269,7 +272,7 @@ Item {
         y: 0
         width: root.dropW + root.filletR * 2
         height: Math.max(root.borderT, root.currentDropH)
-        visible: root.dropdownOffsetProgress > 0.001
+        visible: root.dropdownMotion !== "slideBody" && root.dropdownOffsetProgress > 0.001
 
         readonly property real extH: Math.max(0, root.currentDropH - root.borderT)
         readonly property real maxRadiusSum: root.filletR + root.modalRadius
@@ -428,6 +431,43 @@ Item {
             }
         }
     }
+
+    // Central Dashboard static-header + sliding-body choreography.
+    // The header (top strip + shoulder wedges) never moves; only the body slides
+    // under it. It is drawn by the shared FusedEdgePanel so the shell and tests
+    // use one geometry contract.
+    FusedEdgePanel {
+        id: dashSlidePanel
+        visible: root.dropdownMotion === "slideBody" && root.dropdownOffsetProgress > 0.001
+        x: root.dropX - root.filletR
+        y: 0
+        panelWidth: root.dropW + root.filletR * 2
+        panelHeight: root.currentDropH
+        bodyInset: root.filletR
+        borderThickness: root.borderT
+        borderRounding: root.filletR
+        bodyRounding: root.modalRadius
+        motion: "slideBody"
+        offsetProgress: root.dropdownOffsetProgress
+        fillColor: root.glassFill
+        borderColor: root.glassBorder
+    }
+
+    // Blur readouts for the slideBody panel, in UnifiedFrame coordinates. The
+    // shell consumes these instead of re-deriving the shape.
+    readonly property rect dashHeaderBlurRect: root.dropdownMotion === "slideBody"
+        ? Qt.rect(dashSlidePanel.x + dashSlidePanel.headerBlurRect.x,
+                  dashSlidePanel.y + dashSlidePanel.headerBlurRect.y,
+                  dashSlidePanel.headerBlurRect.width,
+                  dashSlidePanel.headerBlurRect.height)
+        : Qt.rect(0, 0, 0, 0)
+    readonly property rect dashBodyBlurRect: root.dropdownMotion === "slideBody"
+        ? Qt.rect(dashSlidePanel.x + dashSlidePanel.bodyBlurRect.x,
+                  dashSlidePanel.y + dashSlidePanel.bodyBlurRect.y,
+                  dashSlidePanel.bodyBlurRect.width,
+                  dashSlidePanel.bodyBlurRect.height)
+        : Qt.rect(0, 0, 0, 0)
+    readonly property alias dashSlidePanelItem: dashSlidePanel
 
     // Bottom Popout Solid Surface (Fused Inverted Shoulder Fillets Drawer)
     Item {

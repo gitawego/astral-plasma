@@ -3253,3 +3253,33 @@ fallback if the cache disappears between discovery and materialisation.
 Tests: `the_checkout_is_shallow_and_has_no_history` asserts `.git/shallow` and a one-commit
 `rev-list`; `test_skill_mcp` asserts `skill_load` returns the real local skill root, not the
 source root. `make test` exit 0 — 1348 Rust tests, 172 QML suites, app boundaries clean.
+
+## FusedEdgePanel and the dashboard slideBody choreography
+
+The dashboard glass was one fused Shape (top strip + shoulder fillets + body). Translating it
+for the reference whole-panel slide moved the welded junction, so the left/right edges
+overlapped the top edge. Clamping the offset and delaying the border split could not fix that;
+the shape itself had to be split.
+
+`FusedPanel` is now a compatibility wrapper over the shared `FusedEdgePanel`. The primitive
+keeps the existing `grow` envelope (notifications are unchanged) and adds `slideBody`: a
+static welded header (top strip + shoulder wedges) and a clipped body that slides under it.
+It also exposes `bodyInset`/`bodyRounding`, `headerBlurRect`/`bodyBlurRect`, and one content
+host that is reparented between choreographies instead of duplicated.
+
+The dashboard uses `FusedEdgePanel` directly for `slideBody`. Its content root is inset by
+`frameInset` (the top-border thickness), so the content clip starts below the welded edge and
+can never cover the top border. The old monolithic dashboard shape stays for `slide`/`reveal`;
+the new path is selected by `FusedEdgePanel`. The blur mask consumes the primitive's two rect
+readouts instead of recomputing the old 20 fillet regions per frame.
+
+Measured live: the open burst is ~140% for ~500 ms (the motion itself), then 0–20% (mean ~7%)
+with no 1 s spikes; KWin peaks at 60% during the open and settles at 10–30%. The 1 s spikes
+were fixed earlier by throttling the dashboard metrics fetch to 5 s (the Performance tab keeps
+1 s). The settled slideBody screen is connected at the top edge; the transient body/content
+slide is clipped below the top border.
+
+Tests: `tst_fused_edge_panel` covers the header/body geometry, body clip, offset clamp, blur
+rects and the shared content host; `tst_dashboard_motion` covers slide/reveal/slideBody content
+invariants; `tst_fused_panel` proves the compatibility wrapper and notifications are unchanged.
+`make test` passes (Rust + all QML suites + app boundaries).

@@ -272,6 +272,21 @@ PanelWindow {
             height: root.blurRegionActive ? Math.min(root.filletH7, Math.max(0, root.currentDropH - root.borderT - root.filletD6)) : 0
         }
 
+        // slideBody: static welded header + sliding body, two rects from the
+        // shared FusedEdgePanel. No per-frame fillet recomputation.
+        Region {
+            x: root.slideBodyBlurActive ? desktopFrame.dashHeaderBlurRect.x : 0
+            y: root.slideBodyBlurActive ? desktopFrame.dashHeaderBlurRect.y : 0
+            width: root.slideBodyBlurActive ? desktopFrame.dashHeaderBlurRect.width : 0
+            height: root.slideBodyBlurActive ? desktopFrame.dashHeaderBlurRect.height : 0
+        }
+        Region {
+            x: root.slideBodyBlurActive ? desktopFrame.dashBodyBlurRect.x : 0
+            y: root.slideBodyBlurActive ? desktopFrame.dashBodyBlurRect.y : 0
+            width: root.slideBodyBlurActive ? desktopFrame.dashBodyBlurRect.width : 0
+            height: root.slideBodyBlurActive ? desktopFrame.dashBodyBlurRect.height : 0
+        }
+
         // Fused Bottom Popout (when open & fused to bottom border)
         // Top-right convex corner slices (when fused to bottom)
         Region {
@@ -863,7 +878,9 @@ PanelWindow {
     //   2. That boolean clears while the close animation still has frames left
     //      (offset 0.06 leaves ~17 frames at 60Hz to flush the clear).
     readonly property real blurRegionMinProgress: 0.06
-    readonly property bool blurRegionActive: dropdownContainer.offsetProgress > root.blurRegionMinProgress
+    readonly property bool dropdownSlideBody: dropdownContainer.motion === "slideBody"
+    readonly property bool slideBodyBlurActive: dropdownSlideBody && dropdownContainer.offsetProgress > root.blurRegionMinProgress
+    readonly property bool blurRegionActive: !root.dropdownSlideBody && dropdownContainer.offsetProgress > root.blurRegionMinProgress
     // Because every dimension switches on the same frame, the region is never a
     // degenerate strip: while active it always has positive width AND height.
     readonly property real blurDropH: root.blurRegionActive
@@ -1386,6 +1403,7 @@ PanelWindow {
         dropW: root.dropW
         currentDropH: root.currentDropH
         dropdownOffsetProgress: dropdownContainer.offsetProgress
+        dropdownMotion: dropdownContainer.motion
 
         currentPopW: root.currentPopW
         popoutY: fusedBottomPopoutWrapper.y
@@ -1460,6 +1478,7 @@ PanelWindow {
         appHost: root.appHost
         dropX: root.dropX
         dropW: root.dropW
+        frameInset: root.borderT
     }
 
     // 4. TASKBAR APP CONTEXT MENU

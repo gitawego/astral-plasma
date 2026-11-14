@@ -11,6 +11,10 @@ Item {
 
     property real dropX: (parent.width - dropW) / 2
     property real dropW: (root.shellState && root.shellState.dashboardWidth) || 980
+    /// Top-border thickness the shell welds the dashboard under. slideBody
+    /// starts its content clip below this line so the content can never cover
+    /// the top border while it slides in.
+    property real frameInset: 0
     /// Layout padding, guarded for the offscreen harness (which does not resolve
     /// the Theme singleton the same way the shell does).
     readonly property real padLarge: (typeof Theme !== "undefined" && Theme.padLarge !== undefined)
@@ -75,7 +79,7 @@ Item {
     }
 
     property bool isOpen: root.shellState !== null && root.shellState.dashboardVisible
-    readonly property real currentDropH: dropH * offsetProgress
+    readonly property real currentDropH: root.slideBodyMotion ? dropH : dropH * offsetProgress
     property real offsetProgress: isOpen ? 1.0 : 0.0
 
     /// Content choreography during open/close. Both variants keep the fused
@@ -95,6 +99,9 @@ Item {
     readonly property string motion: (root.shellState && root.shellState.dashboardMotion)
         ? root.shellState.dashboardMotion : "slide"
     readonly property bool revealMotion: motion === "reveal"
+    /// Static fused header + sliding body: the frame draws the header/body via
+    /// FusedEdgePanel; the content starts below frameInset and slides under it.
+    readonly property bool slideBodyMotion: motion === "slideBody"
 
     Connections {
         target: root.shellState
@@ -250,9 +257,12 @@ Item {
         || Boolean(workspacesTabItem && workspacesTabItem.searchActive)
 
     x: dropX
-    y: 0
+    // slideBody starts the whole content clip below the welded top border, so
+    // the content cannot overlap the edge while it slides (unlike a translated
+    // glass shape, the clip is inset without moving any welded geometry).
+    y: root.slideBodyMotion ? root.frameInset : 0
     width: dropW
-    height: currentDropH
+    height: root.slideBodyMotion ? Math.max(0, root.dropH - root.frameInset) : currentDropH
     visible: offsetProgress > 0.001
     clip: true
 
@@ -290,9 +300,12 @@ Item {
         anchors.margins: root.padLarge
         // A transform, not an anchor margin: `anchors.topMargin` takes the
         // layout path every frame and reflows the whole dashboard.
-        y: root.padLarge + (root.revealMotion
-            ? 0
-            : Math.min(0, root.currentDropH - root.dropH))
+        y: root.slideBodyMotion
+            ? root.padLarge - root.frameInset
+                - Math.max(0, root.dropH - root.frameInset) * (1.0 - Math.max(0, Math.min(1, root.offsetProgress)))
+            : root.padLarge + (root.revealMotion
+                ? 0
+                : Math.min(0, root.currentDropH - root.dropH))
         // Laid out once at the final content height for the whole transition.
         // The card's clip reveals it (reveal) or it slides past that clip
         // (slide); neither path re-measures the content.
