@@ -83,6 +83,13 @@ SettingsPage {
         ? Theme.fontMonospace
         : ((typeof Theme !== "undefined" && Theme.fontFamily) ? Theme.fontFamily : "sans-serif")
 
+    // Preview-section handles. The samples are read-only; exposing them lets the
+    // suite assert they are not controls.
+    readonly property alias previewHeaderItem: previewHeader
+    readonly property alias previewFilledSample: previewFilled
+    readonly property alias previewTonalSample: previewTonal
+    readonly property alias previewChipLabel: sampleChipText
+
     function setDarkMode(val) {
         if (testMode) {
             testDarkMode = val;
@@ -724,7 +731,7 @@ SettingsPage {
     SectionHeader {
         id: previewHeader
         title: "Live Theme Preview"
-        eyebrow: "palette swatches & material components"
+        eyebrow: "read-only preview · change the palette in Colors and the surface in Style"
     }
 
     // Rich Live Theme Palette Preview
@@ -754,7 +761,7 @@ SettingsPage {
                     spacing: 2
 
                     Text {
-                        text: "Palette Swatches"
+                        text: "Current Palette"
                         font.family: root.valFontFamily
                         font.pixelSize: 14
                         font.weight: Font.DemiBold
@@ -762,7 +769,7 @@ SettingsPage {
                     }
 
                     Text {
-                        text: "Surface, Container, Primary, Container, Secondary, Tertiary"
+                        text: "Read-only roles: Surface, Container, Primary, Primary Container, Secondary, Tertiary"
                         font.family: root.valFontFamily
                         font.pixelSize: 11
                         color: root.colOnSurfaceVariant
@@ -815,23 +822,29 @@ SettingsPage {
                 opacity: 0.6
             }
 
-            // Interactive Sample Components Preview
+            // Read-only sample components. They demonstrate the selected
+            // palette's button/chip styling; the actual controls live in the
+            // Colors and Style sections above.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: root.valSpaceMedium
 
                 PillButton {
+                    id: previewFilled
                     label: "Filled Action"
                     variant: "filled"
                     active: true
                     iconText: "check"
+                    interactive: false
                 }
 
                 PillButton {
+                    id: previewTonal
                     label: "Tonal Component"
                     variant: "tonal"
                     active: false
                     iconText: "palette"
+                    interactive: false
                 }
 
                 Rectangle {
@@ -856,7 +869,7 @@ SettingsPage {
                         Text {
                             id: sampleChipText
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Astral Shell"
+                            text: "Sample Chip"
                             font.family: root.valFontFamily
                             font.pixelSize: 13
                             font.weight: Font.DemiBold
@@ -866,6 +879,26 @@ SettingsPage {
                 }
 
                 Item { Layout.fillWidth: true }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                MaterialIcon {
+                    text: "info"
+                    size: 14
+                    color: root.colPrimary
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "Preview only — change the palette with the swatches in Colors, and the surface style with the cards in Style."
+                    wrapMode: Text.WordWrap
+                    font.family: root.valFontFamily
+                    font.pixelSize: 11
+                    color: root.colOnSurfaceVariant
+                }
             }
         }
     }

@@ -164,6 +164,9 @@ Rectangle {
     readonly property alias iconItem: icon
     // Tactile Spring Micro-Physics (Depression compression on press; no boundary expansion on hover to prevent clipping)
     property bool hoverScale: false
+    /// Read-only previews set this false: the pill still renders its selected
+    /// style but takes no hover, press, cursor, or click behaviour.
+    property bool interactive: true
 
     signal clicked()
     signal rightClicked()
@@ -437,8 +440,9 @@ Rectangle {
         id: mouseArea
 
         anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
+        enabled: root.interactive
+        hoverEnabled: root.interactive
+        cursorShape: root.interactive ? Qt.PointingHandCursor : Qt.ArrowCursor
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
         onClicked: (mouse) => {
             if (mouse.button === Qt.RightButton)
