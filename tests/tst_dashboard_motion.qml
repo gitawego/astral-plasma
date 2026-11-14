@@ -2,17 +2,16 @@ import QtQuick
 import "../modules/Astral/Apps/Dashboard"
 import "../modules/Astral/Kernel/theme"
 
-// The dashboard open/close has three choreographies. All three must leave the
-// content layout static (that was the measured 150%-of-a-core regression), and
-// they must differ only in how the furniture moves:
+// The dashboard open/close has two content choreographies, and both must keep
+// the fused card envelope morph while leaving the content layout static:
 //
-//   slide     - content y moves with the growing card;
-//   reveal    - content y stays at its final position and the clip reveals it;
-//   translate - the whole panel keeps its final size and slides down from above
-//               the screen edge while fading in (the reference shell's mode).
+//   slide  - content y moves with the growing card;
+//   reveal - content y stays at its final position and the clip reveals it.
 //
-// The translate instance is the one that must never animate the envelope at all:
-// currentDropH is dropH from the first frame and only y/opacity move.
+// The regression this guards is the one measured live: binding the content's
+// height/margins to the animated envelope reflowed the whole dashboard every
+// frame (150% of a core) and made the drawer lag under load. The content height
+// must therefore be independent of offsetProgress in both modes.
 Item {
     id: testRoot
     width: 2560
@@ -55,18 +54,7 @@ Item {
         appHost: testRoot.host("reveal")
     }
 
-    DashboardApp {
-        id: translate
-        dropX: 0
-        dropW: 980
-        visible: false
-        appHost: testRoot.host("translate")
-    }
-
     property int stage: 0
-    property real slideMid: 0
-    property real revealMid: 0
-    property real translateMid: 0
 
     Timer {
         interval: 50
@@ -75,7 +63,6 @@ Item {
         onTriggered: {
             slide.offsetProgress = 0.5;
             reveal.offsetProgress = 0.5;
-            translate.offsetProgress = 0.5;
             settle.start();
         }
     }
@@ -104,18 +91,14 @@ Item {
 
             assert(slide.motion === "slide", "slide instance selects the slide choreography");
             assert(reveal.motion === "reveal", "reveal instance selects the reveal choreography");
-            assert(translate.motion === "translate", "translate instance selects the translate choreography");
-            assert(translate.translateMotion === true, "translate flag is on for translate mode");
 
-            // The fused envelope morphs in slide/reveal, but is static in translate.
+            // The frame envelope still morphs in both variants.
             assert(Math.abs(slide.currentDropH - slide.dropH * 0.5) < 0.01,
                 "slide frame envelope follows offsetProgress (got " + slide.currentDropH + ")");
             assert(Math.abs(reveal.currentDropH - reveal.dropH * 0.5) < 0.01,
                 "reveal frame envelope follows offsetProgress (got " + reveal.currentDropH + ")");
-            assert(Math.abs(translate.currentDropH - translate.dropH) < 0.01,
-                "translate envelope keeps its final height (got " + translate.currentDropH + ")");
 
-            // Content height is final-size in all three at mid transition.
+            // The content height is final-size in both modes, at mid transition.
             const expectedHeight = Math.max(0, slide.dropH - slide.padLarge * 2);
             assert(Math.abs(slide.layoutItem.height - expectedHeight) < 0.01,
                 "slide content keeps its final height during the transition (got "
@@ -123,70 +106,40 @@ Item {
             assert(Math.abs(reveal.layoutItem.height - expectedHeight) < 0.01,
                 "reveal content keeps its final height during the transition (got "
                     + reveal.layoutItem.height + ")");
-            assert(Math.abs(translate.layoutItem.height - expectedHeight) < 0.01,
-                "translate content keeps its final height during the transition (got "
-                    + translate.layoutItem.height + ")");
 
-            // The content's path differs per choreography.
+            // Only the content's y differs between the two choreographies.
             const slideY = slide.padLarge + Math.min(0, slide.currentDropH - slide.dropH);
             assert(Math.abs(slide.layoutItem.y - slideY) < 0.01,
                 "slide content y follows the card (got " + slide.layoutItem.y
                     + ", expected " + slideY + ")");
             assert(Math.abs(reveal.layoutItem.y - slide.padLarge) < 0.01,
                 "reveal content y stays at its final position (got " + reveal.layoutItem.y + ")");
-            assert(Math.abs(translate.layoutItem.y - translate.padLarge) < 0.01,
-                "translate content y stays at its final position inside the card (got "
-                    + translate.layoutItem.y + ")");
 
-            // Translate: the whole panel is above its resting place at half progress.
-            const expectedSlideY = -(translate.dropH + 5) * 0.5;
-            assert(Math.abs(translate.slideOffsetY - expectedSlideY) < 0.01,
-                "translate panel offset follows the progress (got " + translate.slideOffsetY
-                    + ", expected " + expectedSlideY + ")");
-            assert(Math.abs(translate.y - expectedSlideY) < 0.01,
-                "translate container y follows the panel offset (got " + translate.y + ")");
-            assert(Math.abs(translate.contentOpacity - 0.5) < 0.01,
-                "translate panel fades with the progress (got " + translate.contentOpacity + ")");
-
-            testRoot.slideMid = slide.layoutItem.height;
-            testRoot.revealMid = reveal.layoutItem.height;
-            testRoot.translateMid = translate.layoutItem.height;
+            const midHeight = slide.layoutItem.height;
 
             slide.offsetProgress = 1.0;
             reveal.offsetProgress = 1.0;
-            translate.offsetProgress = 1.0;
             settle.start();
+            testRoot.midHeight = midHeight;
             return;
         }
 
-        // Settled: all three land on the same geometry; translate is fully on
-        // screen, opaque, and its envelope never moved.
+        // Settled: both content paths land on the same geometry, and the height
+        // never depended on the animated envelope.
         assert(Math.abs(slide.layoutItem.y - slide.padLarge) < 0.01,
             "slide content lands at its final y (got " + slide.layoutItem.y + ")");
         assert(Math.abs(reveal.layoutItem.y - slide.padLarge) < 0.01,
             "reveal content lands at its final y (got " + reveal.layoutItem.y + ")");
-        assert(Math.abs(translate.layoutItem.y - translate.padLarge) < 0.01,
-            "translate content lands at its final y (got " + translate.layoutItem.y + ")");
-        assert(Math.abs(translate.slideOffsetY) < 0.01,
-            "translate panel lands at y = 0 (got " + translate.slideOffsetY + ")");
-        assert(Math.abs(translate.y) < 0.01,
-            "translate container lands at y = 0 (got " + translate.y + ")");
-        assert(Math.abs(translate.contentOpacity - 1.0) < 0.01,
-            "translate panel lands fully opaque (got " + translate.contentOpacity + ")");
-        assert(Math.abs(translate.currentDropH - translate.dropH) < 0.01,
-            "translate envelope is still its final height (got " + translate.currentDropH + ")");
-
-        assert(Math.abs(slide.layoutItem.height - testRoot.slideMid) < 0.01,
+        assert(Math.abs(slide.layoutItem.height - midHeight) < 0.01,
             "slide content height is invariant across the transition (got "
-                + slide.layoutItem.height + ", was " + testRoot.slideMid + ")");
-        assert(Math.abs(reveal.layoutItem.height - testRoot.revealMid) < 0.01,
+                + slide.layoutItem.height + ", was " + midHeight + ")");
+        assert(Math.abs(reveal.layoutItem.height - midHeight) < 0.01,
             "reveal content height is invariant across the transition (got "
-                + reveal.layoutItem.height + ", was " + testRoot.revealMid + ")");
-        assert(Math.abs(translate.layoutItem.height - testRoot.translateMid) < 0.01,
-            "translate content height is invariant across the transition (got "
-                + translate.layoutItem.height + ", was " + testRoot.translateMid + ")");
+                + reveal.layoutItem.height + ", was " + midHeight + ")");
 
         console.log("PASS: Dashboard Motion Tests");
         Qt.exit(0);
     }
+
+    property real midHeight: 0
 }

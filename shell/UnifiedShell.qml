@@ -863,13 +863,7 @@ PanelWindow {
     //   2. That boolean clears while the close animation still has frames left
     //      (offset 0.06 leaves ~17 frames at 60Hz to flush the clear).
     readonly property real blurRegionMinProgress: 0.06
-    // In translate mode the glass card slides in from above the screen edge;
-    // blurring its final rect while it is still off-screen would leave a blur
-    // ghost over the desktop. Gate blur until the card has landed (the reference
-    // panel has no compositor blur at all; this keeps the glass readable at rest).
-    readonly property bool blurRegionActive: dropdownContainer.translateMotion
-        ? dropdownContainer.offsetProgress >= 0.999
-        : dropdownContainer.offsetProgress > root.blurRegionMinProgress
+    readonly property bool blurRegionActive: dropdownContainer.offsetProgress > root.blurRegionMinProgress
     // Because every dimension switches on the same frame, the region is never a
     // degenerate strip: while active it always has positive width AND height.
     readonly property real blurDropH: root.blurRegionActive
@@ -1347,12 +1341,7 @@ PanelWindow {
         id: dropdownScrim
         anchors.fill: parent
         visible: dropdownContainer.offsetProgress > 0.001
-        // Translate mode is the reference whole-panel slide: its panel fades in
-        // without a full-screen dim. Keep the rectangle for click-to-dismiss, but
-        // paint nothing. Other modes keep the soft scrim.
-        opacity: dropdownContainer.translateMotion
-            ? 0
-            : dropdownContainer.offsetProgress * root.scrimOpacity
+        opacity: dropdownContainer.offsetProgress * root.scrimOpacity
         color: "#000000"
 
         MouseArea {
@@ -1397,11 +1386,6 @@ PanelWindow {
         dropW: root.dropW
         currentDropH: root.currentDropH
         dropdownOffsetProgress: dropdownContainer.offsetProgress
-        dropdownSplitProgress: dropdownContainer.translateMotion
-            ? Math.max(0, Math.min(1, (dropdownContainer.offsetProgress - 0.98) / 0.02))
-            : dropdownContainer.offsetProgress
-        dropdownSlideY: dropdownContainer.translateMotion ? dropdownContainer.slideOffsetY : 0
-        dropdownOpacity: dropdownContainer.translateMotion ? dropdownContainer.contentOpacity : 1
 
         currentPopW: root.currentPopW
         popoutY: fusedBottomPopoutWrapper.y

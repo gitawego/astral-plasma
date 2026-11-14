@@ -20,15 +20,6 @@ Item {
     required property real dropW
     required property real currentDropH
     required property real dropdownOffsetProgress
-    /// Progress for the top-border split. Translate mode keeps the border
-    /// continuous while the panel is still above the edge and opens it only as
-    /// the panel lands, so the frame never shows a hole the panel has not filled.
-    property real dropdownSplitProgress: dropdownOffsetProgress
-    /// Whole-panel translate for the "translate" choreography. 0 at rest; the
-    /// glass card moves with the content, so the frame's shoulder strip follows.
-    property real dropdownSlideY: 0
-    /// Fades the glass card with the content during a translate open/close.
-    property real dropdownOpacity: 1
 
     // Bottom popout geometry
     property bool enablePopoutSurface: true
@@ -117,7 +108,7 @@ Item {
         id: topBorderLeft
         x: root.dockW
         y: 0
-        width: Math.max(0, (root.dropdownSplitProgress > 0.001 ? (root.dropX - root.filletR) : root.topBorderRightCap) - root.dockW)
+        width: Math.max(0, (root.dropdownOffsetProgress > 0.001 ? (root.dropX - root.filletR) : root.topBorderRightCap) - root.dockW)
         height: root.borderT
         color: root.glassFill
 
@@ -126,7 +117,7 @@ Item {
             x: root.cornerFilletR
             y: parent.height - 1
             height: 1
-            width: root.dropdownSplitProgress > 0.001 
+            width: root.dropdownOffsetProgress > 0.001 
                 ? Math.max(0, parent.width - x)
                 : Math.max(0, root.topBorderRightLimit - root.dockW - root.cornerFilletR)
             color: root.borderColor
@@ -135,7 +126,7 @@ Item {
 
     Rectangle {
         id: topBorderRight
-        visible: root.dropdownSplitProgress > 0.001
+        visible: root.dropdownOffsetProgress > 0.001
         x: root.dropX + root.dropW + root.filletR
         y: 0
         width: Math.max(0, root.topBorderRightCap - x)
@@ -275,11 +266,10 @@ Item {
     Item {
         id: dashSurfaceWrapper
         x: root.dropX - root.filletR
-        y: root.dropdownSlideY
+        y: 0
         width: root.dropW + root.filletR * 2
         height: Math.max(root.borderT, root.currentDropH)
         visible: root.dropdownOffsetProgress > 0.001
-        opacity: root.dropdownOpacity
 
         readonly property real extH: Math.max(0, root.currentDropH - root.borderT)
         readonly property real maxRadiusSum: root.filletR + root.modalRadius

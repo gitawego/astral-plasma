@@ -75,7 +75,7 @@ Item {
     }
 
     property bool isOpen: root.shellState !== null && root.shellState.dashboardVisible
-    readonly property real currentDropH: root.translateMotion ? dropH : dropH * offsetProgress
+    readonly property real currentDropH: dropH * offsetProgress
     property real offsetProgress: isOpen ? 1.0 : 0.0
 
     /// Content choreography during open/close. Both variants keep the fused
@@ -95,22 +95,6 @@ Item {
     readonly property string motion: (root.shellState && root.shellState.dashboardMotion)
         ? root.shellState.dashboardMotion : "slide"
     readonly property bool revealMotion: motion === "reveal"
-    /// Whole-panel translate + fade: the card and content keep their final size
-    /// and slide down from above the screen edge (the reference shell's
-    /// choreography). No height, clip, or envelope morph runs in this mode.
-    readonly property bool translateMotion: motion === "translate"
-
-    /// Distance the whole dashboard is offset while a translate-mode open/close
-    /// is in flight. 0 at rest, -(dropH + 5) fully above the screen edge.
-    /// Clamped at 0: the expressive bezier overshoots past 1.0, and without the
-    /// clamp the landed panel would slide BELOW the top edge and visibly detach
-    /// from the fused frame for a few frames (the "bounce gap").
-    readonly property real slideOffsetY: root.translateMotion
-        ? -Math.max(0, (root.dropH + 5) * Math.max(0, 1.0 - root.offsetProgress))
-        : 0
-    readonly property real contentOpacity: root.translateMotion
-        ? Math.min(1.0, Math.max(0.0, root.offsetProgress))
-        : 1.0
 
     Connections {
         target: root.shellState
@@ -266,11 +250,10 @@ Item {
         || Boolean(workspacesTabItem && workspacesTabItem.searchActive)
 
     x: dropX
-    y: root.translateMotion ? root.slideOffsetY : 0
+    y: 0
     width: dropW
     height: currentDropH
     visible: offsetProgress > 0.001
-    opacity: root.contentOpacity
     clip: true
 
     Behavior on offsetProgress {
