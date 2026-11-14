@@ -102,10 +102,15 @@ Item {
 
     /// Distance the whole dashboard is offset while a translate-mode open/close
     /// is in flight. 0 at rest, -(dropH + 5) fully above the screen edge.
+    /// Clamped at 0: the expressive bezier overshoots past 1.0, and without the
+    /// clamp the landed panel would slide BELOW the top edge and visibly detach
+    /// from the fused frame for a few frames (the "bounce gap").
     readonly property real slideOffsetY: root.translateMotion
-        ? -(root.dropH + 5) * (1.0 - root.offsetProgress)
+        ? -Math.max(0, (root.dropH + 5) * Math.max(0, 1.0 - root.offsetProgress))
         : 0
-    readonly property real contentOpacity: root.translateMotion ? root.offsetProgress : 1.0
+    readonly property real contentOpacity: root.translateMotion
+        ? Math.min(1.0, Math.max(0.0, root.offsetProgress))
+        : 1.0
 
     Connections {
         target: root.shellState

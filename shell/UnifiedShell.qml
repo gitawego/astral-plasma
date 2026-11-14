@@ -1397,6 +1397,9 @@ PanelWindow {
         dropW: root.dropW
         currentDropH: root.currentDropH
         dropdownOffsetProgress: dropdownContainer.offsetProgress
+        dropdownSplitProgress: dropdownContainer.translateMotion
+            ? Math.max(0, Math.min(1, (dropdownContainer.offsetProgress - 0.98) / 0.02))
+            : dropdownContainer.offsetProgress
         dropdownSlideY: dropdownContainer.translateMotion ? dropdownContainer.slideOffsetY : 0
         dropdownOpacity: dropdownContainer.translateMotion ? dropdownContainer.contentOpacity : 1
 
