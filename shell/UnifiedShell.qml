@@ -1563,32 +1563,12 @@ PanelWindow {
         }
     }
 
-    // 5b. BOTTOM-RIGHT AI ACTIVITY MATRIX BORDER EFFECT & GROWING LIGHTING
-    // Strictly stays within the screen frame's 14px border thickness (NO physical border growth).
-    // Features:
-    // 1. Matrix digital rain streaming along bottom & right borders with leading phosphor white heads
-    // 2. Ambient background lighting blooming into the desktop backdrop
-    // 3. Smooth border color degradation merging seamlessly with resting desktop frame
-    // 4. Integrated digital monospace HUD badge showing model name, RPM, and dancing pulses
-    MatrixBorderEffect {
-        id: aiMatrixBorderEffect
-        anchors.fill: parent
-        z: 950
-        borderT: root.borderT
-        cornerFilletR: root.cornerFilletR
-        active: (typeof Config !== "undefined" && Config.modelActivityEffect)
-            && (typeof AiActivityService !== "undefined")
-            && AiActivityService.isActive
-        brandColor: (typeof AiActivityService !== "undefined" && AiActivityService.brandColor)
-            ? AiActivityService.brandColor
-            : ((typeof Colors !== "undefined" && Colors.primary) ? Colors.primary : "#818CF8")
-        rpm: (typeof AiActivityService !== "undefined") ? AiActivityService.requestRate : 0.0
-        tokenRate: (typeof AiActivityService !== "undefined") ? AiActivityService.tokenRate : 0.0
-        recentTokens: (typeof AiActivityService !== "undefined") ? AiActivityService.recentTokens : 0.0
-        intensity: (typeof AiActivityService !== "undefined") ? AiActivityService.intensity : 0.0
-        modelDisplayName: (typeof AiActivityService !== "undefined") ? AiActivityService.displayName : ""
-        activeAgents: (typeof AiActivityService !== "undefined" && AiActivityService.activeAgents) ? AiActivityService.activeAgents : []
-    }
+    // 5b. The AI activity matrix border lives on its own small surface
+    // (`shell/AiActivityBorderWindow.qml`). It used to sit here, inside this
+    // full-screen glass window: a 30 fps decorative animation then repainted the
+    // whole 2560x1600 surface and made KWin re-composite/re-blur the shell for as
+    // long as an agent ran. The separate surface draws the same pixels while
+    // limiting damage to the bottom-right corner.
 
     // 5c. TOP-RIGHT AGGREGATE DOWNLOAD PROGRESS BORDER EFFECT (D10–D15)
     // Mirror of the AI effect: top segment + right-top leg + fused top-right

@@ -324,15 +324,42 @@ Item {
             from = at + glyphAnchor.length;
         }
 
-        // ---- 9. Source Contract: shell/UnifiedShell.qml ----
+        // ---- 9. Source Contract: the effect owns a small surface ----
+        //
+        // It used to live inside UnifiedShell, a full-screen glass window. Qt Quick
+        // repaints the whole window for every frame of a 30 fps animation, so each
+        // matrix tick damaged 2560x1600 and forced KWin to re-composite/re-blur the
+        // entire shell for the whole agent turn. The effect now has its own
+        // bottom-right layer surface: same pixels, damage confined to the corner.
         const shellSrc = readLocalFile("../shell/UnifiedShell.qml");
         assert(shellSrc.length > 1000, "UnifiedShell.qml must be readable");
-        assert(/id:\s*aiMatrixBorderEffect/.test(shellSrc),
-            "UnifiedShell must declare aiMatrixBorderEffect for Matrix border streaming effect");
-        assert(/active:\s*\(typeof Config !== "undefined"/.test(shellSrc),
-            "UnifiedShell aiMatrixBorderEffect must bind active state to Config and AiActivityService");
-        assert(/activeAgents:\s*\(typeof AiActivityService !== "undefined"/.test(shellSrc),
-            "UnifiedShell aiMatrixBorderEffect must bind activeAgents to AiActivityService");
+        assert(!/MatrixBorderEffect\s*\{/.test(shellSrc),
+            "UnifiedShell must not host MatrixBorderEffect: its 30 fps animation would damage the full-screen glass surface");
+
+        const borderWindowSrc = readLocalFile("../shell/AiActivityBorderWindow.qml");
+        assert(borderWindowSrc.length > 500, "shell/AiActivityBorderWindow.qml must be readable");
+        assert(/PanelWindow\s*\{/.test(borderWindowSrc),
+            "AiActivityBorderWindow must be its own PanelWindow surface");
+        assert(/anchors\s*\{[\s\S]{0,120}bottom:\s*true[\s\S]{0,120}right:\s*true/.test(borderWindowSrc),
+            "AiActivityBorderWindow must anchor to the screen's bottom-right corner");
+        assert(/implicitWidth:\s*Math\.min\(900/.test(borderWindowSrc)
+            && /implicitHeight:\s*Math\.min\(520/.test(borderWindowSrc),
+            "AiActivityBorderWindow must be bounded to the effect's own extents (900x520), never the full screen");
+        assert(/mask:\s*Region\s*\{\s*\}/.test(borderWindowSrc),
+            "AiActivityBorderWindow must be click-through with an empty input region");
+        assert(/WlrLayershell\.keyboardFocus:\s*WlrKeyboardFocus\.None/.test(borderWindowSrc),
+            "AiActivityBorderWindow must never request keyboard focus");
+        assert(!/BackgroundEffect\.blurRegion/.test(borderWindowSrc),
+            "AiActivityBorderWindow must not register a blur region: it is decoration, not a backdrop");
+        assert(/MatrixBorderEffect\s*\{/.test(borderWindowSrc),
+            "AiActivityBorderWindow must host the MatrixBorderEffect");
+        assert(/active:\s*root\.effectActive/.test(borderWindowSrc)
+            && /activeAgents:\s*\(typeof AiActivityService !== "undefined"/.test(borderWindowSrc),
+            "AiActivityBorderWindow must bind activity and activeAgents to AiActivityService");
+
+        const shellRootSrc = readLocalFile("../shell.qml");
+        assert(/AiActivityBorderWindow\s*\{/.test(shellRootSrc),
+            "shell.qml must instantiate AiActivityBorderWindow per screen");
 
         // ---- 10. Source Contract: services/WindowService.qml event routing ----
         const winServiceSrc = readLocalFile("../modules/Astral/Kernel/services/WindowService.qml");

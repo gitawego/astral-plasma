@@ -740,6 +740,12 @@ ShellRoot {
                 targetScreen: screenScope.modelData
                 appHost: featureHost
             }
+
+            // The AI activity matrix border: its own small surface so its 30 fps
+            // animation never damages the full-screen glass shell beneath it.
+            AiActivityBorderWindow {
+                targetScreen: screenScope.modelData
+            }
         }
     }
 

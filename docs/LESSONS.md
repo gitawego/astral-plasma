@@ -3477,3 +3477,70 @@ is two state changes racing a process that has not exited yet. If work must be
 replaced, queue it behind the completion of the work already in flight. And when
 the state you are racing is "which window is the subject", tie the async result to
 the key it was requested for, never to the current subject.
+
+---
+
+## 40. A Long-Lived Decoration Must Not Live In The Full-Screen Glass Surface
+
+### 40.1 The Symptom
+
+*"Still high lag when the AI agent is working when the Astra theme is enabled;
+it works well without the Astra theme."* The AI activity matrix border is the
+only shell surface whose motion begins when an agent starts and continues for
+the whole turn. That made it the natural suspect, and the previous fix (§27)
+had already moved its animation onto the 30 fps decorative clock - so the frame
+*rate* was capped while the frame *area* was not.
+
+### 40.2 The Measurement
+
+Two facts settled it:
+
+- **The effect was a real but small client cost.** With the border active,
+  `quickshell` used **4.7-6.3 %** of one core (0.3-0.8 % render engine). With
+  the effect's surface unmapped it settled to **0.0-0.3 %**. So the decoration
+  itself is not free, but it is not a full core either.
+- **It lived inside `UnifiedShell`, a 2560x1600 glass layer.** Qt Quick repaints
+  the whole QQuickWindow whenever any item changes. A 30 fps matrix tick
+  therefore damaged the **entire screen**, not the ~900x520 corner the effect
+  draws in, and KWin re-composited (and re-blurred) the full-screen glass for as
+  long as the agent ran. `showpaint` confirmed the full-surface damage pattern.
+
+The KWin CPU A/B was not clean: while this was measured, another agent's
+`make test`, `cargo test`, `pacman` probes and a Node orchestration had the
+machine at **load average 72**. KWin read 26-40 % both with the shell running
+and with it stopped, so the honest conclusion is *the theme is not the dominant
+CPU consumer under that load* - but its per-frame damage area was still wrong,
+and it is the part the shell owns. Do not turn a noisy average into a clean
+claim; the architectural fact (full-screen damage for a corner decoration) is
+the proof.
+
+### 40.3 The Fix
+
+Move the effect to its own surface (`shell/AiActivityBorderWindow.qml`):
+
+- a **900x520** `PanelWindow` anchored bottom-right (the effect's own maximum
+  extents: 860 px bottom strip, 480 px right strip, 220x160 glow, fused corner);
+- `WlrLayer.Top`, `ExclusionMode.Ignore`, `WlrKeyboardFocus.None`;
+- an **empty `mask`**, so the corner remains click-through;
+- **no `BackgroundEffect.blurRegion`** - this surface is the effect, not a
+  backdrop;
+- one per screen, created after `UnifiedShell` so it stays above the frame;
+- yields the corner while a bottom popout or the power dialog owns it.
+
+The pixels and animation are unchanged; only the damaged area changes from
+2560x1600 to 900x520. `tests/tst_ai_activity_effect.qml` now pins the split:
+`UnifiedShell` may not host `MatrixBorderEffect`, and the window must stay
+bounded, click-through, focusless and blur-free.
+
+### 40.4 The Lesson
+
+**A 30 fps animation of a 200 px corner is not a 200 px cost in Qt Quick - it is
+a full-window repaint.** Decoration that can outlive a few seconds must not sit
+inside the shell's full-screen glass window, however small its drawing is. Give
+it a surface sized to its own extents, keep that surface out of the blur region,
+and make it click-through. The animation can stay; the compositor does not have
+to redo the screen for it.
+
+The remaining ~5 % of a core is the effect's own QML work. If a machine still
+struggles, the next lever is the effect's update rate or its glyph count - not
+the glass it happens to sit on.

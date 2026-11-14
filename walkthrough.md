@@ -3338,3 +3338,44 @@ list), not a hard-coded application. `tst_tray_activation_fallback` covers the l
 Telegram-to-window match. Live KWin scripting confirmed the Telegram window activates and is
 visible when raised; the shell was restarted with `./run.sh` after the previous session returned to
 Plasma.
+
+## The AI activity border moved off the full-screen glass surface
+
+The user's report — *"still high lag when an AI agent is working when the Astra theme is
+enabled, it works well without the Astra theme"* — pointed at the only shell surface that
+animates for the whole length of an agent turn. The border had already been moved onto the
+30 fps `MotionClock` in an earlier pass, so the frame rate was capped; the frame **area** was
+not. It still lived inside `UnifiedShell`, a 2560x1600 glass layer, and Qt Quick repaints the
+whole window for every item change.
+
+Measured live on the running shell, with the effect forced active and then unmapped:
+
+| State | quickshell CPU | render engine |
+| :--- | ---: | ---: |
+| AI border active (inside UnifiedShell) | 4.7-6.3 % of one core | 0.3-0.8 % |
+| Effect surface unmapped | 0.0-0.3 % | 0.0 % |
+
+KWin's CPU was not a clean signal: another agent's `make test`, `cargo test`, `pacman` probes
+and a Node orchestration were running, taking the machine to load average 72 during the
+samples. With the shell stopped it read 26-36 %, with the shell running 30-40 % — noisy enough
+that the honest claim is the architectural one, not a precise KWin delta. `showpaint` showed
+the effect's full-surface damage, which is the part that scales with the glass area.
+
+The fix is `shell/AiActivityBorderWindow.qml`: a 900x520 `PanelWindow` anchored bottom-right,
+which is exactly the effect's maximum extents (860 px bottom strip, 480 px right strip, 220x160
+ambient glow, fused corner). It is `WlrLayer.Top`, `ExclusionMode.Ignore`, requests no keyboard
+focus, registers **no blur region**, and has an **empty input mask** so the corner stays
+click-through. It yields the corner while a bottom popout or the power dialog owns it. The
+`MatrixBorderEffect` pixels and animation are unchanged; only the damaged area changes from
+2560x1600 to 900x520. One instance is created per screen, after `UnifiedShell`, so it stays
+above the frame.
+
+Live proof (local, not committed): `/tmp/opencode/ai_split_fresh.png` and its
+`ai_split_fresh_crop.png` show the HUD (`DeepSeek V4.1 :: 2.0 RPM 5.6k Tok`) and the matrix rain
+in the bottom-right corner, with the dock, taskbar and the settings window intact; the effect is
+not drawn twice. `tests/tst_ai_activity_effect.qml` now forbids `MatrixBorderEffect` inside
+`UnifiedShell` and pins the new surface's bounds, empty mask, focus policy and lack of a blur
+region. `make test` passes (Rust + every QML suite + app boundaries).
+
+Remaining: the effect's own ~5 % of a core is its QML work. If a loaded machine still feels slow,
+the next lever is its update rate or glyph count, not the glass it used to sit on.
