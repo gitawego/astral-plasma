@@ -7,6 +7,7 @@ import Quickshell.Io
 import "."
 import "../components"
 import "PreviewAppState.js" as PreviewAppState
+import "TrayActivation.js" as TrayActivation
 
 Singleton {
     id: root
@@ -333,6 +334,8 @@ Singleton {
     property var _trayMenuCallback: null
     property int _trayMenuReqId: 0
     property string _trayMenuReqService: ""
+    /// Window to raise after an open-like tray menu action succeeds.
+    property var _pendingTrayActivation: null
 
     Process {
         id: trayMenuProc
@@ -383,6 +386,14 @@ Singleton {
     Process {
         id: trayClickProc
         onExited: (exitCode, exitStatus) => {
+            const pending = root._pendingTrayActivation;
+            root._pendingTrayActivation = null;
+            if (exitCode === 0 && pending && pending.id) {
+                // The app event succeeded; some toolkits leave a background
+                // window behind instead of raising it, so honour the open
+                // action through KWin as well.
+                root.activateWindow(pending.id);
+            }
             refreshTrayProc.running = false;
             refreshTrayProc.command = ["qdbus6", "org.astralplasma.WindowWatcher", "/Watcher", "org.astralplasma.WindowWatcher.RefreshTray"];
             refreshTrayProc.running = true;
@@ -837,8 +848,14 @@ Singleton {
         root._resolvePendingLaunches();
     }
 
-    function triggerTrayMenuItem(service, menuPath, itemId) {
+    function triggerTrayMenuItem(service, menuPath, itemId, label, trayItem) {
         if (!service || !menuPath || itemId === undefined) return;
+        // Only open-like actions get the extra raise; Quit/Disable etc. must
+        // not pull a window forward. Matching is generic (label + app identity),
+        // never a hard-coded application name.
+        root._pendingTrayActivation = TrayActivation.opensWindow(label)
+            ? TrayActivation.windowForTray(trayItem || root.activeTrayItem, root.windows)
+            : null;
         trayClickProc.running = false;
         trayClickProc.command = [root.daemonBin, "tray", "click", service, menuPath, itemId.toString()];
         trayClickProc.running = true;

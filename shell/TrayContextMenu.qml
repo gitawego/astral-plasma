@@ -120,7 +120,7 @@ Item {
             root.pushSubmenu(modelData.label || "Submenu", modelData.children);
         } else if (modelData.enabled !== false) {
             if (root.targetItem && root.targetItem.menuPath) {
-                WindowService.triggerTrayMenuItem(root.targetItem.service, root.targetItem.menuPath, modelData.id);
+                WindowService.triggerTrayMenuItem(root.targetItem.service, root.targetItem.menuPath, modelData.id, modelData.label, root.targetItem);
             }
             root.hide();
         }

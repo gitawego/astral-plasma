@@ -3318,3 +3318,23 @@ four frames the welded header strip and shoulders stay at the top edge, the body
 clipped below `frameInset`, and the left/right frame borders meet the top edge without the
 overlap that the translated fused shape produced. `make test` passes after removing the
 capture override.
+
+## Theme preview is read-only, and tray open actions raise the app
+
+The Theme page's Preview card looked like a control set: two `PillButton`s and an "Astral Shell"
+chip. They were static samples, so clicking them did nothing; the actual preset swatches live in
+Colors and the archetype cards in Style. The Preview now says **read-only preview**, the palette
+row is **Current Palette**, the chip is **Sample Chip**, the samples have
+`PillButton.interactive: false` (no hover, press, cursor or click), and a hint points to the
+Colors and Style controls. `tst_theme_preview_readonly` asserts the samples are inert and the real
+preset/archetype functions still change the page.
+
+The Telegram tray "Open Telegram" item is Telegram's own dbusmenu action. It succeeded but a
+background window was not raised. `WindowService.triggerTrayMenuItem` now receives the item label
+and tray record; only open-like labels (`Open`, `Show`, `Activate`, `Bring`, `Raise`, `Restore`,
+`Unhide`) schedule a post-click `activate` of the matching app window. Quit/Disable actions never
+raise anything, and the match is identity-based (normalized app id/title/service vs. the window
+list), not a hard-coded application. `tst_tray_activation_fallback` covers the label filter and the
+Telegram-to-window match. Live KWin scripting confirmed the Telegram window activates and is
+visible when raised; the shell was restarted with `./run.sh` after the previous session returned to
+Plasma.

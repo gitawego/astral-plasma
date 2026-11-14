@@ -1554,7 +1554,7 @@ Item {
                         traySection.pushSubmenu(modelData.label || "Submenu", modelData.children);
                     } else if (modelData.enabled !== false) {
                         if (WindowService.activeTrayItem && WindowService.activeTrayItem.menuPath) {
-                            WindowService.triggerTrayMenuItem(WindowService.activeTrayItem.service, WindowService.activeTrayItem.menuPath, modelData.id);
+                            WindowService.triggerTrayMenuItem(WindowService.activeTrayItem.service, WindowService.activeTrayItem.menuPath, modelData.id, modelData.label, WindowService.activeTrayItem);
                         }
                         Config.closeBottomPopout();
                     }
