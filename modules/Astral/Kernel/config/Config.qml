@@ -839,7 +839,7 @@ Singleton {
     function setDashboardMotion(mode) {
         updateSettings(cfg => {
             if (!cfg.dashboard) cfg.dashboard = {};
-            cfg.dashboard.motion = (mode === "reveal") ? "reveal" : "slide";
+            cfg.dashboard.motion = (mode === "reveal" || mode === "translate") ? mode : "slide";
         });
     }
 

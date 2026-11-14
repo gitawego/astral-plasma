@@ -20,6 +20,11 @@ Item {
     required property real dropW
     required property real currentDropH
     required property real dropdownOffsetProgress
+    /// Whole-panel translate for the "translate" choreography. 0 at rest; the
+    /// glass card moves with the content, so the frame's shoulder strip follows.
+    property real dropdownSlideY: 0
+    /// Fades the glass card with the content during a translate open/close.
+    property real dropdownOpacity: 1
 
     // Bottom popout geometry
     property bool enablePopoutSurface: true
@@ -266,10 +271,11 @@ Item {
     Item {
         id: dashSurfaceWrapper
         x: root.dropX - root.filletR
-        y: 0
+        y: root.dropdownSlideY
         width: root.dropW + root.filletR * 2
         height: Math.max(root.borderT, root.currentDropH)
         visible: root.dropdownOffsetProgress > 0.001
+        opacity: root.dropdownOpacity
 
         readonly property real extH: Math.max(0, root.currentDropH - root.borderT)
         readonly property real maxRadiusSum: root.filletR + root.modalRadius
