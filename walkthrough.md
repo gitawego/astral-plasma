@@ -3283,3 +3283,38 @@ Tests: `tst_fused_edge_panel` covers the header/body geometry, body clip, offset
 rects and the shared content host; `tst_dashboard_motion` covers slide/reveal/slideBody content
 invariants; `tst_fused_panel` proves the compatibility wrapper and notifications are unchanged.
 `make test` passes (Rust + all QML suites + app boundaries).
+
+## Phase 3 descope: slide/reveal stay on the legacy envelope
+
+`slide` and `reveal` still render through the legacy monolithic dashboard shape. The reason is
+explicit: `FusedEdgePanel`'s grow envelope follows the notification formula
+`borderThickness + (panelHeight - borderThickness) * progress`, while the legacy dashboard shape
+uses `max(borderThickness, dropH * progress)` and its own shoulder factor. Migrating them would
+change the mid-animation geometry and risk a visible regression in two proven modes.
+
+Decision: do not migrate them as part of this change. `slideBody` and notifications use
+`FusedEdgePanel`; a future slide/reveal migration needs a `growOrigin`/legacy-envelope mode plus
+25/50/75 pixel parity and updated animation tests. This is a deliberate descope, not an
+unfinished item. The primitive's grow path is covered by `tst_fused_panel` and the notification
+contracts.
+
+## Mid-slide edge proof (slideBody)
+
+Timed screenshots against a 4 s animation were unreliable on this live session (the first
+capture landed after the settle). I instead held `DashboardApp.offsetProgress` at 0.25, 0.5,
+0.75 and 1.0 with a temporary `captureProgress` override; these are exactly the rendered states
+the animation passes through, with no timing race. The override was removed before `make test`.
+
+Captures (local proof, not committed):
+- `/tmp/opencode/slidebody-fixed-0.25.png` and `slidebody-crop-0.25.png`
+- `/tmp/opencode/slidebody-fixed-0.5.png` and `slidebody-crop-0.5.png`
+- `/tmp/opencode/slidebody-fixed-0.75.png` and `slidebody-crop-0.75.png`
+- `/tmp/opencode/slidebody-fixed-1.0.png` and `slidebody-crop-1.0.png`
+- Full-screen reference: `/tmp/opencode/dash-slidebody-final.png`
+
+At 0.25 only the bottom rows of the dashboard cards are visible below the static header; at 0.5
+and 0.75 the content is progressively revealed; at 1.0 the dashboard is fully settled. In all
+four frames the welded header strip and shoulders stay at the top edge, the body/content are
+clipped below `frameInset`, and the left/right frame borders meet the top edge without the
+overlap that the translated fused shape produced. `make test` passes after removing the
+capture override.
