@@ -31,6 +31,10 @@ Item {
                 "AppRun must launch the package-root setup entry, not a subdirectory config");
             assert(appRun.indexOf("exec \"$HERE/usr/bin/astral-plasma\"") === -1,
                 "the installed shell must never execute from the temporary AppImage mount");
+            assert(appRun.indexOf("astral-plasma.AppImage") !== -1,
+                "AppRun must keep the canonical AppImage as the update source");
+            assert(appRun.indexOf("ASTRAL_APPIMAGE_UPDATER") !== -1,
+                "AppRun must expose the bundled AppImageUpdate tool");
 
             const build = readLocalFile("../packaging/appimage/build.sh");
             assert(build.indexOf("--custom-apprun") !== -1,
@@ -39,6 +43,10 @@ Item {
                 "the staged qmake must expose Qt's real libexec so qmlimportscanner is found");
             assert(build.indexOf("rsvg-convert") !== -1 && build.indexOf("astral-plasma.png") !== -1,
                 "the build must provide a top-level PNG for appimagetool's .DirIcon");
+            assert(build.indexOf("appimageupdatetool") !== -1,
+                "the image must bundle the AppImageUpdate CLI");
+            assert(build.indexOf("gh-releases-zsync") !== -1,
+                "the image must embed its zsync update information");
             assert(build.indexOf("appimage install --payload") === -1,
                 "build-time packaging must not perform a user install");
 
@@ -51,6 +59,8 @@ Item {
                 "publishing must wait for the AppImage job");
             assert(release.indexOf("*.AppImage") !== -1,
                 "the published assets must include the AppImage");
+            assert(release.indexOf("*.AppImage.zsync") !== -1,
+                "the published assets must include the zsync delta metadata");
 
             console.log("PASS: AppImage installer contract is intact.");
             Qt.exit(0);

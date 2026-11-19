@@ -11,6 +11,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::application::appimage_service::{self, AppImagePaths};
 use crate::domain::branding;
 use crate::domain::install_record::{self, InstallMethod, InstallRecord};
 use crate::domain::ports::DynResult;
@@ -18,7 +19,9 @@ use crate::domain::update::{
     host_arch, select, CandidateView, Channel, IgnoreReason, ReleaseManifest, Selection,
     UpdateCandidate, UpdateSourcePort, MAX_ARTIFACT_BYTES,
 };
-use crate::domain::update_state::{RestartRequest, RollbackInfo, UpdateState, STATE_SCHEMA};
+use crate::domain::update_state::{
+    AppImageUpdateState, RestartRequest, RollbackInfo, UpdateState, STATE_SCHEMA,
+};
 
 /// Free space kept beyond the artifact itself, so a download cannot fill the
 /// filesystem the desktop is running on.
@@ -90,6 +93,14 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(name)
 }
 
+fn find_on_path(program: &str) -> Option<PathBuf> {
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|dir| dir.join(program))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
 /// What the shell and the CLI report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateStatus {
@@ -132,6 +143,8 @@ pub struct UpdateService {
     pub require_signature: bool,
     /// Skip the interactive guards (session lock). Set only by tests.
     pub ignore_session_lock: bool,
+    /// Override the bundled/system AppImageUpdate binary (tests and mirrors).
+    pub appimage_updater_override: Option<PathBuf>,
 }
 
 impl UpdateService {
@@ -146,6 +159,7 @@ impl UpdateService {
                 .map(|value| value == "1")
                 .unwrap_or(false),
             ignore_session_lock: branding::test_mode(),
+            appimage_updater_override: None,
         }
     }
 
@@ -158,6 +172,7 @@ impl UpdateService {
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             require_signature: false,
             ignore_session_lock: true,
+            appimage_updater_override: None,
         }
     }
 
@@ -194,8 +209,33 @@ impl UpdateService {
         let state = UpdateState::load(&self.paths.state_path);
         let method = self.install_method()?;
         let channel = self.channel()?;
-        let candidate = state.candidate.clone();
-        let refusal = refusal(method, candidate.is_some(), state.last_check_unix, &self.paths);
+        let appimage_paths = self.appimage_paths();
+        let candidate = match method {
+            InstallMethod::AppImage => state
+                .appimage_update
+                .as_ref()
+                .filter(|update| update.available)
+                .map(|update| CandidateView {
+                    version: update.version.clone(),
+                    highlights: Vec::new(),
+                    changelog: None,
+                    size: 0,
+                }),
+            _ => state.candidate.as_ref().map(UpdateCandidate::view),
+        };
+        let mut refusal = refusal(method, candidate.is_some(), state.last_check_unix, &self.paths);
+        if method == InstallMethod::AppImage {
+            if !appimage_paths.image.is_file() {
+                refusal = Some(
+                    "The AppImage file is not stored yet; launch the downloaded AppImage once."
+                        .to_string(),
+                );
+            } else if self.appimage_updater().is_none() {
+                refusal = Some(
+                    "The AppImage updater is missing; reinstall this AppImage.".to_string(),
+                );
+            }
+        }
         Ok(UpdateStatus {
             current_version: self.current_version.clone(),
             channel: channel.as_str().to_string(),
@@ -205,7 +245,7 @@ impl UpdateService {
             // "checked, nothing available" is not a refusal.
             can_apply: refusal.is_none() && candidate.is_some(),
             refuse_reason: refusal,
-            candidate: candidate.as_ref().map(UpdateCandidate::view),
+            candidate,
             last_check_unix: state.last_check_unix,
             last_error: state.last_error,
             rollback: state.rollback,
@@ -215,11 +255,43 @@ impl UpdateService {
         })
     }
 
+    fn appimage_paths(&self) -> AppImagePaths {
+        AppImagePaths::at_data_dir(self.paths.data_dir.clone())
+    }
+
+    fn appimage_updater(&self) -> Option<PathBuf> {
+        if let Some(path) = &self.appimage_updater_override {
+            if path.is_file() {
+                return Some(path.clone());
+            }
+        }
+        if let Some(path) = branding::env_value("ASTRAL_APPIMAGE_UPDATER") {
+            let path = PathBuf::from(path);
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+        let payload = branding::env_value("ASTRAL_APPIMAGE_PAYLOAD")
+            .map(PathBuf::from)
+            .or_else(|| self.appimage_paths().current.canonicalize().ok());
+        if let Some(payload) = payload {
+            let bundled = payload.join("usr/bin/appimageupdatetool.AppImage");
+            if bundled.is_file() {
+                return Some(bundled);
+            }
+        }
+        find_on_path("appimageupdatetool")
+    }
+
     /// Fetch the manifest and record what it means for this install.
     pub fn check(&self, force: bool) -> DynResult<UpdateStatus> {
         let mut state = UpdateState::load(&self.paths.state_path);
         let channel = self.channel()?;
         let method = self.install_method()?;
+
+        if method == InstallMethod::AppImage {
+            return self.check_appimage();
+        }
 
         // A package-managed install still learns what is available - it just
         // cannot apply it, and never downloads.
@@ -305,6 +377,39 @@ impl UpdateService {
         self.status()
     }
 
+    fn check_appimage(&self) -> DynResult<UpdateStatus> {
+        let mut state = UpdateState::load(&self.paths.state_path);
+        let tool = self.appimage_updater().ok_or(
+            "the AppImage updater is missing; reinstall this AppImage so it bundles appimageupdatetool",
+        )?;
+        match appimage_service::check_update(&self.appimage_paths(), &tool) {
+            Ok(check) => {
+                let now = install_record::now_unix();
+                state.last_check_unix = now;
+                state.etag = None;
+                state.candidate = None;
+                state.last_error = None;
+                state.appimage_update = Some(AppImageUpdateState {
+                    version: check
+                        .version
+                        .unwrap_or_else(|| self.current_version.clone()),
+                    available: check.available,
+                    update_info: check.update_info,
+                    checked_at_unix: now,
+                    detail: check.detail,
+                });
+                state.save(&self.paths.state_path)?;
+                self.status()
+            }
+            Err(err) => {
+                state.appimage_update = None;
+                state.record_error(err.to_string());
+                state.save(&self.paths.state_path)?;
+                Err(err)
+            }
+        }
+    }
+
     fn cache_manifest(&self, body: &[u8]) -> DynResult<()> {
         if let Some(parent) = self.paths.manifest_cache.parent() {
             fs::create_dir_all(parent)?;
@@ -327,6 +432,10 @@ impl UpdateService {
                 self.paths.record_path.display()
             )
             .into());
+        }
+
+        if method == InstallMethod::AppImage {
+            return self.apply_appimage(quit);
         }
 
         let candidate = state.candidate.clone().ok_or(
@@ -409,6 +518,51 @@ impl UpdateService {
         })
     }
 
+    fn apply_appimage(&self, quit: impl FnOnce() -> bool) -> DynResult<ApplyOutcome> {
+        let mut state = UpdateState::load(&self.paths.state_path);
+        if state
+            .appimage_update
+            .as_ref()
+            .filter(|update| update.available)
+            .is_none()
+        {
+            return Err(
+                "no AppImage update has been checked; run `astral-plasma update check` first"
+                    .into(),
+            );
+        }
+
+        if !self.ignore_session_lock && session_locked() {
+            return Err("the session is locked; the update will apply once it is unlocked".into());
+        }
+        let _lock = UpdateLock::acquire(&self.paths.lock_path)?;
+
+        let tool = self.appimage_updater().ok_or(
+            "the AppImage updater is missing; reinstall this AppImage so it bundles appimageupdatetool",
+        )?;
+        let outcome = appimage_service::apply_update(&self.appimage_paths(), &tool)?;
+
+        RestartRequest {
+            schema: STATE_SCHEMA,
+            target_version: outcome.version.clone(),
+            staged_binary: self.paths.live_binary.to_string_lossy().to_string(),
+            at_unix: install_record::now_unix(),
+            already_in_place: true,
+        }
+        .write(&self.paths.restart_path)?;
+
+        state.appimage_update = None;
+        state.last_error = None;
+        state.save(&self.paths.state_path)?;
+        let restart_requested = quit();
+        Ok(ApplyOutcome {
+            version: outcome.version,
+            restart_requested,
+            staged_binary: self.paths.live_binary.to_string_lossy().to_string(),
+            verified_sha256: outcome.sha256,
+        })
+    }
+
     /// Re-verify the cached manifest against the cached signature.
     ///
     /// Check already verified it, but the artifact is installed minutes later and
@@ -467,7 +621,7 @@ impl UpdateService {
     /// The swap happens here because there is exactly one previous copy; the
     /// request then only asks the supervisor to exec what is already live.
     pub fn revert(&self, quit: impl FnOnce() -> bool) -> DynResult<ApplyOutcome> {
-        if !self.install_method()?.is_self_updatable() {
+        if self.install_method()? != InstallMethod::Managed {
             return Err("only a managed install can be reverted from here".into());
         }
         if !crate::application::restart::has_previous(&self.paths.live_binary) {
@@ -528,9 +682,7 @@ fn refusal(
         InstallMethod::Checkout => Some(
             "This is a git checkout; update it with `git pull`.".to_string(),
         ),
-        InstallMethod::AppImage => Some(
-            "This is an AppImage install; download a newer AppImage to update it.".to_string(),
-        ),
+        InstallMethod::AppImage => None,
         InstallMethod::Managed => {
             if !has_candidate && last_check_unix == 0 {
                 Some("No update has been checked yet.".to_string())

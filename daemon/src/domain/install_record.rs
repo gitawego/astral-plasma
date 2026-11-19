@@ -47,10 +47,11 @@ impl InstallMethod {
 
     /// Whether this daemon may apply an update itself.
     ///
-    /// An AppImage is a single immutable file: a newer one replaces the payload
-    /// through the AppImage path, not by rewriting `bin/` underneath it.
+    /// A managed install is swapped through the supervisor. An AppImage is
+    /// updated by AppImageUpdate, then its payload is extracted and `current`
+    /// is switched; neither path rewrites a package manager's files.
     pub fn is_self_updatable(self) -> bool {
-        matches!(self, Self::Managed)
+        matches!(self, Self::Managed | Self::AppImage)
     }
 
     /// Parse the value written by the installer and by `astral-plasma install`.

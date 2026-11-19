@@ -284,6 +284,9 @@ jobs:
       QT_VERSION: '6.8.3'
       QUICKSHELL_VERSION: 'v0.3.2'
       QS_PREFIX: ${{ github.workspace }}/.quickshell
+      LINUXDEPLOY_VERSION: '1-alpha-20251107-1'
+      LINUXDEPLOY_PLUGIN_VERSION: '1-alpha-20250213-1'
+      APPIMAGETOOL_VERSION: '1.9.1'
     steps:
       - name: Checkout repository at release tag
         uses: actions/checkout@v4
@@ -294,7 +297,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential cmake ninja-build pkg-config git \
+            build-essential cmake ninja-build pkg-config git curl ca-certificates \
             libdrm-dev libgbm-dev libwayland-dev wayland-protocols \
             libpipewire-0.3-dev libpam0g-dev libpolkit-agent-1-dev libpolkit-gobject-1-dev \
             libjemalloc-dev libcli11-dev spirv-tools \
@@ -306,7 +309,7 @@ jobs:
             libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-sync-dev \
             libxcb-xinerama0-dev libxcb-xkb-dev libxkbcommon-x11-dev \
             libxcb-cursor0 \
-            patchelf squashfs-tools desktop-file-utils file librsvg2-bin \
+            patchelf squashfs-tools zsync desktop-file-utils file librsvg2-bin \
             libasound2-dev
 
       - name: Install Qt ${{ env.QT_VERSION }}
@@ -341,11 +344,16 @@ jobs:
           stage="$RUNNER_TEMP/appimage-stage"
           mkdir -p "$tools" "$stage"
           curl -fsSL -o "$stage/linuxdeploy.AppImage" \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_VERSION}/linuxdeploy-x86_64.AppImage"
           curl -fsSL -o "$stage/linuxdeploy-plugin-qt.AppImage" \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/${LINUXDEPLOY_PLUGIN_VERSION}/linuxdeploy-plugin-qt-x86_64.AppImage"
           curl -fsSL -o "$stage/appimagetool.AppImage" \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+            "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage"
+          printf '%s  %s\n' \
+            'c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d' "$stage/linuxdeploy.AppImage" \
+            '15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724' "$stage/linuxdeploy-plugin-qt.AppImage" \
+            'ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0' "$stage/appimagetool.AppImage" \
+            | sha256sum -c -
           for image in "$stage"/*.AppImage; do
             rm -rf "$stage/squashfs-root"
             (cd "$stage" && "$image" --appimage-extract >/dev/null)
@@ -380,13 +388,17 @@ jobs:
           test -x squashfs-root/usr/bin/quickshell
           test -f squashfs-root/version
           test "v$(cat squashfs-root/version)" = "$RELEASE_TAG"
+          test -s "$image.zsync"
+          grep -q '^zsync' "$image.zsync"
           rm -rf squashfs-root
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: build-appimage-x86_64
-          path: dist/*.AppImage
+          path: |
+            dist/*.AppImage
+            dist/*.AppImage.zsync
 
   publish:
     name: Publish Release
@@ -412,7 +424,7 @@ jobs:
       - name: Consolidate distribution assets & checksums
         run: |
           mkdir -p release_assets
-          find downloaded_artifacts -type f \( -name "*.tar.gz" -o -name "astral-plasma-linux-*" -o -name "*.AppImage" \) -exec cp {} release_assets/ \;
+          find downloaded_artifacts -type f \( -name "*.tar.gz" -o -name "astral-plasma-linux-*" -o -name "*.AppImage" -o -name "*.AppImage.zsync" \) -exec cp {} release_assets/ \;
           
           # Consolidate checksums
           cd release_assets

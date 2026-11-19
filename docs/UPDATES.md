@@ -421,6 +421,11 @@ for.
   rollback is attempted; a rollback restores `.prev`, records why, and execs it.
 - `update revert` puts the previous release back and restarts into it; the
   Updates page exposes it only for a `managed` install.
+- AppImage installs update through AppImageUpdate and zsync: the embedded
+  `gh-releases-zsync` record points at the release `.zsync`, the bundled
+  `appimageupdatetool` verifies and downloads the delta, and the payload is
+  extracted and switched through `app/current` before a restart. This path is
+  separate from `latest.json`, which continues to serve managed installs.
 - `install.json` gained optional app-record fields (`digest`, `trust`,
   `publisher_key`, `grants`) so the app platform can reuse the struct per app
   without a schema change (see §14).

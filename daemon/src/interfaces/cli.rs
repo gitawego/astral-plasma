@@ -193,11 +193,16 @@ pub async fn run_cli() -> DynResult<()> {
                     if !confirmed {
                         match &status.candidate {
                             Some(candidate) => {
+                                let amount = if status.install_method == "appimage" {
+                                    "zsync delta".to_string()
+                                } else {
+                                    format!("{} MiB", candidate.size / (1024 * 1024))
+                                };
                                 eprintln!(
-                                    "[{}] Ready to install {} ({} MiB):",
+                                    "[{}] Ready to install {} ({}):",
                                     branding::APP_NAME,
                                     candidate.version,
-                                    candidate.size / (1024 * 1024)
+                                    amount
                                 );
                                 for line in &candidate.highlights {
                                     eprintln!("  - {line}");

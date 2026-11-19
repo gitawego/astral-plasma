@@ -74,7 +74,7 @@ fn an_unknown_method_is_refused_rather_than_guessed() {
 }
 
 #[test]
-fn only_a_managed_install_may_update_itself() {
+fn managed_and_appimage_installs_update_themselves() {
     assert!(InstallMethod::Managed.is_self_updatable());
     assert!(
         !InstallMethod::Package.is_self_updatable(),
@@ -82,8 +82,8 @@ fn only_a_managed_install_may_update_itself() {
     );
     assert!(!InstallMethod::Checkout.is_self_updatable());
     assert!(
-        !InstallMethod::AppImage.is_self_updatable(),
-        "an AppImage is replaced as a whole; rewriting its payload is not a managed update"
+        InstallMethod::AppImage.is_self_updatable(),
+        "an AppImage updates through AppImageUpdate, not through the managed binary swap"
     );
 
     assert_eq!(InstallMethod::parse("managed").unwrap(), InstallMethod::Managed);

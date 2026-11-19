@@ -13,16 +13,18 @@
 //! about what shell code is running.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
 use crate::domain::branding;
-use crate::domain::install_record::{InstallMethod, InstallRecord};
+use crate::domain::install_record::{now_unix, InstallMethod, InstallRecord};
 use crate::domain::ports::DynResult;
 use crate::domain::systemd::generate_unit_file_content;
 use crate::infrastructure::embedded_bundle::extract_embedded_theme;
+use crate::infrastructure::update_source::sha256_file;
 
 const SESSION_FILE: &str = "astral-plasma.desktop";
 const SESSION_SCRIPT: &str = "astral-plasma-session";
@@ -32,6 +34,9 @@ const SESSION_NAME: &str = "Astral Plasma (AppImage)";
 pub struct AppImagePaths {
     pub data_dir: PathBuf,
     pub app_dir: PathBuf,
+    /// The canonical AppImage file kept from the download that installed this
+    /// payload. AppImageUpdate reads its embedded update information.
+    pub image: PathBuf,
     pub current: PathBuf,
     pub wrapper: PathBuf,
     pub package_dir: PathBuf,
@@ -50,6 +55,7 @@ impl AppImagePaths {
         let bin_home = branding::home_dir().join(".local").join("bin");
         Self {
             app_dir: app_dir.clone(),
+            image: app_dir.join("astral-plasma.AppImage"),
             current: app_dir.join("current"),
             wrapper: data_dir.join(branding::BIN_SUBDIR).join(branding::BIN_FILE),
             package_dir: data_dir.join(branding::PACKAGE_SUBDIR),
@@ -65,11 +71,40 @@ impl AppImagePaths {
         }
     }
 
+    /// Paths anchored at an existing data directory, for the update service.
+    /// Session and systemd paths still point at the real user directories; an
+    /// update only touches the app directory, record and canonical image.
+    pub fn at_data_dir(data_dir: PathBuf) -> Self {
+        let app_dir = data_dir.join("app");
+        Self {
+            app_dir: app_dir.clone(),
+            image: app_dir.join("astral-plasma.AppImage"),
+            current: app_dir.join("current"),
+            wrapper: data_dir.join(branding::BIN_SUBDIR).join(branding::BIN_FILE),
+            package_dir: data_dir.join(branding::PACKAGE_SUBDIR),
+            record_path: data_dir.join(branding::INSTALL_RECORD_FILE),
+            session_file: branding::data_home()
+                .join("wayland-sessions")
+                .join(SESSION_FILE),
+            session_script: branding::home_dir()
+                .join(".local")
+                .join("bin")
+                .join(SESSION_SCRIPT),
+            applications_dir: branding::applications_dir(),
+            systemd_unit: branding::config_home()
+                .join("systemd")
+                .join("user")
+                .join(branding::SYSTEMD_UNIT),
+            data_dir,
+        }
+    }
+
     pub fn rooted_at(root: &Path) -> Self {
         let data_dir = root.join("data").join(branding::DATA_DIR);
         let app_dir = data_dir.join("app");
         Self {
             app_dir: app_dir.clone(),
+            image: app_dir.join("astral-plasma.AppImage"),
             current: app_dir.join("current"),
             wrapper: data_dir.join(branding::BIN_SUBDIR).join(branding::BIN_FILE),
             package_dir: data_dir.join(branding::PACKAGE_SUBDIR),
@@ -104,6 +139,25 @@ pub struct AppImageStatus {
 pub struct AppImageUninstallReport {
     pub removed: Vec<String>,
     pub kept: Vec<String>,
+}
+
+/// Result of `appimageupdatetool -j` plus the metadata from `-d`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppImageUpdateCheck {
+    pub available: bool,
+    /// Version parsed from the assembled `.zsync` URL, when GitHub names the
+    /// release artifact with the project's `astral-plasma-<version>-<arch>` form.
+    pub version: Option<String>,
+    pub update_info: Option<String>,
+    /// Tool output retained for the UI when a check fails or returns no update.
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppImageApplyOutcome {
+    pub version: String,
+    pub image: String,
+    pub sha256: String,
 }
 
 #[derive(Debug, Clone)]
@@ -218,6 +272,188 @@ pub fn status(paths: &AppImagePaths) -> DynResult<AppImageStatus> {
         session_installed: paths.session_file.is_file() && paths.session_script.is_file(),
         service_installed: paths.systemd_unit.is_file(),
     })
+}
+
+/// Check for a newer AppImage through the AppImageUpdate contract.
+///
+/// `appimageupdatetool` exits 1 when a change is available, 0 when current, and
+/// another code on error. `-d` supplies the assembled zsync URL, from which the
+/// release version is read for the update UI.
+pub fn check_update(paths: &AppImagePaths, tool: &Path) -> DynResult<AppImageUpdateCheck> {
+    let image = ensure_image(paths)?;
+    let mut command = updater_command(tool);
+    command.args(["-j"]).arg(&image);
+    let output = command.output()?;
+    let code = output.status.code().unwrap_or(-1);
+    if code != 0 && code != 1 {
+        return Err(updater_error("-j", &output).into());
+    }
+    let available = code == 1;
+    let mut version = None;
+    let mut update_info = None;
+    let mut detail = trim_output(&output);
+    if available {
+        let mut describe = updater_command(tool);
+        describe.args(["-d"]).arg(&image);
+        if let Ok(described) = describe.output() {
+            if described.status.success() {
+                let text = String::from_utf8_lossy(&described.stdout);
+                (version, update_info) = parse_update_details(&text);
+                if detail.is_none() {
+                    detail = trim_output(&described);
+                }
+            }
+        }
+    }
+    Ok(AppImageUpdateCheck {
+        available,
+        version,
+        update_info,
+        detail,
+    })
+}
+
+/// Update the canonical AppImage with AppImageUpdate, then extract and switch
+/// the stable payload the wrapper runs.
+///
+/// The AppImage file is updated in place only after zsync verifies it. The
+/// extracted payload becomes `app/<version>`, `current` flips atomically, and
+/// `previous` keeps the old payload for a manual rollback.
+pub fn apply_update(paths: &AppImagePaths, tool: &Path) -> DynResult<AppImageApplyOutcome> {
+    let image = ensure_image(paths)?;
+    let mut update = updater_command(tool);
+    update.args(["-O", "-r"]).arg(&image);
+    let output = update.output()?;
+    if !output.status.success() {
+        return Err(updater_error("-O -r", &output).into());
+    }
+    fs::set_permissions(&image, fs::Permissions::from_mode(0o755))?;
+
+    let stage = paths.app_dir.join(format!(".update-{}", now_unix()));
+    let _ = fs::remove_dir_all(&stage);
+    fs::create_dir_all(&stage)?;
+
+    let extract = Command::new(&image)
+        .arg("--appimage-extract")
+        .current_dir(&stage)
+        .output()?;
+    if !extract.status.success() {
+        let _ = fs::remove_dir_all(&stage);
+        return Err(format!(
+            "the updated AppImage could not be extracted: {}",
+            String::from_utf8_lossy(&extract.stderr).trim()
+        )
+        .into());
+    }
+
+    let extracted = stage.join("squashfs-root");
+    if let Err(error) = ensure_payload(&extracted, &paths.app_dir) {
+        let _ = fs::remove_dir_all(&stage);
+        return Err(error);
+    }
+    let version = fs::read_to_string(extracted.join("version"))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or("the updated AppImage has no version file")?;
+
+    let target = paths.app_dir.join(&version);
+    let current_target = fs::canonicalize(&paths.current).ok();
+    if target.exists() {
+        if current_target.as_deref() == Some(target.as_path()) {
+            let _ = fs::remove_dir_all(&stage);
+            return Err(format!("version {version} is already installed").into());
+        }
+        fs::remove_dir_all(&target)?;
+    }
+    fs::rename(&extracted, &target)?;
+
+    if let Some(previous) = current_target {
+        let link = paths.app_dir.join("previous");
+        let _ = fs::remove_file(&link);
+        symlink(previous, link)?;
+    }
+
+    let next = paths.app_dir.join(".current.new");
+    let _ = fs::remove_file(&next);
+    symlink(&target, &next)?;
+    fs::rename(&next, &paths.current)?;
+
+    let mut record = InstallRecord::read(&paths.record_path)?
+        .ok_or("the AppImage install record is missing; run `astral-plasma appimage install` first")?;
+    if record.method != InstallMethod::AppImage {
+        let _ = fs::remove_dir_all(&stage);
+        return Err("this install is not owned by an AppImage".into());
+    }
+    record.version = version.clone();
+    record.installed_at_unix = now_unix();
+    record.write(&paths.record_path)?;
+
+    let digest = sha256_file(&image)?;
+    let _ = fs::remove_dir_all(&stage);
+    Ok(AppImageApplyOutcome {
+        version,
+        image: image.to_string_lossy().to_string(),
+        sha256: digest,
+    })
+}
+
+fn ensure_image(paths: &AppImagePaths) -> DynResult<PathBuf> {
+    if paths.image.is_file() {
+        Ok(paths.image.clone())
+    } else {
+        Err(format!(
+            "no AppImage file is stored at {}; launch the downloaded AppImage once so it can keep its update source",
+            paths.image.display()
+        )
+        .into())
+    }
+}
+
+fn updater_command(tool: &Path) -> Command {
+    let mut command = Command::new(tool);
+    if tool.extension().and_then(|extension| extension.to_str()) == Some("AppImage") {
+        command.arg("--appimage-extract-and-run");
+    }
+    command
+}
+
+fn updater_error(operation: &str, output: &std::process::Output) -> String {
+    let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if detail.is_empty() {
+        format!("appimageupdatetool {operation} failed with {}", output.status)
+    } else {
+        format!("appimageupdatetool {operation} failed: {detail}")
+    }
+}
+
+fn trim_output(output: &std::process::Output) -> Option<String> {
+    let text = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
+fn parse_update_details(text: &str) -> (Option<String>, Option<String>) {
+    let mut version = None;
+    let mut update_info = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(value) = line.strip_prefix("Raw update information:") {
+            update_info = Some(value.trim().to_string());
+        }
+        if let Some(value) = line.strip_prefix("Assembled ZSync URL:") {
+            version = version_from_zsync_url(value.trim());
+        }
+    }
+    (version, update_info)
+}
+
+fn version_from_zsync_url(url: &str) -> Option<String> {
+    let name = url.rsplit('/').next()?;
+    let name = name.strip_suffix(".zsync").unwrap_or(name);
+    let name = name.strip_suffix(".AppImage")?;
+    let rest = name.strip_prefix("astral-plasma-")?;
+    let (version, _arch) = rest.rsplit_once('-')?;
+    (!version.is_empty()).then(|| version.to_string())
 }
 
 /// Remove the AppImage wrapper, login session, unit, payloads and record.

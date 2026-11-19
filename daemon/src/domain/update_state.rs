@@ -23,6 +23,19 @@ pub struct RollbackInfo {
     pub at_unix: u64,
 }
 
+/// Last AppImageUpdate result. The embedded update information travels in the
+/// AppImage itself, so only the checked version and availability are cached.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppImageUpdateState {
+    pub version: String,
+    pub available: bool,
+    #[serde(default)]
+    pub update_info: Option<String>,
+    pub checked_at_unix: u64,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateState {
     pub schema: u32,
@@ -32,6 +45,8 @@ pub struct UpdateState {
     pub etag: Option<String>,
     #[serde(default)]
     pub candidate: Option<UpdateCandidate>,
+    #[serde(default)]
+    pub appimage_update: Option<AppImageUpdateState>,
     #[serde(default)]
     pub last_error: Option<String>,
     #[serde(default)]
@@ -51,6 +66,7 @@ impl Default for UpdateState {
             last_check_unix: 0,
             etag: None,
             candidate: None,
+            appimage_update: None,
             last_error: None,
             rollback: None,
             failed_starts: 0,
@@ -86,6 +102,14 @@ impl UpdateState {
                 state.candidate = None;
             }
         }
+        if state
+            .appimage_update
+            .as_ref()
+            .map(|update| update.version.trim().is_empty())
+            .unwrap_or(false)
+        {
+            state.appimage_update = None;
+        }
         state
     }
 
@@ -104,6 +128,7 @@ impl UpdateState {
         self.last_check_unix = now_unix();
         self.etag = etag;
         self.candidate = candidate;
+        self.appimage_update = None;
         self.last_error = None;
     }
 

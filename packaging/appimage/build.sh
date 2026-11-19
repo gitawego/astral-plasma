@@ -39,10 +39,12 @@ need() {
 }
 need linuxdeploy
 need appimagetool
+need zsyncmake
 need patchelf
 need mksquashfs
 need qmake6
 need quickshell
+need curl
 VERSION=$(grep -m1 '^version' "$ROOT/daemon/Cargo.toml" | sed -E 's/version = "(.*)"/\1/')
 ARCH=$(uname -m)
 case "$ARCH" in
@@ -55,6 +57,21 @@ BUILD="$ROOT/build/appimage/$ARCH"
 APPDIR="$BUILD/AppDir"
 DIST="$ROOT/dist"
 APPIMAGE="$DIST/astral-plasma-${VERSION}-${ARCH}.AppImage"
+
+# AppImageUpdate is the update implementation: it follows the update
+# information embedded below and verifies the zsync result. Pin both halves so
+# a changed upstream artifact cannot silently alter a release image.
+APPIMAGEUPDATE_VERSION="2.0.0-alpha-1-20251018"
+case "$ARCH" in
+    x86_64) UPDATER_SHA256="d976cdac667b03dee8cb23fb95ef74b042c406c5cbab3ff294d2b16efeaff84f" ;;
+    aarch64) UPDATER_SHA256="7aaf89dd4cf66ebd940d416c67e1c240c57a139cee38d9c0ed3bb9387bc435b0" ;;
+esac
+UPDATER_NAME="appimageupdatetool-${ARCH}.AppImage"
+UPDATER_URL="https://github.com/AppImageCommunity/AppImageUpdate/releases/download/${APPIMAGEUPDATE_VERSION}/${UPDATER_NAME}"
+UPDATER_CACHE="$BUILD/updater/$UPDATER_NAME"
+
+REPO_SLUG="${ASTRAL_APPIMAGE_REPO:-gitawego/astral-plasma}"
+UPDATE_INFO="${ASTRAL_APPIMAGE_UPDATE_INFO:-gh-releases-zsync|${REPO_SLUG//\//|}|latest|astral-plasma-*-${ARCH}.AppImage.zsync}"
 
 if [ "$NO_BUILD" -eq 0 ]; then
     make -C "$ROOT" build
@@ -73,6 +90,15 @@ mkdir -p "$APPDIR/usr/bin" \
 
 cp "$ROOT/bin/astral-plasma" "$APPDIR/usr/bin/astral-plasma"
 cp "$(command -v quickshell)" "$APPDIR/usr/bin/quickshell"
+
+# Bundle the AppImageUpdate CLI so updates work without a system package.
+mkdir -p "$(dirname "$UPDATER_CACHE")"
+if [ ! -f "$UPDATER_CACHE" ]; then
+    curl -fsSL -o "$UPDATER_CACHE" "$UPDATER_URL"
+fi
+printf '%s  %s\n' "$UPDATER_SHA256" "$UPDATER_CACHE" | sha256sum -c - >/dev/null
+cp "$UPDATER_CACHE" "$APPDIR/usr/bin/appimageupdatetool.AppImage"
+chmod +x "$APPDIR/usr/bin/appimageupdatetool.AppImage"
 cp "$ROOT/modules/Astral/Kernel/theme/assets/astral-plasma.svg" "$APPDIR/astral-plasma.svg"
 cp "$APPDIR/astral-plasma.svg" "$APPDIR/usr/share/icons/hicolor/scalable/apps/astral-plasma.svg"
 # appimagetool derives .DirIcon from a top-level PNG (or XPM). Render one when
@@ -190,11 +216,20 @@ fi
 
 # linuxdeploy names the output after the desktop file; build again with the
 # deterministic name users and the release manifest will reference.
-rm -f "$APPIMAGE"
-ARCH="$ARCH" appimagetool --no-appstream "$APPDIR" "$APPIMAGE"
+rm -f "$APPIMAGE" "$APPIMAGE.zsync"
+ARCH="$ARCH" appimagetool --no-appstream -u "$UPDATE_INFO" "$APPDIR" "$APPIMAGE"
+# appimagetool's own zsync step is unreliable for an absolute destination.
+# zsyncmake is the authoritative producer and is also what AppImageUpdate reads.
+zsyncmake -u "$(basename "$APPIMAGE")" -o "$APPIMAGE.zsync" "$APPIMAGE"
+[ -s "$APPIMAGE.zsync" ] || {
+    echo "[!] zsyncmake did not produce ${APPIMAGE}.zsync; AppImageUpdate needs it." >&2
+    exit 1
+}
 
 chmod +x "$APPIMAGE"
 echo "[✓] $APPIMAGE"
+echo "    zsync:   $APPIMAGE.zsync"
+echo "    update:  $UPDATE_INFO"
 echo "    version: $VERSION"
 echo "    size:    $(du -h "$APPIMAGE" | cut -f1)"
 echo "    smoke:   $APPIMAGE --appimage-extract && test -x squashfs-root/AppRun"

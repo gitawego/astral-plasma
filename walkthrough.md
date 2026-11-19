@@ -3408,3 +3408,30 @@ account `agy` displayed, and that account's row marked `Active`; the other two r
 precedence and keyring-token matching. `make test` passes (Rust + every QML suite + app
 boundaries).
 
+## AppImage updates use AppImageUpdate, not the managed downloader
+
+The managed updater is the right mechanism for a binary install, but an AppImage
+already has a mature update path: embedded update information plus zsync deltas.
+The image now embeds
+`gh-releases-zsync|gitawego|astral-plasma|latest|astral-plasma-*-x86_64.AppImage.zsync`,
+and the release publishes the matching `.zsync` beside the AppImage.
+
+`AppRun` keeps the downloaded AppImage at `app/astral-plasma.AppImage`; the
+daemon's `update check` runs the bundled `appimageupdatetool -j` and `update
+apply` runs `-O -r`, extracts the verified image to `app/<version>/`, switches
+`current` atomically, keeps `previous`, and writes a restart request with
+`already_in_place` so the supervisor execs the stable wrapper into the new
+payload. The managed `latest.json` path is unchanged for non-AppImage installs.
+
+Live proof (local, not committed): `make appimage` produced a 122 MiB
+`dist/astral-plasma-0.1.3-x86_64.AppImage` and a 213 KiB `.zsync`;
+`appimageupdatetool -d` reported the embedded `gh-releases-zsync` record, the
+extracted payload contained `usr/bin/appimageupdatetool.AppImage`, and
+`spectacle -a` captured the real first-run wizard. The same image extracted and
+started `astral-plasma --help` on Ubuntu 24.04 and Fedora 42 containers.
+`daemon/tests/test_appimage_update.rs` uses a fake updater to pin the check,
+delta-download, extract, switch, previous-link and restart-request behaviour;
+the updater cannot assemble a real zsync URL until the next release contains the
+`.zsync` asset.
+
+

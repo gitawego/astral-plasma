@@ -75,6 +75,16 @@ Item {
         })
     }
 
+    UpdatesPage {
+        id: appimagePage
+        testMode: true
+        testStatus: testRoot.status({
+            install_method: "appimage",
+            can_apply: true,
+            candidate: { version: "0.2.0", highlights: [], size: 0 }
+        })
+    }
+
     function assert(condition, message) {
         if (!condition) {
             console.error("FAIL: " + message);
@@ -115,6 +125,13 @@ Item {
         assert(!refusedPage.applyButton.active,
             "a package-managed install must not offer an apply control");
         assert(refusedPage.installMethod === "package", "the install method is reported");
+
+        // AppImage installs use AppImageUpdate, not the managed binary swap.
+        assert(appimagePage.installMethod === "appimage", "an AppImage install names its method");
+        assert(appimagePage.methodText === "Updated by AppImageUpdate",
+            "the page explains AppImageUpdate, got '" + appimagePage.methodText + "'");
+        assert(appimagePage.applyButton.active, "an AppImage update can be applied");
+        assert(!appimagePage.revertButton.active, "AppImageUpdate has no binary rollback here");
 
         // A rollback is explained, not hidden.
         assert(rolledBackPage.rollback !== null, "a rollback is surfaced");

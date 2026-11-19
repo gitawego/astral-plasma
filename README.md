@@ -360,7 +360,8 @@ make appimage
 The installer writes a **per-user** session entry and never changes the default
 desktop; the user chooses Astral Plasma at the login screen. The AppImage path
 is recorded as `"method": "appimage"`, so the managed updater never rewrites it;
-a newer AppImage replaces the payload. Settings, wallpapers and cache stay.
+AppImageUpdate applies zsync delta updates and the shell restarts into the new
+extracted payload. Settings, wallpapers and cache stay.
 
 ### 5. Updates
 Installed shells update themselves from **Settings → Updates & About**: the

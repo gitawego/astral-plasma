@@ -14,6 +14,19 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/astral-plasma"
 STATE="$DATA/app"
 TARGET="$STATE/$VERSION"
 
+# Keep the downloaded AppImage as the update source. The extracted payload is
+# what runs, but AppImageUpdate needs the original file's embedded information.
+if [ -z "${ASTRAL_APPIMAGE_PAYLOAD:-}" ] && [ -n "${APPIMAGE:-}" ] && [ -f "$APPIMAGE" ]; then
+    mkdir -p "$STATE"
+    CANONICAL="$STATE/astral-plasma.AppImage"
+    if [ "$(readlink -f "$APPIMAGE")" != "$(readlink -f "$CANONICAL" 2>/dev/null || true)" ]; then
+        TMP_IMAGE="$STATE/.astral-plasma.AppImage.$$"
+        cp "$APPIMAGE" "$TMP_IMAGE"
+        chmod +x "$TMP_IMAGE"
+        mv "$TMP_IMAGE" "$CANONICAL"
+    fi
+fi
+
 # An installed wrapper sets ASTRAL_APPIMAGE_PAYLOAD; never copy the mounted
 # AppImage over itself in that case.
 if [ -n "${ASTRAL_APPIMAGE_PAYLOAD:-}" ] && [ -x "${ASTRAL_APPIMAGE_PAYLOAD}/usr/bin/astral-plasma" ]; then
@@ -45,6 +58,9 @@ export LD_LIBRARY_PATH="$TARGET/usr/lib:$TARGET/usr/lib/x86_64-linux-gnu${LD_LIB
 export QT_PLUGIN_PATH="$TARGET/usr/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
 export QML2_IMPORT_PATH="$TARGET/usr/lib/qt6/qml:$ASTRAL_PLASMA_PACKAGE_DIR/modules${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
 export QML_IMPORT_PATH="$QML2_IMPORT_PATH"
+if [ -x "$TARGET/usr/bin/appimageupdatetool.AppImage" ]; then
+    export ASTRAL_APPIMAGE_UPDATER="$TARGET/usr/bin/appimageupdatetool.AppImage"
+fi
 
 # First launch: show the graphical installer. It is a normal window, so it
 # cannot take over the running Plasma session before the user consents.

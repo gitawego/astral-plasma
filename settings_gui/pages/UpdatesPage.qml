@@ -96,6 +96,7 @@ SettingsPage {
         switch (installMethod) {
         case "managed": return "Updated by the shell";
         case "package": return "Managed by your package manager";
+        case "appimage": return "Updated by AppImageUpdate";
         case "checkout": return "Git checkout";
         default: return "Unknown";
         }
