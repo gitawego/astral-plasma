@@ -10,6 +10,7 @@ pub mod app_service;
 pub mod retry;
 pub mod migrations;
 pub mod install_service;
+pub mod appimage_service;
 pub mod update_service;
 pub mod restart;
 pub mod uninstall_service;

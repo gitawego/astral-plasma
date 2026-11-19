@@ -3379,3 +3379,32 @@ region. `make test` passes (Rust + every QML suite + app boundaries).
 
 Remaining: the effect's own ~5 % of a core is its QML work. If a loaded machine still feels slow,
 the next lever is its update rate or glyph count, not the glass it used to sit on.
+
+## Gemini "Active in CLI" now follows the keyring agy authenticates with
+
+`agy` reported one Google account while the AI Quotas popout marked a different one as
+`Active in CLI`. The live keyring held the account `agy` had switched to, but
+`get_active_gemini_email` consulted `~/.antigravity_cockpit/current_account.json` first.
+That file is a cached snapshot written by a separate tool; it had not changed since
+13 October and still named the previous account, so the live keyring was never read.
+
+The resolver now reads only live credential stores: the desktop keyring, the `agy` token
+files, then the `.antigravity_last_active` marker and the stored account records. The
+keyring's top-level `id_token_email` (the field `agy` writes) is parsed alongside `email`,
+nested `token.email`, and JWT id-token payloads. Token-only payloads resolve by matching
+their refresh/access token against the stored account records.
+
+The cached Cockpit snapshot is no longer read or written anywhere in Astral: the
+`~/.antigravity_cockpit` I/O, the switch-time sync, the scanner's `accounts.json`
+discovery, and the discovery-badge/source claims were removed. The directory itself was
+removed from the machine on request. `tst_ai_tab` now requires the Gemini discovery
+badges to name the Desktop Keyring and never a Cockpit source.
+
+Live proof (local, not committed): `/tmp/ai_active_account_fix.png` shows the AI Quotas
+popout after `quickshell ipc call ai refresh` with **Active in CLI** naming the same
+account `agy` displayed, and that account's row marked `Active`; the other two rows offer
+`Switch`. `./bin/astral-plasma ai status` independently returns the same
+`active_gemini_email`. `daemon/tests/test_ai_active_gemini_identity.rs` pins live-keyring
+precedence and keyring-token matching. `make test` passes (Rust + every QML suite + app
+boundaries).
+

@@ -528,6 +528,9 @@ fn refusal(
         InstallMethod::Checkout => Some(
             "This is a git checkout; update it with `git pull`.".to_string(),
         ),
+        InstallMethod::AppImage => Some(
+            "This is an AppImage install; download a newer AppImage to update it.".to_string(),
+        ),
         InstallMethod::Managed => {
             if !has_candidate && last_check_unix == 0 {
                 Some("No update has been checked yet.".to_string())

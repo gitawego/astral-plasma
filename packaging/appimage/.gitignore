@@ -1,0 +1,8 @@
+# AppImage build output and toolchain. The repository ships recipes, not
+# multi-hundred-megabyte images or downloaded AppImage tooling.
+build/
+dist/
+.tools/
+*.AppImage
+*.AppImage.zsync
+squashfs-root/

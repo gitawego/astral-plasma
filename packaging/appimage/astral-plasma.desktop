@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Astral Plasma
+Comment=Fluid Quickshell desktop shell for KDE Plasma 6 / Hyprland
+Exec=astral-plasma run
+TryExec=astral-plasma
+Icon=astral-plasma
+Categories=System;DesktopSettings;
+Keywords=astral;quickshell;kwin;desktop;shell;
+Terminal=false
+StartupNotify=false

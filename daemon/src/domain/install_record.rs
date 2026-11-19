@@ -29,6 +29,10 @@ pub enum InstallMethod {
     Package,
     /// A git checkout the user drives with `git pull`.
     Checkout,
+    /// A self-contained AppImage payload. The AppImage owns its own update
+    /// path, so the managed updater must not replace files inside it.
+    #[serde(rename = "appimage")]
+    AppImage,
 }
 
 impl InstallMethod {
@@ -37,10 +41,14 @@ impl InstallMethod {
             Self::Managed => "managed",
             Self::Package => "package",
             Self::Checkout => "checkout",
+            Self::AppImage => "appimage",
         }
     }
 
     /// Whether this daemon may apply an update itself.
+    ///
+    /// An AppImage is a single immutable file: a newer one replaces the payload
+    /// through the AppImage path, not by rewriting `bin/` underneath it.
     pub fn is_self_updatable(self) -> bool {
         matches!(self, Self::Managed)
     }
@@ -55,8 +63,9 @@ impl InstallMethod {
             "managed" => Ok(Self::Managed),
             "package" => Ok(Self::Package),
             "checkout" => Ok(Self::Checkout),
+            "appimage" => Ok(Self::AppImage),
             other => Err(format!(
-                "unknown install method '{other}' (expected managed, package or checkout)"
+                "unknown install method '{other}' (expected managed, package, checkout or appimage)"
             )
             .into()),
         }

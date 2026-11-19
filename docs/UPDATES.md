@@ -79,7 +79,7 @@ it a way back.
   ever seeing plasmashell reappear**.
 - A build that fails to start returns the user to the previous version
   automatically, with the reason stated in the UI.
-- Every install records who owns it (`managed`, `package`, `checkout`), so two
+- Every install records who owns it (`managed`, `package`, `checkout`, `appimage`), so two
   updaters never fight over the same files.
 - Existing installs (git checkout symlinked into `~/.config/quickshell`) migrate
   to the managed layout without losing settings or touching their checkout.
@@ -108,7 +108,8 @@ installed app version.
 Additions to [`CONTEXT.md`](../CONTEXT.md), in the update context:
 
 - **Install Method** — recorded fact naming who owns the installed files:
-  `managed` (this feature), `package` (pacman/AUR), `checkout` (git clone).
+  `managed` (this feature), `package` (pacman/AUR), `checkout` (git clone),
+  `appimage` (a self-contained AppImage payload, replaced as a whole).
   Never inferred at update time from file layout alone.
 - **Release Manifest** — `latest.json`, published per release, the only thing
   the daemon reads to decide whether an update exists.

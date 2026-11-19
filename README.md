@@ -101,7 +101,7 @@ Astral Plasma features a native, liquid-glass AI suite engineered for proactive 
   - **Rolling Quota Tracking**: Live telemetry tracking for 5-hour rolling limits and weekly quotas with visual progress bars, percentage readouts, and exact countdown timers (*"Resets in 1h 43m"*).
   - **Prompt Cache Efficiency**: Monitors global token cache hit rates (e.g. 97% cache hit, 1.1B cached tokens saved).
   - **Multi-Account Switching & Privacy Masking**: Switch between multiple Gemini/provider profiles on the fly with built-in privacy masking (`••••••••@gmail.com`) to prevent leaking sensitive email addresses during screencasts and presentations.
-  - **Zero-Config Agent Discovery**: Automatically scans and synchronizes credentials from Antigravity Cockpit, Desktop Keyring, Pi Agent (`~/.pi/agent`), and OpenCode (`~/.config/opencode`).
+  - **Zero-Config Agent Discovery**: Automatically scans and synchronizes credentials from the Desktop Keyring, Pi Agent (`~/.pi/agent`), and OpenCode (`~/.config/opencode`).
 
 - **Dynamic AI Dock Pill & Popout (`AiPill` & `AiTokensSection`)**:
   - Live dock pill reactively pulses with token streaming rate, active model identity, and request load.
@@ -339,7 +339,30 @@ user service are **not** installed silently; enable them from
 
 > 💡 **KDE Plasma & Quickshell Architecture**: For an in-depth breakdown of how Astral Plasma coordinates non-destructively with KDE Plasma 6 (`plasma-plasmashell.service`), see [docs/KDE-INTEGRATION.md](docs/KDE-INTEGRATION.md).
 
-### 4. Updates
+### 4. Portable AppImage (evaluation)
+
+The AppImage bundles the daemon, Quickshell and Qt so a KDE Plasma 6 user can
+try the shell with one download and no package repository. The AppImage is a
+delivery container, not the installed runtime: it copies itself to
+`~/.local/share/astral-plasma/app/<version>/` and installs a stable wrapper, so
+KWin screenshot authorization and Quickshell IPC keep a stable path.
+
+```bash
+# Build it from this checkout (toolchain in packaging/appimage/README.md):
+make appimage
+
+# First launch shows the graphical setup:
+./dist/astral-plasma-<version>-<arch>.AppImage
+
+# Then either Try, Install at login, or Remove.
+```
+
+The installer writes a **per-user** session entry and never changes the default
+desktop; the user chooses Astral Plasma at the login screen. The AppImage path
+is recorded as `"method": "appimage"`, so the managed updater never rewrites it;
+a newer AppImage replaces the payload. Settings, wallpapers and cache stay.
+
+### 5. Updates
 Installed shells update themselves from **Settings → Updates & About**: the
 daemon checks for a new release shortly after login and every six hours, shows
 what changed, and applies the update with one click. The shell restarts itself
@@ -365,7 +388,7 @@ If a new release does not come up, the supervisor restarts Quickshell twice and
 then puts the previous binary back, recording the reason where the Updates page
 shows it. **Revert to previous version** in that page does the same on request.
 
-### 5. Uninstall
+### 6. Uninstall
 ```bash
 ./uninstall.sh          # asks once, keeps your settings
 ./uninstall.sh --purge  # also removes settings, palette and imported avatars
@@ -378,7 +401,7 @@ binary must not change unasked — KDE shortcut keys, the KWin script package an
 the Omarchy plugin. `~/.config/quickshell` is reported, never deleted: it is your
 config path, not an Astral artifact.
 
-### 6. Automated Releases & Pre-built Binaries (x64 / ARM64)
+### 7. Automated Releases & Pre-built Binaries (x64 / ARM64)
 Astral Plasma includes an automated multi-architecture release pipeline built on GitHub Actions:
 - **Supported Architectures**: `x86_64` (Intel/AMD) and `aarch64` (ARM64 / Raspberry Pi / Asahi Linux).
 - **Trigger via Local Project CLI**:
@@ -546,6 +569,8 @@ astral-plasma/
 ├── AGENTS.md               # Contribution conventions (TDD, architecture)
 ├── walkthrough.md          # Deep-dive: active apps overview
 ├── run.sh / install.sh / uninstall.sh
+packaging/appimage/       # AppImage build, AppRun and first-run wizard
+appimage/                 # First-run SetupWindow QML
 ├── shell/                  # Core surfaces: UnifiedShell, UnifiedDock,
 │   │                       # UnifiedFrame, TopBar host, CentralDropdown,
 │   │                       # CommandLauncher, ActiveAppsOverview, VolumeOsd,

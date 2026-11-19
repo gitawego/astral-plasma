@@ -19,6 +19,10 @@ Thumbs.db
 daemon/target/
 bin/
 
+# AppImage build output (packaging/appimage/build.sh)
+build/
+dist/
+
 # Exported pi session transcripts (not repository content)
 pi-session-*.html
 

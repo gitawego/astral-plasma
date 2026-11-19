@@ -90,7 +90,7 @@ pub async fn run_cli() -> DynResult<()> {
                     }
                     other => {
                         eprintln!("Unknown install option: {other}");
-                        eprintln!("Usage: astral-plasma install [--method managed|package|checkout] [--channel stable|beta] [--package <name>]");
+                        eprintln!("Usage: astral-plasma install [--method managed|package|checkout|appimage] [--channel stable|beta] [--package <name>]");
                         std::process::exit(2);
                     }
                 }
@@ -105,6 +105,68 @@ pub async fn run_cli() -> DynResult<()> {
                 &InstallPaths::for_user(),
             )?;
             println!("{}", serde_json::to_string(&outcome.record)?);
+        }
+        "appimage" => {
+            use crate::application::appimage_service::{
+                install as install_appimage, status as appimage_status,
+                uninstall as uninstall_appimage, AppImageInstallOptions, AppImagePaths,
+            };
+
+            let sub = args.get(2).map(String::as_str).unwrap_or("status");
+            let payload_arg = args
+                .windows(2)
+                .find(|pair| pair[0] == "--payload")
+                .map(|pair| pair[1].clone())
+                .or_else(|| std::env::var("ASTRAL_APPIMAGE_PAYLOAD").ok());
+            let paths = AppImagePaths::for_user();
+
+            match sub {
+                "status" => {
+                    println!("{}", serde_json::to_string(&appimage_status(&paths)?)?);
+                }
+                "install" => {
+                    let confirmed = args.iter().any(|a| a == "--yes" || a == "-y");
+                    let payload = payload_arg.ok_or(
+                        "appimage install needs --payload <extracted AppImage directory> \
+                         (or ASTRAL_APPIMAGE_PAYLOAD)",
+                    )?;
+                    if !confirmed {
+                        eprintln!(
+                            "[{}] This installs the AppImage payload into {} and adds a login session.",
+                            branding::APP_NAME,
+                            paths.data_dir.display()
+                        );
+                        eprintln!("Nothing was changed. Re-run with --yes to install.");
+                        std::process::exit(2);
+                    }
+                    let options = AppImageInstallOptions {
+                        install_session: !args.iter().any(|a| a == "--no-session"),
+                        install_service: args.iter().any(|a| a == "--service"),
+                        force: args.iter().any(|a| a == "--force"),
+                    };
+                    let status = install_appimage(std::path::Path::new(&payload), &paths, &options)?;
+                    println!("{}", serde_json::to_string(&status)?);
+                }
+                "uninstall" => {
+                    let confirmed = args.iter().any(|a| a == "--yes" || a == "-y");
+                    if !confirmed {
+                        eprintln!(
+                            "[{}] This removes the AppImage payload, wrapper and login session. Settings are kept.",
+                            branding::APP_NAME
+                        );
+                        eprintln!("Nothing was changed. Re-run with --yes to uninstall.");
+                        std::process::exit(2);
+                    }
+                    let force = args.iter().any(|a| a == "--force");
+                    let report = uninstall_appimage(&paths, force)?;
+                    println!("{}", serde_json::to_string(&report)?);
+                }
+                other => {
+                    eprintln!("Unknown appimage command: {other}");
+                    eprintln!("Usage: astral-plasma appimage <status|install|uninstall> [--payload <dir>] [--yes] [--no-session] [--service] [--force]");
+                    std::process::exit(2);
+                }
+            }
         }
         "update" => {
             use crate::application::update_service::UpdateService;
@@ -2374,6 +2436,7 @@ fn print_usage() {
     eprintln!("  serve [--port <port>]   - Run native REST & Unix socket API server");
     eprintln!("  extract [target_dir]    - Extract embedded QML theme bundle");
     eprintln!("  install [--method ...]  - Install this binary and its bundle into the managed layout");
+    eprintln!("  appimage <cmd>          - AppImage install/status/uninstall (payload, login session)");
     eprintln!("  migrate [--pending]     - Run one-time repairs for existing installs");
     eprintln!("  update <status|check|apply|seen> - Check for, stage and apply a release");
     eprintln!("  changelog [--json] [--since <version>] - Release notes compiled into this build");

@@ -3,7 +3,7 @@ BIN_DIR = bin
 TARGET = $(BIN_DIR)/astral-plasma
 DAEMON_DIR = daemon
 
-.PHONY: all build release debug test test-rust test-qml doctor run stop restore clean install changelog release-tag gpu-pmu-perms help
+.PHONY: all build release debug test test-rust test-qml doctor run stop restore clean install changelog release-tag gpu-pmu-perms appimage help
 
 all: build
 
@@ -18,6 +18,7 @@ help:
 	@echo "  make changelog   - Generate changelog preview from git history"
 	@echo "  make release-tag - Trigger automated release (e.g. make release-tag VERSION=0.2.0)"
 	@echo "  make run         - Run theme (auto-restores original top panel on exit)"
+	@echo "  make appimage    - Build the portable AppImage into dist/"
 	@echo "  make gpu-pmu-perms - Let GPU usage count every client (one sudo, needs CAP_PERFMON)"
 	@echo "  make stop        - Stop theme and restore original top panel"
 	@echo "  make restore     - Restore original KDE Plasma top panel"
@@ -93,6 +94,9 @@ gpu-pmu-perms: build
 run: build
 	@trap './bin/astral-plasma desktop cleanup 2>/dev/null || true; ./bin/astral-plasma plasma restore' EXIT INT TERM; \
 	./bin/astral-plasma run
+
+appimage: build
+	bash packaging/appimage/build.sh --no-build
 
 stop:
 	@pkill -9 -x quickshell 2>/dev/null || true

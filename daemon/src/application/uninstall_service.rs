@@ -90,6 +90,10 @@ pub fn uninstall(
 ) -> DynResult<UninstallReport> {
     let record_path = paths.data_dir.join(branding::INSTALL_RECORD_FILE);
     let record = InstallRecord::read(&record_path)?;
+    let appimage = record
+        .as_ref()
+        .map(|record| record.method == InstallMethod::AppImage)
+        .unwrap_or(false);
 
     if let Some(record) = &record {
         if record.method == InstallMethod::Package && !force {
@@ -127,6 +131,9 @@ pub fn uninstall(
         paths.data_dir.join(branding::PACKAGE_SUBDIR),
     ] {
         remove_dir(&dir, &mut report)?;
+    }
+    if appimage {
+        remove_dir(&paths.data_dir.join("app"), &mut report)?;
     }
     // The data directory also holds things an install did not create: the AI
     // harness's sessions, and the Plasma/shortcut backups that must outlive the

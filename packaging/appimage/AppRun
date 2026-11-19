@@ -1,0 +1,66 @@
+#!/bin/sh
+# Astral Plasma AppImage entrypoint.
+#
+# The AppImage itself is only a delivery container. On first launch the payload
+# is copied to a stable, versioned directory under XDG_DATA_HOME so KWin's
+# screenshot authorization, `quickshell -p` IPC and global shortcuts keep a
+# stable path. The login session and the update path both resolve the same
+# `app/current` link.
+set -eu
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+VERSION=$(cat "$HERE/version" 2>/dev/null || echo "0.0.0")
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/astral-plasma"
+STATE="$DATA/app"
+TARGET="$STATE/$VERSION"
+
+# An installed wrapper sets ASTRAL_APPIMAGE_PAYLOAD; never copy the mounted
+# AppImage over itself in that case.
+if [ -n "${ASTRAL_APPIMAGE_PAYLOAD:-}" ] && [ -x "${ASTRAL_APPIMAGE_PAYLOAD}/usr/bin/astral-plasma" ]; then
+    TARGET="$ASTRAL_APPIMAGE_PAYLOAD"
+else
+    if [ ! -x "$TARGET/usr/bin/astral-plasma" ]; then
+        mkdir -p "$STATE"
+        TMP="$STATE/.$VERSION.tmp.$$"
+        rm -rf "$TMP"
+        mkdir -p "$TMP"
+        cp -a "$HERE/." "$TMP/"
+        rm -rf "$TARGET"
+        mv "$TMP" "$TARGET"
+    fi
+    PREVIOUS=$(readlink -f "$STATE/current" 2>/dev/null || true)
+    if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$TARGET" ] && [ -x "$PREVIOUS/usr/bin/astral-plasma" ]; then
+        ln -sfn "$PREVIOUS" "$STATE/previous"
+    fi
+    ln -sfn "$TARGET" "$STATE/current"
+fi
+
+export ASTRAL_APPIMAGE_PAYLOAD="$TARGET"
+export ASTRAL_PLASMA_PACKAGE_DIR="${ASTRAL_PLASMA_PACKAGE_DIR:-$DATA/package}"
+export ASTRAL_PLASMA_THEME_DIR="${ASTRAL_PLASMA_THEME_DIR:-$DATA/package}"
+export ASTRAL_PLASMA_BIN_PATH="${ASTRAL_PLASMA_BIN_PATH:-$DATA/bin/astral-plasma}"
+export ASTRAL_PLASMA_DAEMON="${ASTRAL_PLASMA_DAEMON:-$TARGET/usr/bin/astral-plasma}"
+export PATH="$TARGET/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$TARGET/usr/lib:$TARGET/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="$TARGET/usr/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+export QML2_IMPORT_PATH="$TARGET/usr/lib/qt6/qml:$ASTRAL_PLASMA_PACKAGE_DIR/modules${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
+export QML_IMPORT_PATH="$QML2_IMPORT_PATH"
+
+# First launch: show the graphical installer. It is a normal window, so it
+# cannot take over the running Plasma session before the user consents.
+if [ "${1:-}" = "--setup" ]; then
+    shift
+    exec quickshell -p "$TARGET/usr/share/astral-plasma/package/appimage-setup.qml" "$@"
+fi
+
+if [ ! -f "$DATA/install.json" ] && [ ! -f "$DATA/appimage-welcome" ] \
+   && [ "$#" -eq 0 ] && [ "${ASTRAL_APPIMAGE_NO_SETUP:-0}" != "1" ]; then
+    : > "$DATA/appimage-welcome"
+    exec quickshell -p "$TARGET/usr/share/astral-plasma/package/appimage-setup.qml"
+fi
+
+if [ "$#" -eq 0 ]; then
+    set -- run
+fi
+
+exec "$TARGET/usr/bin/astral-plasma" "$@"

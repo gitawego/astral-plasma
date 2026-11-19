@@ -268,9 +268,129 @@ jobs:
           name: build-${{ matrix.arch }}
           path: dist/*
 
+  # The AppImage is built on Ubuntu 24.04 so its glibc floor stays at 2.39.
+  # Ubuntu 24.04 has no Quickshell package, so build the pinned upstream release
+  # against Qt 6.8.3 and bundle it. x86_64 only: aqt has no desktop arm64 Qt at
+  # this version. The image is a release asset; the managed updater continues to
+  # use the raw-binary manifest.
+  appimage:
+    name: AppImage (x86_64)
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      QT_VERSION: '6.8.3'
+      QUICKSHELL_VERSION: 'v0.3.2'
+      QS_PREFIX: ${{ github.workspace }}/.quickshell
+    steps:
+      - name: Checkout repository at release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Install AppImage build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build pkg-config git \
+            libdrm-dev libgbm-dev libwayland-dev wayland-protocols \
+            libpipewire-0.3-dev libpam0g-dev libpolkit-agent-1-dev libpolkit-gobject-1-dev \
+            libjemalloc-dev libcli11-dev spirv-tools \
+            libxcb1-dev libxkbcommon-dev libgl1-mesa-dev libegl1-mesa-dev libvulkan-dev \
+            libglib2.0-dev libfontconfig1-dev libfreetype-dev \
+            libx11-dev libxext-dev libxrender-dev libxi-dev libxtst-dev \
+            libxcursor-dev libxrandr-dev libxinerama-dev \
+            libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-randr0-dev \
+            libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-sync-dev \
+            libxcb-xinerama0-dev libxcb-xkb-dev libxkbcommon-x11-dev \
+            libxcb-cursor0 \
+            patchelf squashfs-tools desktop-file-utils file librsvg2-bin \
+            libasound2-dev
+
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtshadertools qtmultimedia qt5compat qtquick3d qtwaylandcompositor'
+          cache: true
+
+      - name: Build Quickshell ${{ env.QUICKSHELL_VERSION }}
+        run: |
+          git clone --depth 1 --branch "${QUICKSHELL_VERSION}" \
+            https://github.com/quickshell-mirror/quickshell.git /tmp/quickshell
+          cmake -G Ninja -S /tmp/quickshell -B /tmp/quickshell/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$QS_PREFIX" \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DBUILD_TESTING=OFF \
+            -DCRASH_HANDLER=OFF \
+            -DINSTALL_QML_PREFIX=lib/x86_64-linux-gnu/qt6/qml \
+            -DDISTRIBUTOR=AstralPlasmaCI
+          cmake --build /tmp/quickshell/build --parallel "$(nproc)"
+          cmake --install /tmp/quickshell/build
+          export LD_LIBRARY_PATH="$QT_ROOT_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          "$QS_PREFIX/bin/quickshell" --version
+          echo "$QS_PREFIX/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Install AppImage tooling
+        run: |
+          tools="$HOME/.local/appimage-tools"
+          stage="$RUNNER_TEMP/appimage-stage"
+          mkdir -p "$tools" "$stage"
+          curl -fsSL -o "$stage/linuxdeploy.AppImage" \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -fsSL -o "$stage/linuxdeploy-plugin-qt.AppImage" \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          curl -fsSL -o "$stage/appimagetool.AppImage" \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          for image in "$stage"/*.AppImage; do
+            rm -rf "$stage/squashfs-root"
+            (cd "$stage" && "$image" --appimage-extract >/dev/null)
+            cp -a "$stage/squashfs-root/usr/bin/." "$tools/"
+          done
+          find "$tools" -maxdepth 1 -type f -exec chmod +x {} +
+          echo "$tools" >> "$GITHUB_PATH"
+
+      - name: Download the release binary
+        uses: actions/download-artifact@v4
+        with:
+          name: build-x86_64
+          path: downloaded
+
+      - name: Build the AppImage
+        run: |
+          mkdir -p bin
+          install -m 755 downloaded/astral-plasma-linux-x86_64 bin/astral-plasma
+          export PATH="$QS_PREFIX/bin:$HOME/.local/bin:$PATH"
+          export LD_LIBRARY_PATH="$QT_ROOT_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          ./packaging/appimage/build.sh --no-build
+
+      - name: Smoke-test the AppImage payload
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          image=$(find dist -maxdepth 1 -name '*.AppImage' -print -quit)
+          test -n "$image"
+          "$image" --appimage-extract >/dev/null
+          test -x squashfs-root/AppRun
+          test -x squashfs-root/usr/bin/astral-plasma
+          test -x squashfs-root/usr/bin/quickshell
+          test -f squashfs-root/version
+          test "v$(cat squashfs-root/version)" = "$RELEASE_TAG"
+          rm -rf squashfs-root
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-appimage-x86_64
+          path: dist/*.AppImage
+
   publish:
     name: Publish Release
-    needs: [prepare, build]
+    needs: [prepare, build, appimage]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository at release tag
@@ -292,7 +412,7 @@ jobs:
       - name: Consolidate distribution assets & checksums
         run: |
           mkdir -p release_assets
-          find downloaded_artifacts -type f \( -name "*.tar.gz" -o -name "astral-plasma-linux-*" \) -exec cp {} release_assets/ \;
+          find downloaded_artifacts -type f \( -name "*.tar.gz" -o -name "astral-plasma-linux-*" -o -name "*.AppImage" \) -exec cp {} release_assets/ \;
           
           # Consolidate checksums
           cd release_assets

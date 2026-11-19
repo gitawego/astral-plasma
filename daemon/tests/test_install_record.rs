@@ -81,10 +81,15 @@ fn only_a_managed_install_may_update_itself() {
         "a package-managed install belongs to pacman; writing its files is the two-owners bug"
     );
     assert!(!InstallMethod::Checkout.is_self_updatable());
+    assert!(
+        !InstallMethod::AppImage.is_self_updatable(),
+        "an AppImage is replaced as a whole; rewriting its payload is not a managed update"
+    );
 
     assert_eq!(InstallMethod::parse("managed").unwrap(), InstallMethod::Managed);
     assert_eq!(InstallMethod::parse(" package ").unwrap(), InstallMethod::Package);
     assert_eq!(InstallMethod::parse("checkout").unwrap(), InstallMethod::Checkout);
+    assert_eq!(InstallMethod::parse("appimage").unwrap(), InstallMethod::AppImage);
     assert!(InstallMethod::parse("").is_err());
 }
 
