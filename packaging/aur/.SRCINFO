@@ -1,0 +1,27 @@
+pkgbase = astral-plasma-bin
+	pkgdesc = Fluid Quickshell desktop shell for KDE Plasma 6 / KWin / Hyprland
+	pkgver = 0.1.3
+	pkgrel = 1
+	url = https://github.com/gitawego/astral-plasma
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	depends = quickshell>=0.3.0
+	depends = qt6-declarative
+	depends = qt6-wayland
+	depends = alsa-lib
+	optdepends = matugen: wallpaper-driven palette extraction
+	optdepends = pipewire: audio visualiser and volume control
+	optdepends = kwin: panel claim, shortcuts and blur integration
+	provides = astral-plasma
+	conflicts = astral-plasma
+	options = !strip
+	options = !debug
+	source = LICENSE::https://github.com/gitawego/astral-plasma/raw/v0.1.3/LICENSE
+	sha256sums = 99f81f478a935404ca2f161a65537abf3edbc80ee7bc2923d1ae9d970a3f8edf
+	source_x86_64 = https://github.com/gitawego/astral-plasma/releases/download/v0.1.3/astral-plasma-linux-x86_64
+	sha256sums_x86_64 = 1d23d562f427c415a1006a718037b682fa007dd2638ca99bc99d7796edc2ed83
+	source_aarch64 = https://github.com/gitawego/astral-plasma/releases/download/v0.1.3/astral-plasma-linux-aarch64
+	sha256sums_aarch64 = b9e631b0bf30d720e3feb4e7cca0cc160dcd102b3eb75849b597f3f4f527403a
+
+pkgname = astral-plasma-bin

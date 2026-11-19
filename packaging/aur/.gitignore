@@ -1,0 +1,11 @@
+# makepkg build artifacts. The AUR repository must contain only PKGBUILD,
+# .SRCINFO, and packaging files; never commit downloaded sources or packages.
+src/
+pkg/
+*.pkg.tar*
+*.tar.gz
+*.tar.zst
+
+# Sources downloaded by makepkg into $SRCDEST (the current directory here).
+LICENSE
+astral-plasma-linux-*
