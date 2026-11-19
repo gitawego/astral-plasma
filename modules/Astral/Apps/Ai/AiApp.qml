@@ -81,7 +81,7 @@ Item {
     function getProviderDiscoverySource(p) {
         if (!p) return "Config";
         const pid = (p.provider_id || p.provider || "").toLowerCase();
-        if (pid === "gemini") return "Antigravity Cockpit & Keyring";
+        if (pid === "gemini") return "Desktop Keyring & Token Storage";
         if (pid === "minimax-cn") return "Pi Agent Sessions";
         if (pid === "opencode-go" || pid === "opencode") return "OpenCode & Pi Sessions";
         if (pid === "zcode" || pid.indexOf("zcode") !== -1) return "ZCode Config (~/.zcode)";
@@ -93,7 +93,7 @@ Item {
         if (!p) return "● Config";
         const pid = (p.provider_id || p.provider || "").toLowerCase();
         if (pid === "gemini") {
-            return "● Antigravity Cockpit   ● Desktop Keyring   ● Token Storage";
+            return "● Desktop Keyring   ● Token Storage";
         }
         if (pid === "minimax-cn") {
             return "● Pi Agent Sessions (~/.pi/agent)   ● Session Logs";

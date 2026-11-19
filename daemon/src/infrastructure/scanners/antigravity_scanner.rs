@@ -1,36 +1,13 @@
 use crate::domain::tool_scanner::{DiscoveredCredential, ToolConfigScanner};
-use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 
-/// Deterministic configuration scanner for Google Antigravity / Gemini CLI (`~/.antigravity_cockpit`, Keyring, and token files).
-#[derive(Debug, Clone)]
-pub struct AntigravityScanner {
-    cockpit_dir: Option<PathBuf>,
-}
-
-impl Default for AntigravityScanner {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+/// Deterministic configuration scanner for Google Antigravity / Gemini CLI (desktop Keyring).
+#[derive(Debug, Clone, Default)]
+pub struct AntigravityScanner;
 
 impl AntigravityScanner {
     pub fn new() -> Self {
-        Self { cockpit_dir: None }
-    }
-
-    pub fn with_cockpit_dir(dir: PathBuf) -> Self {
-        Self {
-            cockpit_dir: Some(dir),
-        }
-    }
-
-    fn get_cockpit_dir(&self) -> Option<PathBuf> {
-        if let Some(ref d) = self.cockpit_dir {
-            return Some(d.clone());
-        }
-        std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".antigravity_cockpit"))
+        Self
     }
 }
 
@@ -67,33 +44,6 @@ impl ToolConfigScanner for AntigravityScanner {
                         identity,
                         label: Some("Antigravity Keyring".to_string()),
                     });
-                }
-            }
-        }
-
-        // 2. Read ~/.antigravity_cockpit/accounts.json
-        if let Some(cockpit) = self.get_cockpit_dir() {
-            let accounts_json = cockpit.join("accounts.json");
-            if accounts_json.exists() {
-                if let Ok(c) = fs::read_to_string(&accounts_json) {
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&c) {
-                        if let Some(accs) = val.get("accounts").and_then(|a| a.as_array()) {
-                            for acc in accs {
-                                if let Some(email) = acc.get("email").and_then(|e| e.as_str()) {
-                                    let id = acc.get("id").and_then(|i| i.as_str());
-                                    let label = acc.get("name").and_then(|n| n.as_str());
-                                    results.push(DiscoveredCredential {
-                                        provider_id: "gemini".to_string(),
-                                        tool_source: "antigravity".to_string(),
-                                        credential: id.unwrap_or(email).to_string(),
-                                        base_url: None,
-                                        identity: Some(email.to_string()),
-                                        label: label.map(|l| format!("Antigravity ({})", l)),
-                                    });
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }

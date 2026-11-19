@@ -19,6 +19,19 @@ pub struct AiQuotaAdapter {
     custom_legacy_config_dir: Option<PathBuf>,
 }
 
+/// Already-loaded sources used to resolve the active Gemini identity.
+///
+/// Live credential stores (`keyring_payload` and the `agy` token files) are the only
+/// credential sources; see [`AiQuotaAdapter::get_active_gemini_email`].
+#[derive(Default)]
+pub struct GeminiIdentitySources<'a> {
+    pub keyring_payload: Option<&'a serde_json::Value>,
+    pub cli_token_payload: Option<&'a serde_json::Value>,
+    pub jetski_token_payload: Option<&'a serde_json::Value>,
+    pub marker: Option<&'a str>,
+    pub account_records: &'a [serde_json::Value],
+}
+
 impl Default for AiQuotaAdapter {
     fn default() -> Self {
         Self {
@@ -340,177 +353,177 @@ impl AiQuotaAdapter {
         self.secure_storage();
     }
 
-    /// Single Source of Truth (SSOT): Resolves the currently active Gemini account identity.
-    /// Checks Desktop Keyring (service: gemini, username: antigravity) first.
-    /// Extracts email from the id_token JWT payload if available.
-    /// If not in id_token, extracts refresh_token and matches against stored accounts.
-    /// Fallback: checks ~/.gemini/antigravity-cli/antigravity-oauth-token refresh_token.
-    pub fn get_active_gemini_email(&self) -> Option<String> {
-        // If not in isolated test directory, query Cockpit, system keyring and CLI token file
-        if self.custom_config_dir.is_none() {
-            // 1. Check ~/.antigravity_cockpit (current_account.json and accounts.json)
-            if let Ok(home) = std::env::var("HOME") {
-                let cockpit_dir = std::path::PathBuf::from(&home).join(".antigravity_cockpit");
-                if cockpit_dir.exists() {
-                    if let Ok(curr) = fs::read_to_string(cockpit_dir.join("current_account.json")) {
-                        if let Ok(j) = serde_json::from_str::<serde_json::Value>(&curr) {
-                            if let Some(em) = j.get("email").and_then(|e| e.as_str()) {
-                                if !em.trim().is_empty() {
-                                    return Some(em.trim().to_string());
-                                }
-                            }
-                        }
-                    }
-                    if let Ok(content) = fs::read_to_string(cockpit_dir.join("accounts.json")) {
-                        if let Ok(j) = serde_json::from_str::<serde_json::Value>(&content) {
-                            if let Some(cid) = j.get("current_account_id").and_then(|i| i.as_str()) {
-                                if let Some(arr) = j.get("accounts").and_then(|a| a.as_array()) {
-                                    for acc in arr {
-                                        if acc.get("id").and_then(|i| i.as_str()) == Some(cid) {
-                                            if let Some(em) = acc.get("email").and_then(|e| e.as_str()) {
-                                                if !em.trim().is_empty() {
-                                                    return Some(em.trim().to_string());
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    fn read_json_file(path: &Path) -> Option<serde_json::Value> {
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|content| serde_json::from_str(&content).ok())
+    }
 
-            // 2. Check Desktop Keyring via secret-tool
+    fn load_gemini_account_records(&self) -> Vec<serde_json::Value> {
+        let Some(dir) = self.get_gemini_accounts_dir() else {
+            return Vec::new();
+        };
+        let Ok(entries) = fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        entries
+            .flatten()
+            .filter(|entry| entry.path().extension().and_then(|s| s.to_str()) == Some("json"))
+            .filter_map(|entry| Self::read_json_file(&entry.path()))
+            .collect()
+    }
+
+    /// Single Source of Truth (SSOT): Resolves the currently active Gemini account identity.
+    ///
+    /// The desktop keyring (service: gemini, username: antigravity) is what `agy`
+    /// authenticates against, so it is the authoritative live source. The `agy` token
+    /// files follow. Stored account records and the last-active marker are fallbacks.
+    pub fn get_active_gemini_email(&self) -> Option<String> {
+        let mut keyring_payload = None;
+        let mut cli_token_payload = None;
+        let mut jetski_token_payload = None;
+
+        // If not in isolated test directory, query the live keyring and agy token files.
+        if self.custom_config_dir.is_none() {
             if let Ok(output) = Command::new("secret-tool")
                 .args(["lookup", "service", "gemini", "username", "antigravity"])
                 .output()
             {
                 if output.status.success() && !output.stdout.is_empty() {
-                    let raw = String::from_utf8_lossy(&output.stdout);
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
-                        if let Some(email) = v.get("email").or_else(|| v.pointer("/token/email")).and_then(|e| e.as_str()) {
-                            if !email.is_empty() {
-                                return Some(email.to_string());
-                            }
-                        }
-
-                        if let Some(id_token) = v.get("id_token").or_else(|| v.pointer("/token/id_token")).and_then(|t| t.as_str()) {
-                            if let Some(email) = Self::decode_email_from_jwt(id_token) {
-                                if !email.is_empty() {
-                                    return Some(email);
-                                }
-                            }
-                        }
-
-                        let refresh_token = v
-                            .pointer("/token/refresh_token")
-                            .or_else(|| v.get("refresh_token"))
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("");
-
-                        if !refresh_token.is_empty() {
-                            if let Some(email) = self.find_account_email_by_token(refresh_token) {
-                                return Some(email);
-                            }
-                        }
-                    }
+                    keyring_payload = serde_json::from_slice(&output.stdout).ok();
                 }
             }
 
-            // 3. Check ~/.gemini/antigravity-cli/antigravity-oauth-token
             if let Some(token_path) = Self::get_gemini_cli_token_file() {
-                if let Ok(content) = fs::read_to_string(token_path) {
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(email) = v.get("email").or_else(|| v.pointer("/token/email")).and_then(|e| e.as_str()) {
-                            if !email.is_empty() {
-                                return Some(email.to_string());
-                            }
-                        }
-                        if let Some(id_tok) = v.get("id_token").or_else(|| v.pointer("/token/id_token")).and_then(|t| t.as_str()) {
-                            if let Some(email) = Self::decode_email_from_jwt(id_tok) {
-                                if !email.is_empty() {
-                                    return Some(email);
-                                }
-                            }
-                        }
-                        if let Some(refresh_token) =
-                            v.pointer("/token/refresh_token").or_else(|| v.get("refresh_token")).and_then(|t| t.as_str())
-                        {
-                            if !refresh_token.is_empty() {
-                                if let Some(email) = self.find_account_email_by_token(refresh_token) {
-                                    return Some(email);
-                                }
-                            }
-                        }
-                    }
-                }
+                cli_token_payload = Self::read_json_file(&token_path);
             }
 
-            // 4. Check ~/.gemini/jetski-standalone-oauth-token (Antigravity IDE token)
             if let Some(token_path) = Self::get_gemini_jetski_token_file() {
-                if let Ok(content) = fs::read_to_string(token_path) {
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(email) = v.get("email").or_else(|| v.pointer("/token/email")).and_then(|e| e.as_str()) {
-                            if !email.is_empty() {
-                                return Some(email.to_string());
-                            }
-                        }
-                        if let Some(id_tok) = v.get("id_token").or_else(|| v.pointer("/token/id_token")).and_then(|t| t.as_str()) {
-                            if let Some(email) = Self::decode_email_from_jwt(id_tok) {
-                                if !email.is_empty() {
-                                    return Some(email);
-                                }
-                            }
-                        }
-                        if let Some(refresh_token) =
-                            v.pointer("/token/refresh_token").or_else(|| v.get("refresh_token")).and_then(|t| t.as_str())
-                        {
-                            if !refresh_token.is_empty() {
-                                if let Some(email) = self.find_account_email_by_token(refresh_token) {
-                                    return Some(email);
-                                }
-                            }
-                        }
-                    }
+                jetski_token_payload = Self::read_json_file(&token_path);
+            }
+        }
+
+        let marker = self
+            .get_gemini_accounts_dir()
+            .and_then(|dir| fs::read_to_string(dir.join(".antigravity_last_active")).ok());
+        let account_records = self.load_gemini_account_records();
+
+        Self::resolve_active_gemini_email(GeminiIdentitySources {
+            keyring_payload: keyring_payload.as_ref(),
+            cli_token_payload: cli_token_payload.as_ref(),
+            jetski_token_payload: jetski_token_payload.as_ref(),
+            marker: marker.as_deref(),
+            account_records: &account_records,
+        })
+    }
+
+    /// Resolves the active Gemini email from already-loaded credential sources.
+    pub fn resolve_active_gemini_email(sources: GeminiIdentitySources<'_>) -> Option<String> {
+        // Live credential stores first: this is the account `agy` is actually using.
+        for payload in [
+            sources.keyring_payload,
+            sources.cli_token_payload,
+            sources.jetski_token_payload,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some(email) = Self::gemini_email_from_credential(payload) {
+                return Some(email);
+            }
+            if let Some(token) = Self::gemini_token_from_credential(payload) {
+                if let Some(email) =
+                    Self::gemini_account_email_by_token(sources.account_records, token)
+                {
+                    return Some(email);
                 }
             }
         }
 
-        // 5. Check .antigravity_last_active marker in accounts/gemini
-        if let Some(dir) = self.get_gemini_accounts_dir() {
-            let marker = dir.join(".antigravity_last_active");
-            if marker.exists() {
-                if let Ok(txt) = fs::read_to_string(&marker) {
-                    let trimmed = txt.trim();
-                    if !trimmed.is_empty() {
-                        return Some(trimmed.to_string());
-                    }
-                }
-            }
+        if let Some(marker) = sources.marker.map(str::trim).filter(|m| !m.is_empty()) {
+            return Some(marker.to_string());
+        }
 
-            // 6. Check accounts/*.json for is_active == true
-            if let Ok(entries) = fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                        if let Ok(c) = fs::read_to_string(&path) {
-                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&c) {
-                                if v.get("is_active").and_then(|b| b.as_bool()) == Some(true) {
-                                    if let Some(id) = v.get("identity").and_then(|i| i.as_str()) {
-                                        if !id.is_empty() {
-                                            return Some(id.to_string());
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+        sources
+            .account_records
+            .iter()
+            .find(|record| {
+                record.get("is_active").and_then(|active| active.as_bool()) == Some(true)
+            })
+            .and_then(|record| {
+                record
+                    .get("identity")
+                    .and_then(|identity| identity.as_str())
+            })
+            .map(str::trim)
+            .filter(|identity| !identity.is_empty())
+            .map(str::to_string)
+    }
+
+    fn gemini_email_from_credential(payload: &serde_json::Value) -> Option<String> {
+        for email in [
+            payload.get("id_token_email").and_then(|e| e.as_str()),
+            payload.get("email").and_then(|e| e.as_str()),
+            payload.pointer("/token/email").and_then(|e| e.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let email = email.trim();
+            if !email.is_empty() {
+                return Some(email.to_string());
+            }
+        }
+
+        for id_token in [
+            payload.get("id_token").and_then(|t| t.as_str()),
+            payload.pointer("/token/id_token").and_then(|t| t.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some(email) = Self::decode_email_from_jwt(id_token) {
+                let email = email.trim();
+                if !email.is_empty() {
+                    return Some(email.to_string());
                 }
             }
         }
 
         None
+    }
+
+    fn gemini_token_from_credential(payload: &serde_json::Value) -> Option<&str> {
+        [
+            payload.pointer("/token/refresh_token"),
+            payload.pointer("/refresh_token"),
+            payload.pointer("/token/access_token"),
+            payload.pointer("/access_token"),
+        ]
+        .into_iter()
+        .flatten()
+        .filter_map(|token| token.as_str())
+        .map(str::trim)
+        .find(|token| !token.is_empty())
+    }
+
+    fn gemini_account_email_by_token(records: &[serde_json::Value], token: &str) -> Option<String> {
+        records.iter().find_map(|record| {
+            let contains_token = record
+                .get("credential")
+                .and_then(|credential| credential.as_str())
+                .map(|credential| credential.contains(token))
+                .unwrap_or(false);
+            if !contains_token {
+                return None;
+            }
+            record
+                .get("identity")
+                .and_then(|identity| identity.as_str())
+                .map(str::trim)
+                .filter(|identity| !identity.is_empty())
+                .map(str::to_string)
+        })
     }
 
     /// Decodes the email claim from an unencrypted JWT id_token without external dependencies.
@@ -565,32 +578,7 @@ impl AiQuotaAdapter {
 
     /// Matches a refresh_token or access_token against accounts in Astral Plasma accounts directory.
     pub fn find_account_email_by_token(&self, token_str: &str) -> Option<String> {
-        let dir = self.get_gemini_accounts_dir()?;
-        if !dir.exists() {
-            return None;
-        }
-
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                    if let Ok(content) = fs::read_to_string(&path) {
-                        if content.contains(token_str) {
-                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-                                if let Some(identity) =
-                                    v.get("identity").and_then(|i| i.as_str())
-                                {
-                                    if !identity.is_empty() {
-                                        return Some(identity.to_string());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
+        Self::gemini_account_email_by_token(&self.load_gemini_account_records(), token_str)
     }
 
     /// Loads all configured Gemini accounts from ~/.config/astral-plasma/accounts/gemini/*.json
@@ -827,9 +815,6 @@ impl AiQuotaAdapter {
                     let _ = fs::write(&jetski_path, &token_json_str);
                 }
             }
-
-            // Synchronize ~/.antigravity_cockpit if present
-            Self::sync_cockpit(&target_email, &target_id);
         }
 
         // Update .antigravity_last_active marker in accounts directory
@@ -841,73 +826,6 @@ impl AiQuotaAdapter {
         }
 
         Ok(target_email)
-    }
-
-    /// Synchronizes the switched Gemini account to ~/.antigravity_cockpit configuration if present.
-    pub fn sync_cockpit(target_email: &str, target_id: &str) {
-        let home = match std::env::var("HOME") {
-            Ok(h) => h,
-            Err(_) => return,
-        };
-        let cockpit_dir = std::path::PathBuf::from(home).join(".antigravity_cockpit");
-        if !cockpit_dir.exists() {
-            return;
-        }
-
-        let accounts_json_path = cockpit_dir.join("accounts.json");
-        if let Ok(content) = fs::read_to_string(&accounts_json_path) {
-            if let Ok(mut idx) = serde_json::from_str::<serde_json::Value>(&content) {
-                let mut found_id = None;
-                if let Some(arr) = idx.get("accounts").and_then(|a| a.as_array()) {
-                    for acc in arr {
-                        let id_match = acc.get("id").and_then(|i| i.as_str()) == Some(target_id);
-                        let em_match = acc
-                            .get("email")
-                            .and_then(|e| e.as_str())
-                            .map(|e| e.eq_ignore_ascii_case(target_email))
-                            .unwrap_or(false);
-                        if id_match || em_match {
-                            found_id = acc.get("id").and_then(|i| i.as_str()).map(|s| s.to_string());
-                            break;
-                        }
-                    }
-                }
-
-                if let Some(tid) = found_id {
-                    if let Some(obj) = idx.as_object_mut() {
-                        obj.insert("current_account_id".into(), serde_json::Value::String(tid.clone()));
-                    }
-                    if let Ok(updated) = serde_json::to_string_pretty(&idx) {
-                        let _ = fs::write(&accounts_json_path, updated);
-                    }
-
-                    for inst_file in ["instances.json", "antigravity_legacy_instances.json"] {
-                        let p = cockpit_dir.join(inst_file);
-                        if let Ok(c) = fs::read_to_string(&p) {
-                            if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&c) {
-                                if let Some(def_settings) = v.get_mut("defaultSettings").and_then(|s| s.as_object_mut()) {
-                                    def_settings.insert("bindAccountId".into(), serde_json::Value::String(tid.clone()));
-                                    if let Ok(up) = serde_json::to_string_pretty(&v) {
-                                        let _ = fs::write(&p, up);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let curr_path = cockpit_dir.join("current_account.json");
-        let now_sec = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-        let curr_val = serde_json::json!({
-            "email": target_email,
-            "updated_at": now_sec,
-        });
-        let _ = fs::write(curr_path, serde_json::to_string_pretty(&curr_val).unwrap_or_default());
     }
 
     /// Saves or re-authenticates a Google Gemini account from OAuth token and userinfo responses.

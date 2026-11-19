@@ -182,10 +182,13 @@ Item {
         assert(aiTab.formatTokenCount(5000) === "5.0k", "formatTokenCount 5k");
         assert(aiTab.formatTokenCount(42) === "42", "formatTokenCount 42");
 
-        // 11. Provider-aware discovery badges (No false Cockpit attribution for OpenCode)
+        // 11. Provider-aware discovery badges must not claim a removed Cockpit source
         assert(typeof aiTab.getProviderDiscoveryBadges === "function", "aiTab.getProviderDiscoveryBadges must be a function");
         let geminiBadges = aiTab.getProviderDiscoveryBadges({ provider_id: "gemini" });
-        assert(geminiBadges.indexOf("Antigravity Cockpit") !== -1, "Gemini discovery must reference Antigravity Cockpit");
+        assert(geminiBadges.indexOf("Desktop Keyring") !== -1, "Gemini discovery must reference Desktop Keyring");
+        assert(geminiBadges.indexOf("Cockpit") === -1, "Gemini discovery must NEVER reference Cockpit");
+        assert(aiTab.getProviderDiscoverySource({ provider_id: "gemini" }).indexOf("Cockpit") === -1,
+            "Gemini discovery source must NEVER reference Cockpit");
 
         let opencodeBadges = aiTab.getProviderDiscoveryBadges({ provider_id: "opencode-go" });
         assert(opencodeBadges.indexOf("OpenCode Config") !== -1, "OpenCode discovery must reference OpenCode Config");
