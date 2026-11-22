@@ -31,6 +31,7 @@ docs/proof/
 
 # Agent orchestration panel state (local tool state, not product source)
 .orchestration/
+orchestration/
 
 # Secrets and credentials: never repository content
 .env
